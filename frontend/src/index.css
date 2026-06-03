@@ -1,0 +1,128 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@theme {
+  --color-bg-main: var(--bg-main);
+  --color-bg-panel: var(--bg-panel);
+  --color-bg-header: var(--bg-header);
+  --color-bg-editor: var(--bg-editor);
+  --color-bg-row-alt: var(--bg-row-alt);
+  --color-text-main: var(--text-main);
+  --color-text-muted: var(--text-muted);
+  --color-border-main: var(--border-main);
+  --color-border-item: var(--border-item);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-active: var(--bg-active);
+  --color-bg-conn-hover: var(--bg-conn-hover);
+  
+  --color-bg-input: var(--bg-input);
+  --color-border-input: var(--border-input);
+  --color-text-input: var(--text-input);
+}
+
+:root {
+  --bg-main: #f8fafc;        /* slate-50 */
+  --bg-panel: #ffffff;       /* white */
+  --bg-header: #f1f5f9;      /* slate-100 */
+  --bg-editor: #f8fafc;      /* slate-50 */
+  --bg-row-alt: #f1f5f9;     /* slate-100 */
+  --text-main: #0f172a;      /* slate-900 */
+  --text-muted: #475569;     /* slate-600 */
+  --border-main: rgba(203, 213, 225, 0.6); /* slate-300 */
+  --border-item: #cbd5e1;    /* slate-300 */
+  --bg-hover: rgba(148, 163, 184, 0.1); /* slate-400 */
+  --bg-active: #cbd5e1;      /* slate-300 */
+  --bg-conn-hover: rgba(59, 130, 246, 0.05);
+  
+  /* Input fields */
+  --bg-input: #ffffff;
+  --border-input: #cbd5e1;
+  --text-input: #0f172a;
+}
+
+.dark {
+  --bg-main: #0c1222;
+  --bg-panel: #0f1729;
+  --bg-header: #111a2e;
+  --bg-editor: #0a0f1e;
+  --bg-row-alt: #0e1526;
+  --text-main: #e2e8f0;
+  --text-muted: #64748b;
+  --border-main: rgba(51, 65, 85, 0.5);
+  --border-item: #1e293b;
+  --bg-hover: rgba(30, 41, 59, 0.4);
+  --bg-active: #1e293b;
+  --bg-conn-hover: rgba(59, 130, 246, 0.1);
+  
+  /* Input fields */
+  --bg-input: rgba(30, 41, 59, 0.7);
+  --border-input: rgba(71, 85, 105, 0.4);
+  --text-input: #e2e8f0;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-item); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* Resizable panel handle styling */
+[data-separator],
+[role="separator"],
+[data-panel-resize-handle-id] {
+  background: var(--border-item) !important;
+  transition: background 0.15s;
+}
+
+[data-separator][aria-orientation="vertical"],
+[role="separator"][aria-orientation="vertical"],
+[data-panel-group-direction="horizontal"] > [data-panel-resize-handle-id] {
+  width: 4px !important;
+}
+
+[data-separator][aria-orientation="horizontal"],
+[role="separator"][aria-orientation="horizontal"],
+[data-panel-group-direction="vertical"] > [data-panel-resize-handle-id] {
+  height: 4px !important;
+}
+
+[data-separator]:hover,
+[data-separator][data-resize-handle-active],
+[role="separator"]:hover,
+[data-panel-resize-handle-id]:hover {
+  background: #3b82f6 !important;
+}
+
+/* Mono font for data */
+.font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+/* Smooth transitions */
+* { transition-property: background-color, border-color, color, opacity; transition-duration: 0.15s; }
+
+/* Tooltip */
+[data-tooltip] { position: relative; }
+[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  color: var(--text-main);
+  border: 1px solid var(--border-main);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  z-index: 999;
+  pointer-events: none;
+}
