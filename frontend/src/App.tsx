@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useAppStore } from './store/useAppStore';
-import { ConnectionPanel } from './components/ConnectionPanel';
+import { DatabaseExplorer } from './components/DatabaseExplorer';
 import { DataCompareView } from './components/DataCompareView';
 import { SchemaCompareView } from './components/SchemaCompareView';
 import { QueryWorkspace } from './components/QueryWorkspace';
-import { DatabaseExplorer } from './components/DatabaseExplorer';
+import { TableDetailPanel } from './components/TableDetailPanel';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { DatabaseZap, GitCompareArrows, Table2, Terminal, Settings, HelpCircle, Sun, Moon } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
@@ -109,10 +109,10 @@ function App() {
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
         <Group orientation="horizontal">
-          {/* Left Sidebar - Connections */}
+          {/* Left Sidebar - Explorer */}
           <Panel defaultSize="18%" minSize="12%" maxSize="30%">
             <div className="h-full bg-bg-panel border-r border-border-main flex flex-col">
-              <ConnectionPanel />
+              <DatabaseExplorer />
             </div>
           </Panel>
           
@@ -131,7 +131,7 @@ function App() {
                 <QueryWorkspace />
               </div>
               <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'explorer' && "hidden")}>
-                <DatabaseExplorer />
+                <TableDetailPanel />
               </div>
             </div>
           </Panel>

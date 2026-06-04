@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useCallback } from 'react';
-import { useAppStore, type DiffRow, type DiffResult } from '../store/useAppStore';
+import React, { useMemo, useRef, useCallback, useEffect } from 'react';
+import { useAppStore, type DiffRow } from '../store/useAppStore';
 import {
   createColumnHelper,
   flexRender,
@@ -11,10 +11,7 @@ import {
 import { Database, ArrowRight } from 'lucide-react';
 import clsx from 'clsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { buildEffectiveQuery } from '../utils/queryHelpers';
 
 interface DiffDataGridProps {
   mappingId?: string | null;
@@ -66,36 +63,6 @@ const DiffCell = React.memo(({ cell }: { cell: { sourceValue: any; targetValue: 
 });
 DiffCell.displayName = 'DiffCell';
 
-/* ── Helper: build flattened export data ─────────────────────────── */
-
-function buildExportData(diffResult: DiffResult, filteredData: DiffRow[]) {
-  const headers = ['Status', 'RowKey', ...diffResult.columns];
-
-  const rows = filteredData.map(row => {
-    const flat: Record<string, any> = {
-      Status: row.status,
-      RowKey: row.rowKey,
-    };
-    diffResult.columns.forEach(col => {
-      const cell = row.cells[col];
-      if (!cell) {
-        flat[col] = '';
-      } else if (cell.isDifferent) {
-        flat[col] = {
-          isDiff: true,
-          src: cell.sourceValue ?? 'NULL',
-          tgt: cell.targetValue ?? 'NULL'
-        };
-      } else {
-        flat[col] = String(cell.sourceValue ?? 'NULL');
-      }
-    });
-    return flat;
-  });
-
-  return { headers, rows };
-}
-
 /* ── Main component ──────────────────────────────────────────────── */
 
 export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterStatus, directResult }) => {
@@ -122,7 +89,7 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
       }),
     ];
 
-    diffResult.columns.forEach(colName => {
+    diffResult.columns.forEach((colName: string) => {
       cols.push(
         columnHelper.accessor(row => row.cells[colName], {
           id: `col_${colName}`,
@@ -133,13 +100,15 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
     });
 
     return cols;
-  }, [diffResult]);
+  }, [diffResult?.columns]);
 
   const filteredData = useMemo(() => {
     if (!diffResult) return [];
-    if (filterStatus === 'ALL') return diffResult.rows;
-    if (filterStatus === 'IDENTICAL') return diffResult.rows.filter(r => r.status === 'MATCH');
-    return diffResult.rows.filter(r => r.status === filterStatus);
+    // Destructure array to force a new reference so TanStack Table recomputes row model
+    // This is required because we mutate existing.rows.push() in the Zustand store for performance
+    if (filterStatus === 'ALL') return [...diffResult.rows];
+    if (filterStatus === 'IDENTICAL') return diffResult.rows.filter((r: any) => r.status === 'MATCH');
+    return diffResult.rows.filter((r: any) => r.status === filterStatus);
   }, [diffResult, filterStatus]);
 
   const table = useReactTable({
@@ -156,164 +125,87 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 36,
     overscan: 20,
+    initialRect: { width: 800, height: 600 },
   });
+
+  useEffect(() => {
+    // Force virtualizer to recalculate when new rows arrive during streaming
+    // or when the status changes. This fixes the blank grid issue during streaming.
+    if (tableRows.length > 0) {
+      rowVirtualizer.measure();
+    }
+  }, [tableRows.length, diffResult?.status, rowVirtualizer]);
 
   /* ── Export handlers ─────────────────────────────────────────── */
 
-  const handleExportExcel = useCallback(async () => {
-    if (!diffResult || filteredData.length === 0) return;
-    const { headers, rows } = buildExportData(diffResult, filteredData);
+  const buildExportPayload = useCallback(() => {
+    if (!mappingId) return null;
+    const store = useAppStore.getState();
+    const mapping = store.tableMappings.find(m => m.id === mappingId);
+    const sourceConn = store.connections.find(c => c.id === store.sourceConnectionId);
+    const targetConn = store.connections.find(c => c.id === store.targetConnectionId);
     
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Data Compare', {
-      views: [{ state: 'frozen', xSplit: 2, ySplit: 8 }]
-    });
+    if (!mapping || !sourceConn || !targetConn) return null;
+    
+    const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
+    const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
 
-    // Write Header Summary
-    sheet.getCell('A1').value = 'DATA COMPARISON REPORT';
-    sheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
-    sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } }; // blue-900
-    sheet.mergeCells('A1:E1');
+    return {
+      sourceConnection: sourceConn,
+      targetConnection: targetConn,
+      tableName: null,
+      customQuerySource: sqFinal,
+      customQueryTarget: tqFinal,
+      primaryKeys: mapping.primaryKeys || null,
+      excludeColumns: mapping.excludeColumns || null,
+    };
+  }, [mappingId]);
 
-    const summaryMap = [
-      ['Total Rows', diffResult.rows.length],
-      ['Source Rows', diffResult.totalSourceRows],
-      ['Target Rows', diffResult.totalTargetRows],
-      ['Total Differences', diffResult.totalDifferences],
-      ['Currently Showing', filteredData.length]
-    ];
+  const triggerDownload = async (url: string, filename: string) => {
+    const payload = buildExportPayload();
+    if (!payload) {
+      alert("Cannot export: mapping or connection info missing.");
+      return;
+    }
 
-    summaryMap.forEach((s, idx) => {
-      const row = idx + 3;
-      sheet.getCell(`A${row}`).value = s[0];
-      sheet.getCell(`A${row}`).font = { bold: true };
-      sheet.getCell(`B${row}`).value = s[1];
-    });
-
-    // Write Columns
-    const headerRow = sheet.getRow(8);
-    headers.forEach((h, i) => {
-      const cell = headerRow.getCell(i + 1);
-      cell.value = h;
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B82F6' } }; // blue-500
-      cell.alignment = { vertical: 'middle', horizontal: 'center' };
-    });
-
-    // Column widths
-    const colWidths: Record<string, number> = {};
-    headers.forEach(h => colWidths[h] = Math.max(h.length + 5, 12));
-
-    // Write Data
-    rows.forEach((r, idx) => {
-      const rowNum = 9 + idx;
-      const row = sheet.getRow(rowNum);
-      const status = r['Status'];
-
-      // Row background color based on status
-      let bgColor = 'FFFFFFFF'; // match (white)
-      if (status === 'DIFFERENT') bgColor = 'FFFFFBEB'; // amber-50
-      else if (status === 'SOURCE_ONLY') bgColor = 'FFFEF2F2'; // red-50
-      else if (status === 'TARGET_ONLY') bgColor = 'FFECFDF5'; // emerald-50
-
-      headers.forEach((h, colIdx) => {
-        const cell = row.getCell(colIdx + 1);
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
-        cell.alignment = { vertical: 'top', wrapText: true };
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        };
-
-        const val = r[h];
-        if (val && typeof val === 'object' && val.isDiff) {
-          // It's a difference cell! Apply Rich Text
-          cell.value = {
-            richText: [
-              { text: '[SRC] ' + val.src + '\n', font: { color: { argb: 'FFDC2626' }, bold: true } },
-              { text: '[TGT] ' + val.tgt, font: { color: { argb: 'FF059669' }, bold: true } }
-            ]
-          };
-          colWidths[h] = Math.max(colWidths[h], String(val.src).length + 8, String(val.tgt).length + 8);
-        } else {
-          cell.value = val;
-          if (status === 'DIFFERENT' && colIdx > 1) {
-             cell.font = { color: { argb: 'FF64748B' } }; // muted for identical cells in different rows
-          }
-          if (val) {
-             colWidths[h] = Math.max(colWidths[h], String(val).length + 4);
-          }
-        }
+    try {
+      // Show loading indicator on button (could be enhanced, keeping simple for now)
+      document.body.style.cursor = 'wait';
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
-    });
 
-    // Set Max Widths to prevent insane Excel widths
-    headers.forEach((h, i) => {
-      sheet.getColumn(i + 1).width = Math.min(colWidths[h], 50);
-    });
+      if (!response.ok) {
+        throw new Error(`Export failed with status: ${response.status}`);
+      }
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `data-compare-${mappingId || 'export'}.xlsx`);
-  }, [diffResult, filteredData, mappingId]);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to export: " + err.message);
+    } finally {
+      document.body.style.cursor = 'default';
+    }
+  };
+
+  const handleExportExcel = useCallback(() => {
+    triggerDownload(`http://localhost:8081/api/export-excel?filterStatus=${filterStatus}`, `data-compare-${mappingId || 'export'}.xlsx`);
+  }, [buildExportPayload, filterStatus, mappingId]);
 
   const handleExportPDF = useCallback(() => {
-    if (!diffResult || filteredData.length === 0) return;
-    const { headers, rows } = buildExportData(diffResult, filteredData);
-    const doc = new jsPDF('l', 'pt', 'a4');
-    
-    doc.setFontSize(14);
-    doc.text('Data Comparison Report', 40, 40);
-    doc.setFontSize(10);
-    doc.text(`Total Rows: ${diffResult.rows.length}  |  Source Rows: ${diffResult.totalSourceRows}  |  Target Rows: ${diffResult.totalTargetRows}`, 40, 60);
-    doc.text(`Total Differences: ${diffResult.totalDifferences}  |  Showing in Report: ${filteredData.length}`, 40, 75);
+    triggerDownload(`http://localhost:8081/api/export-pdf?filterStatus=${filterStatus}`, `data-compare-${mappingId || 'export'}.pdf`);
+  }, [buildExportPayload, filterStatus, mappingId]);
 
-    // Format plain strings for PDF since it doesn't support our rich text object directly
-    const pdfRows = rows.map(r => headers.map(h => {
-      const val = r[h];
-      if (val && typeof val === 'object' && val.isDiff) {
-        return `[SRC] ${val.src}\n[TGT] ${val.tgt}`;
-      }
-      return val ?? '';
-    }));
-
-    autoTable(doc, {
-      startY: 90,
-      head: [headers],
-      body: pdfRows,
-      styles: { fontSize: 6, cellPadding: 2, overflow: 'linebreak' },
-      theme: 'grid',
-      headStyles: { fillColor: [59, 130, 246] }, // Blue-500
-      horizontalPageBreak: true,
-      horizontalPageBreakRepeat: 0,
-      didParseCell: (hookData) => {
-        if (hookData.section === 'body') {
-           const status = hookData.row.raw[0]; // Status is first column
-           if (status === 'DIFFERENT') hookData.cell.styles.fillColor = [254, 252, 232]; // yellow-50
-           else if (status === 'SOURCE_ONLY') hookData.cell.styles.fillColor = [254, 242, 242]; // red-50
-           else if (status === 'TARGET_ONLY') hookData.cell.styles.fillColor = [236, 253, 245]; // emerald-50
-           
-           if (hookData.column.index === 0) {
-             if (status === 'MATCH') hookData.cell.styles.textColor = [100, 116, 139];
-             if (status === 'DIFFERENT') hookData.cell.styles.textColor = [245, 158, 11];
-             if (status === 'SOURCE_ONLY') hookData.cell.styles.textColor = [239, 68, 68];
-             if (status === 'TARGET_ONLY') hookData.cell.styles.textColor = [16, 185, 129];
-           }
-
-           if (hookData.column.index > 1) {
-             const val = String(hookData.cell.raw || '');
-             if (val.includes('[SRC]') && val.includes('[TGT]')) {
-                hookData.cell.styles.textColor = [220, 38, 38]; // Red for diff text
-             } else if (status === 'DIFFERENT') {
-                hookData.cell.styles.textColor = [148, 163, 184]; // Muted for identical text
-             }
-           }
-        }
-      }
-    });
-    doc.save(`data-compare-${mappingId || 'export'}.pdf`);
-  }, [diffResult, filteredData, mappingId]);
 
   /* ── Empty state ─────────────────────────────────────────────── */
 
@@ -397,8 +289,15 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
         </table>
 
         {filteredData.length === 0 && (
-          <div className="p-12 text-center text-xs text-text-muted">
-            No records match this filter.
+          <div className="p-12 text-center text-xs text-text-muted flex flex-col items-center justify-center gap-2">
+            {diffResult.status === 'comparing' ? (
+              <>
+                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-blue-500 animate-pulse">Comparing in progress...</span>
+              </>
+            ) : (
+              <span>No records match this filter.</span>
+            )}
           </div>
         )}
       </div>

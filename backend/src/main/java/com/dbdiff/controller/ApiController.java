@@ -10,6 +10,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import com.dbdiff.service.ReportExportService;
 
 import javax.sql.DataSource;
 import java.util.*;
@@ -83,10 +87,55 @@ public class ApiController {
         return ResponseEntity.ok(keys);
     }
 
+    @Autowired
+    private ReportExportService exportService;
+
     @PostMapping("/compare")
-    public ResponseEntity<DiffResult> compareData(@RequestBody DiffRequest request) {
-        DiffResult result = comparisonService.compare(request);
-        return ResponseEntity.ok(result);
+    public ResponseEntity<StreamingResponseBody> compareData(@RequestBody DiffRequest request) {
+        StreamingResponseBody stream = out -> {
+            comparisonService.compareAndStream(request, out);
+        };
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .body(stream);
+    }
+
+    @PostMapping("/export-excel")
+    public ResponseEntity<StreamingResponseBody> exportExcel(
+            @RequestBody DiffRequest request,
+            @RequestParam(defaultValue = "ALL") String filterStatus) {
+        
+        StreamingResponseBody stream = out -> {
+            try {
+                exportService.exportExcel(request, filterStatus, out);
+            } catch (Exception e) {
+                throw new java.io.IOException("Failed to export Excel", e);
+            }
+        };
+        
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"data-compare-export.xlsx\"")
+                .header(HttpHeaders.CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(stream);
+    }
+
+    @PostMapping("/export-pdf")
+    public ResponseEntity<StreamingResponseBody> exportPdf(
+            @RequestBody DiffRequest request,
+            @RequestParam(defaultValue = "ALL") String filterStatus) {
+        
+        StreamingResponseBody stream = out -> {
+            try {
+                exportService.exportPdf(request, filterStatus, out);
+            } catch (Exception e) {
+                throw new java.io.IOException("Failed to export PDF", e);
+            }
+        };
+        
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"data-compare-export.pdf\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(stream);
     }
 
     // ==================== NEW ENDPOINTS ====================
@@ -261,6 +310,117 @@ public class ApiController {
                     "error", true,
                     "message", e.getMessage() != null ? e.getMessage() : "Unknown error fetching schemas"
             ));
+        }
+    }
+
+    @Autowired
+    private com.dbdiff.service.DatabaseExplorerService explorerService;
+
+    @GetMapping("/connections/{id}/schemas")
+    public ResponseEntity<?> getExplorerSchemas(@PathVariable String id) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details);
+            return ResponseEntity.ok(explorerService.getSchemas(ds));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/schemas/{schema}/tables")
+    public ResponseEntity<?> getExplorerTables(@PathVariable String id, @PathVariable String schema) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details);
+            return ResponseEntity.ok(explorerService.getTables(ds, "null".equals(schema) ? null : schema));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/schemas/{schema}/views")
+    public ResponseEntity<?> getExplorerViews(@PathVariable String id, @PathVariable String schema) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details);
+            return ResponseEntity.ok(explorerService.getViews(ds, "null".equals(schema) ? null : schema));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/schemas/{schema}/tables/{table}/columns")
+    public ResponseEntity<?> getExplorerColumns(@PathVariable String id, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details);
+            return ResponseEntity.ok(explorerService.getColumns(ds, "null".equals(schema) ? null : schema, table));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/schemas/{schema}/tables/{table}/indexes")
+    public ResponseEntity<?> getExplorerIndexes(@PathVariable String id, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details);
+            return ResponseEntity.ok(explorerService.getIndexes(ds, "null".equals(schema) ? null : schema, table));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/schemas/{schema}/tables/{table}/foreign-keys")
+    public ResponseEntity<?> getExplorerForeignKeys(@PathVariable String id, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details);
+            return ResponseEntity.ok(explorerService.getForeignKeys(ds, "null".equals(schema) ? null : schema, table));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/schemas/{schema}/tables/{table}/ddl")
+    public ResponseEntity<?> getExplorerDdl(@PathVariable String id, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details);
+            return ResponseEntity.ok(Map.of("ddl", explorerService.getDdl(ds, "null".equals(schema) ? null : schema, table, details.getType())));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/schemas/{schema}/tables/{table}/stats")
+    public ResponseEntity<?> getExplorerStats(@PathVariable String id, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details);
+            return ResponseEntity.ok(explorerService.getStats(ds, "null".equals(schema) ? null : schema, table, details.getType()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/connections/{id}/schemas/{schema}/tables/{table}/preview")
+    public ResponseEntity<?> previewData(@PathVariable String id, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details);
+            return ResponseEntity.ok(explorerService.previewData(ds, "null".equals(schema) ? null : schema, table));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 

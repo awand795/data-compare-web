@@ -1,433 +1,230 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useAppStore } from '../store/useAppStore';
-import { Table as TableIcon, LayoutList, Database, Loader2, ChevronLeft, ChevronRight, AlertCircle, Search, Maximize, Minimize } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useAppStore, type Connection } from '../store/useAppStore';
+import { useExplorerStore, type ExplorerNode, type ExplorerNodeType } from '../store/useExplorerStore';
+import { ConnectionDialog } from './ConnectionDialog';
+import { Database, Plus, Trash2, Search, ChevronRight, ChevronDown, Table as TableIcon, LayoutList, FileCode2, Link as LinkIcon, Key, Hash, RefreshCw, Server, Settings2 } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import type { ColumnDiff } from '../store/useAppStore';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-
-type TabType = 'data' | 'schema';
 
 export const DatabaseExplorer: React.FC = () => {
-  const { connections, explorerConnectionId, explorerTableName, defaultRowLimit } = useAppStore();
-  const [activeTab, setActiveTab] = useState<TabType>('data');
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const { connections, removeConnection, setExplorerConnectionId, setExplorerSchemaName, setExplorerTableName, setAppMode, explorerConnectionId, explorerTableName, explorerSchemaName } = useAppStore();
+  const { nodes, upsertNode, removeNode, toggleExpand, setLoading, setLoaded, selectedNodeId, setSelectedNodeId } = useExplorerStore();
   
-  const [schemaData, setSchemaData] = useState<ColumnDiff[]>([]);
-  const [tableData, setTableData] = useState<Record<string, any>[]>([]);
-  const [columns, setColumns] = useState<string[]>([]);
-  
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Pagination State
-  const [limit, setLimit] = useState<number | 'unlimited' | 'custom'>(defaultRowLimit || 100);
-  const [customLimit, setCustomLimit] = useState<string>('');
-  const [offset, setOffset] = useState<number>(0);
-
-  const [hasMoreUnlimited, setHasMoreUnlimited] = useState(true);
-  const [isFetchingMore, setIsFetchingMore] = useState(false);
-
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  const rowVirtualizer = useVirtualizer({
-    count: tableData.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 32, // roughly 32px per row
-    overscan: 10, // load 10 items outside of the viewport
-  });
-
-  const conn = connections.find(c => c.id === explorerConnectionId);
-
+  // Initialize root nodes (servers) when connections change
   useEffect(() => {
-    if (conn && explorerTableName) {
-      setOffset(0); // Reset offset on table change
-      fetchData();
-    }
-  }, [explorerConnectionId, explorerTableName, activeTab, limit]);
-
-  useEffect(() => {
-    if (conn && explorerTableName && activeTab === 'data') {
-      fetchData();
-    }
-  }, [offset]);
-
-  const virtualItems = rowVirtualizer.getVirtualItems();
-
-  useEffect(() => {
-    if (limit === 'unlimited' && !loading && !isFetchingMore && hasMoreUnlimited) {
-      const lastItem = virtualItems[virtualItems.length - 1];
-      if (lastItem && lastItem.index >= tableData.length - 2) {
-        setIsFetchingMore(true);
-        fetchData(true).finally(() => setIsFetchingMore(false));
-      }
-    }
-  }, [virtualItems, limit, loading, isFetchingMore, hasMoreUnlimited, tableData.length]);
-
-  const fetchData = async (isLoadMore = false) => {
-    if (!conn || !explorerTableName) return;
-    if (!isLoadMore) setLoading(true);
-    setError(null);
-    try {
-      if (activeTab === 'schema') {
-        const res = await axios.post('http://localhost:8081/api/table-info', {
-          connection: conn,
-          tableName: explorerTableName
+    connections.forEach(conn => {
+      if (!nodes[conn.id]) {
+        upsertNode({
+          id: conn.id,
+          parentId: null,
+          type: 'server',
+          name: conn.name,
+          label: `${conn.name} (${conn.type})`,
+          isLoaded: false,
+          isLoading: false,
+          isExpanded: false,
+          metadata: conn
         });
-        setSchemaData(res.data);
-      } else {
-        const queryLimit = limit === 'unlimited' ? 50000 : (limit === 'custom' ? Number(customLimit) : limit);
-        const res = await axios.post('http://localhost:8081/api/execute-query', {
-          connection: conn,
-          query: `SELECT * FROM ${explorerTableName} LIMIT ${queryLimit} OFFSET ${offset}`
-        });
-        
-        if (res.data.success) {
-          if (offset === 0) {
-            setTableData(res.data.rows);
-          } else {
-            setTableData(prev => [...prev, ...res.data.rows]);
-          }
-          if (res.data.rows.length > 0 && columns.length === 0) {
-            setColumns(Object.keys(res.data.rows[0]));
-          }
-          if (res.data.rows.length < 1000) {
-            setHasMoreUnlimited(false);
-          } else {
-            setHasMoreUnlimited(true);
-          }
-        } else {
-          setError(res.data.message || 'Query failed');
-        }
       }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
-      setIsFetchingMore(false);
-    }
-  };
-
-  const handleExportExcel = () => {
-    if (tableData.length === 0) return;
-    const worksheet = XLSX.utils.json_to_sheet(tableData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
-    XLSX.writeFile(workbook, `${explorerTableName}_export.xlsx`);
-  };
-
-  const handleExportPDF = () => {
-    if (tableData.length === 0) return;
-    const doc = new jsPDF('l', 'pt', 'a4');
-    autoTable(doc, {
-      head: [columns],
-      body: tableData.map(row => columns.map(col => String(row[col]))),
-      styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
-      theme: 'grid'
     });
-    doc.save(`${explorerTableName}_export.pdf`);
-  };
+  }, [connections]);
 
-  const handleNextPage = () => {
-    if (limit !== 'unlimited') {
-      setOffset(prev => prev + (limit as number));
+  const loadSchemas = async (connId: string) => {
+    setLoading(connId, true);
+    try {
+      const res = await axios.get(`http://localhost:8081/api/connections/${connId}/schemas`);
+      const schemas: string[] = res.data;
+      const childIds = schemas.map(s => {
+        const id = `${connId}_schema_${s}`;
+        upsertNode({ id, parentId: connId, type: 'schema', name: s, isLoaded: false, isLoading: false, isExpanded: false, metadata: { connId, schema: s } });
+        return id;
+      });
+      setLoaded(connId, childIds);
+    } catch (e: any) {
+      setLoading(connId, false, e.message);
     }
   };
 
-  const handlePrevPage = () => {
-    if (limit !== 'unlimited') {
-      setOffset(prev => Math.max(0, prev - (limit as number)));
+  const loadTables = async (connId: string, schemaNodeId: string, schemaName: string) => {
+    setLoading(schemaNodeId, true);
+    try {
+      const res = await axios.get(`http://localhost:8081/api/connections/${connId}/schemas/${schemaName}/tables`);
+      const tables: any[] = res.data;
+      const childIds = tables.map(t => {
+        const tName = typeof t === 'string' ? t : t.name;
+        const tType = (t.type === 'VIEW' || t.type === 'view') ? 'view' : 'table';
+        const id = `${schemaNodeId}_table_${tName}`;
+        upsertNode({ id, parentId: schemaNodeId, type: tType, name: tName, isLoaded: false, isLoading: false, isExpanded: false, metadata: { connId, schema: schemaName } });
+        return id;
+      });
+      setLoaded(schemaNodeId, childIds);
+    } catch (e: any) {
+      setLoading(schemaNodeId, false, e.message);
     }
   };
 
-  const handleLimitChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    if (val === 'unlimited') {
-      setLimit('unlimited');
-    } else if (val === 'custom') {
-      setLimit('custom');
-    } else {
-      setLimit(Number(val));
+  const loadColumns = async (connId: string, schemaName: string, tableNodeId: string, tableName: string) => {
+    setLoading(tableNodeId, true);
+    try {
+      const res = await axios.get(`http://localhost:8081/api/connections/${connId}/schemas/${schemaName}/tables/${tableName}/columns`);
+      const cols: any[] = res.data;
+      const childIds = cols.map(c => {
+        const id = `${tableNodeId}_col_${c.name}`;
+        upsertNode({ 
+          id, parentId: tableNodeId, type: 'column', name: c.name, label: `${c.name} (${c.type})`, 
+          isLoaded: true, isLoading: false, isExpanded: false, metadata: c 
+        });
+        return id;
+      });
+      setLoaded(tableNodeId, childIds);
+    } catch (e: any) {
+      setLoading(tableNodeId, false, e.message);
     }
-    setOffset(0);
   };
 
-  if (!conn || !explorerTableName) {
+  const handleToggle = async (e: React.MouseEvent, node: ExplorerNode) => {
+    e.stopPropagation();
+    toggleExpand(node.id);
+    if (!node.isExpanded && !node.isLoaded && !node.isLoading) {
+      if (node.type === 'server') {
+        await loadSchemas(node.id);
+      } else if (node.type === 'schema') {
+        await loadTables(node.metadata?.connId || node.parentId, node.id, node.name);
+      } else if (node.type === 'table' || node.type === 'view') {
+        const connId = node.metadata?.connId;
+        const schema = node.metadata?.schema;
+        if (connId && schema) await loadColumns(connId, schema, node.id, node.name);
+      }
+    }
+  };
+
+  const handleNodeClick = (node: ExplorerNode) => {
+    setSelectedNodeId(node.id);
+    if (node.type === 'table' || node.type === 'view') {
+      const connId = node.metadata?.connId;
+      const schema = node.metadata?.schema;
+      if (connId) {
+        setExplorerConnectionId(connId);
+        setExplorerSchemaName(schema || null);
+        setExplorerTableName(node.name); 
+        setAppMode('explorer');
+      }
+    }
+  };
+
+  const getNodeIcon = (type: ExplorerNodeType, metadata?: any) => {
+    switch (type) {
+      case 'server': return <Server className="w-3.5 h-3.5 shrink-0 text-slate-400" />;
+      case 'database': return <Database className="w-3.5 h-3.5 shrink-0 text-blue-400" />;
+      case 'schema': return <LayoutList className="w-3.5 h-3.5 shrink-0 text-purple-400" />;
+      case 'table': return <TableIcon className="w-3.5 h-3.5 shrink-0 text-emerald-400" />;
+      case 'view': return <TableIcon className="w-3.5 h-3.5 shrink-0 text-indigo-400" />;
+      case 'function': return <FileCode2 className="w-3.5 h-3.5 shrink-0 text-amber-400" />;
+      case 'column': 
+        if (metadata?.isPk) return <Key className="w-3.5 h-3.5 shrink-0 text-amber-500" />;
+        if (metadata?.isFk) return <LinkIcon className="w-3.5 h-3.5 shrink-0 text-blue-400" />;
+        return <Hash className="w-3.5 h-3.5 shrink-0 text-slate-500" />;
+      default: return <ChevronRight className="w-3.5 h-3.5 shrink-0" />;
+    }
+  };
+
+  const renderNode = (nodeId: string, depth: number = 0) => {
+    const node = nodes[nodeId];
+    if (!node) return null;
+
+    // Filter logic
+    if (searchQuery && !node.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+      // Allow parent if child matches
+      const hasMatchingChild = node.childrenIds?.some(cid => nodes[cid]?.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      if (!hasMatchingChild && node.type !== 'server') return null; // Always show servers
+    }
+
+    const isSelected = selectedNodeId === node.id || ((node.type === 'table' || node.type === 'view') && explorerTableName === node.name && explorerConnectionId === node.metadata?.connId);
+
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-bg-main text-text-muted">
-        <Database className="w-12 h-12 mb-4 opacity-20" />
-        <h2 className="text-xl font-bold text-text-main mb-2">Database Explorer</h2>
-        <p className="text-sm">Select a table from the connection panel to view its data and schema.</p>
+      <div key={node.id} className="flex flex-col">
+        <div 
+          onClick={() => handleNodeClick(node)}
+          className={clsx(
+            "flex items-center gap-1.5 py-1 px-2 cursor-pointer transition-colors text-xs font-mono select-none border-l-2",
+            isSelected ? "bg-blue-500/10 border-blue-500 text-blue-400" : "border-transparent text-text-main hover:bg-bg-hover"
+          )}
+          style={{ paddingLeft: `${depth * 12 + 8}px` }}
+        >
+          <div 
+            onClick={(e) => handleToggle(e, node)} 
+            className={clsx(
+              "w-4 h-4 shrink-0 flex items-center justify-center rounded hover:bg-slate-500/20",
+              (node.type === 'column' || node.type === 'index' || node.type === 'fk') ? "invisible" : ""
+            )}
+          >
+            {node.isLoading ? <RefreshCw className="w-3 h-3 animate-spin text-text-muted" /> : (
+              node.isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-text-muted" /> : <ChevronRight className="w-3.5 h-3.5 text-text-muted" />
+            )}
+          </div>
+          {getNodeIcon(node.type, node.metadata)}
+          <span className="truncate">{node.label || node.name}</span>
+          {node.type === 'server' && (
+            <div className="ml-auto flex items-center opacity-0 hover:opacity-100 transition-opacity">
+               <button onClick={(e) => { e.stopPropagation(); removeConnection(node.id); }} className="text-text-muted hover:text-red-500 p-0.5"><Trash2 className="w-3 h-3" /></button>
+            </div>
+          )}
+        </div>
+        {node.error && node.isExpanded && (
+          <div className="text-[10px] text-red-400 pl-8 py-1 truncate">{node.error}</div>
+        )}
+        {node.isExpanded && node.childrenIds?.map(cid => renderNode(cid, depth + 1))}
       </div>
     );
-  }
+  };
+
+  const rootNodes = Object.values(nodes).filter(n => n.parentId === null);
 
   return (
-    <div className={clsx("flex flex-col bg-bg-main overflow-hidden relative", isFullscreen ? "fixed inset-0 z-[100]" : "h-full min-h-0")}>
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-border-main flex items-center justify-between bg-bg-panel shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-            <TableIcon className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold text-text-main">{explorerTableName}</h1>
-            <p className="text-[11px] text-text-muted font-mono">{conn.name} • {conn.database}</p>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 bg-bg-input p-1 rounded-lg border border-border-input">
-            <button
-              onClick={() => setActiveTab('data')}
-              className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-colors
-                ${activeTab === 'data' ? 'bg-bg-panel text-blue-500 shadow-sm border border-border-item' : 'text-text-muted hover:text-text-main'}
-              `}
-            >
-              <LayoutList className="w-4 h-4" /> Data
-            </button>
-            <button
-              onClick={() => setActiveTab('schema')}
-              className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-colors
-                ${activeTab === 'schema' ? 'bg-bg-panel text-blue-500 shadow-sm border border-border-item' : 'text-text-muted hover:text-text-main'}
-              `}
-            >
-              <TableIcon className="w-4 h-4" /> Schema
-            </button>
-          </div>
-          
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-2 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main flex items-center justify-center transition-colors ml-2"
-            title={isFullscreen ? "Exit Full View" : "Full View"}
-          >
-            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+    <div className="flex flex-col h-full bg-bg-panel border-r border-border-main">
+      <div className="px-3 py-2.5 border-b border-border-main flex items-center justify-between bg-bg-header shrink-0">
+        <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+          <Database className="w-3.5 h-3.5" /> Explorer
+        </span>
+        <div className="flex gap-1">
+          <button onClick={() => setIsSearchOpen(!isSearchOpen)} className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors" title="Search">
+            <Search className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => setIsDialogOpen(true)} className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-blue-500 transition-colors" title="New Connection">
+            <Plus className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Toolbar (Only for Data Tab) */}
-      {activeTab === 'data' && (
-        <div className="px-4 py-2 border-b border-border-main bg-bg-panel flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-text-muted">Limit:</span>
-              <select 
-                value={limit === 'unlimited' ? 'unlimited' : [50, 100, 500].includes(limit as number) ? limit : 'custom'} 
-                onChange={handleLimitChange}
-                className="bg-bg-input border border-border-input rounded px-2 py-1 outline-none focus:border-blue-500"
-              >
-                <option value={50}>50 rows</option>
-                <option value={100}>100 rows</option>
-                <option value={500}>500 rows</option>
-                <option value="custom">Custom...</option>
-                <option value="unlimited">Unlimited</option>
-              </select>
-              
-              {(!['unlimited', 50, 100, 500].includes(limit as any) || customLimit !== '') && (
-                <div className="flex items-center gap-1 ml-2">
-                  <input 
-                    type="number" 
-                    placeholder="Enter limit" 
-                    value={customLimit}
-                    onChange={e => setCustomLimit(e.target.value)}
-                    className="w-24 bg-bg-input border border-border-input rounded px-2 py-1 outline-none focus:border-blue-500"
-                  />
-                  <button 
-                    onClick={() => {
-                      const num = parseInt(customLimit);
-                      if (num > 0) {
-                        setLimit(num);
-                        setOffset(0);
-                      }
-                    }}
-                    className="px-2 py-1 bg-blue-500/10 text-blue-500 rounded hover:bg-blue-500/20"
-                  >
-                    Apply
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Export Buttons */}
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={handleExportExcel}
-                className="px-3 py-1.5 bg-green-600/10 text-green-600 dark:text-green-400 hover:bg-green-600/20 border border-green-600/20 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                title="Export current view to Excel"
-              >
-                Excel
-              </button>
-              <button 
-                onClick={handleExportPDF}
-                className="px-3 py-1.5 bg-red-600/10 text-red-600 dark:text-red-400 hover:bg-red-600/20 border border-red-600/20 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                title="Export current view to PDF"
-              >
-                PDF
-              </button>
-            </div>
-          </div>
-
-          {/* Pagination Controls */}
-          {limit !== 'unlimited' && (
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-text-muted">
-                Showing {offset + 1} - {offset + (limit as number)}
-              </span>
-              <div className="flex items-center gap-1">
-                <button 
-                  onClick={handlePrevPage} 
-                  disabled={offset === 0}
-                  className="p-1 rounded bg-bg-input border border-border-input text-text-main disabled:opacity-50 disabled:cursor-not-allowed hover:bg-bg-hover"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={handleNextPage}
-                  disabled={tableData.length < (limit as number)} // Disable next if current page isn't full
-                  className="p-1 rounded bg-bg-input border border-border-input text-text-main disabled:opacity-50 disabled:cursor-not-allowed hover:bg-bg-hover"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
+      {isSearchOpen && (
+        <div className="px-2 py-2 border-b border-border-main bg-bg-main shrink-0 animate-in slide-in-from-top-2">
+          <input 
+            type="text" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Filter nodes..." 
+            className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-xs text-text-input outline-none focus:border-blue-500"
+            autoFocus
+          />
         </div>
       )}
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-auto relative p-4">
-        {loading && (
-          <div className="absolute inset-0 bg-bg-main/50 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-            <span className="text-sm font-medium text-text-main">Executing query...</span>
+      <div className="flex-1 overflow-y-auto py-1">
+        {rootNodes.length === 0 ? (
+          <div className="text-xs text-text-muted text-center py-8 px-3 flex flex-col items-center gap-2">
+            <Server className="w-8 h-8 text-text-muted opacity-45" />
+            <span>No connections yet.<br/>Click + to add one.</span>
           </div>
-        )}
-        
-        {error && (
-          <div className="m-4 p-4 border border-red-500/50 bg-red-500/10 rounded-lg flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-            <div>
-              <h3 className="text-sm font-bold text-red-500">Query Failed</h3>
-              <p className="text-xs text-text-main mt-1 font-mono">{error}</p>
-            </div>
-          </div>
-        )}
-
-        {!loading && !error && activeTab === 'schema' && (
-          <div className="border border-border-main rounded-lg overflow-hidden bg-bg-panel">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-bg-hover border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted">
-                  <th className="p-3 font-semibold">Column Name</th>
-                  <th className="p-3 font-semibold">Data Type</th>
-                  <th className="p-3 font-semibold">Size</th>
-                  <th className="p-3 font-semibold">Nullable</th>
-                  <th className="p-3 font-semibold">Key</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-main">
-                {schemaData.map((col, i) => (
-                  <tr key={i} className="hover:bg-bg-hover/50 text-xs text-text-main">
-                    <td className="p-3 font-mono font-medium">{col.columnName}</td>
-                    <td className="p-3 text-blue-500 dark:text-blue-400 font-mono">{col.sourceType || '-'}</td>
-                    <td className="p-3 font-mono">{col.sourceSize || '-'}</td>
-                    <td className="p-3">{col.sourceNullable === 'YES' ? 'Yes' : 'No'}</td>
-                    <td className="p-3">
-                      {col.isPrimaryKeySource && (
-                        <span className="inline-flex px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-bold text-[10px]">PK</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {!loading && !error && activeTab === 'data' && (
-          <div className="flex flex-col gap-2">
-            {limit === 'unlimited' && tableData.length > 5000 && (
-              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 px-3 py-2 rounded text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>
-                  <strong>Tip:</strong> You are viewing {tableData.length} rows. Scrolling is virtualized to prevent lag, but loading massive data might take a moment.
-                </span>
-              </div>
-            )}
-            {isFetchingMore && (
-              <div className="text-xs text-blue-500 flex items-center gap-2 px-2">
-                <Loader2 className="w-3 h-3 animate-spin" /> Fetching more data...
-              </div>
-            )}
-            <div ref={parentRef} className="border border-border-main rounded-lg overflow-auto bg-bg-panel" style={{ maxHeight: 'calc(100vh - 200px)' }}>
-              <table className="text-left border-collapse whitespace-nowrap" style={{ tableLayout: 'fixed', minWidth: '100%' }}>
-                <thead className="sticky top-0 z-10 bg-bg-panel shadow-sm">
-                  <tr className="border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted bg-bg-hover">
-                    {columns.map(col => (
-                      <th key={col} className="p-2.5 font-semibold truncate border-r border-border-main last:border-r-0" style={{ width: 200, minWidth: 200, maxWidth: 200 }}>{col}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-main">
-                {tableData.length === 0 ? (
-                  <tr>
-                    <td colSpan={Math.max(1, columns.length)} className="p-8 text-center text-text-muted text-sm">
-                      No data found.
-                    </td>
-                  </tr>
-                ) : (
-                  <>
-                    {rowVirtualizer.getVirtualItems().length > 0 && (
-                      <tr>
-                        <td style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }} colSpan={columns.length} />
-                      </tr>
-                    )}
-                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                      const row = tableData[virtualRow.index];
-                      return (
-                        <tr 
-                          key={virtualRow.index} 
-                          data-index={virtualRow.index}
-                          ref={rowVirtualizer.measureElement}
-                          className="hover:bg-bg-hover/50 text-xs text-text-main"
-                        >
-                          {columns.map(col => {
-                            const val = row[col];
-                            let display = val;
-                            if (val === null) display = <span className="text-text-muted italic">null</span>;
-                            else if (typeof val === 'object') display = JSON.stringify(val);
-                            else if (typeof val === 'boolean') display = val ? 'true' : 'false';
-                            
-                            return (
-                              <td key={col} className="p-2.5 truncate font-mono border-r border-border-main last:border-r-0" style={{ width: 200, minWidth: 200, maxWidth: 200 }}>
-                                {display}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                    {rowVirtualizer.getVirtualItems().length > 0 && (
-                      <tr>
-                        <td 
-                          style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }} 
-                          colSpan={columns.length} 
-                        />
-                      </tr>
-                    )}
-                  </>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        ) : (
+          rootNodes.map(node => renderNode(node.id, 0))
         )}
       </div>
+
+      <ConnectionDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} />
     </div>
   );
 };

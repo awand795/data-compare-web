@@ -11,6 +11,30 @@ export type Connection = {
   username: string;
   password?: string;
   schema?: string;
+  
+  // SSL Settings
+  sslMode?: 'disable' | 'require' | 'verify-ca' | 'verify-full';
+  sslCaFile?: string;
+  sslCertFile?: string;
+  sslKeyFile?: string;
+  
+  // SSH Tunnel Settings
+  useSsh?: boolean;
+  sshHost?: string;
+  sshPort?: number | string;
+  sshUsername?: string;
+  sshAuthMode?: 'password' | 'key';
+  sshPassword?: string;
+  sshKeyFile?: string;
+  sshPassphrase?: string;
+  sshLocalPort?: number | string;
+  
+  // Advanced Settings
+  connectionTimeout?: number;
+  socketTimeout?: number;
+  fetchSize?: number;
+  readOnly?: boolean;
+  extraProps?: string;
 };
 
 export type DiffCell = {
@@ -31,6 +55,7 @@ export type DiffResult = {
   totalSourceRows: number;
   totalTargetRows: number;
   totalDifferences: number;
+  status?: 'comparing' | 'done' | 'error';
 };
 
 export type ColumnDiff = {
@@ -99,12 +124,18 @@ type AppState = {
   // Explorer
   explorerConnectionId: string | null;
   setExplorerConnectionId: (id: string | null) => void;
+  explorerSchemaName: string | null;
+  setExplorerSchemaName: (schema: string | null) => void;
   explorerTableName: string | null;
   setExplorerTableName: (name: string | null) => void;
 
   // Data compare
   diffResults: Record<string, DiffResult>;
   setDiffResult: (mappingId: string, result: DiffResult) => void;
+  initDiffResult: (mappingId: string) => void;
+  setDiffColumns: (mappingId: string, columns: string[]) => void;
+  appendDiffRows: (mappingId: string, rows: DiffRow[]) => void;
+  setDiffSummary: (mappingId: string, summary: Partial<DiffResult>) => void;
   clearDiffResults: () => void;
 
   // Schema compare
@@ -158,6 +189,8 @@ export const useAppStore = create<AppState>()(
 
   explorerConnectionId: null,
   setExplorerConnectionId: (id) => set({ explorerConnectionId: id }),
+  explorerSchemaName: null,
+  setExplorerSchemaName: (schema) => set({ explorerSchemaName: schema }),
   explorerTableName: null,
   setExplorerTableName: (name) => set({ explorerTableName: name }),
 
@@ -165,6 +198,35 @@ export const useAppStore = create<AppState>()(
   setDiffResult: (mappingId, result) => set((state) => ({
     diffResults: { ...state.diffResults, [mappingId]: result }
   })),
+  initDiffResult: (mappingId) => set((state) => ({
+    diffResults: { 
+      ...state.diffResults, 
+      [mappingId]: { columns: [], rows: [], totalSourceRows: 0, totalTargetRows: 0, totalDifferences: 0, status: 'comparing' } 
+    }
+  })),
+  setDiffColumns: (mappingId, columns) => set((state) => {
+    const existing = state.diffResults[mappingId];
+    if (!existing) return state;
+    return {
+      diffResults: { ...state.diffResults, [mappingId]: { ...existing, columns } }
+    };
+  }),
+  appendDiffRows: (mappingId, newRows) => set((state) => {
+    const existing = state.diffResults[mappingId];
+    if (!existing) return state;
+    // Mutate the array directly to avoid O(N^2) memory copies during streaming
+    existing.rows.push(...newRows);
+    return {
+      diffResults: { ...state.diffResults, [mappingId]: { ...existing } }
+    };
+  }),
+  setDiffSummary: (mappingId, summary) => set((state) => {
+    const existing = state.diffResults[mappingId];
+    if (!existing) return state;
+    return {
+      diffResults: { ...state.diffResults, [mappingId]: { ...existing, ...summary, status: 'done' } }
+    };
+  }),
   clearDiffResults: () => set({ diffResults: {} }),
 
   schemaResults: [],

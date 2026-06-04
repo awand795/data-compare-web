@@ -18,10 +18,9 @@ public class DatabaseMetaDataService {
         List<TableInfo> tables = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
-            String catalog = conn.getCatalog();
             String schemaPattern = (expectedSchema != null && !expectedSchema.trim().isEmpty()) ? expectedSchema.trim() : null;
             
-            try (ResultSet rs = metaData.getTables(catalog, schemaPattern, "%", new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"})) {
+            try (ResultSet rs = metaData.getTables(null, schemaPattern, "%", new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"})) {
                 while (rs.next()) {
                     String s = rs.getString("TABLE_SCHEM");
                     String tName = rs.getString("TABLE_NAME");
@@ -40,7 +39,6 @@ public class DatabaseMetaDataService {
         List<String> pks = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
-            String catalog = conn.getCatalog();
             String schemaPattern = (expectedSchema != null && !expectedSchema.trim().isEmpty()) ? expectedSchema.trim() : null;
             
             // Handle schema-qualified table names like "mbi.users"
@@ -51,7 +49,7 @@ public class DatabaseMetaDataService {
                 actualTable = parts[1];
             }
 
-            try (ResultSet rs = metaData.getPrimaryKeys(catalog, schemaPattern, actualTable)) {
+            try (ResultSet rs = metaData.getPrimaryKeys(null, schemaPattern, actualTable)) {
                 while (rs.next()) {
                     pks.add(rs.getString("COLUMN_NAME"));
                 }
@@ -66,7 +64,6 @@ public class DatabaseMetaDataService {
         List<String> columns = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
-            String catalog = conn.getCatalog();
             String schemaPattern = (expectedSchema != null && !expectedSchema.trim().isEmpty()) ? expectedSchema.trim() : null;
             
             String actualTable = tableName;
@@ -76,7 +73,7 @@ public class DatabaseMetaDataService {
                 actualTable = parts[1];
             }
 
-            try (ResultSet rs = metaData.getColumns(catalog, schemaPattern, actualTable, "%")) {
+            try (ResultSet rs = metaData.getColumns(null, schemaPattern, actualTable, "%")) {
                 while (rs.next()) {
                     columns.add(rs.getString("COLUMN_NAME"));
                 }
@@ -94,7 +91,6 @@ public class DatabaseMetaDataService {
         List<ColumnDiff> columnInfos = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
-            String catalog = conn.getCatalog();
             String schemaPattern = (expectedSchema != null && !expectedSchema.trim().isEmpty()) ? expectedSchema.trim() : null;
             
             String actualTable = tableName;
@@ -108,7 +104,7 @@ public class DatabaseMetaDataService {
             Set<String> pkColumns = new HashSet<>(getPrimaryKeys(dataSource, actualTable, schemaPattern));
 
             // Collect column details
-            try (ResultSet rs = metaData.getColumns(catalog, schemaPattern, actualTable, "%")) {
+            try (ResultSet rs = metaData.getColumns(null, schemaPattern, actualTable, "%")) {
                 while (rs.next()) {
                     ColumnDiff col = new ColumnDiff();
                     col.setColumnName(rs.getString("COLUMN_NAME"));

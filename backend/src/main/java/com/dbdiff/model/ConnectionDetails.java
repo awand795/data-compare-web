@@ -14,20 +14,43 @@ public class ConnectionDetails {
     private String password;
     private String schema;
     
+    // SSL Settings
+    private String sslMode;
+    private String sslCaFile;
+    private String sslCertFile;
+    private String sslKeyFile;
+    
+    // SSH Tunnel Settings
+    private boolean useSsh;
+    private String sshHost;
+    private Integer sshPort;
+    private String sshUsername;
+    private String sshAuthMode;
+    private String sshPassword;
+    private String sshKeyFile;
+    private String sshPassphrase;
+    private Integer sshLocalPort;
+    
+    // Advanced Settings
+    private Integer connectionTimeout;
+    private Integer socketTimeout;
+    private Integer fetchSize;
+    private boolean readOnly;
+    private String extraProps;
     public String getJdbcUrl() {
+        return getJdbcUrl(this.host, this.port);
+    }
+    
+    public String getJdbcUrl(String effectiveHost, int effectivePort) {
         switch (type.toLowerCase()) {
             case "postgresql":
-                String url = "jdbc:postgresql://" + host + ":" + port + "/" + database;
-                if (schema != null && !schema.trim().isEmpty()) {
-                    url += "?currentSchema=" + schema.trim();
-                }
-                return url;
+                return "jdbc:postgresql://" + effectiveHost + ":" + effectivePort + "/" + database;
             case "mysql":
-                return "jdbc:mysql://" + host + ":" + port + "/" + database;
+                return "jdbc:mysql://" + effectiveHost + ":" + effectivePort + "/" + database;
             case "mariadb":
-                return "jdbc:mariadb://" + host + ":" + port + "/" + database;
+                return "jdbc:mariadb://" + effectiveHost + ":" + effectivePort + "/" + database;
             case "sqlserver":
-                return "jdbc:sqlserver://" + host + ":" + port + ";databaseName=" + database + ";encrypt=true;trustServerCertificate=true;";
+                return "jdbc:sqlserver://" + effectiveHost + ":" + effectivePort + ";databaseName=" + database;
             default:
                 throw new IllegalArgumentException("Unsupported database type: " + type);
         }

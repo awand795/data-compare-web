@@ -78,6 +78,95 @@ export const DataCompareView: React.FC = () => {
     }
   }, [sourceTables, targetTables]);
 
+  const streamOneMapping = async (mapping: TableMapping) => {
+    const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
+    const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
+
+    const payload = {
+      sourceConnection: sourceConn,
+      targetConnection: targetConn,
+      tableName: null,
+      customQuerySource: sqFinal,
+      customQueryTarget: tqFinal,
+      primaryKeys: mapping.primaryKeys || null,
+      excludeColumns: mapping.excludeColumns || null,
+    };
+
+    const store = useAppStore.getState();
+    store.initDiffResult(mapping.id);
+
+    const response = await fetch('http://localhost:8081/api/compare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      let errMsg = 'Comparison failed for ' + (mapping.sourceTable || 'custom query');
+      try {
+        const errBody = await response.json();
+        errMsg = errBody.message || errMsg;
+      } catch (_e) {}
+      throw new Error(errMsg);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Response body is not readable");
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let rowBatch: any[] = [];
+    let batchTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flushRows = () => {
+      if (rowBatch.length > 0) {
+        store.appendDiffRows(mapping.id, rowBatch);
+        rowBatch = [];
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        if (batchTimer) clearTimeout(batchTimer);
+        flushRows();
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      let boundary = buffer.indexOf('\n');
+      while (boundary !== -1) {
+        const line = buffer.substring(0, boundary);
+        buffer = buffer.substring(boundary + 1);
+
+        if (line.trim().length > 0) {
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.type === 'columns') {
+              store.setDiffColumns(mapping.id, parsed.data);
+            } else if (parsed.type === 'row') {
+              rowBatch.push(parsed.data);
+              if (rowBatch.length >= 500) {
+                flushRows();
+              } else if (!batchTimer) {
+                batchTimer = setTimeout(() => {
+                  flushRows();
+                  batchTimer = null;
+                }, 500); // Throttle state updates to 500ms (prevent React rendering storm)
+              }
+            } else if (parsed.type === 'summary') {
+              if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
+              flushRows();
+              store.setDiffSummary(mapping.id, parsed.data);
+            }
+          } catch (e) {
+            console.error("Failed to parse NDJSON line:", line, e);
+          }
+        }
+        boundary = buffer.indexOf('\n');
+      }
+    }
+  };
+
   const handleCompare = async () => {
     if (!sourceConn || !targetConn || selectedMappings.size === 0) return;
     setLoading(true);
@@ -87,26 +176,29 @@ export const DataCompareView: React.FC = () => {
     setProgress({ current: 0, total: mappingsToCompare.length });
 
     try {
-      for (let i = 0; i < mappingsToCompare.length; i++) {
-        const mapping = mappingsToCompare[i];
-        setProgress({ current: i + 1, total: mappingsToCompare.length });
+      // Run mappings with concurrency limit (max 3 at a time) to prevent connection pool exhaustion
+      const concurrency = 3;
+      const executing = new Set<Promise<void>>();
+      const promises: Promise<void>[] = [];
 
-        const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
-        const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
+      for (const mapping of mappingsToCompare) {
+        const p = streamOneMapping(mapping).then(() => {
+          setProgress(prev => ({ current: prev.current + 1, total: prev.total }));
+        }).catch(err => {
+          console.error("Mapping failed", mapping.id, err);
+          setProgress(prev => ({ current: prev.current + 1, total: prev.total }));
+        });
 
-        const payload = {
-          sourceConnection: sourceConn,
-          targetConnection: targetConn,
-          tableName: null,
-          customQuerySource: sqFinal,
-          customQueryTarget: tqFinal,
-          primaryKeys: mapping.primaryKeys || null,
-          excludeColumns: mapping.excludeColumns || null,
-        };
+        promises.push(p);
+        executing.add(p);
+        p.finally(() => executing.delete(p));
 
-        const res = await axios.post('http://localhost:8081/api/compare', payload);
-        setDiffResult(mapping.id, res.data);
+        if (executing.size >= concurrency) {
+          await Promise.race(executing);
+        }
       }
+      
+      await Promise.allSettled(promises);
 
       if (!focusedMapping && mappingsToCompare.length > 0) {
         setFocusedMappingId(mappingsToCompare[0].id);
@@ -404,9 +496,13 @@ export const DataCompareView: React.FC = () => {
                           </td>
                           <td className="py-1.5 px-2 text-center">
                             {diff ? (
-                              diff.totalDifferences > 0
-                                ? <span className="text-[10px] font-bold text-amber-500 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">Different</span>
-                                : <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">Identical</span>
+                              diff.status === 'comparing'
+                                ? <span className="text-[10px] font-bold text-blue-500 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full animate-pulse whitespace-nowrap">
+                                    Comparing… {diff.rows.length > 0 && `(${diff.rows.length})`}
+                                  </span>
+                                : diff.totalDifferences > 0
+                                  ? <span className="text-[10px] font-bold text-amber-500 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">Different</span>
+                                  : <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">Identical</span>
                             ) : isSourceOnly ? (
                               <span className="text-[10px] font-bold text-red-500 dark:text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">Src Only</span>
                             ) : isTargetOnly ? (
@@ -463,12 +559,12 @@ export const DataCompareView: React.FC = () => {
                 )}
                 <div className="flex items-center gap-0.5 py-1 flex-1">
                   {([
-                    { id: 'ALL', label: 'All', count: focusedDiff?.rows.length || 0 },
+                    { id: 'ALL', label: 'All', count: focusedDiff?.rows.length || 0, color: '' },
                     { id: 'DIFFERENT', label: 'Different', count: focusedDiff?.rows.filter(r => r.status === 'DIFFERENT').length || 0, color: 'text-amber-500 dark:text-amber-400' },
                     { id: 'SOURCE_ONLY', label: 'Src Only', count: focusedDiff?.rows.filter(r => r.status === 'SOURCE_ONLY').length || 0, color: 'text-red-500 dark:text-red-400' },
                     { id: 'TARGET_ONLY', label: 'Tgt Only', count: focusedDiff?.rows.filter(r => r.status === 'TARGET_ONLY').length || 0, color: 'text-emerald-600 dark:text-emerald-400' },
-                    { id: 'IDENTICAL', label: 'Identical', count: focusedDiff?.rows.filter(r => r.status === 'MATCH').length || 0 },
-                  ] as const).map(tab => (
+                    { id: 'IDENTICAL', label: 'Identical', count: focusedDiff?.rows.filter(r => r.status === 'MATCH').length || 0, color: '' },
+                  ] as { id: string, label: string, count: number, color: string }[]).map(tab => (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id as any)}
