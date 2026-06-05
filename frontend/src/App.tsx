@@ -6,10 +6,13 @@ import { DataCompareView } from './components/DataCompareView';
 import { SchemaCompareView } from './components/SchemaCompareView';
 import { QueryWorkspace } from './components/QueryWorkspace';
 import { TableDetailPanel } from './components/TableDetailPanel';
+import { ExcelCompareView } from './components/ExcelCompareView';
+import { ScheduleManagerView } from './components/ScheduleManagerView';
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { DatabaseZap, GitCompareArrows, Table2, Terminal, Settings, HelpCircle, Sun, Moon } from 'lucide-react';
+import { DatabaseZap, GitCompareArrows, Table2, Terminal, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
+import { AlertModal } from './components/AlertModal';
 import clsx from 'clsx';
 
 function App() {
@@ -23,6 +26,11 @@ function App() {
       .then(res => {
         if (res.data && Array.isArray(res.data)) {
           setConnections(res.data);
+          // Warm up connections in the background
+          if (res.data.length > 0) {
+            axios.post('http://localhost:8081/api/warmup', res.data)
+              .catch(e => console.warn('Warmup failed:', e));
+          }
         }
       })
       .catch(err => console.error('Failed to load connections:', err));
@@ -40,6 +48,8 @@ function App() {
     { id: 'data' as const, label: 'Data Compare', icon: GitCompareArrows, desc: 'Compare row data between databases' },
     { id: 'schema' as const, label: 'Schema Compare', icon: Table2, desc: 'Compare table structures' },
     { id: 'query' as const, label: 'Query Workspace', icon: Terminal, desc: 'Run custom SQL queries and compare results' },
+    { id: 'excel' as const, label: 'Excel Compare', icon: FileSpreadsheet, desc: 'Compare DB table against an uploaded Excel file' },
+    { id: 'schedule' as const, label: 'Scheduled Jobs', icon: CalendarClock, desc: 'Automated data comparison tasks' },
   ];
 
   return (
@@ -130,6 +140,12 @@ function App() {
               <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'query' && "hidden")}>
                 <QueryWorkspace />
               </div>
+              <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'excel' && "hidden")}>
+                <ExcelCompareView />
+              </div>
+              <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'schedule' && "hidden")}>
+                <ScheduleManagerView />
+              </div>
               <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'explorer' && "hidden")}>
                 <TableDetailPanel />
               </div>
@@ -151,6 +167,7 @@ function App() {
       {/* Modals */}
       {isSettingsOpen && <SettingsModal onClose={() => setIsSettingsOpen(false)} />}
       {isHelpOpen && <HelpModal onClose={() => setIsHelpOpen(false)} />}
+      <AlertModal />
     </div>
   );
 }

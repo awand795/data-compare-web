@@ -4,6 +4,7 @@ import com.dbdiff.model.DiffCell;
 import com.dbdiff.model.DiffRequest;
 import com.dbdiff.model.DiffResult;
 import com.dbdiff.model.DiffRow;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -21,9 +22,13 @@ import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class DataComparisonService {
+
+    private static final Logger logger = LoggerFactory.getLogger(DataComparisonService.class);
 
     @Autowired
     private ConnectionManagerService connectionManagerService;
@@ -48,11 +53,20 @@ public class DataComparisonService {
             if (dbPks != null && !dbPks.isEmpty()) pksForOrder = dbPks;
         }
 
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), pksForOrder);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), pksForOrder);
+        boolean useSurrogateKey = pksForOrder.isEmpty();
+        if (useSurrogateKey && request.getSortColumns() != null && !request.getSortColumns().isEmpty()) {
+            pksForOrder = request.getSortColumns();
+            useSurrogateKey = false;
+        }
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), pksForOrder, request.getSortColumns(), useSurrogateKey);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), pksForOrder, request.getSortColumns(), useSurrogateKey);
 
-        System.out.println("COMPARE DATA: Source Query = " + sourceQuery);
-        System.out.println("COMPARE DATA: Target Query = " + targetQuery);
+        if (useSurrogateKey) {
+            pksForOrder = Collections.singletonList("__rn__");
+        }
+
+        logger.info("COMPARE DATA: Source Query = {}", sourceQuery);
+        logger.info("COMPARE DATA: Target Query = {}", targetQuery);
 
         List<Map<String, Object>> sourceData;
         List<Map<String, Object>> targetData;
@@ -62,10 +76,10 @@ public class DataComparisonService {
         if (isSameDb) {
             long start = System.currentTimeMillis();
             sourceData = sourceJdbc.queryForList(sourceQuery);
-            System.out.println("COMPARE DATA: Source " + sourceData.size() + " rows in " + (System.currentTimeMillis() - start) + "ms");
+            logger.info("COMPARE DATA: Source {} rows in {}ms", sourceData.size(), (System.currentTimeMillis() - start));
             start = System.currentTimeMillis();
             targetData = targetJdbc.queryForList(targetQuery);
-            System.out.println("COMPARE DATA: Target " + targetData.size() + " rows in " + (System.currentTimeMillis() - start) + "ms");
+            logger.info("COMPARE DATA: Target {} rows in {}ms", targetData.size(), (System.currentTimeMillis() - start));
         } else {
             ExecutorService ex = Executors.newFixedThreadPool(2);
             Future<List<Map<String, Object>>> sf = ex.submit(() -> sourceJdbc.queryForList(sourceQuery));
@@ -115,8 +129,8 @@ public class DataComparisonService {
     // compareAndStream() — entry point untuk /api/compare
     // ─────────────────────────────────────────────────────────────────────────
     public void compareAndStream(DiffRequest request, OutputStream out) throws IOException {
-        JsonFactory factory = new JsonFactory();
-        try (JsonGenerator gen = factory.createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
+        ObjectMapper mapper = new ObjectMapper();
+        try (JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
             gen.disable(JsonGenerator.Feature.FLUSH_PASSED_TO_STREAM);
             int[] rowCount = {0};
 
@@ -153,7 +167,7 @@ public class DataComparisonService {
                     gen.writeEndObject();
                     gen.writeRaw('\n');
                     rowCount[0]++;
-                    if (rowCount[0] % 500 == 0) gen.flush();
+                    if (rowCount[0] % 5000 == 0) gen.flush();
                 }
 
                 @Override
@@ -196,19 +210,29 @@ public class DataComparisonService {
 
         Set<String> excludeSet = buildExcludeSet(request);
         List<String> pkInput = (request.getPrimaryKeys() != null) ? request.getPrimaryKeys() : new ArrayList<>();
+        List<String> dbPks = new ArrayList<>();
         
+        // Validation is now done synchronously in controller before stream
         List<String> exactPks = new ArrayList<>(pkInput);
         if (exactPks.isEmpty() && request.getTableName() != null) {
-            List<String> dbPks = metaDataService.getPrimaryKeys(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
-            if (dbPks != null && !dbPks.isEmpty()) exactPks = dbPks;
+            List<String> fetched = metaDataService.getPrimaryKeys(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
+            if (fetched != null && !fetched.isEmpty()) {
+                exactPks = fetched;
+                dbPks = fetched;
+            }
         }
+        
+        boolean useSurrogateKey = exactPks.isEmpty();
+        if (useSurrogateKey && request.getSortColumns() != null && !request.getSortColumns().isEmpty()) {
+            exactPks = request.getSortColumns();
+            useSurrogateKey = false;
+        }
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, request.getSortColumns(), useSurrogateKey);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, request.getSortColumns(), useSurrogateKey);
 
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks);
-
-        System.out.println("STREAM COMPARE: O(1) Merge-Join");
-        System.out.println("STREAM COMPARE: Source Query = " + sourceQuery);
-        System.out.println("STREAM COMPARE: Target Query = " + targetQuery);
+        logger.info("STREAM COMPARE: O(1) Merge-Join");
+        logger.info("STREAM COMPARE: Source Query = {}", sourceQuery);
+        logger.info("STREAM COMPARE: Target Query = {}", targetQuery);
 
         List<String> columns = new ArrayList<>();
         int[] totalSourceRows = {0};
@@ -221,42 +245,67 @@ public class DataComparisonService {
             sConn.setAutoCommit(false);
             tConn.setAutoCommit(false);
 
-            try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-                 PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                
-                psSource.setFetchSize(5000);
-                psTarget.setFetchSize(5000);
-
-                try (ResultSet rsSource = psSource.executeQuery(); 
-                     ResultSet rsTarget = psTarget.executeQuery()) {
+            try {
+                try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+                     PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                     
-                    ResultSetMetaData meta = rsSource.getMetaData();
-                    columns = extractColumnsFromMeta(meta, excludeSet);
-                    exactPks = resolveExactPks(pkInput, columns, request, sourceDs);
-                    consumer.onColumns(columns);
-                    System.out.println("STREAM COMPARE: " + columns.size() + " kolom, PKs=" + exactPks);
+                    psSource.setFetchSize(5000);
+                    psTarget.setFetchSize(5000);
 
-                    int[] colIdx = resolveColumnIndices(meta, columns);
-                    
-                    boolean hasSource = rsSource.next();
-                    boolean hasTarget = rsTarget.next();
+                    try (ResultSet rsSource = psSource.executeQuery(); 
+                         ResultSet rsTarget = psTarget.executeQuery()) {
+                        
+                        ResultSetMetaData meta = rsSource.getMetaData();
+                        columns = extractColumnsFromMeta(meta, excludeSet);
+                        if (useSurrogateKey) {
+                            exactPks = Collections.singletonList("__rn__");
+                        } else {
+                            exactPks = resolveExactPks(pkInput, dbPks, columns);
+                        }
+                        consumer.onColumns(columns);
+                        logger.info("STREAM COMPARE: {} kolom, PKs={}", columns.size(), exactPks);
 
-                    while (hasSource || hasTarget) {
-                        if (hasSource && hasTarget) {
-                            int cmp = compareKeys(rsSource, rsTarget, exactPks);
-                            if (cmp == 0) {
-                                String sKey = buildKeyFromRs(rsSource, exactPks);
-                                Object[] sRow = getRow(rsSource, columns.size(), colIdx);
-                                Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
-                                DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
-                                if (diffRow.getStatus() != DiffRow.Status.MATCH) differences[0]++;
-                                consumer.onRow(diffRow);
-                                totalSourceRows[0]++;
-                                totalTargetRows[0]++;
-                                hasSource = rsSource.next();
-                                hasTarget = rsTarget.next();
-                            } else if (cmp < 0) {
-                                String sKey = buildKeyFromRs(rsSource, exactPks);
+                        int[] colIdx = resolveColumnIndices(meta, columns);
+                        int[] pkIdx = resolveColumnIndices(meta, exactPks);
+                        
+                        boolean hasSource = rsSource.next();
+                        boolean hasTarget = rsTarget.next();
+
+                        while (hasSource || hasTarget) {
+                            if (hasSource && hasTarget) {
+                                int cmp = compareKeys(rsSource, rsTarget, pkIdx);
+                                if (cmp == 0) {
+                                    String sKey = buildKeyFromRs(rsSource, pkIdx);
+                                    Object[] sRow = getRow(rsSource, columns.size(), colIdx);
+                                    Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
+                                    DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
+                                    if (diffRow.getStatus() != DiffRow.Status.MATCH) differences[0]++;
+                                    if (request.isReturnMatchedRows() || diffRow.getStatus() != DiffRow.Status.MATCH) {
+                                        consumer.onRow(diffRow);
+                                    }
+                                    totalSourceRows[0]++;
+                                    totalTargetRows[0]++;
+                                    hasSource = rsSource.next();
+                                    hasTarget = rsTarget.next();
+                                } else if (cmp < 0) {
+                                    String sKey = buildKeyFromRs(rsSource, pkIdx);
+                                    Object[] sRow = getRow(rsSource, columns.size(), colIdx);
+                                    DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
+                                    differences[0]++;
+                                    consumer.onRow(diffRow);
+                                    totalSourceRows[0]++;
+                                    hasSource = rsSource.next();
+                                } else {
+                                    String tKey = buildKeyFromRs(rsTarget, pkIdx);
+                                    Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
+                                    DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
+                                    differences[0]++;
+                                    consumer.onRow(diffRow);
+                                    totalTargetRows[0]++;
+                                    hasTarget = rsTarget.next();
+                                }
+                            } else if (hasSource) {
+                                String sKey = buildKeyFromRs(rsSource, pkIdx);
                                 Object[] sRow = getRow(rsSource, columns.size(), colIdx);
                                 DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
                                 differences[0]++;
@@ -264,7 +313,7 @@ public class DataComparisonService {
                                 totalSourceRows[0]++;
                                 hasSource = rsSource.next();
                             } else {
-                                String tKey = buildKeyFromRs(rsTarget, exactPks);
+                                String tKey = buildKeyFromRs(rsTarget, pkIdx);
                                 Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
                                 DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
                                 differences[0]++;
@@ -272,31 +321,16 @@ public class DataComparisonService {
                                 totalTargetRows[0]++;
                                 hasTarget = rsTarget.next();
                             }
-                        } else if (hasSource) {
-                            String sKey = buildKeyFromRs(rsSource, exactPks);
-                            Object[] sRow = getRow(rsSource, columns.size(), colIdx);
-                            DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
-                            differences[0]++;
-                            consumer.onRow(diffRow);
-                            totalSourceRows[0]++;
-                            hasSource = rsSource.next();
-                        } else {
-                            String tKey = buildKeyFromRs(rsTarget, exactPks);
-                            Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
-                            DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
-                            differences[0]++;
-                            consumer.onRow(diffRow);
-                            totalTargetRows[0]++;
-                            hasTarget = rsTarget.next();
                         }
                     }
                 }
+            } finally {
+                try { sConn.rollback(); } catch (Exception ignored) {}
+                try { tConn.rollback(); } catch (Exception ignored) {}
             }
-            sConn.commit();
-            tConn.commit();
         }
 
-        System.out.println("STREAM COMPARE: SELESAI. Total=" + (System.currentTimeMillis() - startTime) + "ms");
+        logger.info("STREAM COMPARE: SELESAI. Total={}ms", (System.currentTimeMillis() - startTime));
         consumer.onTotals(totalSourceRows[0], totalTargetRows[0], differences[0]);
     }
 
@@ -360,19 +394,13 @@ public class DataComparisonService {
         List<String> cols = new ArrayList<>();
         for (int i = 1; i <= meta.getColumnCount(); i++) {
             String name = meta.getColumnLabel(i);
-            if (!excludeSet.contains(name.toLowerCase())) cols.add(name);
+            if (!excludeSet.contains(name.toLowerCase()) && !"__rn__".equalsIgnoreCase(name)) cols.add(name);
         }
         return cols;
     }
 
-    private List<String> resolveExactPks(List<String> pkInput, List<String> columns,
-                                          DiffRequest request, DataSource sourceDs) {
-        List<String> resolved = pkInput;
-        if (resolved.isEmpty() && request.getTableName() != null) {
-            List<String> dbPks = metaDataService.getPrimaryKeys(sourceDs, request.getTableName(),
-                    request.getSourceConnection().getSchema());
-            if (dbPks != null && !dbPks.isEmpty()) resolved = dbPks;
-        }
+    private List<String> resolveExactPks(List<String> pkInput, List<String> dbPks, List<String> columns) {
+        List<String> resolved = !pkInput.isEmpty() ? pkInput : dbPks;
         if (resolved.isEmpty() && !columns.isEmpty()) resolved = new ArrayList<>(columns);
 
         List<String> exactPks = new ArrayList<>();
@@ -398,11 +426,11 @@ public class DataComparisonService {
         return idx;
     }
 
-    private String buildKeyFromRs(ResultSet rs, List<String> exactPks) throws Exception {
+    private String buildKeyFromRs(ResultSet rs, int[] exactPkIdx) throws Exception {
         StringBuilder sb = new StringBuilder(64);
-        for (int i = 0; i < exactPks.size(); i++) {
+        for (int i = 0; i < exactPkIdx.length; i++) {
             if (i > 0) sb.append('|');
-            sb.append(rs.getString(exactPks.get(i)));
+            sb.append(rs.getString(exactPkIdx[i]));
         }
         return sb.toString();
     }
@@ -483,42 +511,71 @@ public class DataComparisonService {
                     request.getSourceConnection().getSchema());
             if (dbPks != null) pks = dbPks;
         }
+        if (pks.isEmpty() && request.getSortColumns() != null && !request.getSortColumns().isEmpty()) {
+            pks = request.getSortColumns();
+        }
         if (pks.isEmpty() && !columns.isEmpty()) pks = new ArrayList<>(columns);
         return pks;
     }
 
-    private boolean normalizedEquals(Object a, Object b) {
+        private boolean normalizedEquals(Object a, Object b) {
         if (a == null && b == null) return true;
         if (a == null || b == null) return false;
-        if (a == b) return true;
-        if (a instanceof Number && b instanceof Number) {
-            if (a.getClass() == b.getClass()) return a.equals(b);
-            double da = ((Number) a).doubleValue(), db = ((Number) b).doubleValue();
-            if (Double.compare(da, db) != 0) return false;
-            if (a instanceof java.math.BigDecimal || b instanceof java.math.BigDecimal) {
-                return new java.math.BigDecimal(a.toString()).compareTo(new java.math.BigDecimal(b.toString())) == 0;
-            }
-            return true;
+        if (a.equals(b)) return true;
+
+        String strA;
+        if (a instanceof java.util.Date) {
+            strA = String.valueOf(((java.util.Date) a).getTime());
+        } else {
+            strA = a.toString().trim();
         }
-        if (a instanceof String && b instanceof String) return ((String) a).trim().equals(((String) b).trim());
-        return a.toString().trim().equals(b.toString().trim());
+
+        String strB;
+        if (b instanceof java.util.Date) {
+            strB = String.valueOf(((java.util.Date) b).getTime());
+        } else {
+            strB = b.toString().trim();
+        }
+
+        if (strA.equalsIgnoreCase(strB)) return true;
+
+        try {
+            java.math.BigDecimal bdA = new java.math.BigDecimal(strA);
+            java.math.BigDecimal bdB = new java.math.BigDecimal(strB);
+            if (bdA.compareTo(bdB) == 0) return true;
+        } catch (Exception ignored) {
+        }
+        
+        return false;
     }
 
-    private String buildQuery(String tableName, String customQuery, List<String> pks) {
-        if (customQuery != null && !customQuery.trim().isEmpty()) {
-            if (!customQuery.toUpperCase().contains("ORDER BY") && pks != null && !pks.isEmpty()) {
-                return customQuery.trim() + " ORDER BY " + String.join(", ", pks);
-            }
-            return customQuery.trim();
+        private String buildQuery(String tableName, String customQuery, List<String> pks, List<String> sortColumns, boolean useSurrogateKey) {
+        String windowOrderBy = "";
+        if (sortColumns != null && !sortColumns.isEmpty()) {
+            windowOrderBy = " ORDER BY " + sortColumns.stream().map(c -> "CAST(\"" + c + "\" AS VARCHAR)").collect(java.util.stream.Collectors.joining(", "));
+        } else if (pks != null && !pks.isEmpty()) {
+            windowOrderBy = " ORDER BY " + pks.stream().map(c -> "CAST(\"" + c + "\" AS VARCHAR)").collect(java.util.stream.Collectors.joining(", "));
+        } else {
+            windowOrderBy = " ORDER BY 1";
         }
-        if (tableName != null && !tableName.trim().isEmpty()) {
-            String q = "SELECT * FROM " + tableName.trim();
-            if (pks != null && !pks.isEmpty()) {
-                q += " ORDER BY " + String.join(", ", pks);
+
+        if (customQuery != null && !customQuery.trim().isEmpty()) {
+            String q = customQuery.trim();
+            if (useSurrogateKey) {
+                q = "SELECT ROW_NUMBER() OVER (" + windowOrderBy + ") as __rn__, tmp.* FROM (" + q + ") as tmp ORDER BY __rn__";
+            } else if (!q.toUpperCase().contains("ORDER BY") && pks != null && !pks.isEmpty()) {
+                q = q + " ORDER BY " + pks.stream().map(c -> "CAST(\"" + c + "\" AS VARCHAR)").collect(java.util.stream.Collectors.joining(", "));
             }
             return q;
         }
-        throw new IllegalArgumentException("Either tableName or customQuery must be provided");
+
+        String orderBy = "";
+        if (useSurrogateKey) {
+            return "SELECT ROW_NUMBER() OVER (" + windowOrderBy + ") as __rn__, * FROM \"" + tableName + "\" ORDER BY __rn__";
+        } else if (pks != null && !pks.isEmpty()) {
+            orderBy = " ORDER BY " + pks.stream().map(c -> "CAST(\"" + c + "\" AS VARCHAR)").collect(java.util.stream.Collectors.joining(", "));
+        }
+        return "SELECT * FROM \"" + tableName + "\"" + orderBy;
     }
 
     private List<String> extractColumns(List<Map<String, Object>> source, List<Map<String, Object>> target,
@@ -526,6 +583,7 @@ public class DataComparisonService {
         Set<String> cols = new LinkedHashSet<>();
         if (!source.isEmpty()) cols.addAll(source.get(0).keySet());
         if (!target.isEmpty()) cols.addAll(target.get(0).keySet());
+        cols.remove("__rn__");
         if (excludeSet.isEmpty()) return new ArrayList<>(cols);
         return cols.stream().filter(c -> !excludeSet.contains(c.toLowerCase())).collect(Collectors.toList());
     }
@@ -562,27 +620,29 @@ public class DataComparisonService {
     }
 
     @SuppressWarnings("unchecked")
-    private int compareKeys(ResultSet rsS, ResultSet rsT, List<String> exactPks) throws Exception {
-        for (String pk : exactPks) {
-            Object sObj = rsS.getObject(pk);
-            Object tObj = rsT.getObject(pk);
+        private int compareKeys(ResultSet rsS, ResultSet rsT, int[] exactPkIdx) throws Exception {
+        for (int idx : exactPkIdx) {
+            Object sObj = rsS.getObject(idx);
+            Object tObj = rsT.getObject(idx);
             
             if (sObj == null && tObj == null) continue;
             if (sObj == null) return -1;
             if (tObj == null) return 1;
             
-            if (sObj instanceof Comparable && tObj instanceof Comparable && sObj.getClass() == tObj.getClass()) {
-                int cmp = ((Comparable<Object>) sObj).compareTo(tObj);
-                if (cmp != 0) return cmp;
-            } else if (sObj instanceof Number && tObj instanceof Number) {
-                double sVal = ((Number) sObj).doubleValue();
-                double tVal = ((Number) tObj).doubleValue();
-                int cmp = Double.compare(sVal, tVal);
-                if (cmp != 0) return cmp;
-            } else {
-                int cmp = sObj.toString().compareTo(tObj.toString());
-                if (cmp != 0) return cmp;
+            String sStr = sObj.toString().trim();
+            String tStr = tObj.toString().trim();
+            
+            if (sObj instanceof Number || tObj instanceof Number) {
+                try {
+                    java.math.BigDecimal bdS = new java.math.BigDecimal(sStr);
+                    java.math.BigDecimal bdT = new java.math.BigDecimal(tStr);
+                    sStr = bdS.stripTrailingZeros().toPlainString();
+                    tStr = bdT.stripTrailingZeros().toPlainString();
+                } catch(Exception e) {}
             }
+            
+            int cmp = sStr.compareTo(tStr);
+            if (cmp != 0) return cmp;
         }
         return 0;
     }

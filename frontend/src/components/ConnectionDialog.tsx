@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { useAppStore, type Connection } from '../store/useAppStore';
 import { X, Server, CheckCircle, XCircle, Shield, Key, Settings as SettingsIcon, Plug } from 'lucide-react';

@@ -1,0 +1,341 @@
+package com.dbdiff.service;
+
+import com.dbdiff.model.*;
+import com.dbdiff.repository.ConnectionRepository;
+import com.dbdiff.repository.NotificationChannelRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.support.CronTrigger;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
+
+@Service
+public class DynamicSchedulerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(DynamicSchedulerService.class);
+
+    private final TaskScheduler taskScheduler;
+    private final ScheduleManagerService scheduleManagerService;
+    private final DataComparisonService dataComparisonService;
+    private final NotificationService notificationService;
+    private final ConnectionRepository connectionRepository;
+    private final NotificationChannelRepository notificationChannelRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private final Map<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
+
+    @Autowired
+    public DynamicSchedulerService(TaskScheduler taskScheduler,
+                                   ScheduleManagerService scheduleManagerService,
+                                   DataComparisonService dataComparisonService,
+                                   NotificationService notificationService,
+                                   ConnectionRepository connectionRepository,
+                                   NotificationChannelRepository notificationChannelRepository) {
+        this.taskScheduler = taskScheduler;
+        this.scheduleManagerService = scheduleManagerService;
+        this.dataComparisonService = dataComparisonService;
+        this.notificationService = notificationService;
+        this.connectionRepository = connectionRepository;
+        this.notificationChannelRepository = notificationChannelRepository;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void init() {
+        logger.info("Initializing Dynamic Scheduler...");
+        List<ScheduleConfig> schedules = scheduleManagerService.getAllSchedules();
+        for (ScheduleConfig schedule : schedules) {
+            if (schedule.isActive()) {
+                scheduleTask(schedule);
+            }
+        }
+    }
+
+    public void refreshSchedule(String scheduleId) {
+        // Cek apakah sebelumnya sudah aktif (ada di scheduledTasks) agar kita tahu ini toggle ON atau update biasa
+        boolean wasScheduled = scheduledTasks.containsKey(scheduleId);
+        cancelSchedule(scheduleId);
+        ScheduleConfig schedule = scheduleManagerService.getSchedule(scheduleId);
+        if (schedule != null && schedule.isActive()) {
+            scheduleTask(schedule);
+            // Hanya trigger immediate execution jika transisi dari inactive → active
+            // (toggle ON), bukan saat update schedule yang sudah aktif
+            if (!wasScheduled) {
+                logger.info("Triggering immediate execution for schedule: {} ({})", schedule.getName(), scheduleId);
+                new Thread(() -> executeCompareJob(scheduleId)).start();
+            }
+        }
+    }
+
+    public void cancelSchedule(String scheduleId) {
+        ScheduledFuture<?> future = scheduledTasks.remove(scheduleId);
+        if (future != null) {
+            future.cancel(false);
+        }
+    }
+
+    private void scheduleTask(ScheduleConfig schedule) {
+        Runnable task = () -> executeCompareJob(schedule.getId());
+        try {
+            CronTrigger cronTrigger = new CronTrigger(schedule.getCronExpression());
+            ScheduledFuture<?> future = taskScheduler.schedule(task, cronTrigger);
+            scheduledTasks.put(schedule.getId(), future);
+            logger.info("Scheduled job: {} with cron: {}", schedule.getName(), schedule.getCronExpression());
+        } catch (Exception e) {
+            logger.error("Failed to schedule job {}: {}", schedule.getName(), e.getMessage());
+        }
+    }
+
+    public void executeCompareJob(String scheduleId) {
+        logger.info("Executing scheduled compare job for schedule: {}", scheduleId);
+        ScheduleConfig schedule = scheduleManagerService.getSchedule(scheduleId);
+        if (schedule == null) return;
+
+        ScheduleResult result = new ScheduleResult();
+        result.setId(UUID.randomUUID().toString());
+        result.setScheduleId(scheduleId);
+        result.setRunTime(LocalDateTime.now());
+        
+        // Save initial result first to satisfy Foreign Key constraints for detail rows
+        scheduleManagerService.saveResult(result);
+
+        try {
+            ConnectionDetails srcConn = connectionRepository.findById(schedule.getSourceConnectionId());
+            ConnectionDetails tgtConn = connectionRepository.findById(schedule.getTargetConnectionId());
+
+            if (srcConn == null || tgtConn == null) {
+                throw new Exception("Source or Target connection not found");
+            }
+
+            List<Map<String, Object>> mappings = new ArrayList<>();
+            if (schedule.getMappings() != null && !schedule.getMappings().isEmpty()) {
+                mappings = objectMapper.readValue(schedule.getMappings(), new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>(){});
+            } else {
+                // Fallback for legacy single-mapping jobs
+                Map<String, Object> legacyMapping = new HashMap<>();
+                legacyMapping.put("sourceTable", schedule.getSourceTable());
+                legacyMapping.put("targetTable", schedule.getTargetTable());
+                legacyMapping.put("customQuerySource", schedule.getCustomQuerySource());
+                legacyMapping.put("customQueryTarget", schedule.getCustomQueryTarget());
+                legacyMapping.put("primaryKeys", schedule.getPrimaryKeys());
+                legacyMapping.put("excludeColumns", schedule.getExcludeColumns());
+                legacyMapping.put("sortColumns", schedule.getSortColumns());
+                mappings.add(legacyMapping);
+            }
+
+            int totalMatch = 0, totalDifferent = 0, totalSrcOnly = 0, totalTgtOnly = 0;
+            List<Map<String, Object>> executionDetails = new ArrayList<>();
+
+            for (Map<String, Object> mapping : mappings) {
+                try {
+                    DiffRequest request = new DiffRequest();
+                    request.setSourceConnection(srcConn);
+                    request.setTargetConnection(tgtConn);
+
+                    String sourceTable = (String) mapping.get("sourceTable");
+                    String targetTable = (String) mapping.get("targetTable");
+                    String cqSource = (String) mapping.get("customQuerySource");
+                    String cqTarget = (String) mapping.get("customQueryTarget");
+
+                    if ((cqSource != null && !cqSource.isEmpty()) || (cqTarget != null && !cqTarget.isEmpty())) {
+                        request.setCustomQuerySource(cqSource);
+                        request.setCustomQueryTarget(cqTarget);
+                        request.setTableName(null);
+                    } else {
+                        if (sourceTable != null && sourceTable.equals(targetTable)) {
+                            request.setTableName(sourceTable);
+                        } else {
+                            request.setCustomQuerySource("SELECT * FROM " + sourceTable);
+                            request.setCustomQueryTarget("SELECT * FROM " + targetTable);
+                        }
+                    }
+
+                    // Primary Keys
+                    Object pks = mapping.get("primaryKeys");
+                    if (pks instanceof List) {
+                        request.setPrimaryKeys((List<String>) pks);
+                    } else if (pks instanceof String && !((String) pks).isEmpty() && !pks.equals("[]")) {
+                        request.setPrimaryKeys(objectMapper.readValue((String) pks, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){}));
+                    }
+
+                    // Exclude Columns
+                    Object excludes = mapping.get("excludeColumns");
+                    if (excludes instanceof List) {
+                        request.setExcludeColumns((List<String>) excludes);
+                    } else if (excludes instanceof String && !((String) excludes).isEmpty() && !excludes.equals("[]")) {
+                        request.setExcludeColumns(objectMapper.readValue((String) excludes, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){}));
+                    }
+
+                    // Sort Columns
+                    Object sorts = mapping.get("sortColumns");
+                    if (sorts instanceof List) {
+                        request.setSortColumns((List<String>) sorts);
+                    } else if (sorts instanceof String && !((String) sorts).isEmpty() && !sorts.equals("[]")) {
+                        request.setSortColumns(objectMapper.readValue((String) sorts, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){}));
+                    }
+
+                    request.setReturnMatchedRows(false);
+                    DiffResult diffResult = dataComparisonService.compare(request);
+
+                    int m = 0, d = 0, s = 0, t = 0;
+                    if (diffResult.getRows() != null) {
+                        for (DiffRow row : diffResult.getRows()) {
+                            switch (row.getStatus()) {
+                                case MATCH: m++; break;
+                                case DIFFERENT: d++; break;
+                                case SOURCE_ONLY: s++; break;
+                                case TARGET_ONLY: t++; break;
+                            }
+                        }
+                    }
+
+                    totalMatch += m;
+                    totalDifferent += d;
+                    totalSrcOnly += s;
+                    totalTgtOnly += t;
+
+                    Map<String, Object> tableResult = new HashMap<>();
+                    tableResult.put("tableName", sourceTable != null ? sourceTable : "Custom Query");
+                    tableResult.put("match", m);
+                    tableResult.put("different", d);
+                    tableResult.put("sourceOnly", s);
+                    tableResult.put("targetOnly", t);
+                    executionDetails.add(tableResult);
+
+                    if (schedule.isSaveFullData() && diffResult.getRows() != null) {
+                        for (DiffRow row : diffResult.getRows()) {
+                            if (row.getStatus() == DiffRow.Status.MATCH) continue;
+                            ScheduleResultRow rr = new ScheduleResultRow();
+                            rr.setResultId(result.getId());
+                            rr.setRowKey(row.getRowKey());
+                            rr.setStatus(row.getStatus().name());
+                            rr.setDataJson(objectMapper.writeValueAsString(row.getCells()));
+                            scheduleManagerService.saveResultRow(rr);
+                        }
+                    }
+                } catch (Exception e) {
+                    Map<String, Object> errorTable = new HashMap<>();
+                    errorTable.put("tableName", mapping.get("sourceTable"));
+                    errorTable.put("error", e.getMessage());
+                    executionDetails.add(errorTable);
+                }
+            }
+
+            result.setMatchCount(totalMatch);
+            result.setDifferentCount(totalDifferent);
+            result.setSourceOnlyCount(totalSrcOnly);
+            result.setTargetOnlyCount(totalTgtOnly);
+            result.setDetails(objectMapper.writeValueAsString(executionDetails));
+
+            scheduleManagerService.updateResult(result);
+            scheduleManagerService.updateLastRun(scheduleId, LocalDateTime.now());
+
+            int diffs = result.getDifferentCount() + result.getSourceOnlyCount() + result.getTargetOnlyCount();
+            logger.info("Job {} finished. Total diffs: {}", schedule.getName(), diffs);
+            
+            if (diffs > 0) {
+                logger.info("Differences detected for job {}. Checking notification channels...", schedule.getName());
+                logger.debug("Telegram Channel ID: {}", schedule.getTelegramChannelId());
+                logger.debug("Discord Channel ID: {}", schedule.getDiscordChannelId());
+
+                // Build per-table breakdown
+                StringBuilder tableDetailsHtml = new StringBuilder();
+                StringBuilder tableDetailsDiscord = new StringBuilder();
+                tableDetailsHtml.append("\n<b>📋 Per-Table Breakdown:</b>\n");
+                tableDetailsDiscord.append("\n**📋 Per-Table Breakdown:**\n");
+                for (Map<String, Object> td : executionDetails) {
+                    if (td.containsKey("error")) {                        String errTable = (String) td.getOrDefault("tableName", "unknown");
+                        tableDetailsHtml.append(String.format(
+                                "  ❌ <i>%s</i>: ERROR - %s\n", errTable, td.get("error")));
+                        tableDetailsDiscord.append(String.format(
+                                "  ❌ *%s*: ERROR - %s\n", errTable, td.get("error")));
+                        continue;
+                    }
+                    String tn = (String) td.getOrDefault("tableName", "unknown");
+                    int match = ((Number) td.getOrDefault("match", 0)).intValue();
+                    int diff = ((Number) td.getOrDefault("different", 0)).intValue();
+                    int srcOnly = ((Number) td.getOrDefault("sourceOnly", 0)).intValue();
+                    int tgtOnly = ((Number) td.getOrDefault("targetOnly", 0)).intValue();
+                    int perTableDiff = diff + srcOnly + tgtOnly;
+
+                    if (perTableDiff > 0) {
+                        tableDetailsHtml.append(String.format(
+                                "  🔴 <i>%s</i> — %d different, %d source-only, %d target-only (match: %d)\n",
+                                tn, diff, srcOnly, tgtOnly, match));
+                        tableDetailsDiscord.append(String.format(
+                                "  🔴 *%s* — %d different, %d source-only, %d target-only (match: %d)\n",
+                                tn, diff, srcOnly, tgtOnly, match));
+                    } else {
+                        tableDetailsHtml.append(String.format("  ✅ <i>%s</i> — %d rows match, no differences\n", tn, match));
+                        tableDetailsDiscord.append(String.format("  ✅ *%s* — %d rows match, no differences\n", tn, match));
+                    }
+                }
+
+                String message = String.format(
+                        "<b>🚨 Data Mismatch Detected!</b>\n\n" +
+                        "<b>Job:</b> <i>%s</i>\n" +
+                        "<b>Run Time:</b> %s\n" +
+                        "<b>Status:</b> ⚠️ %d differences found\n\n" +
+                        "<b>📊 Total Summary:</b>\n" +
+                        "  ✅ Match: %d\n" +
+                        "  🔴 Different: %d\n" +
+                        "  🔵 Source Only: %d\n" +
+                        "  🟡 Target Only: %d\n" +
+                        "%s\n" +
+                        "━━━━━━━━━━━━━━━━━━━\n" +
+                        "<i>Check the Dashboard for full details.</i>",
+                        schedule.getName(),
+                        result.getRunTime().toString().replace("T", " "),
+                        diffs,
+                        result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount(),
+                        tableDetailsHtml.toString());
+
+                String discordMessage = String.format(
+                        "🚨 **Data Mismatch Detected!**\n\n" +
+                        "**Job:** *%s*\n" +
+                        "**Run Time:** %s\n" +
+                        "**Status:** ⚠️ %d differences found\n\n" +
+                        "**📊 Total Summary:**\n" +
+                        "  ✅ Match: %d\n" +
+                        "  🔴 Different: %d\n" +
+                        "  🔵 Source Only: %d\n" +
+                        "  🟡 Target Only: %d\n" +
+                        "%s\n" +
+                        "━━━━━━━━━━━━━━━━━━━\n" +
+                        "*Check the Dashboard for full details.*",
+                        schedule.getName(),
+                        result.getRunTime().toString().replace("T", " "),
+                        diffs,
+                        result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount(),
+                        tableDetailsDiscord.toString());
+
+                if (schedule.getTelegramChannelId() != null && !schedule.getTelegramChannelId().isEmpty()) {
+                    logger.info("Sending to Telegram channel: {}", schedule.getTelegramChannelId());
+                    notificationService.sendToChannel(schedule.getTelegramChannelId(), message);
+                }
+                if (schedule.getDiscordChannelId() != null && !schedule.getDiscordChannelId().isEmpty()) {
+                    logger.info("Sending to Discord channel: {}", schedule.getDiscordChannelId());
+                    notificationService.sendToChannel(schedule.getDiscordChannelId(), discordMessage);
+                }
+            } else {
+                logger.info("No differences detected for job {}. Skipping notifications.", schedule.getName());
+            }
+        } catch (Exception e) {
+            logger.error("Error executing job: {}", e.getMessage(), e);
+            result.setErrorMessage(e.getMessage());
+            scheduleManagerService.saveResult(result);
+        }
+    }
+}

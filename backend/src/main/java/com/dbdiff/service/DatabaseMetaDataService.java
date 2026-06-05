@@ -3,6 +3,8 @@ package com.dbdiff.service;
 import com.dbdiff.model.SchemaCompareResult;
 import com.dbdiff.model.SchemaCompareResult.ColumnDiff;
 import com.dbdiff.model.TableInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
@@ -14,6 +16,8 @@ import java.util.*;
 @Service
 public class DatabaseMetaDataService {
 
+    private static final Logger logger = LoggerFactory.getLogger(DatabaseMetaDataService.class);
+
     public List<TableInfo> getTables(DataSource dataSource, String expectedSchema) {
         List<TableInfo> tables = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
@@ -24,13 +28,19 @@ public class DatabaseMetaDataService {
                 while (rs.next()) {
                     String s = rs.getString("TABLE_SCHEM");
                     String tName = rs.getString("TABLE_NAME");
+                    
+                    // Exclude internal temporary excel import tables (case-insensitive)
+                    if (tName.toLowerCase().startsWith("excel_import_")) {
+                        continue;
+                    }
+
                     // If schemaPattern is null, prepend schema to table name for uniqueness
                     String displayName = (schemaPattern == null && s != null && !s.equals("public")) ? s + "." + tName : tName;
                     tables.add(new TableInfo(displayName, rs.getString("TABLE_TYPE")));
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to get tables: {}", e.getMessage(), e);
         }
         return tables;
     }
@@ -55,7 +65,7 @@ public class DatabaseMetaDataService {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to get primary keys for {}: {}", tableName, e.getMessage(), e);
         }
         return pks;
     }
@@ -79,7 +89,7 @@ public class DatabaseMetaDataService {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to get columns for {}: {}", tableName, e.getMessage(), e);
         }
         return columns;
     }
@@ -117,7 +127,7 @@ public class DatabaseMetaDataService {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to get detailed table info for {}: {}", tableName, e.getMessage(), e);
         }
         return columnInfos;
     }
@@ -225,9 +235,8 @@ public class DatabaseMetaDataService {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to get column map for {}: {}", tableName, e.getMessage(), e);
         }
         return map;
     }
 }
-

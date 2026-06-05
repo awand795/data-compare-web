@@ -3,6 +3,8 @@ package com.dbdiff.service;
 import com.dbdiff.model.ConnectionDetails;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -14,13 +16,17 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class ConnectionManagerService {
 
+    private static final Logger logger = LoggerFactory.getLogger(ConnectionManagerService.class);
+
     private final Map<String, DataSource> dataSourceCache = new ConcurrentHashMap<>();
 
     @Autowired
     private SshTunnelService sshTunnelService;
 
     public DataSource getDataSource(ConnectionDetails details) {
-        String cacheKey = (details.getId() != null ? details.getId() : details.getJdbcUrl()) + "|" + details.getUsername();
+        String cacheKey = details.getId() != null && !details.getId().isBlank()
+            ? details.getId() + "|" + details.getUsername()
+            : (details.getJdbcUrl().toLowerCase().trim() + "|" + details.getUsername().toLowerCase().trim());
         return dataSourceCache.computeIfAbsent(cacheKey, key -> {
             try {
                 return createDataSource(details);
@@ -56,7 +62,7 @@ public class ConnectionManagerService {
         switch (details.getType().toLowerCase()) {
             case "postgresql":
                 config.setDriverClassName("org.postgresql.Driver");
-                config.setAutoCommit(false);
+                config.setAutoCommit(true);
                 config.addDataSourceProperty("prepareThreshold", "3");
                 config.addDataSourceProperty("preparedStatementCacheQueries", "256");
                 config.addDataSourceProperty("preparedStatementCacheSizeMiB", "5");
@@ -143,9 +149,20 @@ public class ConnectionManagerService {
         config.setConnectionTimeout(details.getConnectionTimeout() != null ? details.getConnectionTimeout() : 30000);
         config.setIdleTimeout(300000);
         config.setMaxLifetime(1800000);
-        config.setLeakDetectionThreshold(0);
+        config.setLeakDetectionThreshold(600000);
 
-        return new HikariDataSource(config);
+        HikariDataSource ds = new HikariDataSource(config);
+        
+        // Warm up: buka koneksi awal ke remote DB secara asinkron di background
+        new Thread(() -> {
+            try (java.sql.Connection conn = ds.getConnection()) {
+                // just to warm up the connection
+            } catch (Exception e) {
+                logger.error("Failed to warm up connection pool: {}", e.getMessage());
+            }
+        }).start();
+        
+        return ds;
     }
 
     public boolean testConnection(ConnectionDetails details) {
@@ -155,7 +172,7 @@ public class ConnectionManagerService {
                 return conn.isValid(5);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Connection test failed: {}", e.getMessage(), e);
             return false;
         }
     }

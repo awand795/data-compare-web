@@ -45,3 +45,62 @@ ALTER TABLE connections ADD COLUMN IF NOT EXISTS socket_timeout INT;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS fetch_size INT;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS read_only BOOLEAN DEFAULT FALSE;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS extra_props VARCHAR(1000);
+
+CREATE TABLE IF NOT EXISTS schedules (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    source_connection_id VARCHAR(50) NOT NULL,
+    target_connection_id VARCHAR(50) NOT NULL,
+    source_table VARCHAR(200) NOT NULL,
+    target_table VARCHAR(200) NOT NULL,
+    cron_expression VARCHAR(100) NOT NULL,
+    telegram_bot_token VARCHAR(255),
+    telegram_chat_id VARCHAR(100),
+    discord_webhook_url VARCHAR(500),
+    save_full_data BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_run TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS schedule_results (
+    id VARCHAR(50) PRIMARY KEY,
+    schedule_id VARCHAR(50) NOT NULL,
+    run_time TIMESTAMP NOT NULL,
+    match_count INT DEFAULT 0,
+    different_count INT DEFAULT 0,
+    source_only_count INT DEFAULT 0,
+    target_only_count INT DEFAULT 0,
+    error_message TEXT,
+    FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS schedule_result_rows (
+    id SERIAL PRIMARY KEY,
+    result_id VARCHAR(50) NOT NULL,
+    row_key VARCHAR(255),
+    status VARCHAR(50),
+    data_json TEXT,
+    FOREIGN KEY (result_id) REFERENCES schedule_results(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notification_channels (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    type VARCHAR(20) NOT NULL,
+    bot_token VARCHAR(255),
+    chat_id VARCHAR(100),
+    webhook_url VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS custom_query_source TEXT;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS custom_query_target TEXT;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS primary_keys VARCHAR(500);
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS exclude_columns VARCHAR(500);
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS sort_columns VARCHAR(500);
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS telegram_channel_id VARCHAR(50);
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS discord_channel_id VARCHAR(50);
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS mappings TEXT;
+ALTER TABLE schedule_results ADD COLUMN IF NOT EXISTS details TEXT;
+

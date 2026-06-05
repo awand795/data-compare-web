@@ -9,6 +9,7 @@ interface Props {
   sourceTables: string[];
   targetTables: string[];
   editingMapping?: TableMapping | null;
+  excelIsTarget: boolean;
   onClose: () => void;
 }
 
@@ -20,13 +21,13 @@ interface JoinTable {
   selectedColumns: string[];
 }
 
-export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables, editingMapping, onClose }) => {
+export const ExcelMappingModal: React.FC<Props> = ({ sourceTables, targetTables, editingMapping, excelIsTarget, onClose }) => {
   const { 
-    addTableMapping, updateTableMapping,
-    sourceConnectionId, targetConnectionId, connections 
+    addExcelMapping, updateExcelMapping,
+    targetConnectionId, connections 
   } = useAppStore();
 
-  const sourceConn = connections.find(c => c.id === sourceConnectionId);
+  const sourceConn = connections.find(c => c.id === targetConnectionId);
   const targetConn = connections.find(c => c.id === targetConnectionId);
 
   const isEdit = !!editingMapping;
@@ -44,31 +45,6 @@ export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
   const [rowLimit, setRowLimit]       = useState<string>(editingMapping?.rowLimit?.toString() || '');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [queryMode, setQueryMode]     = useState<'simple' | 'join' | 'custom'>('simple');
-
-  const fetchPrimaryKeys = async (conn: any, tableName: string) => {
-    if (!conn || !tableName) return [];
-    try {
-      const res = await axios.post('http://localhost:8081/api/primary-keys', {
-        connection: conn,
-        tableName: tableName
-      });
-      return res.data as string[];
-    } catch (err) {
-      console.error("Error fetching primary keys", err);
-      return [];
-    }
-  };
-
-  useEffect(() => {
-    if (sourceTable && sourceConn && !isEdit) {
-      fetchPrimaryKeys(sourceConn, sourceTable).then(keys => {
-        if (keys.length > 0) {
-          setPrimaryKeys(keys.join(', '));
-          setShowAdvanced(true);
-        }
-      });
-    }
-  }, [sourceTable, sourceConn, isEdit]);
 
   // Visual Builder state
   const [sourceBaseCols, setSourceBaseCols] = useState<string[]>([]);
@@ -261,9 +237,9 @@ export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
     };
 
     if (isEdit && editingMapping) {
-      updateTableMapping(editingMapping.id, baseMapping);
+      updateExcelMapping(editingMapping.id, baseMapping);
     } else {
-      addTableMapping({ id: `custom-${Date.now()}`, ...baseMapping });
+      addExcelMapping({ id: `custom-${Date.now()}`, ...baseMapping });
     }
     onClose();
   };
@@ -383,7 +359,7 @@ export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border-main shrink-0">
           <div className="flex items-center gap-2 text-text-main font-semibold text-sm">
             {isEdit ? <Pencil className="w-4 h-4 text-blue-500" /> : <Plus className="w-4 h-4 text-blue-500" />}
-            {isEdit ? 'Edit Mapping' : 'Add Table Mapping'}
+            {isEdit ? 'Edit Mapping' : 'Add Excel Mapping'}
           </div>
           <button onClick={onClose} className="text-text-muted hover:text-text-main p-1 rounded hover:bg-bg-hover transition-colors">
             <X className="w-4 h-4" />
@@ -434,16 +410,28 @@ export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
                 <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-end">
                   <div className="flex flex-col">
                     <label className="text-[10px] font-bold text-blue-500/70 uppercase tracking-widest mb-1">Source Table</label>
-                    <input list="source-tables-list" value={sourceTable} onChange={e => setSourceTable(e.target.value)}
-                      placeholder="Select source table..." className="w-full px-2.5 py-2 bg-bg-input border border-border-input rounded-md text-xs text-text-input outline-none focus:border-blue-500" />
-                    <datalist id="source-tables-list">{sourceTables.filter(t => !t.toLowerCase().startsWith('excel_import_')).map(t => <option key={t} value={t} />)}</datalist>
+                    {!excelIsTarget ? (
+                      <input value={sourceTable} disabled className="w-full px-2.5 py-2 bg-gray-100 dark:bg-gray-800 border border-border-input rounded-md text-xs text-gray-500 cursor-not-allowed outline-none" title="Uploaded Excel Data" />
+                    ) : (
+                      <>
+                        <input list="source-tables-list" value={sourceTable} onChange={e => setSourceTable(e.target.value)}
+                          placeholder="Select source table..." className="w-full px-2.5 py-2 bg-bg-input border border-border-input rounded-md text-xs text-text-input outline-none focus:border-blue-500" />
+                        <datalist id="source-tables-list">{sourceTables.filter(t => !t.startsWith('excel_import_')).map(t => <option key={t} value={t} />)}</datalist>
+                      </>
+                    )}
                   </div>
                   <div className="pb-1"><ArrowRight className="w-4 h-4 text-text-muted opacity-50" /></div>
                   <div className="flex flex-col">
                     <label className="text-[10px] font-bold text-emerald-600/70 uppercase tracking-widest mb-1">Target Table</label>
-                    <input list="target-tables-list" value={targetTable} onChange={e => setTargetTable(e.target.value)}
-                      placeholder="Select target table..." className="w-full px-2.5 py-2 bg-bg-input border border-border-input rounded-md text-xs text-text-input outline-none focus:border-blue-500" />
-                    <datalist id="target-tables-list">{targetTables.filter(t => !t.toLowerCase().startsWith('excel_import_')).map(t => <option key={t} value={t} />)}</datalist>
+                    {excelIsTarget ? (
+                      <input value={targetTable} disabled className="w-full px-2.5 py-2 bg-gray-100 dark:bg-gray-800 border border-border-input rounded-md text-xs text-gray-500 cursor-not-allowed outline-none" title="Uploaded Excel Data" />
+                    ) : (
+                      <>
+                        <input list="target-tables-list" value={targetTable} onChange={e => setTargetTable(e.target.value)}
+                          placeholder="Select target table..." className="w-full px-2.5 py-2 bg-bg-input border border-border-input rounded-md text-xs text-text-input outline-none focus:border-blue-500" />
+                        <datalist id="target-tables-list">{targetTables.filter(t => !t.startsWith('excel_import_')).map(t => <option key={t} value={t} />)}</datalist>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">

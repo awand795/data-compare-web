@@ -9,6 +9,9 @@ interface Props {
   sourceTables: string[];
   targetTables: string[];
   editingMapping?: TableMapping | null;
+  sourceConn: any;
+  targetConn: any;
+  onSave: (mapping: any) => void;
   onClose: () => void;
 }
 
@@ -20,14 +23,10 @@ interface JoinTable {
   selectedColumns: string[];
 }
 
-export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables, editingMapping, onClose }) => {
-  const { 
-    addTableMapping, updateTableMapping,
-    sourceConnectionId, targetConnectionId, connections 
-  } = useAppStore();
+export const ScheduleMappingModal: React.FC<Props> = ({ sourceTables, targetTables, editingMapping, sourceConn, targetConn, onSave, onClose }) => {
+  
 
-  const sourceConn = connections.find(c => c.id === sourceConnectionId);
-  const targetConn = connections.find(c => c.id === targetConnectionId);
+  
 
   const isEdit = !!editingMapping;
 
@@ -44,31 +43,6 @@ export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
   const [rowLimit, setRowLimit]       = useState<string>(editingMapping?.rowLimit?.toString() || '');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [queryMode, setQueryMode]     = useState<'simple' | 'join' | 'custom'>('simple');
-
-  const fetchPrimaryKeys = async (conn: any, tableName: string) => {
-    if (!conn || !tableName) return [];
-    try {
-      const res = await axios.post('http://localhost:8081/api/primary-keys', {
-        connection: conn,
-        tableName: tableName
-      });
-      return res.data as string[];
-    } catch (err) {
-      console.error("Error fetching primary keys", err);
-      return [];
-    }
-  };
-
-  useEffect(() => {
-    if (sourceTable && sourceConn && !isEdit) {
-      fetchPrimaryKeys(sourceConn, sourceTable).then(keys => {
-        if (keys.length > 0) {
-          setPrimaryKeys(keys.join(', '));
-          setShowAdvanced(true);
-        }
-      });
-    }
-  }, [sourceTable, sourceConn, isEdit]);
 
   // Visual Builder state
   const [sourceBaseCols, setSourceBaseCols] = useState<string[]>([]);
@@ -260,11 +234,11 @@ export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
       rowLimit: rowLimit ? parseInt(rowLimit) : undefined,
     };
 
-    if (isEdit && editingMapping) {
-      updateTableMapping(editingMapping.id, baseMapping);
-    } else {
-      addTableMapping({ id: `custom-${Date.now()}`, ...baseMapping });
-    }
+    const newMapping = {
+      id: isEdit && editingMapping ? editingMapping.id : `custom-${Date.now()}`,
+      ...baseMapping
+    };
+    onSave(newMapping);
     onClose();
   };
 
@@ -377,7 +351,7 @@ export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
       <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[850px] flex flex-col text-text-main max-h-[90vh] overflow-hidden">
 
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border-main shrink-0">

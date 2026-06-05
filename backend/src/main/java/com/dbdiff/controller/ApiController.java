@@ -10,14 +10,23 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import com.dbdiff.service.ExcelService;
 import com.dbdiff.service.ReportExportService;
 
 import javax.sql.DataSource;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/api")
@@ -32,6 +41,9 @@ public class ApiController {
 
     @Autowired
     private DataComparisonService comparisonService;
+
+    @Autowired
+    private ExcelService excelService;
 
     @Autowired
     private ConnectionRepository connectionRepository;
@@ -57,6 +69,18 @@ public class ApiController {
     public ResponseEntity<?> testConnection(@RequestBody ConnectionDetails details) {
         boolean isValid = connectionManagerService.testConnection(details);
         return ResponseEntity.ok(Map.of("success", isValid));
+    }
+
+    @PostMapping("/warmup")
+    public ResponseEntity<?> warmupConnections(@RequestBody List<ConnectionDetails> connections) {
+        for (ConnectionDetails details : connections) {
+            try {
+                connectionManagerService.getDataSource(details); // triggers the async warmup
+            } catch (Exception e) {
+                // Ignore errors for warmup
+            }
+        }
+        return ResponseEntity.ok(Map.of("success", true));
     }
 
     @PostMapping("/tables")
@@ -96,7 +120,9 @@ public class ApiController {
             comparisonService.compareAndStream(request, out);
         };
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE)
+                .header("X-Accel-Buffering", "no")
+                .header("Cache-Control", "no-cache")
                 .body(stream);
     }
 
@@ -144,18 +170,81 @@ public class ApiController {
      * Execute a custom query against a connection and return results.
      */
     @PostMapping("/execute-query")
-    public ResponseEntity<?> executeQuery(@RequestBody QueryRequest request) {
-        try {
-            DataSource ds = connectionManagerService.getDataSource(request.getConnection());
-            JdbcTemplate jdbc = new JdbcTemplate(ds);
-            List<Map<String, Object>> results = jdbc.queryForList(request.getQuery());
-            return ResponseEntity.ok(Map.of("success", true, "rows", results));
-        } catch (Exception e) {
-            return ResponseEntity.ok(Map.of(
-                    "success", false,
-                    "message", e.getMessage() != null ? e.getMessage() : "Unknown error executing query"
-            ));
-        }
+    public ResponseEntity<StreamingResponseBody> executeQuery(@RequestBody QueryRequest request) {
+        StreamingResponseBody stream = out -> {
+            ObjectMapper mapper = new ObjectMapper();
+            try (JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
+                gen.disable(JsonGenerator.Feature.FLUSH_PASSED_TO_STREAM);
+
+                DataSource ds = connectionManagerService.getDataSource(request.getConnection());
+                try (Connection conn = ds.getConnection();
+                     PreparedStatement ps = conn.prepareStatement(request.getQuery(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+
+                    boolean isPostgres = conn.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres");
+                    if (isPostgres) {
+                        conn.setAutoCommit(false);
+                        ps.setFetchSize(5000);
+                    }
+
+                    try (ResultSet rs = ps.executeQuery()) {
+                        ResultSetMetaData meta = rs.getMetaData();
+                        int colCount = meta.getColumnCount();
+                        String[] cols = new String[colCount];
+                        for (int i = 1; i <= colCount; i++) {
+                            cols[i - 1] = meta.getColumnLabel(i);
+                        }
+
+                        gen.writeStartObject();
+                        gen.writeStringField("type", "columns");
+                        gen.writeArrayFieldStart("data");
+                        for (String col : cols) gen.writeString(col);
+                        gen.writeEndArray();
+                        gen.writeEndObject();
+                        gen.writeRaw('\n');
+                        gen.flush();
+
+                        int rowCount = 0;
+                        while (rs.next()) {
+                            gen.writeStartObject();
+                            gen.writeStringField("type", "row");
+                            gen.writeObjectFieldStart("data");
+                            for (int i = 1; i <= colCount; i++) {
+                                gen.writeObjectField(cols[i - 1], rs.getObject(i));
+                            }
+                            gen.writeEndObject();
+                            gen.writeEndObject();
+                            gen.writeRaw('\n');
+                            rowCount++;
+                            if (rowCount % 5000 == 0) gen.flush();
+                        }
+
+                        gen.writeStartObject();
+                        gen.writeStringField("type", "summary");
+                        gen.writeObjectFieldStart("data");
+                        gen.writeNumberField("totalRows", rowCount);
+                        gen.writeEndObject();
+                        gen.writeEndObject();
+                        gen.writeRaw('\n');
+                        gen.flush();
+                    }
+
+                    if (isPostgres) {
+                        conn.commit();
+                    }
+                } catch (Exception e) {
+                    gen.writeStartObject();
+                    gen.writeStringField("type", "error");
+                    gen.writeStringField("message", e.getMessage() != null ? e.getMessage() : "Unknown error");
+                    gen.writeEndObject();
+                    gen.writeRaw('\n');
+                    gen.flush();
+                }
+            }
+        };
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .body(stream);
     }
 
     /**
@@ -421,6 +510,39 @@ public class ApiController {
             return ResponseEntity.ok(explorerService.previewData(ds, "null".equals(schema) ? null : schema, table));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/excel/upload")
+    public ResponseEntity<?> uploadExcel(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("connectionId") String connectionId) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(connectionId);
+            if (details == null) {
+                throw new Exception("Connection not found");
+            }
+            String tableName = excelService.importExcelToDatabase(file, details);
+            return ResponseEntity.ok(Map.of("success", true, "tableName", tableName));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to upload Excel"));
+        }
+    }
+
+    @PostMapping("/excel/drop")
+    public ResponseEntity<?> dropExcelTable(
+            @RequestBody Map<String, String> payload) {
+        try {
+            String connectionId = payload.get("connectionId");
+            String tableName = payload.get("tableName");
+            ConnectionDetails details = connectionRepository.findById(connectionId);
+            if (details == null) {
+                throw new Exception("Connection not found");
+            }
+            excelService.dropExcelTable(details, tableName);
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to drop Excel table"));
         }
     }
 

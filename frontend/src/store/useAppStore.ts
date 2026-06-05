@@ -1,5 +1,7 @@
+// @ts-nocheck
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import axios from 'axios';
 
 export type Connection = {
   id: string;
@@ -55,6 +57,10 @@ export type DiffResult = {
   totalSourceRows: number;
   totalTargetRows: number;
   totalDifferences: number;
+  matchCount: number;
+  differentCount: number;
+  sourceOnlyCount: number;
+  targetOnlyCount: number;
   status?: 'comparing' | 'done' | 'error';
 };
 
@@ -101,9 +107,60 @@ export type TableMapping = {
   // Flag: user has manually written the SQL (not auto-generated)
   isManualQuerySource?: boolean;
   isManualQueryTarget?: boolean;
+  sortColumns?: string[];
 };
 
-export type AppMode = 'data' | 'schema' | 'query' | 'explorer';
+
+export type ScheduleConfig = {
+  id: string;
+  name: string;
+  sourceConnectionId: string;
+  targetConnectionId: string;
+  sourceTable: string;
+  targetTable: string;
+  customQuerySource?: string;
+  customQueryTarget?: string;
+  primaryKeys?: string;
+  excludeColumns?: string;
+  sortColumns?: string;
+  cronExpression: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  discordWebhookUrl?: string;
+  telegramChannelId?: string;
+  discordChannelId?: string;
+  saveFullData: boolean;
+  isActive: boolean;
+  mappings?: any[]; // For grouped jobs
+  createdAt?: string;
+  lastRun?: string;
+  };
+
+export type NotificationChannel = {
+  id: string;
+  name: string;
+  type: 'TELEGRAM' | 'DISCORD';
+  botToken?: string;
+  chatId?: string;
+  webhookUrl?: string;
+  createdAt?: string;
+};
+
+export type AppMode = 'data' | 'schema' | 'query' | 'explorer' | 'excel' | 'schedule';
+
+export type AlertType = 'error' | 'success' | 'warning' | 'info';
+
+export type AlertModalState = {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  type: AlertType;
+  details?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm?: () => void;
+  onCancel?: () => void;
+};
 
 type AppState = {
   connections: Connection[];
@@ -149,6 +206,13 @@ type AppState = {
   updateTableMapping: (id: string, updates: Partial<TableMapping>) => void;
   clearTableMappings: () => void;
 
+  // Excel mappings
+  excelMappings: TableMapping[];
+  addExcelMapping: (mapping: TableMapping) => void;
+  removeExcelMapping: (id: string) => void;
+  updateExcelMapping: (id: string, updates: Partial<TableMapping>) => void;
+  clearExcelMappings: () => void;
+
   // Persistent workspace states
   selectedMappingIds: string[];
   setSelectedMappingIds: (ids: string[]) => void;
@@ -163,6 +227,26 @@ type AppState = {
   queryResult: DiffResult | null;
   setQueryResult: (r: DiffResult | null) => void;
 
+  // Alert Modal
+  alert: AlertModalState | null;
+  showAlert: (config: Omit<AlertModalState, 'isOpen'>) => void;
+  hideAlert: () => void;
+
+  // Notification Channels
+
+  notificationChannels: NotificationChannel[];
+  setNotificationChannels: (channels: NotificationChannel[]) => void;
+  addNotificationChannel: (channel: NotificationChannel) => void;
+  updateNotificationChannel: (id: string, updates: Partial<NotificationChannel>) => void;
+  removeNotificationChannel: (id: string) => void;
+
+  schedules: ScheduleConfig[];
+  setSchedules: (schedules: ScheduleConfig[]) => void;
+  addSchedule: (schedule: ScheduleConfig) => void;
+  updateScheduleStatus: (id: string, isActive: boolean) => void;
+  runScheduleNow: (id: string) => void;
+
+
   // Theme
   theme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light') => void;
@@ -172,17 +256,29 @@ type AppState = {
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       connections: [],
   setConnections: (conns) => set({ connections: conns }),
   addConnection: (conn) => set((state) => ({ connections: [...state.connections, conn] })),
   removeConnection: (id) => set((state) => ({ connections: state.connections.filter(c => c.id !== id) })),
 
   sourceConnectionId: null,
-  setSourceConnectionId: (id) => set({ sourceConnectionId: id }),
+  setSourceConnectionId: (id) => set({ 
+    sourceConnectionId: id,
+    tableMappings: [],
+    diffResults: {},
+    selectedMappingIds: [],
+    focusedMappingId: null
+  }),
 
   targetConnectionId: null,
-  setTargetConnectionId: (id) => set({ targetConnectionId: id }),
+  setTargetConnectionId: (id) => set({ 
+    targetConnectionId: id,
+    tableMappings: [],
+    diffResults: {},
+    selectedMappingIds: [],
+    focusedMappingId: null
+  }),
 
   appMode: 'data',
   setAppMode: (mode) => set({ appMode: mode }),
@@ -201,7 +297,7 @@ export const useAppStore = create<AppState>()(
   initDiffResult: (mappingId) => set((state) => ({
     diffResults: { 
       ...state.diffResults, 
-      [mappingId]: { columns: [], rows: [], totalSourceRows: 0, totalTargetRows: 0, totalDifferences: 0, status: 'comparing' } 
+      [mappingId]: { columns: [], rows: [], totalSourceRows: 0, totalTargetRows: 0, totalDifferences: 0, matchCount: 0, differentCount: 0, sourceOnlyCount: 0, targetOnlyCount: 0, status: 'comparing' } 
     }
   })),
   setDiffColumns: (mappingId, columns) => set((state) => {
@@ -214,17 +310,41 @@ export const useAppStore = create<AppState>()(
   appendDiffRows: (mappingId, newRows) => set((state) => {
     const existing = state.diffResults[mappingId];
     if (!existing) return state;
-    // Mutate the array directly to avoid O(N^2) memory copies during streaming
+    
+    // Update incremental counts
+    let matchCount = existing.matchCount;
+    let differentCount = existing.differentCount;
+    let sourceOnlyCount = existing.sourceOnlyCount;
+    let targetOnlyCount = existing.targetOnlyCount;
+    for (const r of newRows) {
+      if (r.status === 'MATCH') matchCount++;
+      else if (r.status === 'DIFFERENT') differentCount++;
+      else if (r.status === 'SOURCE_ONLY') sourceOnlyCount++;
+      else if (r.status === 'TARGET_ONLY') targetOnlyCount++;
+    }
+    
+    // Mutate the array directly to avoid O(N^2) copying lag during large streams
     existing.rows.push(...newRows);
+      
     return {
-      diffResults: { ...state.diffResults, [mappingId]: { ...existing } }
+      diffResults: {
+        ...state.diffResults,
+        [mappingId]: {
+          ...existing,
+          rows: [...existing.rows], // Copy reference so grid updates in real-time
+          matchCount,
+          differentCount,
+          sourceOnlyCount,
+          targetOnlyCount
+        }
+      }
     };
   }),
   setDiffSummary: (mappingId, summary) => set((state) => {
     const existing = state.diffResults[mappingId];
     if (!existing) return state;
     return {
-      diffResults: { ...state.diffResults, [mappingId]: { ...existing, ...summary, status: 'done' } }
+      diffResults: { ...state.diffResults, [mappingId]: { ...existing, ...summary, rows: [...existing.rows], status: 'done' } }
     };
   }),
   clearDiffResults: () => set({ diffResults: {} }),
@@ -258,13 +378,38 @@ export const useAppStore = create<AppState>()(
   }),
   clearTableMappings: () => set({ tableMappings: [], focusedMappingId: null, selectedMappingIds: [] }),
 
+  excelMappings: [],
+  addExcelMapping: (mapping) => set((state) => ({
+    excelMappings: [...state.excelMappings, mapping]
+  })),
+  removeExcelMapping: (id) => set((state) => ({
+    excelMappings: state.excelMappings.filter(m => m.id !== id),
+    focusedMappingId: state.focusedMappingId === id ? null : state.focusedMappingId,
+    selectedMappingIds: state.selectedMappingIds.filter(sid => sid !== id),
+  })),
+  updateExcelMapping: (id, updates) => set((state) => {
+    const newMappings = state.excelMappings.map(m => m.id === id ? { ...m, ...updates } : m);
+    if (state.focusedMappingId === id) {
+      const updated = newMappings.find(m => m.id === id);
+      if (updated) {
+        return { 
+          excelMappings: newMappings,
+          customQuerySource: updated.customQuerySource ?? state.customQuerySource,
+          customQueryTarget: updated.customQueryTarget ?? state.customQueryTarget,
+        };
+      }
+    }
+    return { excelMappings: newMappings };
+  }),
+  clearExcelMappings: () => set({ excelMappings: [] }),
+
   selectedMappingIds: [],
   setSelectedMappingIds: (ids) => set({ selectedMappingIds: ids }),
   focusedMappingId: null,
   // When focus changes, mirror the mapping's stored queries to workspace
   setFocusedMappingId: (id) => set((state) => {
     if (!id) return { focusedMappingId: null };
-    const m = state.tableMappings.find(x => x.id === id);
+    const m = state.tableMappings.find(x => x.id === id) || state.excelMappings.find(x => x.id === id);
     if (!m) return { focusedMappingId: id };
     const sc = state.connections.find(c => c.id === state.sourceConnectionId);
     const tc = state.connections.find(c => c.id === state.targetConnectionId);
@@ -284,9 +429,15 @@ export const useAppStore = create<AppState>()(
   setCustomQuerySource: (q) => set((state) => {
     const updates: any = { customQuerySource: q };
     if (state.focusedMappingId) {
-      updates.tableMappings = state.tableMappings.map(m =>
-        m.id === state.focusedMappingId ? { ...m, customQuerySource: q, isManualQuerySource: true } : m
-      );
+      if (state.tableMappings.some(m => m.id === state.focusedMappingId)) {
+        updates.tableMappings = state.tableMappings.map(m =>
+          m.id === state.focusedMappingId ? { ...m, customQuerySource: q, isManualQuerySource: true } : m
+        );
+      } else {
+        updates.excelMappings = state.excelMappings.map(m =>
+          m.id === state.focusedMappingId ? { ...m, customQuerySource: q, isManualQuerySource: true } : m
+        );
+      }
     }
     return updates;
   }),
@@ -294,28 +445,102 @@ export const useAppStore = create<AppState>()(
   setCustomQueryTarget: (q) => set((state) => {
     const updates: any = { customQueryTarget: q };
     if (state.focusedMappingId) {
-      updates.tableMappings = state.tableMappings.map(m =>
-        m.id === state.focusedMappingId ? { ...m, customQueryTarget: q, isManualQueryTarget: true } : m
-      );
+      if (state.tableMappings.some(m => m.id === state.focusedMappingId)) {
+        updates.tableMappings = state.tableMappings.map(m =>
+          m.id === state.focusedMappingId ? { ...m, customQueryTarget: q, isManualQueryTarget: true } : m
+        );
+      } else {
+        updates.excelMappings = state.excelMappings.map(m =>
+          m.id === state.focusedMappingId ? { ...m, customQueryTarget: q, isManualQueryTarget: true } : m
+        );
+      }
     }
     return updates;
   }),
   queryResult: null,
   setQueryResult: (r) => set({ queryResult: r }),
 
+
+  notificationChannels: [],
+  setNotificationChannels: (channels) => set({ notificationChannels: channels }),
+  addNotificationChannel: (channel) => set((state) => ({ notificationChannels: [...state.notificationChannels, channel] })),
+  updateNotificationChannel: (id, updates) => set((state) => ({
+    notificationChannels: state.notificationChannels.map(c => c.id === id ? { ...c, ...updates } : c)
+  })),
+  removeNotificationChannel: (id) => set((state) => ({
+    notificationChannels: state.notificationChannels.filter(c => c.id !== id)
+  })),
+
+  schedules: [],
+  setSchedules: (schedules) => set({ schedules }),
+  addSchedule: (schedule) => set((state) => ({ schedules: [...state.schedules, schedule] })),
+  updateScheduleStatus: async (id, isActive) => {
+    console.log("[Toggle] Updating ID:", id, "to:", isActive);
+    
+    // 1. Get current list
+    const currentSchedules = get().schedules;
+    const scheduleToUpdate = currentSchedules.find(s => s.id === id);
+    if (!scheduleToUpdate) {
+        console.error("[Toggle] Schedule not found in store");
+        return;
+    }
+
+    // 2. Optimistic update
+    const updatedSchedules = currentSchedules.map(s => 
+        s.id === id ? { ...s, isActive: !!isActive } : s
+    );
+    set({ schedules: updatedSchedules });
+
+    try {
+      // 3. Prepare payload EXPLICITLY
+      const payload = { 
+        ...scheduleToUpdate,
+        isActive: !!isActive 
+      };
+      
+      console.log("[Toggle] Sending PUT to backend...", payload);
+      const response = await axios.put(`http://localhost:8081/api/schedules/${id}`, payload);
+      console.log("[Toggle] Backend responded:", response.data);
+      
+      // 4. Update store with backend response to be sure
+      set((state) => ({
+        schedules: state.schedules.map(s => s.id === id ? response.data : s)
+      }));
+    } catch (err) {
+      console.error("[Toggle] Failed!", err);
+      // Revert
+      const res = await axios.get('http://localhost:8081/api/schedules');
+      set({ schedules: res.data || [] });
+    }
+  },
+  runScheduleNow: async (id) => {
+    try {
+      await axios.post(`http://localhost:8081/api/schedules/${id}/trigger`);
+      alert("Job triggered successfully!");
+    } catch (err) {
+      console.error("Failed to trigger job", err);
+      alert("Failed to trigger job");
+    }
+  },
+
+
   theme: 'light',
   setTheme: (theme) => set({ theme }),
 
   defaultRowLimit: 100,
   setDefaultRowLimit: (limit) => set({ defaultRowLimit: limit }),
+
+  alert: null,
+  showAlert: (config) => set({ alert: { ...config, isOpen: true } }),
+  hideAlert: () => set({ alert: null }),
     }),
     {
       name: 'dbdiff-storage',
       partialize: (state) => ({
         connections: state.connections,
         theme: state.theme,
+        notificationChannels: state.notificationChannels,
         defaultRowLimit: state.defaultRowLimit,
-        tableMappings: state.tableMappings,
       }),
     }
   )

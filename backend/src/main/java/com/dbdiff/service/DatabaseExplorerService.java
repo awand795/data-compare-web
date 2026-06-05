@@ -40,8 +40,13 @@ public class DatabaseExplorerService {
             DatabaseMetaData metaData = conn.getMetaData();
             try (ResultSet rs = metaData.getTables(null, schema, "%", types)) {
                 while (rs.next()) {
+                    String tName = rs.getString("TABLE_NAME");
+                    // Exclude internal temporary excel import tables (case-insensitive)
+                    if (tName.toLowerCase().startsWith("excel_import_")) {
+                        continue;
+                    }
                     Map<String, Object> map = new LinkedHashMap<>();
-                    map.put("name", rs.getString("TABLE_NAME"));
+                    map.put("name", tName);
                     map.put("type", rs.getString("TABLE_TYPE"));
                     objects.add(map);
                 }
@@ -168,7 +173,9 @@ public class DatabaseExplorerService {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         try {
             // Very basic count for all
-            Long count = jdbc.queryForObject("SELECT COUNT(*) FROM " + (schema != null && !schema.isEmpty() ? schema + "." : "") + table, Long.class);
+            String q = "\"";
+            String fullTableName = (schema != null && !schema.isEmpty() ? q + schema + q + "." : "") + q + table + q;
+            Long count = jdbc.queryForObject("SELECT COUNT(*) FROM " + fullTableName, Long.class);
             stats.put("rowCount", count);
             
             if ("postgresql".equalsIgnoreCase(dbType)) {
@@ -185,7 +192,9 @@ public class DatabaseExplorerService {
 
     public List<Map<String, Object>> previewData(DataSource dataSource, String schema, String table) throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-        String sql = "SELECT * FROM " + (schema != null && !schema.isEmpty() ? schema + "." : "") + table;
+        String q = "\"";
+        String fullTableName = (schema != null && !schema.isEmpty() ? q + schema + q + "." : "") + q + table + q;
+        String sql = "SELECT * FROM " + fullTableName;
         jdbc.setMaxRows(200);
         return jdbc.queryForList(sql);
     }

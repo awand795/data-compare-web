@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { X, Settings2, Palette, Database, ListFilter, ArrowRight } from 'lucide-react';

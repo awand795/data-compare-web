@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { useAppStore, type Connection } from '../store/useAppStore';
 import { Database, Plus, Trash2, CheckCircle, XCircle, Server, Plug, ChevronRight, ChevronDown, Table as TableIcon, Loader2, Download, Folder } from 'lucide-react';

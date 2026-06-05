@@ -9,17 +9,17 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { DiffDataGrid } from './DiffDataGrid';
-import { TableMappingModal } from './TableMappingModal';
+import { ExcelMappingModal } from './ExcelMappingModal';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import clsx from 'clsx';
 import { buildEffectiveQuery } from '../utils/queryHelpers';
 
-export const DataCompareView: React.FC = () => {
+export const ExcelCompareView: React.FC = () => {
   const {
     connections, sourceConnectionId, setSourceConnectionId,
     targetConnectionId, setTargetConnectionId,
     setDiffResult, diffResults,
-    tableMappings, addTableMapping, removeTableMapping, updateTableMapping, clearTableMappings,
+    excelMappings, addExcelMapping, removeExcelMapping, updateExcelMapping, clearExcelMappings,
     selectedMappingIds, setSelectedMappingIds,
     focusedMappingId, setFocusedMappingId,
     showAlert,
@@ -37,6 +37,7 @@ export const DataCompareView: React.FC = () => {
   const [editingMapping, setEditingMapping] = useState<TableMapping | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateBarOpen, setDateBarOpen] = useState(true);
+  const [excelIsTarget, setExcelIsTarget] = useState(true);
 
   const selectedMappings = React.useMemo(() => new Set(selectedMappingIds), [selectedMappingIds]);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -84,50 +85,31 @@ export const DataCompareView: React.FC = () => {
     }
   }, [targetConn?.id]);
 
-  // Auto-create 1:1 mappings when tables load and no mappings exist
+  // Auto-create 1:1 mappings
   useEffect(() => {
-    if (sourceTables.length > 0 && targetTables.length > 0 && tableMappings.length === 0 && sourceConn) {
+    if (sourceTables.length > 0 && targetTables.length > 0 && excelMappings.length === 0) {
       const commonTables = sourceTables.filter(t => targetTables.includes(t));
-      
-      const createMappings = async () => {
-        for (const t of commonTables) {
-          try {
-            const pkRes = await axios.post('http://localhost:8081/api/primary-keys', {
-              connection: sourceConn,
-              tableName: t
-            });
-            const pks = pkRes.data as string[];
-            addTableMapping({ 
-              id: `auto-${t}`, 
-              sourceTable: t, 
-              targetTable: t,
-              primaryKeys: pks.length > 0 ? pks : undefined
-            });
-          } catch (err) {
-            addTableMapping({ id: `auto-${t}`, sourceTable: t, targetTable: t });
-          }
-        }
-        
-        sourceTables.filter(t => !targetTables.includes(t)).forEach(t => {
-          addTableMapping({ id: `src-only-${t}`, sourceTable: t, targetTable: '' });
-        });
-        targetTables.filter(t => !sourceTables.includes(t)).forEach(t => {
-          addTableMapping({ id: `tgt-only-${t}`, sourceTable: '', targetTable: t });
-        });
-      };
-
-      createMappings();
+      commonTables.forEach(t => {
+        addExcelMapping({ id: `auto-${t}`, sourceTable: t, targetTable: t });
+      });
+      sourceTables.filter(t => !targetTables.includes(t)).forEach(t => {
+        addExcelMapping({ id: `src-only-${t}`, sourceTable: t, targetTable: '' });
+      });
+      targetTables.filter(t => !sourceTables.includes(t)).forEach(t => {
+        addExcelMapping({ id: `tgt-only-${t}`, sourceTable: '', targetTable: t });
+      });
     }
-  }, [sourceTables, targetTables, sourceConn]);
+  }, [sourceTables, targetTables, excelMappings, addExcelMapping]);
 
   const streamOneMapping = async (mapping: TableMapping) => {
     const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
     const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
 
     const payload = {
-      sourceConnection: sourceConn,
-      targetConnection: targetConn,
+      sourceConnection: excelIsTarget ? sourceConn : targetConn,
+      targetConnection: excelIsTarget ? sourceConn : targetConn,
       tableName: null,
+
       customQuerySource: sqFinal,
       customQueryTarget: tqFinal,
       primaryKeys: mapping.primaryKeys || null,
@@ -217,9 +199,10 @@ export const DataCompareView: React.FC = () => {
   };
 
   const handleCompare = async () => {
-    if (!sourceConn || !targetConn || selectedMappings.size === 0) return;
+    const activeConn = excelIsTarget ? sourceConn : targetConn;
+    if (!activeConn || selectedMappings.size === 0) return;
     setLoading(true);
-    const mappingsToCompare = tableMappings.filter(
+    const mappingsToCompare = excelMappings.filter(
       m => selectedMappings.has(m.id) && (m.sourceTable || m.customQuerySource) && (m.targetTable || m.customQueryTarget)
     );
     setProgress({ current: 0, total: mappingsToCompare.length });
@@ -296,9 +279,10 @@ export const DataCompareView: React.FC = () => {
   };
 
   const handleSynchronize = async () => {
-    if (!sourceConn || !targetConn || selectedMappings.size === 0) return;
+    const activeConn = excelIsTarget ? sourceConn : targetConn;
+    if (!activeConn || selectedMappings.size === 0) return;
     
-    const mappingsToSync = tableMappings.filter(
+    const mappingsToSync = excelMappings.filter(
       m => selectedMappings.has(m.id) && m.sourceTable && m.targetTable
     );
 
@@ -329,7 +313,7 @@ export const DataCompareView: React.FC = () => {
             const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
 
             const payload = {
-              sourceConnection: sourceConn,
+              sourceConnection: targetConn,
               targetConnection: targetConn,
               tableName: mapping.targetTable,
               customQuerySource: sqFinal,
@@ -370,7 +354,7 @@ export const DataCompareView: React.FC = () => {
 
   // ── Date/filter helper: just updates state, effective query is built dynamically ──
   const updateMappingWithDateFilter = (mappingId: string, updates: Partial<TableMapping>) => {
-    updateTableMapping(mappingId, updates);
+    updateExcelMapping(mappingId, updates);
   };
 
   const toggleMapping = (id: string) => {
@@ -381,11 +365,32 @@ export const DataCompareView: React.FC = () => {
     if (checked) setFocusedMappingId(id);
   };
 
+  const handleRemoveMapping = async (mapping: TableMapping) => {
+    // If it's an excel import table, drop it from the DB
+    const isExcelTable = mapping.sourceTable?.startsWith('excel_import_') || mapping.targetTable?.startsWith('excel_import_');
+    if (isExcelTable) {
+      const tableName = mapping.sourceTable?.startsWith('excel_import_') ? mapping.sourceTable : mapping.targetTable;
+      const connId = mapping.sourceTable?.startsWith('excel_import_') ? (excelIsTarget ? sourceConnectionId : targetConnectionId) : (excelIsTarget ? targetConnectionId : sourceConnectionId);
+      
+      if (connId && tableName) {
+        try {
+          await axios.post('http://localhost:8081/api/excel/drop', {
+            connectionId: connId,
+            tableName: tableName
+          });
+        } catch (err) {
+          console.error("Failed to drop excel table", err);
+        }
+      }
+    }
+    removeExcelMapping(mapping.id);
+  };
+
   const toggleSelectAll = () => {
-    if (selectedMappings.size === tableMappings.length) {
+    if (selectedMappings.size === excelMappings.length) {
       setSelectedMappingIds([]);
     } else {
-      setSelectedMappingIds(tableMappings.map(m => m.id));
+      setSelectedMappingIds(excelMappings.map(m => m.id));
     }
   };
 
@@ -400,11 +405,32 @@ export const DataCompareView: React.FC = () => {
     setMappingModalOpen(true);
   };
 
-  const filteredMappings = tableMappings.filter(m => {
-    // Exclude any mappings that involve excel_import_ tables
-    if (m.sourceTable?.toLowerCase().startsWith('excel_import_') || m.targetTable?.toLowerCase().startsWith('excel_import_')) {
-      return false;
+  const handleClearExcelMappings = async () => {
+    // Cleanup all temporary excel tables before clearing
+    for (const mapping of excelMappings) {
+      const isExcelTable = mapping.sourceTable?.startsWith('excel_import_') || mapping.targetTable?.startsWith('excel_import_');
+      if (isExcelTable) {
+        const tableName = mapping.sourceTable?.startsWith('excel_import_') ? mapping.sourceTable : mapping.targetTable;
+        const connId = mapping.sourceTable?.startsWith('excel_import_') ? (excelIsTarget ? sourceConnectionId : targetConnectionId) : (excelIsTarget ? targetConnectionId : sourceConnectionId);
+        
+        if (connId && tableName) {
+          try {
+            axios.post('http://localhost:8081/api/excel/drop', {
+              connectionId: connId,
+              tableName: tableName
+            }).catch(() => {}); // Fire and forget
+          } catch (err) {}
+        }
+      }
     }
+    clearExcelMappings();
+  };
+
+  const filteredMappings = excelMappings.filter(m => {
+    // Note: Excel mappings SHOULD contain excel_import_ tables, 
+    // but maybe we want to search them. 
+    // Actually, for ExcelCompareView, we WANT to see them.
+    // However, if there are accidental non-excel mappings here, we'd want to know.
     return !searchTerm ||
       m.sourceTable.toLowerCase().includes(searchTerm.toLowerCase()) ||
       m.targetTable.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -412,7 +438,7 @@ export const DataCompareView: React.FC = () => {
   });
 
   const focusedDiff = focusedMapping ? diffResults[focusedMapping] : null;
-  const focusedMappingObj = tableMappings.find(m => m.id === focusedMapping);
+  const focusedMappingObj = excelMappings.find(m => m.id === focusedMapping);
 
   return (
     <div className={clsx("flex flex-col bg-bg-main text-text-main", isFullscreen ? "fixed inset-0 z-[100]" : "h-full min-h-0")}>
@@ -421,34 +447,114 @@ export const DataCompareView: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="flex flex-col">
-              <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-0.5">Source</span>
-              <select
-                className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded-md text-xs font-medium text-text-input w-52 focus:border-blue-500 outline-none"
-                value={sourceConnectionId || ''}
-                onChange={e => { setSourceConnectionId(e.target.value); clearTableMappings(); }}
-              >
-                <option value="">Select source...</option>
-                {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
-              </select>
-            </div>
+                <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-0.5">
+                  {excelIsTarget ? "Source DB" : "Source Excel"}
+                </span>
+                {!excelIsTarget ? (
+                  <>
+                    <input 
+                      type="file" 
+                      id="excel-upload"
+                      className="hidden" 
+                      accept=".xlsx,.xls" 
+                      onChange={async (e) => {
+                        if (e.target.files && e.target.files.length > 0 && targetConnectionId) {
+                          const file = e.target.files[0];
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          formData.append('connectionId', targetConnectionId);
+                          try {
+                            const res = await axios.post('http://localhost:8081/api/excel/upload', formData, {
+                              headers: { 'Content-Type': 'multipart/form-data' }
+                            });
+                            if (res.data.success) {
+                              addExcelMapping({ id: `excel-${Date.now()}`, sourceTable: res.data.tableName, targetTable: '' });
+                              alert('Excel uploaded successfully!');
+                            }
+                          } catch (err: any) { alert("Upload failed: " + err.message); }
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => document.getElementById('excel-upload')?.click()}
+                      disabled={!targetConnectionId}
+                      className="px-2.5 py-1.5 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-md text-xs font-bold hover:bg-blue-500 hover:text-white transition-colors"
+                    >
+                      {targetConnectionId ? "Upload Excel File" : "Select Target DB First"}
+                    </button>
+                  </>
+                ) : (
+                  <select
+                    className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded-md text-xs font-medium text-text-input w-52 focus:border-blue-500 outline-none"
+                    value={sourceConnectionId || ''}
+                    onChange={e => { setSourceConnectionId(e.target.value); handleClearExcelMappings(); }}
+                  >
+                    <option value="">Select source...</option>
+                    {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
+                  </select>
+                )}
+              </div>
 
-            <div className="w-8 h-8 rounded-full bg-bg-panel flex items-center justify-center border border-border-main mt-3">
-              <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
-            </div>
-
-            <div className="flex flex-col">
-              <span className="text-[9px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-widest mb-0.5">Target</span>
-              <select
-                className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded-md text-xs font-medium text-text-input w-52 focus:border-blue-500 outline-none"
-                value={targetConnectionId || ''}
-                onChange={e => { setTargetConnectionId(e.target.value); clearTableMappings(); }}
+              <button 
+                onClick={() => { setExcelIsTarget(!excelIsTarget); handleClearExcelMappings(); }}
+                className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-3 transition-colors cursor-pointer"
+                title="Swap Source and Target"
               >
-                <option value="">Select target...</option>
-                {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
-              </select>
+                <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
+              </button>
+
+              <div className="flex flex-col">
+                <span className="text-[9px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-widest mb-0.5">
+                  {excelIsTarget ? "Target Excel" : "Target DB"}
+                </span>
+                {excelIsTarget ? (
+                  <>
+                    <input 
+                      type="file" 
+                      id="excel-upload-target"
+                      className="hidden" 
+                      accept=".xlsx,.xls" 
+                      onChange={async (e) => {
+                        if (e.target.files && e.target.files.length > 0 && sourceConnectionId) {
+                          const file = e.target.files[0];
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          formData.append('connectionId', sourceConnectionId);
+                          try {
+                            const res = await axios.post('http://localhost:8081/api/excel/upload', formData, {
+                              headers: { 'Content-Type': 'multipart/form-data' }
+                            });
+                            if (res.data.success) {
+                              addExcelMapping({ id: `excel-${Date.now()}`, sourceTable: '', targetTable: res.data.tableName });
+                              alert('Excel uploaded successfully!');
+                            }
+                          } catch (err: any) { alert("Upload failed: " + err.message); }
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => document.getElementById('excel-upload-target')?.click()}
+                      disabled={!sourceConnectionId}
+                      className="px-2.5 py-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-md text-xs font-bold hover:bg-emerald-500 hover:text-white transition-colors"
+                    >
+                      {sourceConnectionId ? "Upload Excel File" : "Select Source DB First"}
+                    </button>
+                  </>
+                ) : (
+                  <select
+                    className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded-md text-xs font-medium text-text-input w-52 focus:border-emerald-500 outline-none"
+                    value={targetConnectionId || ''}
+                    onChange={e => { setTargetConnectionId(e.target.value); handleClearExcelMappings(); }}
+                  >
+                    <option value="">Select target...</option>
+                    {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
+                  </select>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
         <div className="flex items-center gap-2">
           {loading && (
@@ -492,7 +598,7 @@ export const DataCompareView: React.FC = () => {
 
           <button
             onClick={handleSynchronize}
-            disabled={!sourceConn || !targetConn || selectedMappings.size === 0 || loading || syncing}
+            disabled={!(excelIsTarget ? sourceConn : targetConn) || selectedMappings.size === 0 || loading || syncing}
             className="px-4 py-1.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white rounded-md flex items-center gap-2 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20 transition-all"
             title="Synchronize Data from Source to Target"
           >
@@ -502,7 +608,7 @@ export const DataCompareView: React.FC = () => {
 
           <button
             onClick={handleCompare}
-            disabled={!sourceConn || !targetConn || selectedMappings.size === 0 || loading || syncing}
+            disabled={!(excelIsTarget ? sourceConn : targetConn) || selectedMappings.size === 0 || loading || syncing}
             className="px-4 py-1.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-md flex items-center gap-2 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 transition-all"
           >
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
@@ -521,7 +627,7 @@ export const DataCompareView: React.FC = () => {
               <div className="bg-bg-header border-b border-border-main px-3 py-1.5 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2 text-[10px] font-semibold text-text-muted uppercase tracking-wider">
                   <LayoutList className="w-3.5 h-3.5 text-blue-500" /> Table Mappings
-                  <span className="ml-1 px-1.5 py-0.5 bg-bg-hover rounded text-[9px] text-text-muted">{tableMappings.length}</span>
+                  <span className="ml-1 px-1.5 py-0.5 bg-bg-hover rounded text-[9px] text-text-muted">{excelMappings.length}</span>
                 </div>
                 <div className="relative">
                   <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -540,7 +646,7 @@ export const DataCompareView: React.FC = () => {
                     <tr>
                       <th className="py-1.5 px-2 w-8 text-center">
                         <button onClick={toggleSelectAll} className="text-text-muted hover:text-blue-500 pt-0.5">
-                          {selectedMappings.size === tableMappings.length && tableMappings.length > 0
+                          {selectedMappings.size === excelMappings.length && excelMappings.length > 0
                             ? <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
                             : <Square className="w-3.5 h-3.5" />}
                         </button>
@@ -565,7 +671,7 @@ export const DataCompareView: React.FC = () => {
                         </td>
                       </tr>
                     )}
-                    {!loadingTables && tableMappings.length === 0 && (
+                    {!loadingTables && excelMappings.length === 0 && (
                       <tr>
                         <td colSpan={10} className="py-8 text-center text-xs text-text-muted">
                           {sourceConn && targetConn ? 'No tables found.' : 'Select Source and Target connections above to start.'}
@@ -657,7 +763,7 @@ export const DataCompareView: React.FC = () => {
                                 <Settings className="w-3 h-3" />
                               </button>
                               <button
-                                onClick={e => { e.stopPropagation(); removeTableMapping(m.id); }}
+                                onClick={e => { e.stopPropagation(); handleRemoveMapping(m); }}
                                 className="p-1 rounded text-text-muted hover:text-red-500 hover:bg-bg-hover transition-colors"
                                 title="Remove mapping"
                               >
@@ -749,7 +855,7 @@ export const DataCompareView: React.FC = () => {
                       type="text"
                       placeholder="Alias for this mapping"
                       value={focusedMappingObj.label || ''}
-                      onChange={e => updateTableMapping(focusedMappingObj.id, { label: e.target.value })}
+                      onChange={e => updateExcelMapping(focusedMappingObj.id, { label: e.target.value })}
                       className="px-2 py-0.5 text-[11px] bg-bg-input border border-border-input rounded w-32 outline-none focus:border-blue-500"
                     />
                   </div>
@@ -867,10 +973,11 @@ export const DataCompareView: React.FC = () => {
 
       {/* ── Mapping Modal ── */}
       {mappingModalOpen && (
-        <TableMappingModal
+        <ExcelMappingModal
           sourceTables={sourceTables}
           targetTables={targetTables}
           editingMapping={editingMapping}
+          excelIsTarget={excelIsTarget}
           onClose={() => { setMappingModalOpen(false); setEditingMapping(null); }}
         />
       )}

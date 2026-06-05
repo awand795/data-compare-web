@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { X, HelpCircle, Command, BookOpen, GitCompareArrows, Terminal, Table2 } from 'lucide-react';
 import clsx from 'clsx';

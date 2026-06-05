@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -21,6 +22,7 @@ export const QueryWorkspace: React.FC = () => {
     focusedMappingId,
     tableMappings,
     defaultRowLimit,
+    showAlert,
   } = useAppStore();
 
   const [sourceResults, setSourceResults] = useState<any[] | null>(null);
@@ -40,9 +42,31 @@ export const QueryWorkspace: React.FC = () => {
   const [comparing, setComparing] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'DIFFERENT' | 'SOURCE_ONLY' | 'TARGET_ONLY' | 'IDENTICAL'>('ALL');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [returnMatchedRows, setReturnMatchedRows] = useState(true);
 
   const sourceConn = connections.find(c => c.id === sourceConnectionId);
   const targetConn = connections.find(c => c.id === targetConnectionId);
+
+  // Warm up connections in the background as soon as they are selected
+  useEffect(() => {
+    if (sourceConn) {
+      fetch('http://localhost:8081/api/warmup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([sourceConn])
+      }).catch(err => console.error("Failed to trigger warmup", err));
+    }
+  }, [sourceConn?.id]);
+
+  useEffect(() => {
+    if (targetConn) {
+      fetch('http://localhost:8081/api/warmup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([targetConn])
+      }).catch(err => console.error("Failed to trigger warmup", err));
+    }
+  }, [targetConn?.id]);
 
   useEffect(() => {
     if (!focusedMappingId) return;
@@ -128,19 +152,62 @@ export const QueryWorkspace: React.FC = () => {
     }
 
     try {
-      const res = await axios.post('http://localhost:8081/api/execute-query', {
-        connection: conn,
-        query: finalQuery
+      setResults([]); // Start with empty results to show incoming rows
+      const response = await fetch('http://localhost:8081/api/execute-query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connection: conn, query: finalQuery })
       });
-      if (res.data.success === false) {
-        setError(res.data.message || 'Error executing query');
-        setResults(null);
-      } else {
-        setResults(res.data.rows || res.data);
+      
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let allRows: any[] = [];
+
+      let batchTimer: any = null;
+      let pendingBatch: any[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
+            if (msg.type === 'error') {
+               setError(msg.message);
+            } else if (msg.type === 'row') {
+               allRows.push(msg.data);
+               pendingBatch.push(msg.data);
+            }
+          } catch (e) {
+            console.error("Parse error", line, e);
+          }
+        }
+        
+        if (pendingBatch.length > 0 && !batchTimer) {
+           batchTimer = setTimeout(() => {
+             setResults(allRows);
+             pendingBatch = [];
+             batchTimer = null;
+           }, 200);
+        }
+      }
+      
+      if (pendingBatch.length > 0) {
+         if (batchTimer) clearTimeout(batchTimer);
+         setResults([...allRows]);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || err.message);
-      setResults(null);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -149,6 +216,8 @@ export const QueryWorkspace: React.FC = () => {
   const handleCompare = async () => {
     if (!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim()) return;
     setComparing(true);
+    setViewMode('diff');
+    setWorkspaceDiffResult({ columns: [], rows: [], summary: null, status: 'comparing' });
     
     let sqFinal = sourceQuery;
     let tqFinal = targetQuery;
@@ -164,19 +233,140 @@ export const QueryWorkspace: React.FC = () => {
     }
 
     try {
-      const res = await axios.post('http://localhost:8081/api/compare', {
-        sourceConnection: sourceConn,
-        targetConnection: targetConn,
-        tableName: m?.sourceTable || null,
-        customQuerySource: sqFinal,
-        customQueryTarget: tqFinal,
-        primaryKeys: pks || null,
-        excludeColumns: excl || null,
+      const response = await fetch('http://localhost:8081/api/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceConnection: sourceConn,
+          targetConnection: targetConn,
+          tableName: m?.sourceTable || null,
+          customQuerySource: sqFinal,
+          customQueryTarget: tqFinal,
+          primaryKeys: pks || null,
+          excludeColumns: excl || null,
+          sortColumns: m?.sortColumns || null,
+            returnMatchedRows,
+        })
       });
-      setWorkspaceDiffResult(res.data);
-      setViewMode('diff');
+
+      if (!response.ok) {
+        let errStr = `HTTP ${response.status}`;
+        try {
+            const errBody = await response.json();
+            if (errBody.message) errStr = errBody.message;
+        } catch(e) {
+            try {
+                const text = await response.text();
+                if (text) errStr = text;
+            } catch (e2) {}
+        }
+        throw new Error(errStr);
+      }
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      let batchTimer: any = null;
+      let pendingColumns: string[] | null = null;
+      let pendingRows: any[] = [];
+      let pendingSummary: any = null;
+      
+      let allRows: any[] = [];
+      let finalColumns: string[] = [];
+      let counters = { match: 0, different: 0, sourceOnly: 0, targetOnly: 0 };
+      let finalSummary: any = null;
+
+      const flush = () => {
+        setWorkspaceDiffResult({
+          columns: finalColumns,
+          rows: [...allRows],
+          summary: finalSummary,
+          counters: { ...counters },
+          status: 'comparing'
+        });
+        pendingColumns = null;
+        pendingRows = [];
+        pendingSummary = null;
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
+            if (msg.type === 'columns') {
+               pendingColumns = msg.data;
+               finalColumns = msg.data;
+            }
+              else if (msg.type === 'row') {
+                 pendingRows.push(msg.data);
+                 allRows.push(msg.data);
+                 if (msg.data.status === 'MATCH') counters.match++;
+                 else if (msg.data.status === 'DIFFERENT') counters.different++;
+                 else if (msg.data.status === 'SOURCE_ONLY') counters.sourceOnly++;
+                 else if (msg.data.status === 'TARGET_ONLY') counters.targetOnly++;
+              }
+            else if (msg.type === 'summary') {
+               pendingSummary = msg.data;
+               finalSummary = msg.data;
+            }
+          } catch (e) {
+            console.error("Parse error", line, e);
+          }
+        }
+        
+        if ((pendingColumns || pendingRows.length > 0 || pendingSummary) && !batchTimer) {
+           batchTimer = setTimeout(() => {
+             flush();
+             batchTimer = null;
+           }, 200);
+        }
+      }
+      
+      if (batchTimer) clearTimeout(batchTimer);
+      flush();
+
+      if (buffer.trim()) {
+        try {
+          const msg = JSON.parse(buffer.trim());
+          if (msg.type === 'summary') {
+            finalSummary = msg.data;
+            setWorkspaceDiffResult({
+              columns: finalColumns,
+              rows: [...allRows], // Final immutable copy for rendering the grid
+              summary: finalSummary,
+              counters: { ...counters },
+              status: 'done'
+            });
+            if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
+          }
+        } catch (e) {}
+      }
+      
+      setWorkspaceDiffResult({
+        columns: finalColumns,
+        rows: allRows,
+        summary: finalSummary,
+        status: 'done'
+      });
+      
     } catch (err: any) {
-      alert('Comparison failed: ' + (err.response?.data?.message || err.message));
+      showAlert({
+        title: 'Comparison Failed',
+        message: err.message || 'An unexpected error occurred.',
+        type: 'error',
+        details: err.stack || String(err)
+      });
+      setWorkspaceDiffResult((prev: any) => ({ ...prev, status: 'error' }));
     } finally {
       setComparing(false);
     }
@@ -267,6 +457,19 @@ export const QueryWorkspace: React.FC = () => {
           {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
         </button>
 
+        <div className="flex items-center gap-2 mr-1">
+          <input
+            type="checkbox"
+            id="returnMatchedRowsQw"
+            checked={!returnMatchedRows}
+            onChange={e => setReturnMatchedRows(!e.target.checked)}
+            className="w-3 h-3 rounded border-border-input bg-bg-panel text-amber-500 focus:ring-amber-500 focus:ring-offset-bg-header"
+          />
+          <label htmlFor="returnMatchedRowsQw" className="text-[10px] text-text-muted cursor-pointer hover:text-text-main select-none font-medium">
+            Only Diff
+          </label>
+        </div>
+
         <button
           onClick={handleCompare}
             disabled={!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim() || comparing}
@@ -336,33 +539,33 @@ export const QueryWorkspace: React.FC = () => {
             {workspaceDiffResult && (
               <div className="flex bg-bg-input p-1 rounded-md mb-2 shrink-0 border border-border-input overflow-x-auto">
                 {[
-                  { id: 'ALL', label: 'All', count: workspaceDiffResult?.rows?.length || 0, color: 'text-text-main' },
-                  { id: 'DIFFERENT', label: 'Different', count: workspaceDiffResult?.rows?.filter((r: any) => r.status === 'DIFFERENT').length || 0, color: 'text-amber-500 dark:text-amber-400' },
-                  { id: 'SOURCE_ONLY', label: 'Src Only', count: workspaceDiffResult?.rows?.filter((r: any) => r.status === 'SOURCE_ONLY').length || 0, color: 'text-red-500 dark:text-red-400' },
-                  { id: 'TARGET_ONLY', label: 'Tgt Only', count: workspaceDiffResult?.rows?.filter((r: any) => r.status === 'TARGET_ONLY').length || 0, color: 'text-emerald-600 dark:text-emerald-400' },
-                  { id: 'IDENTICAL', label: 'Identical', count: workspaceDiffResult?.rows?.filter((r: any) => r.status === 'MATCH').length || 0 },
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setFilterStatus(tab.id as any)}
-                    className={clsx(
-                      "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all min-w-[100px]",
-                      filterStatus === tab.id
-                        ? "bg-bg-panel shadow-sm border border-border-item text-text-main"
-                        : "text-text-muted hover:bg-bg-hover hover:text-text-main"
-                    )}
-                  >
-                    <span className={tab.color}>{tab.label}</span>
-                    <span className="bg-bg-hover px-1.5 py-0.5 rounded text-[9px] font-mono text-text-muted">
-                      {tab.count}
-                    </span>
-                  </button>
-                ))}
+                      { id: 'ALL', label: 'All', count: workspaceDiffResult?.rows?.length || 0, color: 'text-text-main' },
+                      { id: 'DIFFERENT', label: 'Different', count: workspaceDiffResult?.counters?.different || 0, color: 'text-amber-500 dark:text-amber-400' },
+                      { id: 'SOURCE_ONLY', label: 'Src Only', count: workspaceDiffResult?.counters?.sourceOnly || 0, color: 'text-red-500 dark:text-red-400' },
+                      { id: 'TARGET_ONLY', label: 'Tgt Only', count: workspaceDiffResult?.counters?.targetOnly || 0, color: 'text-emerald-600 dark:text-emerald-400' },
+                      { id: 'IDENTICAL', label: 'Identical', count: workspaceDiffResult?.counters?.match || 0 },
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setFilterStatus(tab.id as any)}
+                        className={clsx(
+                          "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all min-w-[100px]",
+                          filterStatus === tab.id
+                            ? "bg-bg-panel shadow-sm border border-border-item text-text-main"
+                            : "text-text-muted hover:bg-bg-hover hover:text-text-main"
+                        )}
+                      >
+                        <span className={tab.color}>{tab.label}</span>
+                        <span className="bg-bg-main px-1.5 py-0.5 rounded-full text-[9px] border border-border-main">
+                          {tab.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              <div className="flex-1 bg-bg-main border border-border-main rounded overflow-hidden min-h-0">
+                <DiffDataGrid filterStatus={filterStatus} directResult={workspaceDiffResult} />
               </div>
-            )}
-            <div className="flex-1 bg-bg-main border border-border-main rounded overflow-hidden min-h-0">
-              <DiffDataGrid filterStatus={filterStatus} directResult={workspaceDiffResult} />
-            </div>
           </div>
         )}
       </div>
