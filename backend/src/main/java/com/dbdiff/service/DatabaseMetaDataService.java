@@ -138,6 +138,7 @@ public class DatabaseMetaDataService {
      */
     public SchemaCompareResult compareSchema(DataSource sourceDs, String sourceTable, String sourceSchema, DataSource targetDs, String targetTable, String targetSchema) {
         SchemaCompareResult result = new SchemaCompareResult();
+        result.setTableName(sourceTable != null ? sourceTable : targetTable);
         
         List<ColumnDiff> sourceCols = getDetailedTableInfo(sourceDs, sourceTable, sourceSchema);
         List<ColumnDiff> targetCols = getDetailedTableInfo(targetDs, targetTable, targetSchema);

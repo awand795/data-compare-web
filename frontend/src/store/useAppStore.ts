@@ -186,6 +186,10 @@ type AppState = {
   explorerTableName: string | null;
   setExplorerTableName: (name: string | null) => void;
 
+  // Max rows to keep per mapping (to prevent browser memory issues)
+  maxRowsInMemory: number;
+  setMaxRowsInMemory: (limit: number) => void;
+
   // Data compare
   diffResults: Record<string, DiffResult>;
   setDiffResult: (mappingId: string, result: DiffResult) => void;
@@ -193,6 +197,7 @@ type AppState = {
   setDiffColumns: (mappingId: string, columns: string[]) => void;
   appendDiffRows: (mappingId: string, rows: DiffRow[]) => void;
   setDiffSummary: (mappingId: string, summary: Partial<DiffResult>) => void;
+  setBatchProgress: (mappingId: string, current: number, total: number) => void;
   clearDiffResults: () => void;
 
   // Schema compare
@@ -254,6 +259,8 @@ type AppState = {
   setDefaultRowLimit: (limit: number) => void;
 };
 
+const MAX_ROWS_IN_MEMORY = 100000;
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -311,11 +318,7 @@ export const useAppStore = create<AppState>()(
     const existing = state.diffResults[mappingId];
     if (!existing) return state;
     
-    // Update incremental counts
-    let matchCount = existing.matchCount;
-    let differentCount = existing.differentCount;
-    let sourceOnlyCount = existing.sourceOnlyCount;
-    let targetOnlyCount = existing.targetOnlyCount;
+    let { matchCount, differentCount, sourceOnlyCount, targetOnlyCount } = existing;
     for (const r of newRows) {
       if (r.status === 'MATCH') matchCount++;
       else if (r.status === 'DIFFERENT') differentCount++;
@@ -325,13 +328,20 @@ export const useAppStore = create<AppState>()(
     
     // Mutate the array directly to avoid O(N^2) copying lag during large streams
     existing.rows.push(...newRows);
+    
+    // Enforce memory limit — trim oldest rows if exceeded
+    const maxRows = state.maxRowsInMemory || 100000;
+    if (existing.rows.length > maxRows) {
+      existing.rows.splice(0, existing.rows.length - maxRows);
+    }
       
     return {
       diffResults: {
         ...state.diffResults,
         [mappingId]: {
           ...existing,
-          rows: [...existing.rows], // Copy reference so grid updates in real-time
+          rows: existing.rows,
+          _v: (existing._v || 0) + 1,
           matchCount,
           differentCount,
           sourceOnlyCount,
@@ -344,7 +354,14 @@ export const useAppStore = create<AppState>()(
     const existing = state.diffResults[mappingId];
     if (!existing) return state;
     return {
-      diffResults: { ...state.diffResults, [mappingId]: { ...existing, ...summary, rows: [...existing.rows], status: 'done' } }
+      diffResults: { ...state.diffResults, [mappingId]: { ...existing, ...summary, rows: existing.rows, _v: (existing._v || 0) + 1, status: 'done' } }
+    };
+  }),
+  setBatchProgress: (mappingId, current, total) => set((state) => {
+    const existing = state.diffResults[mappingId];
+    if (!existing) return state;
+    return {
+      diffResults: { ...state.diffResults, [mappingId]: { ...existing, batchCurrent: current, batchTotal: total } }
     };
   }),
   clearDiffResults: () => set({ diffResults: {} }),
@@ -526,6 +543,9 @@ export const useAppStore = create<AppState>()(
 
   theme: 'light',
   setTheme: (theme) => set({ theme }),
+
+  maxRowsInMemory: MAX_ROWS_IN_MEMORY,
+  setMaxRowsInMemory: (limit) => set({ maxRowsInMemory: limit }),
 
   defaultRowLimit: 100,
   setDefaultRowLimit: (limit) => set({ defaultRowLimit: limit }),

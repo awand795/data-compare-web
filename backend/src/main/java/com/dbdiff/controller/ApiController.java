@@ -126,6 +126,72 @@ public class ApiController {
                 .body(stream);
     }
 
+    /**
+     * Compare data in batches (paginated) — untuk data besar
+     */
+    @PostMapping("/compare-batch")
+    public ResponseEntity<?> compareBatch(
+            @RequestBody Map<String, Object> payload) {
+        try {
+            DiffRequest request = new DiffRequest();
+            Map<String, Object> srcMap = (Map<String, Object>) payload.get("sourceConnection");
+            Map<String, Object> tgtMap = (Map<String, Object>) payload.get("targetConnection");
+            request.setSourceConnection(mapToDetails(srcMap));
+            request.setTargetConnection(mapToDetails(tgtMap));
+            request.setTableName((String) payload.get("tableName"));
+            request.setCustomQuerySource((String) payload.get("customQuerySource"));
+            request.setCustomQueryTarget((String) payload.get("customQueryTarget"));
+            
+            if (payload.containsKey("primaryKeys")) {
+                request.setPrimaryKeys((List<String>) payload.get("primaryKeys"));
+            }
+            if (payload.containsKey("excludeColumns")) {
+                request.setExcludeColumns((List<String>) payload.get("excludeColumns"));
+            }
+            if (payload.containsKey("sortColumns")) {
+                request.setSortColumns((List<String>) payload.get("sortColumns"));
+            }
+            request.setReturnMatchedRows(
+                !payload.containsKey("returnMatchedRows") || Boolean.TRUE.equals(payload.get("returnMatchedRows")));
+
+            int batchSize = payload.containsKey("batchSize") ? ((Number) payload.get("batchSize")).intValue() : 50000;
+            int offset = payload.containsKey("offset") ? ((Number) payload.get("offset")).intValue() : 0;
+
+            Map<String, Object> result = comparisonService.compareBatch(request, batchSize, offset);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", true,
+                    "message", e.getMessage() != null ? e.getMessage() : "Failed to compare batch"
+            ));
+        }
+    }
+
+    /**
+     * Count rows in source & target tables (for batch progress tracking)
+     */
+    @PostMapping("/compare-count")
+    public ResponseEntity<?> compareCount(@RequestBody Map<String, Object> payload) {
+        try {
+            DiffRequest request = new DiffRequest();
+            Map<String, Object> srcMap = (Map<String, Object>) payload.get("sourceConnection");
+            Map<String, Object> tgtMap = (Map<String, Object>) payload.get("targetConnection");
+            request.setSourceConnection(mapToDetails(srcMap));
+            request.setTargetConnection(mapToDetails(tgtMap));
+            request.setTableName((String) payload.get("tableName"));
+            request.setCustomQuerySource((String) payload.get("customQuerySource"));
+            request.setCustomQueryTarget((String) payload.get("customQueryTarget"));
+
+            Map<String, Object> result = comparisonService.countRows(request);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", true,
+                    "message", e.getMessage() != null ? e.getMessage() : "Failed to count rows"
+            ));
+        }
+    }
+
     @PostMapping("/export-excel")
     public ResponseEntity<StreamingResponseBody> exportExcel(
             @RequestBody DiffRequest request,

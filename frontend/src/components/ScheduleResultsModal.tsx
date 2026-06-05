@@ -121,8 +121,8 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                               {r.differentCount}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-center text-text-muted">{r.sourceOnlyCount}</td>
-                          <td className="py-3 px-4 text-center text-text-muted">{r.targetOnlyCount}</td>
+                          <td className={clsx("py-3 px-4 text-center font-bold", r.sourceOnlyCount > 0 ? "text-orange-500" : "text-text-muted")}>{r.sourceOnlyCount}</td>
+                          <td className={clsx("py-3 px-4 text-center font-bold", r.targetOnlyCount > 0 ? "text-blue-500" : "text-text-muted")}>{r.targetOnlyCount}</td>
                           <td className="py-3 px-4">
                             {r.errorMessage ? (
                               <div className="flex items-center gap-1.5 text-red-400 group relative">
@@ -156,16 +156,32 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-border-item/30">
-                                    {tableDetails.map((td, tidx) => (
-                                      <tr key={tidx} className="hover:bg-bg-panel/60 transition-colors">
+                                    {tableDetails.map((td, tidx) => {
+                                      const hasDiff = (td.different ?? 0) > 0;
+                                      const hasSrcOnly = (td.sourceOnly ?? 0) > 0;
+                                      const hasTgtOnly = (td.targetOnly ?? 0) > 0;
+                                      const hasIssue = hasDiff || hasSrcOnly || hasTgtOnly;
+                                      const rowHighlight = !hasIssue
+                                        ? ""
+                                        : hasDiff
+                                          ? "bg-red-500/[0.04] border-l-2 border-l-red-500/40"
+                                          : hasSrcOnly
+                                            ? "bg-orange-500/[0.04] border-l-2 border-l-orange-500/40"
+                                            : "bg-blue-500/[0.04] border-l-2 border-l-blue-500/40";
+                                      return (
+                                      <tr key={tidx} className={clsx("hover:bg-bg-panel/60 transition-colors", rowHighlight)}>
                                         <td className="py-2 px-3 font-mono font-medium text-text-main">{td.tableName}</td>
                                         <td className="py-2 px-3 text-center text-emerald-500 font-bold">{td.match ?? '-'}</td>
-                                        <td className="py-2 px-3 text-center text-red-500 font-bold">{td.different ?? '-'}</td>
-                                        <td className="py-2 px-3 text-center text-text-muted">{td.sourceOnly ?? '-'}</td>
-                                        <td className="py-2 px-3 text-center text-text-muted">{td.targetOnly ?? '-'}</td>
+                                        <td className={clsx("py-2 px-3 text-center font-bold", (td.different ?? 0) > 0 ? "text-red-500" : "text-text-muted")}>{td.different ?? '-'}</td>
+                                        <td className={clsx("py-2 px-3 text-center font-bold", (td.sourceOnly ?? 0) > 0 ? "text-orange-500" : "text-text-muted")}>{td.sourceOnly ?? '-'}</td>
+                                        <td className={clsx("py-2 px-3 text-center font-bold", (td.targetOnly ?? 0) > 0 ? "text-blue-500" : "text-text-muted")}>{td.targetOnly ?? '-'}</td>
                                         <td className="py-2 px-3 text-center">
                                           {td.error ? (
                                             <span className="text-red-400 italic text-[10px]">{td.error}</span>
+                                          ) : (td.different === 0 && td.sourceOnly === 0 && td.targetOnly === 0) ? (
+                                            <span className="flex items-center gap-1 mx-auto justify-center text-emerald-500 font-bold text-[10px]">
+                                              <CheckCircle className="w-3 h-3" /> Identical
+                                            </span>
                                           ) : (
                                             <button 
                                               onClick={() => setViewingData({resultId: r.id, tableName: td.tableName})}
@@ -176,7 +192,8 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                                           )}
                                         </td>
                                       </tr>
-                                    ))}
+                                    );
+                                    })}
                                   </tbody>
                                 </table>
                               </div>

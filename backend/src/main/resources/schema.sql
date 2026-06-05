@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS schedule_result_rows (
     row_key VARCHAR(255),
     status VARCHAR(50),
     data_json TEXT,
+    table_name VARCHAR(200),
     FOREIGN KEY (result_id) REFERENCES schedule_results(id) ON DELETE CASCADE
 );
 
@@ -103,4 +104,5 @@ ALTER TABLE schedules ADD COLUMN IF NOT EXISTS telegram_channel_id VARCHAR(50);
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS discord_channel_id VARCHAR(50);
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS mappings TEXT;
 ALTER TABLE schedule_results ADD COLUMN IF NOT EXISTS details TEXT;
+ALTER TABLE schedule_result_rows ADD COLUMN IF NOT EXISTS table_name VARCHAR(200);
 

@@ -6,6 +6,7 @@ public class ScheduleResultRow {
     private String rowKey;
     private String status;
     private String dataJson;
+    private String tableName;
 
     public Long getId() {
         return this.id;
@@ -36,5 +37,11 @@ public class ScheduleResultRow {
     }
     public void setDataJson(String dataJson) {
         this.dataJson = dataJson;
+    }
+    public String getTableName() {
+        return this.tableName;
+    }
+    public void setTableName(String tableName) {
+        this.tableName = tableName;
     }
 }

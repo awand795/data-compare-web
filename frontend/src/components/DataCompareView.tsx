@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore, type TableMapping } from '../store/useAppStore';
 import {
   Database, ArrowRight, Play, LayoutList, CheckSquare, Square,
@@ -41,6 +41,41 @@ export const DataCompareView: React.FC = () => {
   const selectedMappings = React.useMemo(() => new Set(selectedMappingIds), [selectedMappingIds]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFullscreenGrid, setIsFullscreenGrid] = useState(false);
+  const [fadingOutMappings, setFadingOutMappings] = useState<Set<string>>(new Set());
+  const prevComparingRef = useRef<Set<string>>(new Set());
+  const creatingMappingsRef = useRef(false);
+
+  // Detect mappings that just finished comparing → trigger fade-out animation
+  useEffect(() => {
+    const currentComparing = new Set(
+      Object.entries(diffResults)
+        .filter(([, dr]) => dr.status === 'comparing')
+        .map(([id]) => id)
+    );
+
+    const prevComparing = prevComparingRef.current;
+    const justCompleted = [...prevComparing].filter(id => !currentComparing.has(id));
+
+    if (justCompleted.length > 0) {
+      setFadingOutMappings(prev => {
+        const next = new Set(prev);
+        justCompleted.forEach(id => next.add(id));
+        return next;
+      });
+
+      // Remove from fade-out set after animation completes (700ms)
+      setTimeout(() => {
+        setFadingOutMappings(prev => {
+          const next = new Set(prev);
+          justCompleted.forEach(id => next.delete(id));
+          return next;
+        });
+      }, 700);
+    }
+
+    prevComparingRef.current = currentComparing;
+  }, [diffResults]);
+
   const focusedMapping = focusedMappingId || '';
 
   const sourceConn = connections.find(c => c.id === sourceConnectionId);
@@ -48,19 +83,23 @@ export const DataCompareView: React.FC = () => {
 
   // Fetch tables when connections change
   useEffect(() => {
-    let sourceLoading = !!sourceConn;
-    let targetLoading = !!targetConn;
-    setLoadingTables(sourceLoading || targetLoading);
+    let cancelled = false;
+    // Immediately clear old tables to prevent stale data race with auto-mapping
+    setSourceTables([]);
+    setTargetTables([]);
+    setLoadingTables(true);
     
     const p1 = sourceConn 
-      ? axios.post('http://localhost:8081/api/tables', sourceConn).then(res => setSourceTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
+      ? axios.post('http://localhost:8081/api/tables', sourceConn).then(res => { if (!cancelled) setSourceTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name)); }).catch(console.error)
       : Promise.resolve(setSourceTables([]));
       
     const p2 = targetConn 
-      ? axios.post('http://localhost:8081/api/tables', targetConn).then(res => setTargetTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
+      ? axios.post('http://localhost:8081/api/tables', targetConn).then(res => { if (!cancelled) setTargetTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name)); }).catch(console.error)
       : Promise.resolve(setTargetTables([]));
       
-    Promise.all([p1, p2]).finally(() => setLoadingTables(false));
+    Promise.all([p1, p2]).finally(() => { if (!cancelled) setLoadingTables(false); });
+    
+    return () => { cancelled = true; };
   }, [sourceConn?.id, targetConn?.id]);
 
   // Warm up connections in the background as soon as they are selected
@@ -86,41 +125,69 @@ export const DataCompareView: React.FC = () => {
 
   // Auto-create 1:1 mappings when tables load and no mappings exist
   useEffect(() => {
-    if (sourceTables.length > 0 && targetTables.length > 0 && tableMappings.length === 0 && sourceConn) {
+    if (sourceTables.length > 0 && targetTables.length > 0 && tableMappings.length === 0 && sourceConn?.id && !loadingTables && !creatingMappingsRef.current) {
+      creatingMappingsRef.current = true;
+      
       const commonTables = sourceTables.filter(t => targetTables.includes(t));
       
       const createMappings = async () => {
-        for (const t of commonTables) {
-          try {
-            const pkRes = await axios.post('http://localhost:8081/api/primary-keys', {
-              connection: sourceConn,
-              tableName: t
-            });
-            const pks = pkRes.data as string[];
-            addTableMapping({ 
-              id: `auto-${t}`, 
-              sourceTable: t, 
-              targetTable: t,
-              primaryKeys: pks.length > 0 ? pks : undefined
-            });
-          } catch (err) {
-            addTableMapping({ id: `auto-${t}`, sourceTable: t, targetTable: t });
+        try {
+          // Fetch all PKs in parallel first — single await point
+          const pkEntries = await Promise.allSettled(
+            commonTables.map(async (t) => {
+              const pkRes = await axios.post('http://localhost:8081/api/primary-keys', {
+                connection: sourceConn,
+                tableName: t
+              });
+              return { t, pks: pkRes.data as string[] };
+            })
+          );
+          
+          const pkMap = new Map<string, string[]>();
+          pkEntries.forEach(entry => {
+            if (entry.status === 'fulfilled' && entry.value.pks.length > 0) {
+              pkMap.set(entry.value.t, entry.value.pks);
+            }
+          });
+          
+          // Build all mappings synchronously
+          const allMappings: TableMapping[] = commonTables.map(t => ({
+            id: `auto-${t}`,
+            sourceTable: t,
+            targetTable: t,
+            primaryKeys: pkMap.has(t) ? pkMap.get(t) : undefined
+          }));
+          
+          sourceTables.filter(t => !targetTables.includes(t)).forEach(t => {
+            allMappings.push({ id: `src-only-${t}`, sourceTable: t, targetTable: '' });
+          });
+          targetTables.filter(t => !sourceTables.includes(t)).forEach(t => {
+            allMappings.push({ id: `tgt-only-${t}`, sourceTable: '', targetTable: t });
+          });
+          
+          // Verify connection hasn't changed while we were loading
+          const currentState = useAppStore.getState();
+          if (currentState.sourceConnectionId !== sourceConn?.id ||
+              currentState.targetConnectionId !== targetConn?.id) {
+            return; // stale — connection changed while loading, discard
           }
+          
+          // Batch add all at once — atomic, no intermediate state
+          if (allMappings.length > 0) {
+            useAppStore.setState(state => ({
+              tableMappings: [...state.tableMappings, ...allMappings]
+            }));
+          }
+        } finally {
+          creatingMappingsRef.current = false;
         }
-        
-        sourceTables.filter(t => !targetTables.includes(t)).forEach(t => {
-          addTableMapping({ id: `src-only-${t}`, sourceTable: t, targetTable: '' });
-        });
-        targetTables.filter(t => !sourceTables.includes(t)).forEach(t => {
-          addTableMapping({ id: `tgt-only-${t}`, sourceTable: '', targetTable: t });
-        });
       };
 
       createMappings();
     }
-  }, [sourceTables, targetTables, sourceConn]);
+  }, [sourceTables, targetTables, sourceConn?.id, loadingTables]);
 
-  const streamOneMapping = async (mapping: TableMapping) => {
+  const streamLoadMapping = async (mapping: TableMapping) => {
     const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
     const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
 
@@ -133,12 +200,31 @@ export const DataCompareView: React.FC = () => {
       primaryKeys: mapping.primaryKeys || null,
       excludeColumns: mapping.excludeColumns || null,
       sortColumns: mapping.sortColumns || null,
-        returnMatchedRows,
+      returnMatchedRows,
     };
 
     const store = useAppStore.getState();
     store.initDiffResult(mapping.id);
 
+    // Step 1: Get row counts first (for progress bar)
+    let totalRows = 0;
+    try {
+      const countRes = await fetch('http://localhost:8081/api/compare-count', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (countRes.ok) {
+        const countData = await countRes.json();
+        // Merge-join output dibatasi tabel terkecil, jadi pakai min
+        totalRows = Math.min(countData.sourceCount || 0, countData.targetCount || 0);
+        store.setBatchProgress(mapping.id, 0, totalRows);
+      }
+    } catch (e) {
+      console.warn('Count fetch failed, continuing without progress', e);
+    }
+
+    // Step 2: Start streaming comparison
     const response = await fetch('http://localhost:8081/api/compare', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -147,72 +233,90 @@ export const DataCompareView: React.FC = () => {
 
     if (!response.ok) {
       let errMsg = 'Comparison failed for ' + (mapping.sourceTable || 'custom query');
-      try {
-        const errBody = await response.json();
-        errMsg = errBody.message || errMsg;
-      } catch (_e) {
-        try {
-          const errText = await response.text();
-          if (errText) errMsg = errText;
-        } catch (_e2) {}
-      }
+      try { const errBody = await response.json(); errMsg = errBody.message || errMsg; } catch (_e) {}
       throw new Error(errMsg);
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("Response body is not readable");
-    const decoder = new TextDecoder('utf-8');
+    if (!response.body) {
+      throw new Error('Streaming not supported by browser');
+    }
+
+    // Step 3: Read the NDJSON stream
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
     let buffer = '';
     let rowBatch: any[] = [];
-    let batchTimer: ReturnType<typeof setTimeout> | null = null;
+    let rowCount = 0;
+    let columnsSet = false;
+    let summaryData: any = null;
 
-    const flushRows = () => {
+    const flushRowBatch = () => {
       if (rowBatch.length > 0) {
         store.appendDiffRows(mapping.id, rowBatch);
         rowBatch = [];
       }
     };
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        if (batchTimer) clearTimeout(batchTimer);
-        flushRows();
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-      let boundary = buffer.indexOf('\n');
-      while (boundary !== -1) {
-        const line = buffer.substring(0, boundary);
-        buffer = buffer.substring(boundary + 1);
-
-        if (line.trim().length > 0) {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (!line.trim()) continue;
           try {
-            const parsed = JSON.parse(line);
-            if (parsed.type === 'columns') {
-              store.setDiffColumns(mapping.id, parsed.data);
-            } else if (parsed.type === 'row') {
-              rowBatch.push(parsed.data);
-              if (rowBatch.length >= 500) {
-                flushRows();
-              } else if (!batchTimer) {
-                batchTimer = setTimeout(() => {
-                  flushRows();
-                  batchTimer = null;
-                }, 100); // Throttle state updates to 100ms
+            const obj = JSON.parse(line);
+            
+            if (obj.type === 'columns') {
+              if (!columnsSet) {
+                store.setDiffColumns(mapping.id, obj.data);
+                columnsSet = true;
               }
-            } else if (parsed.type === 'summary') {
-              if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
-              flushRows();
-              store.setDiffSummary(mapping.id, parsed.data);
+            } else if (obj.type === 'row') {
+              rowBatch.push(obj.data);
+              rowCount++;
+              // Flush every 100 rows for smooth UI updates
+              if (rowBatch.length >= 100) {
+                flushRowBatch();
+              }
+              // Update progress periodically
+              if (totalRows > 0 && rowCount % 1000 === 0) {
+                store.setBatchProgress(mapping.id, rowCount, totalRows);
+              }
+            } else if (obj.type === 'summary') {
+              summaryData = obj.data;
+            } else if (obj.type === 'error') {
+              console.error('Stream error for', mapping.id, obj.message);
             }
           } catch (e) {
-            console.error("Failed to parse NDJSON line:", line, e);
+            // Partial JSON line — will be completed in next chunk
           }
         }
-        boundary = buffer.indexOf('\n');
       }
+    } finally {
+      reader.releaseLock();
+    }
+    
+    // Flush remaining rows
+    flushRowBatch();
+    
+    // Final progress update
+    if (totalRows > 0) {
+      store.setBatchProgress(mapping.id, totalRows, totalRows);
+    }
+    
+    // Finalize: set summary
+    if (summaryData) {
+      store.setDiffSummary(mapping.id, {
+        totalSourceRows: summaryData.totalSourceRows || 0,
+        totalTargetRows: summaryData.totalTargetRows || 0,
+        totalDifferences: summaryData.totalDifferences || 0,
+      });
     }
   };
 
@@ -233,7 +337,7 @@ export const DataCompareView: React.FC = () => {
       const promises: Promise<void>[] = [];
 
       for (const mapping of mappingsToCompare) {
-        const p = streamOneMapping(mapping).then(() => {
+        const p = streamLoadMapping(mapping).then(() => {
           setProgress(prev => ({ current: prev.current + 1, total: prev.total }));
         }).catch(err => {
           console.error("Mapping failed", mapping.id, err);
@@ -452,15 +556,40 @@ export const DataCompareView: React.FC = () => {
 
         <div className="flex items-center gap-2">
           {loading && (
-            <div className="flex items-center gap-2 text-xs text-blue-500 mr-2 font-medium">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>{progress.current}/{progress.total}</span>
-              <div className="w-24 h-1.5 bg-bg-hover rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                  style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
-                />
+            <div className="flex flex-col mr-2 min-w-[280px]">
+              {/* Mapping-level progress */}
+              <div className="flex items-center gap-2 text-xs text-blue-500 font-medium">
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                <span className="whitespace-nowrap">Mapping {progress.current}/{progress.total}</span>
+                <div className="w-20 h-1.5 bg-bg-hover rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                    style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
+                  />
+                </div>
               </div>
+              {/* Per-mapping batch progress */}
+              {Object.entries(diffResults).map(([mid, dr]) => {
+                const isFading = fadingOutMappings.has(mid);
+                if ((dr.status !== 'comparing' && !isFading) || !dr.batchTotal) return null;
+                const mapping = tableMappings.find(m => m.id === mid);
+                const name = mapping?.label || mapping?.sourceTable || mid.slice(0, 8);
+                const pct = dr.batchTotal > 0 ? ((dr.batchCurrent || 0) / dr.batchTotal) * 100 : 0;
+                return (
+                  <div key={mid} className={`flex items-center gap-2 text-[10px] text-text-muted mt-0.5 ${isFading ? 'animate-fade-out' : ''}`}>
+                    <span className="font-mono truncate max-w-[100px]">{name}</span>
+                    <div className="w-16 h-1 bg-bg-hover rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-400 rounded-full transition-all duration-200"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="whitespace-nowrap">Batch {dr.batchCurrent}/{dr.batchTotal}</span>
+                    <span className="whitespace-nowrap text-amber-500">Δ {dr.differentCount + dr.sourceOnlyCount + dr.targetOnlyCount}</span>
+                    {dr.rows.length > 0 && <span className="whitespace-nowrap">{dr.rows.length.toLocaleString()} rows</span>}
+                  </div>
+                );
+              })}
             </div>
           )}
           <div className="flex items-center gap-1.5 mr-1 ml-2 bg-bg-input px-2 py-1 rounded-md border border-border-input">

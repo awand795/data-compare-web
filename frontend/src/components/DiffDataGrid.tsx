@@ -105,10 +105,12 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
 
   const filteredData = useMemo(() => {
     if (!diffResult) return [];
-    if (filterStatus === 'ALL') return diffResult.rows;
+    // Always slice/copy to create a new reference so useReactTable detects the change
+    // This fixes the 'data not appearing until tab switch' bug without causing double-render
+    if (filterStatus === 'ALL') return diffResult.rows.slice();
     if (filterStatus === 'IDENTICAL') return diffResult.rows.filter((r: any) => r.status === 'MATCH');
     return diffResult.rows.filter((r: any) => r.status === filterStatus);
-  }, [diffResult?.rows, filterStatus]);
+  }, [diffResult?._v, diffResult?.rows, filterStatus]);
 
   const table = useReactTable({
     data: filteredData,
@@ -127,9 +129,8 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
     initialRect: { width: 800, height: 600 },
   });
 
+  // Force virtualizer to re-measure when rows arrive or status changes
   useEffect(() => {
-    // Force virtualizer to recalculate when new rows arrive during streaming
-    // or when the status changes. This fixes the blank grid issue during streaming.
     if (tableRows.length > 0) {
       rowVirtualizer.measure();
     }
@@ -263,9 +264,9 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
               const rowClass = clsx(
                 "border-b border-border-item transition-colors",
                 i % 2 === 0 ? "bg-bg-main" : "bg-bg-row-alt",
-                status === 'DIFFERENT' && "bg-amber-500/[0.03] dark:bg-amber-500/[0.05]",
-                status === 'SOURCE_ONLY' && "bg-red-500/[0.03] dark:bg-red-500/[0.05]",
-                status === 'TARGET_ONLY' && "bg-emerald-500/[0.03] dark:bg-emerald-500/[0.05]",
+                status === 'DIFFERENT' && "bg-amber-500/[0.03] dark:bg-amber-500/[0.05] border-l-2 border-l-amber-500/40",
+                status === 'SOURCE_ONLY' && "bg-red-500/[0.03] dark:bg-red-500/[0.05] border-l-2 border-l-red-500/40",
+                status === 'TARGET_ONLY' && "bg-emerald-500/[0.03] dark:bg-emerald-500/[0.05] border-l-2 border-l-emerald-500/40",
                 "hover:bg-bg-hover"
               );
 
@@ -297,13 +298,21 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
 
         {filteredData.length === 0 && (
           <div className="p-12 text-center text-xs text-text-muted flex flex-col items-center justify-center gap-2">
-            {diffResult.status === 'comparing' ? (
+            {diffResult.status === 'comparing' && diffResult.rows.length === 0 ? (
               <>
                 <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                 <span className="text-blue-500 animate-pulse">Comparing in progress...</span>
               </>
             ) : (
-              <span>No records match this filter.</span>
+              <div className="flex flex-col items-center gap-1">
+                <Database className="w-8 h-8 text-text-muted/30" />
+                <span>No data matches this filter.</span>
+                {diffResult.rows.length > 0 && (
+                  <span className="text-[10px] text-text-muted/60">
+                    {diffResult.rows.length.toLocaleString()} total rows, none match "{filterStatus.replace(/_/g, ' ')}".
+                  </span>
+                )}
+              </div>
             )}
           </div>
         )}

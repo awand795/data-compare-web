@@ -187,41 +187,62 @@ public class DynamicSchedulerService {
                     }
 
                     request.setReturnMatchedRows(false);
-                    DiffResult diffResult = dataComparisonService.compare(request);
+                    int[] mArr = {0}, dArr = {0}, sArr = {0}, tArr = {0};
+                    int[] totalsArr = {0}; // totalSource from onTotals
+                    List<DiffRow> collectedRows = new ArrayList<>();
 
-                    int m = 0, d = 0, s = 0, t = 0;
-                    if (diffResult.getRows() != null) {
-                        for (DiffRow row : diffResult.getRows()) {
+                    dataComparisonService.processStream(request, new DiffRowConsumer() {
+                        @Override
+                        public void onColumns(List<String> columns) throws Exception {}
+
+                        @Override
+                        public void onRow(DiffRow row) throws Exception {
+                            // NOTE: MATCH rows are NOT sent when returnMatchedRows=false.
+                            // Only DIFFERENT, SOURCE_ONLY, TARGET_ONLY arrive here.
                             switch (row.getStatus()) {
-                                case MATCH: m++; break;
-                                case DIFFERENT: d++; break;
-                                case SOURCE_ONLY: s++; break;
-                                case TARGET_ONLY: t++; break;
+                                case DIFFERENT: dArr[0]++; break;
+                                case SOURCE_ONLY: sArr[0]++; break;
+                                case TARGET_ONLY: tArr[0]++; break;
+                                default: break;
+                            }
+                            if (schedule.isSaveFullData()) {
+                                collectedRows.add(row);
                             }
                         }
-                    }
 
-                    totalMatch += m;
-                    totalDifferent += d;
-                    totalSrcOnly += s;
-                    totalTgtOnly += t;
+                        @Override
+                        public void onTotals(int totalSource, int totalTarget, int totalDiffs) throws Exception {
+                            // Calculate match count from totals:
+                            // totalSource = M + D + S  →  M = totalSource - D - S
+                            totalsArr[0] = totalSource;
+                            mArr[0] = totalSource - dArr[0] - sArr[0];
+                            if (mArr[0] < 0) mArr[0] = 0; // safety guard
+                        }
+                    });
+
+                    totalMatch += mArr[0];
+                    totalDifferent += dArr[0];
+                    totalSrcOnly += sArr[0];
+                    totalTgtOnly += tArr[0];
 
                     Map<String, Object> tableResult = new HashMap<>();
                     tableResult.put("tableName", sourceTable != null ? sourceTable : "Custom Query");
-                    tableResult.put("match", m);
-                    tableResult.put("different", d);
-                    tableResult.put("sourceOnly", s);
-                    tableResult.put("targetOnly", t);
+                    tableResult.put("match", mArr[0]);
+                    tableResult.put("different", dArr[0]);
+                    tableResult.put("sourceOnly", sArr[0]);
+                    tableResult.put("targetOnly", tArr[0]);
+                    tableResult.put("totalSourceRows", totalsArr[0]);
                     executionDetails.add(tableResult);
 
-                    if (schedule.isSaveFullData() && diffResult.getRows() != null) {
-                        for (DiffRow row : diffResult.getRows()) {
-                            if (row.getStatus() == DiffRow.Status.MATCH) continue;
+                    String displayTableName = sourceTable != null ? sourceTable : "Custom Query";
+                    if (schedule.isSaveFullData() && !collectedRows.isEmpty()) {
+                        for (DiffRow row : collectedRows) {
                             ScheduleResultRow rr = new ScheduleResultRow();
                             rr.setResultId(result.getId());
                             rr.setRowKey(row.getRowKey());
                             rr.setStatus(row.getStatus().name());
                             rr.setDataJson(objectMapper.writeValueAsString(row.getCells()));
+                            rr.setTableName(displayTableName);
                             scheduleManagerService.saveResultRow(rr);
                         }
                     }

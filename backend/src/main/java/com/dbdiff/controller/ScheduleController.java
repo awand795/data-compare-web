@@ -78,8 +78,10 @@ public class ScheduleController {
     }
 
     @GetMapping("/results/{resultId}/rows")
-    public ResponseEntity<List<ScheduleResultRow>> getResultRows(@PathVariable String resultId) {
-        return ResponseEntity.ok(scheduleManagerService.getRowsForResult(resultId));
+    public ResponseEntity<List<ScheduleResultRow>> getResultRows(
+            @PathVariable String resultId,
+            @RequestParam(required = false) String tableName) {
+        return ResponseEntity.ok(scheduleManagerService.getRowsForResult(resultId, tableName));
     }
 
     @PostMapping("/{id}/trigger")

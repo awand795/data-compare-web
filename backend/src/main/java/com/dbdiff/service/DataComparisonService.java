@@ -335,6 +335,149 @@ public class DataComparisonService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // compareBatch() — paginated comparison dengan LIMIT/OFFSET
+    // ─────────────────────────────────────────────────────────────────────────
+    public Map<String, Object> compareBatch(DiffRequest request, int batchSize, int offset) {
+        long startTime = System.currentTimeMillis();
+        DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
+        DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
+
+        List<String> exactPks = new ArrayList<>();
+        if (request.getPrimaryKeys() != null) exactPks.addAll(request.getPrimaryKeys());
+        if (exactPks.isEmpty() && request.getTableName() != null) {
+            List<String> fetched = metaDataService.getPrimaryKeys(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
+            if (fetched != null && !fetched.isEmpty()) exactPks = fetched;
+        }
+
+        boolean useSurrogateKey = exactPks.isEmpty();
+        if (useSurrogateKey && request.getSortColumns() != null && !request.getSortColumns().isEmpty()) {
+            exactPks = request.getSortColumns();
+            useSurrogateKey = false;
+        }
+
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, request.getSortColumns(), useSurrogateKey);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, request.getSortColumns(), useSurrogateKey);
+
+        // Add LIMIT/OFFSET
+        sourceQuery = addLimitOffset(sourceQuery, batchSize, offset);
+        targetQuery = addLimitOffset(targetQuery, batchSize, offset);
+
+        JdbcTemplate sourceJdbc = new JdbcTemplate(sourceDs);
+        JdbcTemplate targetJdbc = new JdbcTemplate(targetDs);
+
+        logger.info("BATCH COMPARE: offset={} batchSize={}", offset, batchSize);
+        logger.info("BATCH COMPARE: Source Query = {}", sourceQuery);
+        logger.info("BATCH COMPARE: Target Query = {}", targetQuery);
+
+        List<Map<String, Object>> sourceData = sourceJdbc.queryForList(sourceQuery);
+        List<Map<String, Object>> targetData = targetJdbc.queryForList(targetQuery);
+
+        Set<String> excludeSet = buildExcludeSet(request);
+        List<String> columns = extractColumns(sourceData, targetData, excludeSet);
+        List<String> pks = resolvePks(request, sourceDs, columns);
+
+        Map<String, Map<String, Object>> sourceMap = mapByKeys(sourceData, pks);
+        Map<String, Map<String, Object>> targetMap = mapByKeys(targetData, pks);
+
+        int matchCount = 0, differentCount = 0, sourceOnlyCount = 0, targetOnlyCount = 0;
+        List<DiffRow> rows = new ArrayList<>(Math.max(sourceMap.size(), targetMap.size()));
+
+        Set<String> allKeys = new LinkedHashSet<>();
+        allKeys.addAll(sourceMap.keySet());
+        allKeys.addAll(targetMap.keySet());
+
+        for (String key : allKeys) {
+            DiffRow row = buildDiffRow(key, sourceMap.get(key), targetMap.get(key), columns);
+            rows.add(row);
+            switch (row.getStatus()) {
+                case MATCH: matchCount++; break;
+                case DIFFERENT: differentCount++; break;
+                case SOURCE_ONLY: sourceOnlyCount++; break;
+                case TARGET_ONLY: targetOnlyCount++; break;
+            }
+        }
+
+        boolean hasMore = sourceData.size() >= batchSize || targetData.size() >= batchSize;
+
+        // Filter MATCH rows if user only wants diffs (Only Diff mode)
+        if (!request.isReturnMatchedRows()) {
+            List<DiffRow> filtered = new ArrayList<>();
+            for (DiffRow row : rows) {
+                if (row.getStatus() != DiffRow.Status.MATCH) {
+                    filtered.add(row);
+                }
+            }
+            rows = filtered;
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("columns", columns);
+        result.put("rows", rows);
+        result.put("matchCount", matchCount);
+        result.put("differentCount", differentCount);
+        result.put("sourceOnlyCount", sourceOnlyCount);
+        result.put("targetOnlyCount", targetOnlyCount);
+        result.put("hasMore", hasMore);
+        result.put("nextOffset", offset + Math.max(sourceData.size(), targetData.size()));
+        result.put("sourceBatchRows", sourceData.size());
+        result.put("targetBatchRows", targetData.size());
+        result.put("elapsedMs", System.currentTimeMillis() - startTime);
+
+        logger.info("BATCH COMPARE: SELESAI offset={} rows={} diff={} hasMore={} elapsed={}ms",
+                offset, rows.size(), differentCount + sourceOnlyCount + targetOnlyCount, hasMore, result.get("elapsedMs"));
+
+        return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // countRows() — count rows in source & target (for batch progress)
+    // ─────────────────────────────────────────────────────────────────────────
+    public Map<String, Object> countRows(DiffRequest request) {
+        DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
+        DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
+        JdbcTemplate sourceJdbc = new JdbcTemplate(sourceDs);
+        JdbcTemplate targetJdbc = new JdbcTemplate(targetDs);
+
+        String sourceQuery, targetQuery;
+        if (request.getCustomQuerySource() != null && !request.getCustomQuerySource().trim().isEmpty()) {
+            sourceQuery = "SELECT COUNT(*) FROM (" + request.getCustomQuerySource().trim() + ") _cnt";
+        } else if (request.getTableName() != null) {
+            sourceQuery = "SELECT COUNT(*) FROM \"" + request.getTableName() + "\"";
+        } else {
+            sourceQuery = "SELECT COUNT(*) FROM (" + request.getCustomQuerySource() + ") _cnt";
+        }
+
+        if (request.getCustomQueryTarget() != null && !request.getCustomQueryTarget().trim().isEmpty()) {
+            targetQuery = "SELECT COUNT(*) FROM (" + request.getCustomQueryTarget().trim() + ") _cnt";
+        } else if (request.getTableName() != null) {
+            targetQuery = "SELECT COUNT(*) FROM \"" + request.getTableName() + "\"";
+        } else {
+            targetQuery = "SELECT COUNT(*) FROM (" + request.getCustomQueryTarget() + ") _cnt";
+        }
+
+        int sourceCount = sourceJdbc.queryForObject(sourceQuery, Integer.class);
+        int targetCount = targetJdbc.queryForObject(targetQuery, Integer.class);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("sourceCount", sourceCount);
+        result.put("targetCount", targetCount);
+        return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // addLimitOffset() — append LIMIT/OFFSET to a SQL query
+    // ─────────────────────────────────────────────────────────────────────────
+    private String addLimitOffset(String query, int limit, int offset) {
+        String trimmed = query.trim();
+        // Remove trailing semicolon if present
+        if (trimmed.endsWith(";")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
+        }
+        // For PostgreSQL
+        return trimmed + " LIMIT " + limit + " OFFSET " + offset;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // syncData()
     // ─────────────────────────────────────────────────────────────────────────
     public Map<String, Object> syncData(DiffRequest request) {
@@ -518,27 +661,70 @@ public class DataComparisonService {
         return pks;
     }
 
-        private boolean normalizedEquals(Object a, Object b) {
+    private boolean normalizedEquals(Object a, Object b) {
+        // Both null → equal
         if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
+        
+        // Null vs empty string → treat as equal (Excel imports empty cells as "" but original may have NULL)
+        if (a == null) return b.toString().trim().isEmpty();
+        if (b == null) return a.toString().trim().isEmpty();
+        
+        // Same reference or equals → equal
         if (a.equals(b)) return true;
-
-        String strA;
-        if (a instanceof java.util.Date) {
-            strA = String.valueOf(((java.util.Date) a).getTime());
-        } else {
-            strA = a.toString().trim();
-        }
-
-        String strB;
-        if (b instanceof java.util.Date) {
-            strB = String.valueOf(((java.util.Date) b).getTime());
-        } else {
-            strB = b.toString().trim();
-        }
-
+        
+        String strA = a.toString().trim();
+        String strB = b.toString().trim();
+        
+        // Trimmed strings match → equal
         if (strA.equalsIgnoreCase(strB)) return true;
-
+        
+        // Try to parse both as epoch millis (long) — handles "1780375745783"
+        try {
+            long epochA = Long.parseLong(strA);
+            long epochB = Long.parseLong(strB);
+            if (epochA == epochB) return true;
+        } catch (Exception ignored) {}
+        
+        // Date comparison: normalize to epoch millis
+        // Handles: java.sql.Timestamp vs epoch-millis-string from Excel import
+        if (a instanceof java.util.Date || b instanceof java.util.Date) {
+            long dateEpochA = a instanceof java.util.Date ? ((java.util.Date) a).getTime() : tryParseEpoch(strA);
+            long dateEpochB = b instanceof java.util.Date ? ((java.util.Date) b).getTime() : tryParseEpoch(strB);
+            if (dateEpochA != Long.MIN_VALUE && dateEpochB != Long.MIN_VALUE && dateEpochA == dateEpochB) return true;
+        }
+        
+        // Try matching one value as epoch millis string vs the other as a date-format string
+        // e.g. "1780375745783" (epoch) vs "2026-06-05 15:22:52.683" (Timestamp.toString())
+        long epochA = tryParseEpoch(strA);
+        long epochB = tryParseEpoch(strB);
+        if (epochA != Long.MIN_VALUE || epochB != Long.MIN_VALUE) {
+            long epoch = epochA != Long.MIN_VALUE ? epochA : epochB;
+            String dateStr = epochA != Long.MIN_VALUE ? strB : strA;
+            java.time.format.DateTimeFormatter[] dtFormatters = {
+                java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME,
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.S"),
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SS"),
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
+            };
+            for (java.time.format.DateTimeFormatter fmt : dtFormatters) {
+                try {
+                    long dateMillis = java.time.LocalDateTime.parse(dateStr, fmt)
+                        .atZone(java.time.ZoneId.of("UTC"))
+                        .toInstant().toEpochMilli();
+                    if (epoch == dateMillis) return true;
+                } catch (Exception ignored2) {}
+            }
+            // Also try date-only formats (midnight)
+            try {
+                long dateMillis = java.time.LocalDate.parse(dateStr)
+                    .atStartOfDay(java.time.ZoneId.of("UTC"))
+                    .toInstant().toEpochMilli();
+                if (epoch == dateMillis) return true;
+            } catch (Exception ignored2) {}
+        }
+        
+        // Numeric comparison: compare as BigDecimal
         try {
             java.math.BigDecimal bdA = new java.math.BigDecimal(strA);
             java.math.BigDecimal bdB = new java.math.BigDecimal(strB);
@@ -550,31 +736,32 @@ public class DataComparisonService {
     }
 
         private String buildQuery(String tableName, String customQuery, List<String> pks, List<String> sortColumns, boolean useSurrogateKey) {
-        String windowOrderBy = "";
+        String orderByClause = "";
         if (sortColumns != null && !sortColumns.isEmpty()) {
-            windowOrderBy = " ORDER BY " + sortColumns.stream().map(c -> "CAST(\"" + c + "\" AS VARCHAR)").collect(java.util.stream.Collectors.joining(", "));
+            orderByClause = sortColumns.stream().map(c -> "\"" + c + "\"").collect(java.util.stream.Collectors.joining(", "));
         } else if (pks != null && !pks.isEmpty()) {
-            windowOrderBy = " ORDER BY " + pks.stream().map(c -> "CAST(\"" + c + "\" AS VARCHAR)").collect(java.util.stream.Collectors.joining(", "));
-        } else {
-            windowOrderBy = " ORDER BY 1";
+            orderByClause = pks.stream().map(c -> "\"" + c + "\"").collect(java.util.stream.Collectors.joining(", "));
         }
+
+        boolean hasOrderBy = !orderByClause.isEmpty();
 
         if (customQuery != null && !customQuery.trim().isEmpty()) {
             String q = customQuery.trim();
             if (useSurrogateKey) {
-                q = "SELECT ROW_NUMBER() OVER (" + windowOrderBy + ") as __rn__, tmp.* FROM (" + q + ") as tmp ORDER BY __rn__";
-            } else if (!q.toUpperCase().contains("ORDER BY") && pks != null && !pks.isEmpty()) {
-                q = q + " ORDER BY " + pks.stream().map(c -> "CAST(\"" + c + "\" AS VARCHAR)").collect(java.util.stream.Collectors.joining(", "));
+                String window = hasOrderBy ? " ORDER BY " + orderByClause : "";
+                q = "SELECT ROW_NUMBER() OVER (" + window + ") as __rn__, tmp.* FROM (" + q + ") as tmp ORDER BY __rn__";
+            } else if (!q.toUpperCase().contains("ORDER BY") && hasOrderBy) {
+                q = q + " ORDER BY " + orderByClause;
             }
             return q;
         }
 
-        String orderBy = "";
         if (useSurrogateKey) {
-            return "SELECT ROW_NUMBER() OVER (" + windowOrderBy + ") as __rn__, * FROM \"" + tableName + "\" ORDER BY __rn__";
-        } else if (pks != null && !pks.isEmpty()) {
-            orderBy = " ORDER BY " + pks.stream().map(c -> "CAST(\"" + c + "\" AS VARCHAR)").collect(java.util.stream.Collectors.joining(", "));
+            String window = hasOrderBy ? " ORDER BY " + orderByClause : "";
+            return "SELECT ROW_NUMBER() OVER (" + window + ") as __rn__, * FROM \"" + tableName + "\" ORDER BY __rn__";
         }
+
+        String orderBy = hasOrderBy ? " ORDER BY " + orderByClause : "";
         return "SELECT * FROM \"" + tableName + "\"" + orderBy;
     }
 
@@ -617,10 +804,8 @@ public class DataComparisonService {
             try { row[i] = rs.getObject(colIdx[i]); } catch (Exception e) {}
         }
         return row;
-    }
-
-    @SuppressWarnings("unchecked")
-        private int compareKeys(ResultSet rsS, ResultSet rsT, int[] exactPkIdx) throws Exception {
+    }    @SuppressWarnings("unchecked")
+    private int compareKeys(ResultSet rsS, ResultSet rsT, int[] exactPkIdx) throws Exception {
         for (int idx : exactPkIdx) {
             Object sObj = rsS.getObject(idx);
             Object tObj = rsT.getObject(idx);
@@ -629,21 +814,50 @@ public class DataComparisonService {
             if (sObj == null) return -1;
             if (tObj == null) return 1;
             
-            String sStr = sObj.toString().trim();
-            String tStr = tObj.toString().trim();
-            
-            if (sObj instanceof Number || tObj instanceof Number) {
+            // Try numeric comparison first — handles INT vs TEXT (Excel import) correctly
+            // e.g. "2" vs "10" should be 2 < 10, not "2" > "10"
+            if (sObj instanceof Number || tObj instanceof Number || isNumericString(sObj) || isNumericString(tObj)) {
                 try {
-                    java.math.BigDecimal bdS = new java.math.BigDecimal(sStr);
-                    java.math.BigDecimal bdT = new java.math.BigDecimal(tStr);
-                    sStr = bdS.stripTrailingZeros().toPlainString();
-                    tStr = bdT.stripTrailingZeros().toPlainString();
-                } catch(Exception e) {}
+                    java.math.BigDecimal bdS = toBigDecimal(sObj);
+                    java.math.BigDecimal bdT = toBigDecimal(tObj);
+                    int cmp = bdS.compareTo(bdT);
+                    if (cmp != 0) return cmp;
+                    // Numerically equal → continue to next PK column
+                    continue;
+                } catch (Exception ignored) {}
             }
             
-            int cmp = sStr.compareTo(tStr);
+            // Fallback: string comparison (for non-numeric PKs like UUIDs)
+            int cmp = sObj.toString().trim().compareTo(tObj.toString().trim());
             if (cmp != 0) return cmp;
         }
         return 0;
+    }
+    
+    private boolean isNumericString(Object obj) {
+        if (obj == null) return false;
+        String s = obj.toString().trim();
+        if (s.isEmpty()) return false;
+        try {
+            new java.math.BigDecimal(s);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
+    private java.math.BigDecimal toBigDecimal(Object obj) {
+        if (obj instanceof Number) {
+            return new java.math.BigDecimal(obj.toString());
+        }
+        return new java.math.BigDecimal(obj.toString().trim());
+    }
+    
+    private long tryParseEpoch(String s) {
+        try {
+            return Long.parseLong(s.trim());
+        } catch (Exception e) {
+            return Long.MIN_VALUE;
+        }
     }
 }

@@ -122,8 +122,8 @@ public class ScheduleManagerService {
     }
     
     public void saveResultRow(ScheduleResultRow row) {
-        String sql = "INSERT INTO schedule_result_rows (result_id, row_key, status, data_json) VALUES (?, ?, ?, ?)";
-        jdbcTemplate.update(sql, row.getResultId(), row.getRowKey(), row.getStatus(), row.getDataJson());
+        String sql = "INSERT INTO schedule_result_rows (result_id, row_key, status, data_json, table_name) VALUES (?, ?, ?, ?, ?)";
+        jdbcTemplate.update(sql, row.getResultId(), row.getRowKey(), row.getStatus(), row.getDataJson(), row.getTableName());
     }
 
     public List<ScheduleResult> getResultsForSchedule(String scheduleId) {
@@ -143,14 +143,30 @@ public class ScheduleManagerService {
     }
     
     public List<ScheduleResultRow> getRowsForResult(String resultId) {
-        return jdbcTemplate.query("SELECT * FROM schedule_result_rows WHERE result_id = ? ORDER BY id ASC", (rs, rowNum) -> {
-            ScheduleResultRow r = new ScheduleResultRow();
-            r.setId(rs.getLong("id"));
-            r.setResultId(rs.getString("result_id"));
-            r.setRowKey(rs.getString("row_key"));
-            r.setStatus(rs.getString("status"));
-            r.setDataJson(rs.getString("data_json"));
-            return r;
-        }, resultId);
+        return getRowsForResult(resultId, null);
+    }
+    
+    public List<ScheduleResultRow> getRowsForResult(String resultId, String tableName) {
+        String sql = "SELECT * FROM schedule_result_rows WHERE result_id = ?";
+        if (tableName != null && !tableName.isEmpty()) {
+            sql += " AND table_name = ?";
+        }
+        sql += " ORDER BY id ASC";
+        
+        if (tableName != null && !tableName.isEmpty()) {
+            return jdbcTemplate.query(sql, (rs, rowNum) -> mapRow(rs), resultId, tableName);
+        }
+        return jdbcTemplate.query(sql, (rs, rowNum) -> mapRow(rs), resultId);
+    }
+    
+    private ScheduleResultRow mapRow(ResultSet rs) throws SQLException {
+        ScheduleResultRow r = new ScheduleResultRow();
+        r.setId(rs.getLong("id"));
+        r.setResultId(rs.getString("result_id"));
+        r.setRowKey(rs.getString("row_key"));
+        r.setStatus(rs.getString("status"));
+        r.setDataJson(rs.getString("data_json"));
+        try { r.setTableName(rs.getString("table_name")); } catch (Exception ignored) {}
+        return r;
     }
 }

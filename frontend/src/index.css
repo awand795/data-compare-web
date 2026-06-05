@@ -108,6 +108,16 @@ html, body, #root {
 /* Smooth transitions */
 * { transition-property: background-color, border-color, color, opacity; transition-duration: 0.15s; }
 
+/* Fade-out animation for completed mapping progress lines */
+@keyframes fade-out {
+  from { opacity: 1; transform: translateY(0); max-height: 40px; }
+  to   { opacity: 0; transform: translateY(-8px); max-height: 0; }
+}
+.animate-fade-out {
+  animation: fade-out 0.6s ease-out forwards;
+  pointer-events: none;
+}
+
 /* Tooltip */
 [data-tooltip] { position: relative; }
 [data-tooltip]:hover::after {
