@@ -302,6 +302,7 @@ export const QueryWorkspace: React.FC = () => {
       let finalSummary: any = null;
       let rowCount = 0;
       let rowBatch: any[] = [];
+      let lastFlushTime = Date.now();
 
       const flushRowBatchToStore = () => {
         if (m && rowBatch.length > 0) {
@@ -352,8 +353,12 @@ export const QueryWorkspace: React.FC = () => {
                  else if (msg.data.status === 'SOURCE_ONLY') counters.sourceOnly++;
                  else if (msg.data.status === 'TARGET_ONLY') counters.targetOnly++;
                  
-                 if (rowBatch.length >= 100) flushRowBatchToStore();
-                 if (m && totalRows > 0 && rowCount % 1000 === 0) {
+                 const now = Date.now();
+                 if (rowBatch.length >= 3000 || (now - lastFlushTime > 300 && rowBatch.length > 0)) {
+                   flushRowBatchToStore();
+                   lastFlushTime = now;
+                 }
+                 if (m && totalRows > 0 && rowCount % 3000 === 0) {
                    store.setBatchProgress(m.id, rowCount, totalRows);
                  }
               }

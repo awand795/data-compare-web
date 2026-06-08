@@ -249,6 +249,7 @@ export const DataCompareView: React.FC = () => {
     let rowCount = 0;
     let columnsSet = false;
     let summaryData: any = null;
+    let lastFlushTime = Date.now();
 
     const flushRowBatch = () => {
       if (rowBatch.length > 0) {
@@ -280,12 +281,15 @@ export const DataCompareView: React.FC = () => {
             } else if (obj.type === 'row') {
               rowBatch.push(obj.data);
               rowCount++;
-              // Flush every 100 rows for smooth UI updates
-              if (rowBatch.length >= 100) {
+              
+              const now = Date.now();
+              // Flush every 3000 rows OR every 300ms for smooth but efficient UI updates
+              if (rowBatch.length >= 3000 || (now - lastFlushTime > 300 && rowBatch.length > 0)) {
                 flushRowBatch();
+                lastFlushTime = now;
               }
               // Update progress periodically
-              if (totalRows > 0 && rowCount % 1000 === 0) {
+              if (totalRows > 0 && rowCount % 3000 === 0) {
                 store.setBatchProgress(mapping.id, rowCount, totalRows);
               }
             } else if (obj.type === 'summary') {
