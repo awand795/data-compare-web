@@ -62,8 +62,32 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const value = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
-    setFormData(prev => ({ ...prev, [e.target.name]: value }));
+    const { name, type, value: rawValue } = e.target;
+    const value = type === 'checkbox' ? (e.target as HTMLInputElement).checked : rawValue;
+
+    if (typeof value === 'string' && (value.startsWith('postgres://') || value.startsWith('postgresql://') || value.startsWith('mysql://'))) {
+      try {
+        const url = new URL(value);
+        let dbType = url.protocol.replace(':', '');
+        if (dbType === 'postgresql') dbType = 'postgresql';
+        
+        setFormData(prev => ({
+          ...prev,
+          type: dbType as any,
+          host: url.hostname || prev.host,
+          port: url.port ? parseInt(url.port) : prev.port,
+          database: url.pathname ? url.pathname.replace('/', '') : prev.database,
+          username: url.username ? decodeURIComponent(url.username) : prev.username,
+          password: url.password ? decodeURIComponent(url.password) : prev.password,
+          sslMode: url.searchParams.get('sslmode') || (dbType === 'postgresql' ? 'require' : prev.sslMode)
+        }));
+        return;
+      } catch (err) {
+        // ignore parse errors and fall through
+      }
+    }
+
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSelectDriver = (driverId: string, defaultPort: number) => {

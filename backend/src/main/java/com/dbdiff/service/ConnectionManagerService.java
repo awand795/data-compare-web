@@ -68,7 +68,7 @@ public class ConnectionManagerService {
                 config.addDataSourceProperty("defaultRowFetchSize", details.getFetchSize() != null ? String.valueOf(details.getFetchSize()) : "5000");
                 config.addDataSourceProperty("reWriteBatchedInserts", "true");
                 
-                if (details.getSslMode() != null && !details.getSslMode().isEmpty()) {
+                if (details.getSslMode() != null && !details.getSslMode().isEmpty() && !"disable".equalsIgnoreCase(details.getSslMode())) {
                     config.addDataSourceProperty("ssl", "true");
                     config.addDataSourceProperty("sslmode", details.getSslMode());
                     if (details.getSslCaFile() != null) config.addDataSourceProperty("sslrootcert", details.getSslCaFile());
