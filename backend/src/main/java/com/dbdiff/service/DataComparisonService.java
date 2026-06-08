@@ -738,9 +738,9 @@ public class DataComparisonService {
         private String buildQuery(String tableName, String customQuery, List<String> pks, List<String> sortColumns, boolean useSurrogateKey) {
         String orderByClause = "";
         if (sortColumns != null && !sortColumns.isEmpty()) {
-            orderByClause = sortColumns.stream().map(c -> "\"" + c + "\"").collect(java.util.stream.Collectors.joining(", "));
+            orderByClause = sortColumns.stream().map(c -> "CAST(\"" + c + "\" AS TEXT)").collect(java.util.stream.Collectors.joining(", "));
         } else if (pks != null && !pks.isEmpty()) {
-            orderByClause = pks.stream().map(c -> "\"" + c + "\"").collect(java.util.stream.Collectors.joining(", "));
+            orderByClause = pks.stream().map(c -> "CAST(\"" + c + "\" AS TEXT)").collect(java.util.stream.Collectors.joining(", "));
         }
 
         boolean hasOrderBy = !orderByClause.isEmpty();
