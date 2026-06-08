@@ -22,7 +22,7 @@ export const ExcelCompareView: React.FC = () => {
     excelMappings, addExcelMapping, removeExcelMapping, updateExcelMapping, clearExcelMappings,
     selectedMappingIds, setSelectedMappingIds,
     focusedMappingId, setFocusedMappingId,
-    showAlert,
+    showAlert, addToast,
   } = useAppStore();
 
   const [sourceTables, setSourceTables] = useState<string[]>([]);
@@ -248,12 +248,7 @@ export const ExcelCompareView: React.FC = () => {
           : `The following table comparisons encountered errors:\n\n` + 
             failedMappings.map(f => `• ${f.tableName}: ${f.error}`).join('\n');
             
-        showAlert({
-          title,
-          message,
-          type: 'error',
-          details: failedMappings.map(f => `[${f.tableName}]\n${f.error}`).join('\n\n')
-        });
+        addToast({ type: 'error', title, message });
       }
 
       if (!focusedMapping && mappingsToCompare.length > 0) {
@@ -266,12 +261,7 @@ export const ExcelCompareView: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      showAlert({
-        title: 'Comparison Blocked',
-        message: err.response?.data?.message || err.message || 'An unexpected error occurred.',
-        type: 'error',
-        details: err.response?.data?.trace || err.stack || String(err)
-      });
+      addToast({ type: 'error', title: 'Comparison Blocked', message: err.response?.data?.message || err.message || 'An unexpected error occurred.' });
     } finally {
       setLoading(false);
       setProgress({ current: 0, total: 0 });
@@ -329,21 +319,12 @@ export const ExcelCompareView: React.FC = () => {
               successCount++;
             }
           }
-          showAlert({
-            title: 'Synchronization Complete',
-            message: `Synchronized ${successCount} tables successfully.`,
-            type: 'success'
-          });
+          addToast({ type: 'success', title: 'Synchronization Complete', message: `Synchronized ${successCount} tables successfully.` });
           // Re-run compare to reflect identical state
           handleCompare();
         } catch (err: any) {
           console.error(err);
-          showAlert({
-            title: 'Synchronization Failed',
-            message: err.response?.data?.message || err.message || 'An unexpected error occurred.',
-            type: 'error',
-            details: err.response?.data?.trace || err.stack || String(err)
-          });
+          addToast({ type: 'error', title: 'Synchronization Failed', message: err.response?.data?.message || err.message || 'An unexpected error occurred.' });
         } finally {
           setSyncing(false);
           setProgress({ current: 0, total: 0 });
@@ -469,9 +450,9 @@ export const ExcelCompareView: React.FC = () => {
                             });
                             if (res.data.success) {
                               addExcelMapping({ id: `excel-${Date.now()}`, sourceTable: res.data.tableName, targetTable: '' });
-                              alert('Excel uploaded successfully!');
+                              addToast({ type: 'success', title: 'Upload Successful', message: 'Excel uploaded successfully!' });
                             }
-                          } catch (err: any) { alert("Upload failed: " + err.message); }
+                          } catch (err: any) { addToast({ type: 'error', title: 'Upload Failed', message: err.message }); }
                           e.target.value = '';
                         }
                       }}
@@ -527,9 +508,9 @@ export const ExcelCompareView: React.FC = () => {
                             });
                             if (res.data.success) {
                               addExcelMapping({ id: `excel-${Date.now()}`, sourceTable: '', targetTable: res.data.tableName });
-                              alert('Excel uploaded successfully!');
+                              addToast({ type: 'success', title: 'Upload Successful', message: 'Excel uploaded successfully!' });
                             }
-                          } catch (err: any) { alert("Upload failed: " + err.message); }
+                          } catch (err: any) { addToast({ type: 'error', title: 'Upload Failed', message: err.message }); }
                           e.target.value = '';
                         }
                       }}

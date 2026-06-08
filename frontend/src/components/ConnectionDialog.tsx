@@ -19,7 +19,7 @@ const DRIVERS = [
 ];
 
 export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { addConnection } = useAppStore();
+  const { addConnection, addToast } = useAppStore();
   const [step, setStep] = useState<1 | 2>(1);
   const [activeTab, setActiveTab] = useState<TabType>('general');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
@@ -78,7 +78,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
       // Endpoint to be implemented by backend subagent
       const res = await axios.post('/api/test-connection', formData);
       setTestStatus(res.data.success ? 'success' : 'error');
-      setTestDetails(res.data.message || 'Connection successful');
+      setTestDetails(res.data.message || (res.data.success ? 'Connection successful' : 'Connection failed'));
     } catch (err: any) {
       setTestStatus('error');
       setTestDetails(err.response?.data?.message || err.message || 'Connection failed');
@@ -87,7 +87,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
   const handleSave = async () => {
     if (!formData.name || !formData.host || !formData.database) {
-      alert("Name, Host, and Database are required.");
+      addToast({ type: 'warning', title: 'Validation Error', message: 'Name, Host, and Database are required.' });
       return;
     }
     
@@ -101,10 +101,11 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     try {
       await axios.post('/api/connections', newConn);
       addConnection(newConn);
+      addToast({ type: 'success', title: 'Connection Saved', message: `Connection "${newConn.name}" saved successfully.` });
       onClose();
     } catch (err) {
       console.error('Failed to save connection:', err);
-      alert('Failed to save connection');
+      addToast({ type: 'error', title: 'Save Failed', message: 'Failed to save connection' });
     }
   };
 

@@ -22,7 +22,7 @@ export const QueryWorkspace: React.FC = () => {
     focusedMappingId,
     tableMappings,
     defaultRowLimit,
-    showAlert,
+    showAlert, addToast,
   } = useAppStore();
 
   const [sourceResults, setSourceResults] = useState<any[] | null>(null);
@@ -361,12 +361,7 @@ export const QueryWorkspace: React.FC = () => {
       });
       
     } catch (err: any) {
-      showAlert({
-        title: 'Comparison Failed',
-        message: err.message || 'An unexpected error occurred.',
-        type: 'error',
-        details: err.stack || String(err)
-      });
+      addToast({ type: 'error', title: 'Comparison Failed', message: err.message || 'An unexpected error occurred.' });
       setWorkspaceDiffResult((prev: any) => ({ ...prev, status: 'error' }));
     } finally {
       setComparing(false);

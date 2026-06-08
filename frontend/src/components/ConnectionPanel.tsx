@@ -18,7 +18,9 @@ export const ConnectionPanel: React.FC = () => {
     setExplorerConnectionId,
     setExplorerTableName,
     explorerConnectionId,
-    explorerTableName
+    explorerTableName,
+    showAlert,
+    addToast
   } = useAppStore();
   
   const [isOpen, setIsOpen] = useState(false);
@@ -95,15 +97,25 @@ export const ConnectionPanel: React.FC = () => {
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
+  const handleDelete = (e: React.MouseEvent, id: string, connName: string) => {
     e.stopPropagation();
-    try {
-      await axios.delete(`/api/connections/${id}`);
-      removeConnection(id);
-    } catch (err) {
-      console.error('Failed to delete connection:', err);
-      alert('Failed to delete connection');
-    }
+    showAlert({
+      type: 'error',
+      title: 'Delete Connection?',
+      message: `Are you sure you want to delete "${connName}"? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`/api/connections/${id}`);
+          removeConnection(id);
+          addToast({ type: 'success', title: 'Deleted', message: 'Connection removed successfully.' });
+        } catch (err) {
+          console.error('Failed to delete connection:', err);
+          addToast({ type: 'error', title: 'Delete Failed', message: 'Failed to delete connection.' });
+        }
+      },
+    });
   };
 
   const toggleConn = async (c: Connection) => {
@@ -243,7 +255,7 @@ export const ConnectionPanel: React.FC = () => {
                       </div>
                     </div>
                     <button 
-                      onClick={(e) => handleDelete(e, c.id)} 
+                      onClick={(e) => handleDelete(e, c.id, c.name)} 
                       className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-red-500 p-1 transition-all"
                       title="Delete Connection"
                     >

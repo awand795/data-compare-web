@@ -13,6 +13,7 @@ import { DatabaseZap, GitCompareArrows, Table2, Terminal, Settings, HelpCircle, 
 import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
 import { AlertModal } from './components/AlertModal';
+import { ToastContainer } from './components/ToastContainer';
 import clsx from 'clsx';
 
 function App() {
@@ -168,6 +169,7 @@ function App() {
       {isSettingsOpen && <SettingsModal onClose={() => setIsSettingsOpen(false)} />}
       {isHelpOpen && <HelpModal onClose={() => setIsHelpOpen(false)} />}
       <AlertModal />
+      <ToastContainer />
     </div>
   );
 }

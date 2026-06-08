@@ -9,7 +9,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export const SchemaCompareView: React.FC = () => {
-  const { connections, sourceConnectionId, setSourceConnectionId, targetConnectionId, setTargetConnectionId, schemaResults, setSchemaResults, showAlert } = useAppStore();
+  const { connections, sourceConnectionId, setSourceConnectionId, targetConnectionId, setTargetConnectionId, schemaResults, setSchemaResults, showAlert, addToast } = useAppStore();
   const [loading, setLoading] = useState(false);
   const [focusedTable, setFocusedTable] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,12 +50,7 @@ export const SchemaCompareView: React.FC = () => {
       setSchemaResults(res.data);
     } catch (err: any) {
       console.error(err);
-      showAlert({
-        title: 'Schema Comparison Failed',
-        message: err.response?.data?.message || err.message || 'An unexpected error occurred.',
-        type: 'error',
-        details: err.response?.data?.trace || err.stack || String(err)
-      });
+      addToast({ type: 'error', title: 'Schema Comparison Failed', message: err.response?.data?.message || err.message || 'An unexpected error occurred.' });
     } finally {
       setLoading(false);
     }

@@ -9,7 +9,7 @@ import { ScheduleResultsModal } from './ScheduleResultsModal';
 import clsx from 'clsx';
 
 export const ScheduleManagerView: React.FC = () => {
-    const { connections, addSchedule, schedules, updateScheduleStatus, runScheduleNow, notificationChannels } = useAppStore();
+    const { connections, addSchedule, schedules, updateScheduleStatus, runScheduleNow, notificationChannels, addToast } = useAppStore();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isProfilesModalOpen, setIsProfilesModalOpen] = useState(false);
     const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
@@ -121,7 +121,7 @@ export const ScheduleManagerView: React.FC = () => {
 
     const handleSubmit = async () => {
         if (!sourceConnectionId || !targetConnectionId || selectedMappingIds.length === 0 || !jobPrefix || !cronExpression) {
-            alert('Please fill all required fields and select at least one mapping.');
+            addToast({ type: 'warning', title: 'Validation Error', message: 'Please fill all required fields and select at least one mapping.' });
             return;
         }
 
@@ -148,7 +148,7 @@ export const ScheduleManagerView: React.FC = () => {
             };
 
             await axios.post('/api/schedules', payload);
-            alert(`Successfully created grouped job: ${jobPrefix}`);
+            addToast({ type: 'success', title: 'Job Created', message: `Successfully created grouped job: ${jobPrefix}` });
             
             setIsFormOpen(false);
             setTableMappings([]);
@@ -160,7 +160,7 @@ export const ScheduleManagerView: React.FC = () => {
             loadSchedules();
         } catch (error) {
             console.error(error);
-            alert('Failed to save schedule. Check console.');
+            addToast({ type: 'error', title: 'Save Failed', message: 'Failed to save schedule.' });
         }
     };
 
@@ -300,7 +300,7 @@ export const ScheduleManagerView: React.FC = () => {
                                                                     try {
                                                                         await axios.delete(`/api/schedules/${job.id}`);
                                                                         loadSchedules();
-                                                                    } catch (e) { alert("Failed to delete job"); }
+                                                                    } catch (e) { addToast({ type: 'error', title: 'Delete Failed', message: 'Failed to delete job' }); }
                                                                 }
                                                             }}
                                                             className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded transition-colors" 

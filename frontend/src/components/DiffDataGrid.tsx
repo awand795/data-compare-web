@@ -67,7 +67,7 @@ DiffCell.displayName = 'DiffCell';
 /* ── Main component ──────────────────────────────────────────────── */
 
 export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterStatus, directResult }) => {
-  const { diffResults, showAlert } = useAppStore();
+  const { diffResults, showAlert, addToast } = useAppStore();
   const diffResult = directResult || (mappingId ? diffResults[mappingId] : null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -164,11 +164,7 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
   const triggerDownload = async (url: string, filename: string) => {
     const payload = buildExportPayload();
     if (!payload) {
-      showAlert({
-        title: 'Export Failed',
-        message: 'Cannot export: table mapping or connection details are missing.',
-        type: 'error'
-      });
+      addToast({ type: 'error', title: 'Export Failed', message: 'Cannot export: table mapping or connection details are missing.' });
       return;
     }
 
@@ -195,12 +191,7 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
       window.URL.revokeObjectURL(downloadUrl);
     } catch (err: any) {
       console.error(err);
-      showAlert({
-        title: 'Export Failed',
-        message: err.message || 'An unexpected error occurred during export.',
-        type: 'error',
-        details: err.stack || String(err)
-      });
+      addToast({ type: 'error', title: 'Export Failed', message: err.message || 'An unexpected error occurred during export.' });
     } finally {
       document.body.style.cursor = 'default';
     }
