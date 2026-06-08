@@ -67,8 +67,8 @@ public class ApiController {
 
     @PostMapping("/test-connection")
     public ResponseEntity<?> testConnection(@RequestBody ConnectionDetails details) {
-        boolean isValid = connectionManagerService.testConnection(details);
-        return ResponseEntity.ok(Map.of("success", isValid));
+        Map<String, Object> result = connectionManagerService.testConnection(details);
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/warmup")
@@ -470,6 +470,120 @@ public class ApiController {
 
     @Autowired
     private com.dbdiff.service.DatabaseExplorerService explorerService;
+
+    @GetMapping("/connections/{id}/databases")
+    public ResponseEntity<?> getDatabases(@PathVariable String id) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            String systemDb = null;
+            switch (details.getType().toLowerCase()) {
+                case "postgresql": systemDb = "postgres"; break;
+                case "mysql": case "mariadb": systemDb = null; break;
+                case "sqlserver": systemDb = "master"; break;
+            }
+            DataSource ds = connectionManagerService.getDataSource(details, systemDb);
+            return ResponseEntity.ok(explorerService.listDatabases(ds, details.getType()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/databases/{database}/schemas")
+    public ResponseEntity<?> getDatabaseSchemas(@PathVariable String id, @PathVariable String database) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details, database);
+            return ResponseEntity.ok(explorerService.getSchemas(ds));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/databases/{database}/schemas/{schema}/tables")
+    public ResponseEntity<?> getDatabaseTables(@PathVariable String id, @PathVariable String database, @PathVariable String schema) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details, database);
+            return ResponseEntity.ok(explorerService.getTables(ds, "null".equals(schema) ? null : schema));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/databases/{database}/schemas/{schema}/tables/{table}/columns")
+    public ResponseEntity<?> getDatabaseColumns(@PathVariable String id, @PathVariable String database, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details, database);
+            return ResponseEntity.ok(explorerService.getColumns(ds, "null".equals(schema) ? null : schema, table));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/databases/{database}/schemas/{schema}/tables/{table}/indexes")
+    public ResponseEntity<?> getDatabaseIndexes(@PathVariable String id, @PathVariable String database, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details, database);
+            return ResponseEntity.ok(explorerService.getIndexes(ds, "null".equals(schema) ? null : schema, table));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/databases/{database}/schemas/{schema}/tables/{table}/foreign-keys")
+    public ResponseEntity<?> getDatabaseForeignKeys(@PathVariable String id, @PathVariable String database, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details, database);
+            return ResponseEntity.ok(explorerService.getForeignKeys(ds, "null".equals(schema) ? null : schema, table));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/databases/{database}/schemas/{schema}/tables/{table}/ddl")
+    public ResponseEntity<?> getDatabaseDdl(@PathVariable String id, @PathVariable String database, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details, database);
+            return ResponseEntity.ok(Map.of("ddl", explorerService.getDdl(ds, "null".equals(schema) ? null : schema, table, details.getType())));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/connections/{id}/databases/{database}/schemas/{schema}/tables/{table}/stats")
+    public ResponseEntity<?> getDatabaseStats(@PathVariable String id, @PathVariable String database, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details, database);
+            return ResponseEntity.ok(explorerService.getStats(ds, "null".equals(schema) ? null : schema, table, details.getType()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/connections/{id}/databases/{database}/schemas/{schema}/tables/{table}/preview")
+    public ResponseEntity<?> previewDatabaseData(@PathVariable String id, @PathVariable String database, @PathVariable String schema, @PathVariable String table) {
+        try {
+            ConnectionDetails details = connectionRepository.findById(id);
+            if (details == null) return ResponseEntity.notFound().build();
+            DataSource ds = connectionManagerService.getDataSource(details, database);
+            return ResponseEntity.ok(explorerService.previewData(ds, "null".equals(schema) ? null : schema, table));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 
     @GetMapping("/connections/{id}/schemas")
     public ResponseEntity<?> getExplorerSchemas(@PathVariable String id) {

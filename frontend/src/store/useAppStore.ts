@@ -162,6 +162,14 @@ export type AlertModalState = {
   onCancel?: () => void;
 };
 
+export type Toast = {
+  id: string;
+  type: AlertType;
+  title: string;
+  message?: string;
+  duration?: number;
+};
+
 type AppState = {
   connections: Connection[];
   setConnections: (conns: Connection[]) => void;
@@ -181,6 +189,8 @@ type AppState = {
   // Explorer
   explorerConnectionId: string | null;
   setExplorerConnectionId: (id: string | null) => void;
+  explorerDatabaseName: string | null;
+  setExplorerDatabaseName: (name: string | null) => void;
   explorerSchemaName: string | null;
   setExplorerSchemaName: (schema: string | null) => void;
   explorerTableName: string | null;
@@ -232,7 +242,12 @@ type AppState = {
   queryResult: DiffResult | null;
   setQueryResult: (r: DiffResult | null) => void;
 
-  // Alert Modal
+  // Toasts (auto-dismiss notifications)
+  toasts: Toast[];
+  addToast: (toast: Omit<Toast, 'id'>) => void;
+  removeToast: (id: string) => void;
+
+  // Alert Modal (confirmation dialogs)
   alert: AlertModalState | null;
   showAlert: (config: Omit<AlertModalState, 'isOpen'>) => void;
   hideAlert: () => void;
@@ -292,6 +307,8 @@ export const useAppStore = create<AppState>()(
 
   explorerConnectionId: null,
   setExplorerConnectionId: (id) => set({ explorerConnectionId: id }),
+  explorerDatabaseName: null,
+  setExplorerDatabaseName: (name) => set({ explorerDatabaseName: name }),
   explorerSchemaName: null,
   setExplorerSchemaName: (schema) => set({ explorerSchemaName: schema }),
   explorerTableName: null,
@@ -533,10 +550,10 @@ export const useAppStore = create<AppState>()(
   runScheduleNow: async (id) => {
     try {
       await axios.post(`/api/schedules/${id}/trigger`);
-      alert("Job triggered successfully!");
+      get().addToast({ type: 'success', title: 'Job Triggered', message: 'Job triggered successfully!' });
     } catch (err) {
       console.error("Failed to trigger job", err);
-      alert("Failed to trigger job");
+      get().addToast({ type: 'error', title: 'Trigger Failed', message: 'Failed to trigger job' });
     }
   },
 
@@ -549,6 +566,14 @@ export const useAppStore = create<AppState>()(
 
   defaultRowLimit: 100,
   setDefaultRowLimit: (limit) => set({ defaultRowLimit: limit }),
+
+  toasts: [],
+  addToast: (toast) => set((state) => ({
+    toasts: [...state.toasts, { ...toast, id: Date.now().toString() + Math.random().toString(36).slice(2, 8) }]
+  })),
+  removeToast: (id) => set((state) => ({
+    toasts: state.toasts.filter(t => t.id !== id)
+  })),
 
   alert: null,
   showAlert: (config) => set({ alert: { ...config, isOpen: true } }),

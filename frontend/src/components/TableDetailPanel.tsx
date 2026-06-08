@@ -13,7 +13,7 @@ import autoTable from 'jspdf-autotable';
 type TabType = 'data' | 'columns' | 'indexes' | 'foreign_keys' | 'ddl' | 'stats';
 
 export const TableDetailPanel: React.FC = () => {
-  const { connections, explorerConnectionId, explorerTableName, explorerSchemaName, defaultRowLimit } = useAppStore();
+  const { connections, explorerConnectionId, explorerDatabaseName, explorerTableName, explorerSchemaName, defaultRowLimit } = useAppStore();
   const [activeTab, setActiveTab] = useState<TabType>('data');
   const [isFullscreen, setIsFullscreen] = useState(false);
   
@@ -80,32 +80,36 @@ export const TableDetailPanel: React.FC = () => {
     setError(null);
     try {
       const schema = explorerSchemaName || 'null';
+      const database = explorerDatabaseName || conn?.database || 'null';
       
       if (activeTab === 'columns') {
-        const res = await axios.get(`/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/columns`);
+        const res = await axios.get(`/api/connections/${conn.id}/databases/${database}/schemas/${schema}/tables/${explorerTableName}/columns`);
         setSchemaData(res.data);
       } else if (activeTab === 'indexes') {
-        const res = await axios.get(`/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/indexes`);
+        const res = await axios.get(`/api/connections/${conn.id}/databases/${database}/schemas/${schema}/tables/${explorerTableName}/indexes`);
         setIndexesData(res.data);
       } else if (activeTab === 'foreign_keys') {
-        const res = await axios.get(`/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/foreign-keys`);
+        const res = await axios.get(`/api/connections/${conn.id}/databases/${database}/schemas/${schema}/tables/${explorerTableName}/foreign-keys`);
         setFkData(res.data);
       } else if (activeTab === 'ddl') {
-        const res = await axios.get(`/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/ddl`);
+        const res = await axios.get(`/api/connections/${conn.id}/databases/${database}/schemas/${schema}/tables/${explorerTableName}/ddl`);
         setDdlData(res.data.ddl || res.data); 
       } else if (activeTab === 'stats') {
-        const res = await axios.get(`/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/stats`);
+        const res = await axios.get(`/api/connections/${conn.id}/databases/${database}/schemas/${schema}/tables/${explorerTableName}/stats`);
         setStatsData(res.data);
       } else if (activeTab === 'data') {
         const queryLimit = limit === 'unlimited' ? 50000 : (limit === 'custom' ? Number(customLimit) : limit);
         const quote = (name: string) => `"${name}"`;
         const tableNameWithSchema = explorerSchemaName ? `${quote(explorerSchemaName)}.${quote(explorerTableName)}` : quote(explorerTableName);
         
+        // Use the stored connection but override its database name for browse mode
+        const queryConn = { ...conn, database: explorerDatabaseName || conn.database };
+        
         const response = await fetch('/api/execute-query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            connection: conn,
+            connection: queryConn,
             query: `SELECT * FROM ${tableNameWithSchema} LIMIT ${queryLimit} OFFSET ${offset}`
           })
         });
@@ -266,7 +270,7 @@ export const TableDetailPanel: React.FC = () => {
           </div>
           <div>
             <h1 className="text-base font-bold text-text-main">{explorerTableName}</h1>
-            <p className="text-[11px] text-text-muted font-mono">{conn.name} • {conn.database}</p>
+            <p className="text-[11px] text-text-muted font-mono">{conn.name} • {explorerDatabaseName || conn.database}</p>
           </div>
         </div>
 

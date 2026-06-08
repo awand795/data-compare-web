@@ -39,15 +39,34 @@ public class ConnectionDetails {
     }
 
     public String getJdbcUrl(String effectiveHost, int effectivePort) {
+        return getJdbcUrl(effectiveHost, effectivePort, this.database);
+    }
+
+    public String getJdbcUrl(String effectiveHost, int effectivePort, String dbName) {
+        if (dbName == null || dbName.isBlank()) {
+            // Browse mode — connect to system database without a specific database
+            switch (type.toLowerCase()) {
+                case "postgresql":
+                    return "jdbc:postgresql://" + effectiveHost + ":" + effectivePort + "/postgres";
+                case "mysql":
+                    return "jdbc:mysql://" + effectiveHost + ":" + effectivePort + "/";
+                case "mariadb":
+                    return "jdbc:mariadb://" + effectiveHost + ":" + effectivePort + "/";
+                case "sqlserver":
+                    return "jdbc:sqlserver://" + effectiveHost + ":" + effectivePort + ";databaseName=master";
+                default:
+                    throw new IllegalArgumentException("Unsupported database type: " + type);
+            }
+        }
         switch (type.toLowerCase()) {
             case "postgresql":
-                return "jdbc:postgresql://" + effectiveHost + ":" + effectivePort + "/" + database;
+                return "jdbc:postgresql://" + effectiveHost + ":" + effectivePort + "/" + dbName;
             case "mysql":
-                return "jdbc:mysql://" + effectiveHost + ":" + effectivePort + "/" + database;
+                return "jdbc:mysql://" + effectiveHost + ":" + effectivePort + "/" + dbName;
             case "mariadb":
-                return "jdbc:mariadb://" + effectiveHost + ":" + effectivePort + "/" + database;
+                return "jdbc:mariadb://" + effectiveHost + ":" + effectivePort + "/" + dbName;
             case "sqlserver":
-                return "jdbc:sqlserver://" + effectiveHost + ":" + effectivePort + ";databaseName=" + database;
+                return "jdbc:sqlserver://" + effectiveHost + ":" + effectivePort + ";databaseName=" + dbName;
             default:
                 throw new IllegalArgumentException("Unsupported database type: " + type);
         }

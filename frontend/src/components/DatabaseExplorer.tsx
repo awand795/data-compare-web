@@ -8,7 +8,7 @@ import axios from 'axios';
 import clsx from 'clsx';
 
 export const DatabaseExplorer: React.FC = () => {
-  const { connections, removeConnection, setExplorerConnectionId, setExplorerSchemaName, setExplorerTableName, setAppMode, explorerConnectionId, explorerTableName, explorerSchemaName } = useAppStore();
+  const { connections, removeConnection, setExplorerConnectionId, setExplorerDatabaseName, setExplorerSchemaName, setExplorerTableName, setAppMode, explorerConnectionId, explorerTableName, explorerSchemaName, addToast, showAlert } = useAppStore();
   const { nodes, upsertNode, removeNode, toggleExpand, setLoading, setLoaded, selectedNodeId, setSelectedNodeId } = useExplorerStore();
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -34,14 +34,14 @@ export const DatabaseExplorer: React.FC = () => {
     });
   }, [connections]);
 
-  const loadSchemas = async (connId: string) => {
+  const loadDatabases = async (connId: string) => {
     setLoading(connId, true);
     try {
-      const res = await axios.get(`/api/connections/${connId}/schemas`);
-      const schemas: string[] = res.data;
-      const childIds = schemas.map(s => {
-        const id = `${connId}_schema_${s}`;
-        upsertNode({ id, parentId: connId, type: 'schema', name: s, isLoaded: false, isLoading: false, isExpanded: false, metadata: { connId, schema: s } });
+      const res = await axios.get(`/api/connections/${connId}/databases`);
+      const databases: string[] = res.data;
+      const childIds = databases.map(db => {
+        const id = `${connId}_db_${db}`;
+        upsertNode({ id, parentId: connId, type: 'database', name: db, isLoaded: false, isLoading: false, isExpanded: false, metadata: { connId, database: db } });
         return id;
       });
       setLoaded(connId, childIds);
@@ -50,16 +50,32 @@ export const DatabaseExplorer: React.FC = () => {
     }
   };
 
-  const loadTables = async (connId: string, schemaNodeId: string, schemaName: string) => {
+  const loadSchemas = async (connId: string, dbNodeId: string, databaseName: string) => {
+    setLoading(dbNodeId, true);
+    try {
+      const res = await axios.get(`/api/connections/${connId}/databases/${databaseName}/schemas`);
+      const schemas: string[] = res.data;
+      const childIds = schemas.map(s => {
+        const id = `${dbNodeId}_schema_${s}`;
+        upsertNode({ id, parentId: dbNodeId, type: 'schema', name: s, isLoaded: false, isLoading: false, isExpanded: false, metadata: { connId, database: databaseName, schema: s } });
+        return id;
+      });
+      setLoaded(dbNodeId, childIds);
+    } catch (e: any) {
+      setLoading(dbNodeId, false, e.message);
+    }
+  };
+
+  const loadTables = async (connId: string, databaseName: string, schemaNodeId: string, schemaName: string) => {
     setLoading(schemaNodeId, true);
     try {
-      const res = await axios.get(`/api/connections/${connId}/schemas/${schemaName}/tables`);
+      const res = await axios.get(`/api/connections/${connId}/databases/${databaseName}/schemas/${schemaName}/tables`);
       const tables: any[] = res.data;
       const childIds = tables.map(t => {
         const tName = typeof t === 'string' ? t : t.name;
         const tType = (t.type === 'VIEW' || t.type === 'view') ? 'view' : 'table';
         const id = `${schemaNodeId}_table_${tName}`;
-        upsertNode({ id, parentId: schemaNodeId, type: tType, name: tName, isLoaded: false, isLoading: false, isExpanded: false, metadata: { connId, schema: schemaName } });
+        upsertNode({ id, parentId: schemaNodeId, type: tType, name: tName, isLoaded: false, isLoading: false, isExpanded: false, metadata: { connId, database: databaseName, schema: schemaName } });
         return id;
       });
       setLoaded(schemaNodeId, childIds);
@@ -68,10 +84,10 @@ export const DatabaseExplorer: React.FC = () => {
     }
   };
 
-  const loadColumns = async (connId: string, schemaName: string, tableNodeId: string, tableName: string) => {
+  const loadColumns = async (connId: string, databaseName: string, schemaName: string, tableNodeId: string, tableName: string) => {
     setLoading(tableNodeId, true);
     try {
-      const res = await axios.get(`/api/connections/${connId}/schemas/${schemaName}/tables/${tableName}/columns`);
+      const res = await axios.get(`/api/connections/${connId}/databases/${databaseName}/schemas/${schemaName}/tables/${tableName}/columns`);
       const cols: any[] = res.data;
       const childIds = cols.map(c => {
         const id = `${tableNodeId}_col_${c.name}`;
@@ -92,13 +108,19 @@ export const DatabaseExplorer: React.FC = () => {
     toggleExpand(node.id);
     if (!node.isExpanded && !node.isLoaded && !node.isLoading) {
       if (node.type === 'server') {
-        await loadSchemas(node.id);
+        await loadDatabases(node.id);
+      } else if (node.type === 'database') {
+        const connId = node.metadata?.connId || node.parentId;
+        await loadSchemas(connId, node.id, node.name);
       } else if (node.type === 'schema') {
-        await loadTables(node.metadata?.connId || node.parentId, node.id, node.name);
+        const connId = node.metadata?.connId || node.parentId;
+        const databaseName = node.metadata?.database;
+        if (connId && databaseName) await loadTables(connId, databaseName, node.id, node.name);
       } else if (node.type === 'table' || node.type === 'view') {
         const connId = node.metadata?.connId;
+        const databaseName = node.metadata?.database;
         const schema = node.metadata?.schema;
-        if (connId && schema) await loadColumns(connId, schema, node.id, node.name);
+        if (connId && databaseName && schema) await loadColumns(connId, databaseName, schema, node.id, node.name);
       }
     }
   };
@@ -107,9 +129,11 @@ export const DatabaseExplorer: React.FC = () => {
     setSelectedNodeId(node.id);
     if (node.type === 'table' || node.type === 'view') {
       const connId = node.metadata?.connId;
+      const database = node.metadata?.database;
       const schema = node.metadata?.schema;
       if (connId) {
         setExplorerConnectionId(connId);
+        setExplorerDatabaseName(database || null);
         setExplorerSchemaName(schema || null);
         setExplorerTableName(node.name); 
         setAppMode('explorer');
@@ -171,7 +195,7 @@ export const DatabaseExplorer: React.FC = () => {
           <span className="truncate">{node.label || node.name}</span>
           {node.type === 'server' && (
             <div className="ml-auto flex items-center opacity-0 hover:opacity-100 transition-opacity">
-               <button onClick={(e) => { e.stopPropagation(); removeConnection(node.id); }} className="text-text-muted hover:text-red-500 p-0.5"><Trash2 className="w-3 h-3" /></button>
+               <button onClick={(e) => handleDeleteConnection(e, node.id, node.metadata?.name || node.name)} className="text-text-muted hover:text-red-500 p-0.5"><Trash2 className="w-3 h-3" /></button>
             </div>
           )}
         </div>
@@ -181,6 +205,28 @@ export const DatabaseExplorer: React.FC = () => {
         {node.isExpanded && node.childrenIds?.map(cid => renderNode(cid, depth + 1))}
       </div>
     );
+  };
+
+  const handleDeleteConnection = (e: React.MouseEvent, id: string, connName: string) => {
+    e.stopPropagation();
+    showAlert({
+      type: 'error',
+      title: 'Delete Connection?',
+      message: `Are you sure you want to delete "${connName}"? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`/api/connections/${id}`);
+          removeConnection(id);
+          removeNode(id);
+          addToast({ type: 'success', title: 'Deleted', message: 'Connection removed successfully.' });
+        } catch (err) {
+          console.error('Failed to delete connection:', err);
+          addToast({ type: 'error', title: 'Delete Failed', message: 'Failed to delete connection.' });
+        }
+      },
+    });
   };
 
   const rootNodes = Object.values(nodes).filter(n => n.parentId === null);
