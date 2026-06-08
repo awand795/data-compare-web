@@ -190,30 +190,6 @@ public class DatabaseExplorerService {
         return stats;
     }
 
-    public List<String> listDatabases(DataSource dataSource, String dbType) throws Exception {
-        List<String> databases = new ArrayList<>();
-        if ("postgresql".equalsIgnoreCase(dbType)) {
-            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-            List<Map<String, Object>> rows = jdbc.queryForList("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname");
-            for (Map<String, Object> row : rows) {
-                databases.add((String) row.get("datname"));
-            }
-        } else if ("mysql".equalsIgnoreCase(dbType) || "mariadb".equalsIgnoreCase(dbType)) {
-            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-            List<Map<String, Object>> rows = jdbc.queryForList("SHOW DATABASES");
-            for (Map<String, Object> row : rows) {
-                databases.add((String) row.values().iterator().next());
-            }
-        } else if ("sqlserver".equalsIgnoreCase(dbType)) {
-            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-            List<Map<String, Object>> rows = jdbc.queryForList("SELECT name FROM sys.databases WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb') ORDER BY name");
-            for (Map<String, Object> row : rows) {
-                databases.add((String) row.get("name"));
-            }
-        }
-        return databases;
-    }
-
     public List<Map<String, Object>> previewData(DataSource dataSource, String schema, String table) throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         String q = "\"";
