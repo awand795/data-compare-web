@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import axios from 'axios';
 import {
-  X, Loader2, Database, AlertCircle, Download, CheckCircle,
-  Filter, ChevronDown, Eye, Table2, ArrowRight
+  X, Loader2, Download, CheckCircle,
+  Filter, Eye, Table2, ArrowRight
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -93,7 +93,7 @@ export const ScheduleDataViewer: React.FC<ScheduleDataViewerProps> = ({ resultId
   // Fetch rows from API
   useEffect(() => {
     setLoading(true);
-    axios.get(`http://localhost:8081/api/schedules/results/${resultId}/rows?tableName=${encodeURIComponent(tableName)}`)
+    axios.get(`/api/schedules/results/${resultId}/rows?tableName=${encodeURIComponent(tableName)}`)
       .then(res => setRawRows(res.data || []))
       .catch(err => console.error("Failed to fetch rows", err))
       .finally(() => setLoading(false));

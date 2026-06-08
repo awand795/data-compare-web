@@ -27,7 +27,7 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
 
     const fetchChannels = async () => {
         try {
-            const res = await axios.get('http://localhost:8081/api/notification-channels');
+            const res = await axios.get('/api/notification-channels');
             setChannels(res.data);
             setNotificationChannels(res.data);
         } catch (e) {
@@ -38,7 +38,7 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await axios.post('http://localhost:8081/api/notification-channels', formData);
+            await axios.post('/api/notification-channels', formData);
             setIsCreating(false);
             setFormData({ name: '', type: 'TELEGRAM', botToken: '', chatId: '', webhookUrl: '' });
             fetchChannels();
@@ -50,7 +50,7 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
     const handleDelete = async (id: string) => {
         if (!confirm('Are you sure you want to delete this profile?')) return;
         try {
-            await axios.delete(`http://localhost:8081/api/notification-channels/${id}`);
+            await axios.delete(`/api/notification-channels/${id}`);
             fetchChannels();
         } catch (e) {
             alert('Failed to delete channel');

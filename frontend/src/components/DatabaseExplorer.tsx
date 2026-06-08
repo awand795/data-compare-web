@@ -37,7 +37,7 @@ export const DatabaseExplorer: React.FC = () => {
   const loadSchemas = async (connId: string) => {
     setLoading(connId, true);
     try {
-      const res = await axios.get(`http://localhost:8081/api/connections/${connId}/schemas`);
+      const res = await axios.get(`/api/connections/${connId}/schemas`);
       const schemas: string[] = res.data;
       const childIds = schemas.map(s => {
         const id = `${connId}_schema_${s}`;
@@ -53,7 +53,7 @@ export const DatabaseExplorer: React.FC = () => {
   const loadTables = async (connId: string, schemaNodeId: string, schemaName: string) => {
     setLoading(schemaNodeId, true);
     try {
-      const res = await axios.get(`http://localhost:8081/api/connections/${connId}/schemas/${schemaName}/tables`);
+      const res = await axios.get(`/api/connections/${connId}/schemas/${schemaName}/tables`);
       const tables: any[] = res.data;
       const childIds = tables.map(t => {
         const tName = typeof t === 'string' ? t : t.name;
@@ -71,7 +71,7 @@ export const DatabaseExplorer: React.FC = () => {
   const loadColumns = async (connId: string, schemaName: string, tableNodeId: string, tableName: string) => {
     setLoading(tableNodeId, true);
     try {
-      const res = await axios.get(`http://localhost:8081/api/connections/${connId}/schemas/${schemaName}/tables/${tableName}/columns`);
+      const res = await axios.get(`/api/connections/${connId}/schemas/${schemaName}/tables/${tableName}/columns`);
       const cols: any[] = res.data;
       const childIds = cols.map(c => {
         const id = `${tableNodeId}_col_${c.name}`;

@@ -62,7 +62,7 @@ export const ScheduleMappingModal: React.FC<Props> = ({ sourceTables, targetTabl
   const fetchColumns = async (conn: any, tableName: string) => {
     if (!conn || !tableName) return [];
     try {
-      const res = await axios.post('http://localhost:8081/api/columns', {
+      const res = await axios.post('/api/columns', {
         connection: conn,
         tableName: tableName
       });

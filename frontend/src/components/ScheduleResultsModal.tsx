@@ -31,7 +31,7 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`http://localhost:8081/api/schedules/${scheduleId}/results`)
+    axios.get(`/api/schedules/${scheduleId}/results`)
       .then(res => setResults(res.data || []))
       .catch(err => console.error("Failed to fetch results", err))
       .finally(() => setLoading(false));

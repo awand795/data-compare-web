@@ -54,11 +54,11 @@ export const ExcelCompareView: React.FC = () => {
     setLoadingTables(sourceLoading || targetLoading);
     
     const p1 = sourceConn 
-      ? axios.post('http://localhost:8081/api/tables', sourceConn).then(res => setSourceTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
+      ? axios.post('/api/tables', sourceConn).then(res => setSourceTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
       : Promise.resolve(setSourceTables([]));
       
     const p2 = targetConn 
-      ? axios.post('http://localhost:8081/api/tables', targetConn).then(res => setTargetTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
+      ? axios.post('/api/tables', targetConn).then(res => setTargetTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
       : Promise.resolve(setTargetTables([]));
       
     Promise.all([p1, p2]).finally(() => setLoadingTables(false));
@@ -67,7 +67,7 @@ export const ExcelCompareView: React.FC = () => {
   // Warm up connections in the background as soon as they are selected
   useEffect(() => {
     if (sourceConn) {
-      fetch('http://localhost:8081/api/warmup', {
+      fetch('/api/warmup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([sourceConn])
@@ -77,7 +77,7 @@ export const ExcelCompareView: React.FC = () => {
 
   useEffect(() => {
     if (targetConn) {
-      fetch('http://localhost:8081/api/warmup', {
+      fetch('/api/warmup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([targetConn])
@@ -121,7 +121,7 @@ export const ExcelCompareView: React.FC = () => {
     const store = useAppStore.getState();
     store.initDiffResult(mapping.id);
 
-    const response = await fetch('http://localhost:8081/api/compare', {
+    const response = await fetch('/api/compare', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -324,7 +324,7 @@ export const ExcelCompareView: React.FC = () => {
         returnMatchedRows,
             };
 
-            const res = await axios.post('http://localhost:8081/api/data-sync', payload);
+            const res = await axios.post('/api/data-sync', payload);
             if (res.data.success) {
               successCount++;
             }
@@ -374,7 +374,7 @@ export const ExcelCompareView: React.FC = () => {
       
       if (connId && tableName) {
         try {
-          await axios.post('http://localhost:8081/api/excel/drop', {
+          await axios.post('/api/excel/drop', {
             connectionId: connId,
             tableName: tableName
           });
@@ -415,7 +415,7 @@ export const ExcelCompareView: React.FC = () => {
         
         if (connId && tableName) {
           try {
-            axios.post('http://localhost:8081/api/excel/drop', {
+            axios.post('/api/excel/drop', {
               connectionId: connId,
               tableName: tableName
             }).catch(() => {}); // Fire and forget
@@ -464,7 +464,7 @@ export const ExcelCompareView: React.FC = () => {
                           formData.append('file', file);
                           formData.append('connectionId', targetConnectionId);
                           try {
-                            const res = await axios.post('http://localhost:8081/api/excel/upload', formData, {
+                            const res = await axios.post('/api/excel/upload', formData, {
                               headers: { 'Content-Type': 'multipart/form-data' }
                             });
                             if (res.data.success) {
@@ -522,7 +522,7 @@ export const ExcelCompareView: React.FC = () => {
                           formData.append('file', file);
                           formData.append('connectionId', sourceConnectionId);
                           try {
-                            const res = await axios.post('http://localhost:8081/api/excel/upload', formData, {
+                            const res = await axios.post('/api/excel/upload', formData, {
                               headers: { 'Content-Type': 'multipart/form-data' }
                             });
                             if (res.data.success) {

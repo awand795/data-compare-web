@@ -516,7 +516,7 @@ export const useAppStore = create<AppState>()(
       };
       
       console.log("[Toggle] Sending PUT to backend...", payload);
-      const response = await axios.put(`http://localhost:8081/api/schedules/${id}`, payload);
+      const response = await axios.put(`/api/schedules/${id}`, payload);
       console.log("[Toggle] Backend responded:", response.data);
       
       // 4. Update store with backend response to be sure
@@ -526,13 +526,13 @@ export const useAppStore = create<AppState>()(
     } catch (err) {
       console.error("[Toggle] Failed!", err);
       // Revert
-      const res = await axios.get('http://localhost:8081/api/schedules');
+      const res = await axios.get('/api/schedules');
       set({ schedules: res.data || [] });
     }
   },
   runScheduleNow: async (id) => {
     try {
-      await axios.post(`http://localhost:8081/api/schedules/${id}/trigger`);
+      await axios.post(`/api/schedules/${id}/trigger`);
       alert("Job triggered successfully!");
     } catch (err) {
       console.error("Failed to trigger job", err);

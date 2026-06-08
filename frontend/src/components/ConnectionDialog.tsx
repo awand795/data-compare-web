@@ -76,7 +76,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     setTestDetails(null);
     try {
       // Endpoint to be implemented by backend subagent
-      const res = await axios.post('http://localhost:8081/api/test-connection', formData);
+      const res = await axios.post('/api/test-connection', formData);
       setTestStatus(res.data.success ? 'success' : 'error');
       setTestDetails(res.data.message || 'Connection successful');
     } catch (err: any) {
@@ -99,7 +99,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
     const newConn = { ...secureData, id: Date.now().toString() } as Connection;
     try {
-      await axios.post('http://localhost:8081/api/connections', newConn);
+      await axios.post('/api/connections', newConn);
       addConnection(newConn);
       onClose();
     } catch (err) {

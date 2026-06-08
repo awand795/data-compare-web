@@ -21,7 +21,7 @@ export const SchemaCompareView: React.FC = () => {
   // Warm up connections in the background as soon as they are selected
   React.useEffect(() => {
     if (sourceConn) {
-      fetch('http://localhost:8081/api/warmup', {
+      fetch('/api/warmup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([sourceConn])
@@ -31,7 +31,7 @@ export const SchemaCompareView: React.FC = () => {
 
   React.useEffect(() => {
     if (targetConn) {
-      fetch('http://localhost:8081/api/warmup', {
+      fetch('/api/warmup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([targetConn])
@@ -43,7 +43,7 @@ export const SchemaCompareView: React.FC = () => {
     if (!sourceConn || !targetConn) return;
     setLoading(true);
     try {
-      const res = await axios.post('http://localhost:8081/api/schema-compare-all', {
+      const res = await axios.post('/api/schema-compare-all', {
         sourceConnection: sourceConn,
         targetConnection: targetConn,
       });

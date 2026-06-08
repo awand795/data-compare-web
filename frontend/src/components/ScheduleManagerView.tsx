@@ -37,7 +37,7 @@ export const ScheduleManagerView: React.FC = () => {
     const { setSchedules, setNotificationChannels } = useAppStore();
 
     const loadSchedules = () => {
-        axios.get('http://localhost:8081/api/schedules')
+        axios.get('/api/schedules')
             .then(res => setSchedules(res.data || []))
             .catch(err => console.error("Failed to fetch schedules", err));
     };
@@ -46,7 +46,7 @@ export const ScheduleManagerView: React.FC = () => {
     useEffect(() => {
         loadSchedules();
             
-        axios.get('http://localhost:8081/api/notification-channels')
+        axios.get('/api/notification-channels')
             .then(res => setNotificationChannels(res.data || []))
             .catch(err => console.error("Failed to fetch channels", err));
     }, [setSchedules, setNotificationChannels]);
@@ -61,11 +61,11 @@ export const ScheduleManagerView: React.FC = () => {
         setLoadingTables(sourceLoading || targetLoading);
         
         const p1 = sourceConn 
-            ? axios.post('http://localhost:8081/api/tables', sourceConn).then(res => setSourceTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
+            ? axios.post('/api/tables', sourceConn).then(res => setSourceTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
             : Promise.resolve(setSourceTables([]));
             
         const p2 = targetConn 
-            ? axios.post('http://localhost:8081/api/tables', targetConn).then(res => setTargetTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
+            ? axios.post('/api/tables', targetConn).then(res => setTargetTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
             : Promise.resolve(setTargetTables([]));
             
         Promise.all([p1, p2]).finally(() => setLoadingTables(false));
@@ -147,7 +147,7 @@ export const ScheduleManagerView: React.FC = () => {
                 mappings: JSON.stringify(mappingsToSchedule),
             };
 
-            await axios.post('http://localhost:8081/api/schedules', payload);
+            await axios.post('/api/schedules', payload);
             alert(`Successfully created grouped job: ${jobPrefix}`);
             
             setIsFormOpen(false);
@@ -298,7 +298,7 @@ export const ScheduleManagerView: React.FC = () => {
                                                             onClick={async () => {
                                                                 if (confirm(`Are you sure you want to delete job "${job.name}"?`)) {
                                                                     try {
-                                                                        await axios.delete(`http://localhost:8081/api/schedules/${job.id}`);
+                                                                        await axios.delete(`/api/schedules/${job.id}`);
                                                                         loadSchedules();
                                                                     } catch (e) { alert("Failed to delete job"); }
                                                                 }

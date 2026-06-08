@@ -207,11 +207,11 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
   };
 
   const handleExportExcel = useCallback(() => {
-    triggerDownload(`http://localhost:8081/api/export-excel?filterStatus=${filterStatus}`, `data-compare-${mappingId || 'export'}.xlsx`);
+    triggerDownload(`/api/export-excel?filterStatus=${filterStatus}`, `data-compare-${mappingId || 'export'}.xlsx`);
   }, [buildExportPayload, filterStatus, mappingId]);
 
   const handleExportPDF = useCallback(() => {
-    triggerDownload(`http://localhost:8081/api/export-pdf?filterStatus=${filterStatus}`, `data-compare-${mappingId || 'export'}.pdf`);
+    triggerDownload(`/api/export-pdf?filterStatus=${filterStatus}`, `data-compare-${mappingId || 'export'}.pdf`);
   }, [buildExportPayload, filterStatus, mappingId]);
 
 

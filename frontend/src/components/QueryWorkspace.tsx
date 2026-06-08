@@ -50,7 +50,7 @@ export const QueryWorkspace: React.FC = () => {
   // Warm up connections in the background as soon as they are selected
   useEffect(() => {
     if (sourceConn) {
-      fetch('http://localhost:8081/api/warmup', {
+      fetch('/api/warmup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([sourceConn])
@@ -60,7 +60,7 @@ export const QueryWorkspace: React.FC = () => {
 
   useEffect(() => {
     if (targetConn) {
-      fetch('http://localhost:8081/api/warmup', {
+      fetch('/api/warmup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([targetConn])
@@ -153,7 +153,7 @@ export const QueryWorkspace: React.FC = () => {
 
     try {
       setResults([]); // Start with empty results to show incoming rows
-      const response = await fetch('http://localhost:8081/api/execute-query', {
+      const response = await fetch('/api/execute-query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connection: conn, query: finalQuery })
@@ -233,7 +233,7 @@ export const QueryWorkspace: React.FC = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:8081/api/compare', {
+      const response = await fetch('/api/compare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

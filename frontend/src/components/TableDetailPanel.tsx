@@ -82,26 +82,26 @@ export const TableDetailPanel: React.FC = () => {
       const schema = explorerSchemaName || 'null';
       
       if (activeTab === 'columns') {
-        const res = await axios.get(`http://localhost:8081/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/columns`);
+        const res = await axios.get(`/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/columns`);
         setSchemaData(res.data);
       } else if (activeTab === 'indexes') {
-        const res = await axios.get(`http://localhost:8081/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/indexes`);
+        const res = await axios.get(`/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/indexes`);
         setIndexesData(res.data);
       } else if (activeTab === 'foreign_keys') {
-        const res = await axios.get(`http://localhost:8081/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/foreign-keys`);
+        const res = await axios.get(`/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/foreign-keys`);
         setFkData(res.data);
       } else if (activeTab === 'ddl') {
-        const res = await axios.get(`http://localhost:8081/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/ddl`);
+        const res = await axios.get(`/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/ddl`);
         setDdlData(res.data.ddl || res.data); 
       } else if (activeTab === 'stats') {
-        const res = await axios.get(`http://localhost:8081/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/stats`);
+        const res = await axios.get(`/api/connections/${conn.id}/schemas/${schema}/tables/${explorerTableName}/stats`);
         setStatsData(res.data);
       } else if (activeTab === 'data') {
         const queryLimit = limit === 'unlimited' ? 50000 : (limit === 'custom' ? Number(customLimit) : limit);
         const quote = (name: string) => `"${name}"`;
         const tableNameWithSchema = explorerSchemaName ? `${quote(explorerSchemaName)}.${quote(explorerTableName)}` : quote(explorerTableName);
         
-        const response = await fetch('http://localhost:8081/api/execute-query', {
+        const response = await fetch('/api/execute-query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

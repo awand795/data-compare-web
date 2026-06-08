@@ -90,11 +90,11 @@ export const DataCompareView: React.FC = () => {
     setLoadingTables(true);
     
     const p1 = sourceConn 
-      ? axios.post('http://localhost:8081/api/tables', sourceConn).then(res => { if (!cancelled) setSourceTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name)); }).catch(console.error)
+      ? axios.post('/api/tables', sourceConn).then(res => { if (!cancelled) setSourceTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name)); }).catch(console.error)
       : Promise.resolve(setSourceTables([]));
       
     const p2 = targetConn 
-      ? axios.post('http://localhost:8081/api/tables', targetConn).then(res => { if (!cancelled) setTargetTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name)); }).catch(console.error)
+      ? axios.post('/api/tables', targetConn).then(res => { if (!cancelled) setTargetTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name)); }).catch(console.error)
       : Promise.resolve(setTargetTables([]));
       
     Promise.all([p1, p2]).finally(() => { if (!cancelled) setLoadingTables(false); });
@@ -105,7 +105,7 @@ export const DataCompareView: React.FC = () => {
   // Warm up connections in the background as soon as they are selected
   useEffect(() => {
     if (sourceConn) {
-      fetch('http://localhost:8081/api/warmup', {
+      fetch('/api/warmup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([sourceConn])
@@ -115,7 +115,7 @@ export const DataCompareView: React.FC = () => {
 
   useEffect(() => {
     if (targetConn) {
-      fetch('http://localhost:8081/api/warmup', {
+      fetch('/api/warmup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([targetConn])
@@ -135,7 +135,7 @@ export const DataCompareView: React.FC = () => {
           // Fetch all PKs in parallel first — single await point
           const pkEntries = await Promise.allSettled(
             commonTables.map(async (t) => {
-              const pkRes = await axios.post('http://localhost:8081/api/primary-keys', {
+              const pkRes = await axios.post('/api/primary-keys', {
                 connection: sourceConn,
                 tableName: t
               });
@@ -209,7 +209,7 @@ export const DataCompareView: React.FC = () => {
     // Step 1: Get row counts first (for progress bar)
     let totalRows = 0;
     try {
-      const countRes = await fetch('http://localhost:8081/api/compare-count', {
+      const countRes = await fetch('/api/compare-count', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -225,7 +225,7 @@ export const DataCompareView: React.FC = () => {
     }
 
     // Step 2: Start streaming comparison
-    const response = await fetch('http://localhost:8081/api/compare', {
+    const response = await fetch('/api/compare', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -444,7 +444,7 @@ export const DataCompareView: React.FC = () => {
         returnMatchedRows,
             };
 
-            const res = await axios.post('http://localhost:8081/api/data-sync', payload);
+            const res = await axios.post('/api/data-sync', payload);
             if (res.data.success) {
               successCount++;
             }

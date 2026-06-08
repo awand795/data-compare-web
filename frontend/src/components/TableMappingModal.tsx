@@ -48,7 +48,7 @@ export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
   const fetchPrimaryKeys = async (conn: any, tableName: string) => {
     if (!conn || !tableName) return [];
     try {
-      const res = await axios.post('http://localhost:8081/api/primary-keys', {
+      const res = await axios.post('/api/primary-keys', {
         connection: conn,
         tableName: tableName
       });
@@ -88,7 +88,7 @@ export const TableMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
   const fetchColumns = async (conn: any, tableName: string) => {
     if (!conn || !tableName) return [];
     try {
-      const res = await axios.post('http://localhost:8081/api/columns', {
+      const res = await axios.post('/api/columns', {
         connection: conn,
         tableName: tableName
       });

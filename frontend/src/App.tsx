@@ -22,13 +22,13 @@ function App() {
 
   useEffect(() => {
     // Load persisted connections
-    axios.get('http://localhost:8081/api/connections')
+    axios.get('/api/connections')
       .then(res => {
         if (res.data && Array.isArray(res.data)) {
           setConnections(res.data);
           // Warm up connections in the background
           if (res.data.length > 0) {
-            axios.post('http://localhost:8081/api/warmup', res.data)
+            axios.post('/api/warmup', res.data)
               .catch(e => console.warn('Warmup failed:', e));
           }
         }

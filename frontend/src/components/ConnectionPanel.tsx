@@ -43,7 +43,7 @@ export const ConnectionPanel: React.FC = () => {
   const handleTest = async () => {
     setTestStatus('testing');
     try {
-      const res = await axios.post('http://localhost:8081/api/test-connection', formData);
+      const res = await axios.post('/api/test-connection', formData);
       setTestStatus(res.data.success ? 'success' : 'error');
     } finally {
       setTestStatus(prev => prev === 'testing' ? 'error' : prev);
@@ -54,7 +54,7 @@ export const ConnectionPanel: React.FC = () => {
     if (!formData.host || !formData.database || !formData.username) return;
     setLoadingSchemas(true);
     try {
-      const res = await axios.post('http://localhost:8081/api/schemas', formData);
+      const res = await axios.post('/api/schemas', formData);
       setSchemas(res.data);
       if (res.data.length > 0 && !formData.schema) {
         setFormData(prev => ({ ...prev, schema: res.data[0] }));
@@ -83,7 +83,7 @@ export const ConnectionPanel: React.FC = () => {
     if (formData.name && formData.host && formData.database) {
       const newConn = { ...formData, id: Date.now().toString() } as Connection;
       try {
-        await axios.post('http://localhost:8081/api/connections', newConn);
+        await axios.post('/api/connections', newConn);
         addConnection(newConn);
         setIsOpen(false);
         setTestStatus('idle');
@@ -98,7 +98,7 @@ export const ConnectionPanel: React.FC = () => {
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await axios.delete(`http://localhost:8081/api/connections/${id}`);
+      await axios.delete(`/api/connections/${id}`);
       removeConnection(id);
     } catch (err) {
       console.error('Failed to delete connection:', err);
@@ -113,7 +113,7 @@ export const ConnectionPanel: React.FC = () => {
     if (isExpanded && !connTables[c.id]) {
       setLoadingTables(prev => ({ ...prev, [c.id]: true }));
       try {
-        const res = await axios.post('http://localhost:8081/api/tables', c);
+        const res = await axios.post('/api/tables', c);
         setConnTables(prev => ({ ...prev, [c.id]: res.data }));
       } catch (e) {
         console.error(e);
