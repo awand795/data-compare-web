@@ -48,6 +48,11 @@ public class ApiController {
     @Autowired
     private ConnectionRepository connectionRepository;
 
+    @GetMapping("/ping")
+    public ResponseEntity<Map<String, Object>> ping() {
+        return ResponseEntity.ok(Map.of("status", "UP", "timestamp", System.currentTimeMillis()));
+    }
+
     @GetMapping("/connections")
     public ResponseEntity<List<ConnectionDetails>> getConnections() {
         return ResponseEntity.ok(connectionRepository.findAll());

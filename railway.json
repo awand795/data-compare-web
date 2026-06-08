@@ -4,7 +4,7 @@
     "dockerfilePath": "backend/Dockerfile"
   },
   "deploy": {
-    "healthcheckPath": "/api/connections",
+    "healthcheckPath": "/api/ping",
     "restartPolicyType": "ON_FAILURE"
   }
 }
