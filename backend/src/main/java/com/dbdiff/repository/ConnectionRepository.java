@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Base64;
 import java.util.List;
 
 @Repository
@@ -27,7 +28,15 @@ public class ConnectionRepository {
             c.setPort(rs.getInt("port"));
             c.setDatabase(rs.getString("database_name"));
             c.setUsername(rs.getString("username"));
-            c.setPassword(rs.getString("password"));
+            // Password stored base64-encoded from frontend; decode when loading
+            String rawPwd = rs.getString("password");
+            if (rawPwd != null) {
+                try {
+                    c.setPassword(new String(Base64.getDecoder().decode(rawPwd)));
+                } catch (Exception e) {
+                    c.setPassword(rawPwd); // not base64, use as-is
+                }
+            }
             c.setSchema(rs.getString("schema_name"));
             c.setSslMode(rs.getString("ssl_mode"));
             c.setSslCaFile(rs.getString("ssl_ca_file"));

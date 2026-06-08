@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -38,7 +37,6 @@ public class ConnectionManagerService {
 
     private String decodePassword(String encoded) {
         if (encoded == null) return null;
-        // Frontend may base64-encode passwords before saving
         try {
             return new String(java.util.Base64.getDecoder().decode(encoded));
         } catch (Exception e) {
