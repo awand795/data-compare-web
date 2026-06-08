@@ -97,11 +97,12 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     if (secureData.sshPassword) secureData.sshPassword = btoa(secureData.sshPassword);
     if (secureData.sshPassphrase) secureData.sshPassphrase = btoa(secureData.sshPassphrase);
 
-    const newConn = { ...secureData, id: Date.now().toString() } as Connection;
+    const encodedConn = { ...secureData, id: Date.now().toString() } as Connection;
     try {
-      await axios.post('/api/connections', newConn);
-      addConnection(newConn);
-      addToast({ type: 'success', title: 'Connection Saved', message: `Connection "${newConn.name}" saved successfully.` });
+      await axios.post('/api/connections', encodedConn);
+      // Store plain-text version in Zustand (not base64-encoded) so it can be sent directly to backend
+      addConnection({ ...formData, id: encodedConn.id } as Connection);
+      addToast({ type: 'success', title: 'Connection Saved', message: `Connection "${encodedConn.name}" saved successfully.` });
       onClose();
     } catch (err) {
       console.error('Failed to save connection:', err);

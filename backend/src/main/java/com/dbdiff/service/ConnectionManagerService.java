@@ -35,15 +35,6 @@ public class ConnectionManagerService {
         });
     }
 
-    private String decodePassword(String encoded) {
-        if (encoded == null) return null;
-        try {
-            return new String(java.util.Base64.getDecoder().decode(encoded));
-        } catch (Exception e) {
-            return encoded; // not base64, use as-is
-        }
-    }
-
     private DataSource createDataSource(ConnectionDetails details) throws Exception {
         HikariConfig config = new HikariConfig();
         
@@ -57,7 +48,7 @@ public class ConnectionManagerService {
         
         config.setJdbcUrl(details.getJdbcUrl(effectiveHost, effectivePort));
         config.setUsername(details.getUsername());
-        config.setPassword(decodePassword(details.getPassword()));
+        config.setPassword(details.getPassword());
 
         if (details.getSchema() != null && !details.getSchema().trim().isEmpty()) {
             config.setSchema(details.getSchema());
