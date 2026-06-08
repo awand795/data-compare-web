@@ -14,5 +14,5 @@ COPY --from=build /app/target/*.jar app.jar
 # Create logs directory
 RUN mkdir -p /app/logs
 
-EXPOSE 8081
+EXPOSE 8080
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
