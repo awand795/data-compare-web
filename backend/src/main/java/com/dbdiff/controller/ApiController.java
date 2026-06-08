@@ -67,8 +67,8 @@ public class ApiController {
 
     @PostMapping("/test-connection")
     public ResponseEntity<?> testConnection(@RequestBody ConnectionDetails details) {
-        boolean isValid = connectionManagerService.testConnection(details);
-        return ResponseEntity.ok(Map.of("success", isValid));
+        Map<String, Object> result = connectionManagerService.testConnection(details);
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/warmup")

@@ -150,6 +150,14 @@ export type AppMode = 'data' | 'schema' | 'query' | 'explorer' | 'excel' | 'sche
 
 export type AlertType = 'error' | 'success' | 'warning' | 'info';
 
+export type Toast = {
+  id: string;
+  type: AlertType;
+  title?: string;
+  message?: string;
+  duration?: number;
+};
+
 export type AlertModalState = {
   isOpen: boolean;
   title: string;
@@ -231,6 +239,11 @@ type AppState = {
   setCustomQueryTarget: (q: string) => void;
   queryResult: DiffResult | null;
   setQueryResult: (r: DiffResult | null) => void;
+
+  // Toasts
+  toasts: Toast[];
+  addToast: (toast: Omit<Toast, 'id'>) => void;
+  removeToast: (id: string) => void;
 
   // Alert Modal
   alert: AlertModalState | null;
@@ -549,6 +562,14 @@ export const useAppStore = create<AppState>()(
 
   defaultRowLimit: 100,
   setDefaultRowLimit: (limit) => set({ defaultRowLimit: limit }),
+
+  toasts: [],
+  addToast: (toast) => set((state) => ({
+    toasts: [...state.toasts, { ...toast, id: Date.now().toString() + Math.random().toString(36).slice(2, 9) }]
+  })),
+  removeToast: (id) => set((state) => ({
+    toasts: state.toasts.filter(t => t.id !== id)
+  })),
 
   alert: null,
   showAlert: (config) => set({ alert: { ...config, isOpen: true } }),

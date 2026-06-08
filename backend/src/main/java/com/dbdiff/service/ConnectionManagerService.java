@@ -36,6 +36,16 @@ public class ConnectionManagerService {
         });
     }
 
+    private String decodePassword(String encoded) {
+        if (encoded == null) return null;
+        // Frontend may base64-encode passwords before saving
+        try {
+            return new String(java.util.Base64.getDecoder().decode(encoded));
+        } catch (Exception e) {
+            return encoded; // not base64, use as-is
+        }
+    }
+
     private DataSource createDataSource(ConnectionDetails details) throws Exception {
         HikariConfig config = new HikariConfig();
         
@@ -49,7 +59,7 @@ public class ConnectionManagerService {
         
         config.setJdbcUrl(details.getJdbcUrl(effectiveHost, effectivePort));
         config.setUsername(details.getUsername());
-        config.setPassword(details.getPassword());
+        config.setPassword(decodePassword(details.getPassword()));
 
         if (details.getSchema() != null && !details.getSchema().trim().isEmpty()) {
             config.setSchema(details.getSchema());
@@ -146,7 +156,10 @@ public class ConnectionManagerService {
 
         config.setMaximumPoolSize(20);
         config.setMinimumIdle(4);
-        config.setConnectionTimeout(details.getConnectionTimeout() != null ? details.getConnectionTimeout() : 30000);
+        // Frontend sends timeout in seconds, HikariCP expects milliseconds
+        int timeoutMs = details.getConnectionTimeout() != null ? details.getConnectionTimeout() * 1000 : 30000;
+        if (timeoutMs < 250) timeoutMs = 250;
+        config.setConnectionTimeout(timeoutMs);
         config.setIdleTimeout(300000);
         config.setMaxLifetime(1800000);
         config.setLeakDetectionThreshold(600000);
@@ -165,15 +178,29 @@ public class ConnectionManagerService {
         return ds;
     }
 
-    public boolean testConnection(ConnectionDetails details) {
+    public Map<String, Object> testConnection(ConnectionDetails details) {
         try {
             DataSource ds = getDataSource(details);
             try (java.sql.Connection conn = ds.getConnection()) {
-                return conn.isValid(5);
+                boolean valid = conn.isValid(5);
+                if (valid) {
+                    return Map.of("success", true, "message", "Connection successful");
+                } else {
+                    return Map.of("success", false, "message", "Connection timeout — database did not respond within 5 seconds");
+                }
             }
         } catch (Exception e) {
             logger.error("Connection test failed: {}", e.getMessage(), e);
-            return false;
+            // Unwrap to get the real root cause message
+            Throwable cause = e;
+            while (cause.getCause() != null && cause.getCause() != cause) {
+                cause = cause.getCause();
+            }
+            String msg = cause.getMessage() != null ? cause.getMessage() : e.getMessage();
+            if (msg == null) msg = "Unknown connection error";
+            // Clean up common verbose messages
+            if (msg.contains("\n")) msg = msg.substring(0, msg.indexOf('\n'));
+            return Map.of("success", false, "message", msg);
         }
     }
 }
