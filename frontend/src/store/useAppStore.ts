@@ -280,7 +280,14 @@ export const useAppStore = create<AppState>()(
       connections: [],
   setConnections: (conns) => set({ connections: conns }),
   addConnection: (conn) => set((state) => ({ connections: [...state.connections, conn] })),
-  removeConnection: (id) => set((state) => ({ connections: state.connections.filter(c => c.id !== id) })),
+  removeConnection: (id) => {
+    axios.delete(`/api/connections/${id}`).catch(err => {
+      console.error('Failed to delete connection on backend:', err);
+      get().addToast?.({ type: 'error', title: 'Delete Failed', message: 'Could not delete connection from server.' });
+      axios.get('/api/connections').then(res => set({ connections: res.data }));
+    });
+    set((state) => ({ connections: state.connections.filter(c => c.id !== id) }));
+  },
 
   sourceConnectionId: null,
   setSourceConnectionId: (id) => set({ 
