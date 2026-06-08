@@ -171,7 +171,7 @@ export const DatabaseExplorer: React.FC = () => {
           <span className="truncate">{node.label || node.name}</span>
           {node.type === 'server' && (
             <div className="ml-auto flex items-center opacity-0 hover:opacity-100 transition-opacity">
-               <button onClick={(e) => { e.stopPropagation(); showAlert({ title: 'Delete Connection', message: `Are you sure you want to delete "${node.name}"? This action cannot be undone.`, type: 'error', confirmLabel: 'Delete', onConfirm: () => removeConnection(node.id) }); }} className="text-text-muted hover:text-red-500 p-0.5"><Trash2 className="w-3 h-3" /></button>
+               <button onClick={(e) => { e.stopPropagation(); showAlert({ title: 'Delete Connection', message: `Are you sure you want to delete "${node.name}"? This action cannot be undone.`, type: 'error', confirmLabel: 'Delete', onConfirm: () => { removeConnection(node.id); removeNode(node.id); } }); }} className="text-text-muted hover:text-red-500 p-0.5"><Trash2 className="w-3 h-3" /></button>
             </div>
           )}
         </div>
