@@ -356,6 +356,7 @@ export const QueryWorkspace: React.FC = () => {
         columns: finalColumns,
         rows: allRows,
         summary: finalSummary,
+        counters: { ...counters },
         status: 'done'
       });
       
