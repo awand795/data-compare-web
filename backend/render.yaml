@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: datasync-backend
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/connections
+    envVars:
+      - key: DB_HOST
+        value: ***REMOVED***
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        value: neondb
+      - key: DB_USER
+        value: neondb_owner
+      - key: DB_PASSWORD
+        value: npg_lSm6g8kRZEoL
+      - key: SPRING_PROFILES_ACTIVE
+        value: production
+      - key: JAVA_OPTS
+        value: -Xmx256m -Xms128m
