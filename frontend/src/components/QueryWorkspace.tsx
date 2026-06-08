@@ -232,21 +232,44 @@ export const QueryWorkspace: React.FC = () => {
       excl = m.excludeColumns;
     }
 
+    const payload = {
+      sourceConnection: sourceConn,
+      targetConnection: targetConn,
+      tableName: m?.sourceTable || null,
+      customQuerySource: sqFinal,
+      customQueryTarget: tqFinal,
+      primaryKeys: pks || null,
+      excludeColumns: excl || null,
+      sortColumns: m?.sortColumns || null,
+      returnMatchedRows,
+    };
+
+    const store = useAppStore.getState();
+    if (m) {
+      store.initDiffResult(m.id);
+    }
+
+    let totalRows = 0;
+    try {
+      const countRes = await fetch('/api/compare-count', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (countRes.ok) {
+        const countData = await countRes.json();
+        totalRows = Math.min(countData.sourceCount || 0, countData.targetCount || 0);
+        if (m) store.setBatchProgress(m.id, 0, totalRows);
+      }
+    } catch (e) {
+      console.warn('Count fetch failed, continuing without progress', e);
+    }
+
     try {
       const response = await fetch('/api/compare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceConnection: sourceConn,
-          targetConnection: targetConn,
-          tableName: m?.sourceTable || null,
-          customQuerySource: sqFinal,
-          customQueryTarget: tqFinal,
-          primaryKeys: pks || null,
-          excludeColumns: excl || null,
-          sortColumns: m?.sortColumns || null,
-            returnMatchedRows,
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -277,6 +300,15 @@ export const QueryWorkspace: React.FC = () => {
       let finalColumns: string[] = [];
       let counters = { match: 0, different: 0, sourceOnly: 0, targetOnly: 0 };
       let finalSummary: any = null;
+      let rowCount = 0;
+      let rowBatch: any[] = [];
+
+      const flushRowBatchToStore = () => {
+        if (m && rowBatch.length > 0) {
+          store.appendDiffRows(m.id, rowBatch);
+          rowBatch = [];
+        }
+      };
 
       const flush = () => {
         setWorkspaceDiffResult({
@@ -289,6 +321,7 @@ export const QueryWorkspace: React.FC = () => {
         pendingColumns = null;
         pendingRows = [];
         pendingSummary = null;
+        flushRowBatchToStore();
       };
 
       while (true) {
@@ -306,14 +339,23 @@ export const QueryWorkspace: React.FC = () => {
             if (msg.type === 'columns') {
                pendingColumns = msg.data;
                finalColumns = msg.data;
+               if (m) store.setDiffColumns(m.id, msg.data);
             }
               else if (msg.type === 'row') {
                  pendingRows.push(msg.data);
                  allRows.push(msg.data);
+                 rowBatch.push(msg.data);
+                 rowCount++;
+                 
                  if (msg.data.status === 'MATCH') counters.match++;
                  else if (msg.data.status === 'DIFFERENT') counters.different++;
                  else if (msg.data.status === 'SOURCE_ONLY') counters.sourceOnly++;
                  else if (msg.data.status === 'TARGET_ONLY') counters.targetOnly++;
+                 
+                 if (rowBatch.length >= 100) flushRowBatchToStore();
+                 if (m && totalRows > 0 && rowCount % 1000 === 0) {
+                   store.setBatchProgress(m.id, rowCount, totalRows);
+                 }
               }
             else if (msg.type === 'summary') {
                pendingSummary = msg.data;
@@ -352,6 +394,20 @@ export const QueryWorkspace: React.FC = () => {
         } catch (e) {}
       }
       
+      
+      flushRowBatchToStore();
+      
+      if (m && totalRows > 0) {
+        store.setBatchProgress(m.id, totalRows, totalRows);
+      }
+      if (m && finalSummary) {
+        store.setDiffSummary(m.id, {
+          totalSourceRows: finalSummary.totalSourceRows || 0,
+          totalTargetRows: finalSummary.totalTargetRows || 0,
+          totalDifferences: finalSummary.totalDifferences || 0,
+        });
+      }
+
       setWorkspaceDiffResult({
         columns: finalColumns,
         rows: allRows,
@@ -363,6 +419,7 @@ export const QueryWorkspace: React.FC = () => {
     } catch (err: any) {
       addToast({ type: 'error', title: 'Comparison Failed', message: err.message || 'An unexpected error occurred.' });
       setWorkspaceDiffResult((prev: any) => ({ ...prev, status: 'error' }));
+      if (m) store.setDiffSummary(m.id, { totalSourceRows: 0, totalTargetRows: 0, totalDifferences: 0 }); // handle error state
     } finally {
       setComparing(false);
     }
