@@ -4,8 +4,8 @@ import './index.css'
 import App from './App.tsx'
 import axios from 'axios'
 
-// In production (Vercel), set VITE_API_URL to the Render backend URL
-// e.g. https://datasync-backend.onrender.com
+// In production (Vercel), VITE_API_URL reads from .env.production or Vercel env vars
+// set to Railway backend URL: https://data-compare-web-production.up.railway.app
 // In development, requests are proxied via Vite to localhost:8081
 const apiUrl = import.meta.env.VITE_API_URL
 if (apiUrl) {
