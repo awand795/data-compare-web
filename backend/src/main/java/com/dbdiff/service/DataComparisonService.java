@@ -833,9 +833,8 @@ public class DataComparisonService {
             if (sObj == null) return -1;
             if (tObj == null) return 1;
             
-            // Try numeric comparison first — handles INT vs TEXT (Excel import) correctly
-            // e.g. "2" vs "10" should be 2 < 10, not "2" > "10"
-            if (sObj instanceof Number || tObj instanceof Number || isNumericString(sObj) || isNumericString(tObj)) {
+            // Compare exactly as SQL natively sorted them to maintain merge-join alignment
+            if (sObj instanceof Number && tObj instanceof Number) {
                 try {
                     java.math.BigDecimal bdS = toBigDecimal(sObj);
                     java.math.BigDecimal bdT = toBigDecimal(tObj);
@@ -846,7 +845,7 @@ public class DataComparisonService {
                 } catch (Exception ignored) {}
             }
             
-            // Fallback: string comparison (for non-numeric PKs like UUIDs)
+            // Fallback: string comparison (for Strings, Dates, UUIDs, or type mismatches)
             int cmp = sObj.toString().trim().compareTo(tObj.toString().trim());
             if (cmp != 0) return cmp;
         }
