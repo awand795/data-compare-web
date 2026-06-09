@@ -454,7 +454,7 @@ public class DataComparisonService {
         if (request.getCustomQuerySource() != null && !request.getCustomQuerySource().trim().isEmpty()) {
             sourceQuery = "SELECT COUNT(*) FROM (" + request.getCustomQuerySource().trim() + ") _cnt";
         } else if (request.getTableName() != null) {
-            sourceQuery = "SELECT COUNT(*) FROM \"" + request.getTableName() + "\"";
+            sourceQuery = "SELECT COUNT(*) FROM " + formatTableName(request.getTableName());
         } else {
             sourceQuery = "SELECT COUNT(*) FROM (" + request.getCustomQuerySource() + ") _cnt";
         }
@@ -462,7 +462,7 @@ public class DataComparisonService {
         if (request.getCustomQueryTarget() != null && !request.getCustomQueryTarget().trim().isEmpty()) {
             targetQuery = "SELECT COUNT(*) FROM (" + request.getCustomQueryTarget().trim() + ") _cnt";
         } else if (request.getTableName() != null) {
-            targetQuery = "SELECT COUNT(*) FROM \"" + request.getTableName() + "\"";
+            targetQuery = "SELECT COUNT(*) FROM " + formatTableName(request.getTableName());
         } else {
             targetQuery = "SELECT COUNT(*) FROM (" + request.getCustomQueryTarget() + ") _cnt";
         }
@@ -539,6 +539,16 @@ public class DataComparisonService {
     // ─────────────────────────────────────────────────────────────────────────
     // Helper methods
     // ─────────────────────────────────────────────────────────────────────────
+
+    private String formatTableName(String tableName) {
+        if (tableName == null || tableName.trim().isEmpty()) return "";
+        if (tableName.contains("\"")) return tableName;
+        if (tableName.contains(".")) {
+            String[] parts = tableName.split("\\.", 2);
+            return "\"" + parts[0] + "\".\"" + parts[1] + "\"";
+        }
+        return "\"" + tableName + "\"";
+    }
 
     private List<String> extractColumnsFromMeta(ResultSetMetaData meta, Set<String> excludeSet) throws Exception {
         List<String> cols = new ArrayList<>();
@@ -745,9 +755,9 @@ public class DataComparisonService {
         private String buildQuery(String tableName, String customQuery, List<String> pks, List<String> sortColumns, boolean useSurrogateKey) {
         String orderByClause = "";
         if (sortColumns != null && !sortColumns.isEmpty()) {
-            orderByClause = sortColumns.stream().map(c -> "CAST(\"" + c + "\" AS TEXT)").collect(java.util.stream.Collectors.joining(", "));
+            orderByClause = sortColumns.stream().map(c -> "CAST(" + c + " AS TEXT)").collect(java.util.stream.Collectors.joining(", "));
         } else if (pks != null && !pks.isEmpty()) {
-            orderByClause = pks.stream().map(c -> "CAST(\"" + c + "\" AS TEXT)").collect(java.util.stream.Collectors.joining(", "));
+            orderByClause = pks.stream().map(c -> "CAST(" + c + " AS TEXT)").collect(java.util.stream.Collectors.joining(", "));
         }
 
         boolean hasOrderBy = !orderByClause.isEmpty();
@@ -763,13 +773,15 @@ public class DataComparisonService {
             return q;
         }
 
+        String safeTable = formatTableName(tableName);
+
         if (useSurrogateKey) {
             String window = hasOrderBy ? " ORDER BY " + orderByClause : "";
-            return "SELECT ROW_NUMBER() OVER (" + window + ") as __rn__, * FROM \"" + tableName + "\" ORDER BY __rn__";
+            return "SELECT ROW_NUMBER() OVER (" + window + ") as __rn__, * FROM " + safeTable + " ORDER BY __rn__";
         }
 
         String orderBy = hasOrderBy ? " ORDER BY " + orderByClause : "";
-        return "SELECT * FROM \"" + tableName + "\"" + orderBy;
+        return "SELECT * FROM " + safeTable + orderBy;
     }
 
     private List<String> extractColumns(List<Map<String, Object>> source, List<Map<String, Object>> target,
