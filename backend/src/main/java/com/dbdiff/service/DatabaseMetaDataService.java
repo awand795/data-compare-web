@@ -51,11 +51,11 @@ public class DatabaseMetaDataService {
             DatabaseMetaData metaData = conn.getMetaData();
             String schemaPattern = (expectedSchema != null && !expectedSchema.trim().isEmpty()) ? expectedSchema.trim() : null;
             
-            // Handle schema-qualified table names like "mbi.users"
+            // Always strip schema prefix from table name (e.g. "sch_mbi.users" → "users")
             String actualTable = tableName;
-            if (schemaPattern == null && tableName.contains(".")) {
+            if (tableName.contains(".")) {
                 String[] parts = tableName.split("\\.", 2);
-                schemaPattern = parts[0];
+                if (schemaPattern == null) schemaPattern = parts[0];
                 actualTable = parts[1];
             }
 
@@ -76,10 +76,11 @@ public class DatabaseMetaDataService {
             DatabaseMetaData metaData = conn.getMetaData();
             String schemaPattern = (expectedSchema != null && !expectedSchema.trim().isEmpty()) ? expectedSchema.trim() : null;
             
+            // Always strip schema prefix from table name
             String actualTable = tableName;
-            if (schemaPattern == null && tableName.contains(".")) {
+            if (tableName.contains(".")) {
                 String[] parts = tableName.split("\\.", 2);
-                schemaPattern = parts[0];
+                if (schemaPattern == null) schemaPattern = parts[0];
                 actualTable = parts[1];
             }
 
@@ -103,10 +104,11 @@ public class DatabaseMetaDataService {
             DatabaseMetaData metaData = conn.getMetaData();
             String schemaPattern = (expectedSchema != null && !expectedSchema.trim().isEmpty()) ? expectedSchema.trim() : null;
             
+            // Always strip schema prefix from table name
             String actualTable = tableName;
-            if (schemaPattern == null && tableName.contains(".")) {
+            if (tableName.contains(".")) {
                 String[] parts = tableName.split("\\.", 2);
-                schemaPattern = parts[0];
+                if (schemaPattern == null) schemaPattern = parts[0];
                 actualTable = parts[1];
             }
 
