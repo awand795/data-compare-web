@@ -240,16 +240,20 @@ public class DataComparisonService {
             useSurrogateKey = false;
         }
 
-        // When no keys AND no sort columns → fetch ALL columns from metadata
-        // and use them as ORDER BY to guarantee deterministic ordering across both DBs.
-        // Without this, ROW_NUMBER() OVER () assigns arbitrary row numbers and
-        // identical data can appear as "different" because row positions don't match.
+        // When no keys AND no sort columns → use ALL columns as composite key.
+        // This means: sort by all columns + merge-join by all columns.
+        //  - Identical rows → compareKeys returns 0 → MATCH
+        //  - Any value difference (e.g. price 6000 vs 5000) → rows sort differently
+        //    → appear as SOURCE_ONLY + TARGET_ONLY so user sees exact change.
+        // This avoids ROW_NUMBER() which is non-deterministic and would hide real diffs.
         List<String> effectiveSortColumns = request.getSortColumns();
         if (useSurrogateKey && (effectiveSortColumns == null || effectiveSortColumns.isEmpty()) && request.getTableName() != null) {
             List<String> allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
             if (allCols != null && !allCols.isEmpty()) {
+                exactPks = allCols;
                 effectiveSortColumns = allCols;
-                logger.info("STREAM COMPARE: No keys provided — using ALL {} columns for deterministic ORDER BY", allCols.size());
+                useSurrogateKey = false;
+                logger.info("STREAM COMPARE: No keys provided — using ALL {} columns as composite key for accurate diff", allCols.size());
             }
         }
 
@@ -386,8 +390,10 @@ public class DataComparisonService {
         if (useSurrogateKey && (effectiveSortColumns == null || effectiveSortColumns.isEmpty()) && request.getTableName() != null) {
             List<String> allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
             if (allCols != null && !allCols.isEmpty()) {
+                exactPks = allCols;
                 effectiveSortColumns = allCols;
-                logger.info("BATCH COMPARE: No keys provided — using ALL {} columns for deterministic ORDER BY", allCols.size());
+                useSurrogateKey = false;
+                logger.info("BATCH COMPARE: No keys provided — using ALL {} columns as composite key for accurate diff", allCols.size());
             }
         }
 
