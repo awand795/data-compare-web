@@ -54,13 +54,17 @@ public class ConnectionManagerService {
         String cacheKey = details.getId() != null && !details.getId().isBlank()
             ? details.getId() + "|" + details.getUsername()
             : (details.getJdbcUrl().toLowerCase().trim() + "|" + details.getUsername().toLowerCase().trim());
-        return dataSourceCache.computeIfAbsent(cacheKey, key -> {
+        synchronized (dataSourceCache) {
+            DataSource existing = dataSourceCache.get(cacheKey);
+            if (existing != null) return existing;
             try {
-                return createDataSource(details);
+                DataSource ds = createDataSource(details);
+                dataSourceCache.put(cacheKey, ds);
+                return ds;
             } catch (Exception e) {
                 throw new RuntimeException("Failed to create data source", e);
             }
-        });
+        }
     }
 
     private DataSource createDataSource(ConnectionDetails details) throws Exception {

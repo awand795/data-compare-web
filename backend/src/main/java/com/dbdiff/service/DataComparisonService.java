@@ -17,10 +17,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
-import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -131,6 +129,7 @@ public class DataComparisonService {
                 }
             } finally {
                 try { conn.rollback(); } catch (Exception ignored) {}
+                try { conn.setAutoCommit(true); } catch (Exception ignored) {}
             }
         } catch (Exception e) {
             throw new RuntimeException("Cursor fetch failed: " + e.getMessage(), e);
@@ -540,11 +539,6 @@ public class DataComparisonService {
     // ─────────────────────────────────────────────────────────────────────────
     // Helper methods
     // ─────────────────────────────────────────────────────────────────────────
-
-    private boolean isSameDatabase(DiffRequest request) {
-        return request.getSourceConnection().getJdbcUrl().trim()
-                .equalsIgnoreCase(request.getTargetConnection().getJdbcUrl().trim());
-    }
 
     private List<String> extractColumnsFromMeta(ResultSetMetaData meta, Set<String> excludeSet) throws Exception {
         List<String> cols = new ArrayList<>();
