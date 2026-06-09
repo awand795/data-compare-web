@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -17,10 +19,36 @@ public class ConnectionManagerService {
 
     private static final Logger logger = LoggerFactory.getLogger(ConnectionManagerService.class);
 
-    private final Map<String, DataSource> dataSourceCache = new ConcurrentHashMap<>();
+    private final int MAX_POOL_CACHE = 10;
+    private final Map<String, DataSource> dataSourceCache = Collections.synchronizedMap(
+      new LinkedHashMap<String, DataSource>(MAX_POOL_CACHE, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, DataSource> eldest) {
+          if (size() > MAX_POOL_CACHE) {
+            closeQuietly(eldest.getValue());
+            return true;
+          }
+          return false;
+        }
+      }
+    );
+
+    private void closeQuietly(DataSource ds) {
+      try {
+        if (ds instanceof com.zaxxer.hikari.HikariDataSource hds) {
+          hds.close();
+          logger.info("Closed evicted HikariCP pool: {}", hds.getPoolName());
+        }
+      } catch (Exception e) {
+        logger.warn("Failed to close evicted DataSource: {}", e.getMessage());
+      }
+    }
 
     @Autowired
     private SshTunnelService sshTunnelService;
+
+    @Autowired
+    private org.springframework.core.task.TaskExecutor taskExecutor;
 
     public DataSource getDataSource(ConnectionDetails details) {
         String cacheKey = details.getId() != null && !details.getId().isBlank()
@@ -156,13 +184,13 @@ public class ConnectionManagerService {
         HikariDataSource ds = new HikariDataSource(config);
         
         // Warm up: buka koneksi awal ke remote DB secara asinkron di background
-        new Thread(() -> {
+        taskExecutor.execute(() -> {
             try (java.sql.Connection conn = ds.getConnection()) {
-                // just to warm up the connection
+                logger.info("Warmup connection successful for pool");
             } catch (Exception e) {
-                logger.error("Failed to warm up connection pool: {}", e.getMessage());
+                logger.warn("Warmup connection failed: {}", e.getMessage());
             }
-        }).start();
+        });
         
         return ds;
     }

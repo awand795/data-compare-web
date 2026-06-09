@@ -71,29 +71,12 @@ public class DataComparisonService {
         List<Map<String, Object>> sourceData;
         List<Map<String, Object>> targetData;
 
-        boolean isSameDb = isSameDatabase(request);
-
-        if (isSameDb) {
-            long start = System.currentTimeMillis();
-            sourceData = sourceJdbc.queryForList(sourceQuery);
-            logger.info("COMPARE DATA: Source {} rows in {}ms", sourceData.size(), (System.currentTimeMillis() - start));
-            start = System.currentTimeMillis();
-            targetData = targetJdbc.queryForList(targetQuery);
-            logger.info("COMPARE DATA: Target {} rows in {}ms", targetData.size(), (System.currentTimeMillis() - start));
-        } else {
-            ExecutorService ex = Executors.newFixedThreadPool(2);
-            Future<List<Map<String, Object>>> sf = ex.submit(() -> sourceJdbc.queryForList(sourceQuery));
-            Future<List<Map<String, Object>>> tf = ex.submit(() -> targetJdbc.queryForList(targetQuery));
-            try {
-                sourceData = sf.get(300, TimeUnit.SECONDS);
-                targetData = tf.get(300, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                sf.cancel(true); tf.cancel(true);
-                throw new RuntimeException("Parallel query failed: " + e.getMessage(), e);
-            } finally {
-                ex.shutdown();
-            }
-        }
+        long start = System.currentTimeMillis();
+        sourceData = fetchWithCursor(sourceDs, sourceQuery);
+        logger.info("COMPARE DATA: Source {} rows in {}ms", sourceData.size(), (System.currentTimeMillis() - start));
+        start = System.currentTimeMillis();
+        targetData = fetchWithCursor(targetDs, targetQuery);
+        logger.info("COMPARE DATA: Target {} rows in {}ms", targetData.size(), (System.currentTimeMillis() - start));
 
         Set<String> excludeSet = buildExcludeSet(request);
         List<String> columns = extractColumns(sourceData, targetData, excludeSet);
@@ -123,6 +106,36 @@ public class DataComparisonService {
         result.setRows(diffRows);
         result.setTotalDifferences(differences);
         return result;
+    }
+
+    private static final int MAX_SYNC_ROWS = 100_000;
+
+    private List<Map<String, Object>> fetchWithCursor(DataSource ds, String sql) {
+        List<Map<String, Object>> results = new ArrayList<>(Math.min(10_000, MAX_SYNC_ROWS));
+        try (Connection conn = ds.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql,
+                 ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            conn.setAutoCommit(false);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                ResultSetMetaData meta = rs.getMetaData();
+                int colCount = meta.getColumnCount();
+                String[] cols = new String[colCount];
+                for (int i = 1; i <= colCount; i++) cols[i - 1] = meta.getColumnLabel(i);
+                int rowNum = 0;
+                while (rs.next() && rowNum < MAX_SYNC_ROWS) {
+                    Map<String, Object> row = new LinkedHashMap<>(colCount);
+                    for (int i = 0; i < colCount; i++) row.put(cols[i], rs.getObject(i + 1));
+                    results.add(row);
+                    rowNum++;
+                }
+            } finally {
+                try { conn.rollback(); } catch (Exception ignored) {}
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Cursor fetch failed: " + e.getMessage(), e);
+        }
+        return results;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

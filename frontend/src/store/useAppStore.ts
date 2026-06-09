@@ -337,7 +337,7 @@ export const useAppStore = create<AppState>()(
   appendDiffRows: (mappingId, newRows) => set((state) => {
     const existing = state.diffResults[mappingId];
     if (!existing) return state;
-    
+
     let { matchCount, differentCount, sourceOnlyCount, targetOnlyCount } = existing;
     for (const r of newRows) {
       if (r.status === 'MATCH') matchCount++;
@@ -345,23 +345,30 @@ export const useAppStore = create<AppState>()(
       else if (r.status === 'SOURCE_ONLY') sourceOnlyCount++;
       else if (r.status === 'TARGET_ONLY') targetOnlyCount++;
     }
-    
-    // Mutate the array directly to avoid O(N^2) copying lag during large streams
-    existing.rows.push(...newRows);
-    
-    // Enforce memory limit — trim oldest rows if exceeded
+
     const maxRows = state.maxRowsInMemory || 100000;
-    if (existing.rows.length > maxRows) {
-      existing.rows.splice(0, existing.rows.length - maxRows);
+    let updatedRows: DiffRow[];
+
+    if (existing.rows.length + newRows.length <= 50000) {
+      // Small dataset: safe to spread (immutable, React detects change)
+      updatedRows = [...existing.rows, ...newRows];
+    } else {
+      // Large dataset: push in-place then create new reference to trigger React
+      existing.rows.push(...newRows);
+      // Trim oldest rows if over memory limit
+      if (existing.rows.length > maxRows) {
+        existing.rows.splice(0, existing.rows.length - maxRows);
+      }
+      // New array reference without full copy — React sees different ref
+      updatedRows = existing.rows.slice(0);
     }
-      
+
     return {
       diffResults: {
         ...state.diffResults,
         [mappingId]: {
           ...existing,
-          rows: existing.rows,
-          _v: (existing._v || 0) + 1,
+          rows: updatedRows,
           matchCount,
           differentCount,
           sourceOnlyCount,
@@ -374,7 +381,7 @@ export const useAppStore = create<AppState>()(
     const existing = state.diffResults[mappingId];
     if (!existing) return state;
     return {
-      diffResults: { ...state.diffResults, [mappingId]: { ...existing, ...summary, rows: existing.rows, _v: (existing._v || 0) + 1, status: 'done' } }
+      diffResults: { ...state.diffResults, [mappingId]: { ...existing, ...summary, rows: existing.rows, status: 'done' } }
     };
   }),
   setBatchProgress: (mappingId, current, total) => set((state) => {
