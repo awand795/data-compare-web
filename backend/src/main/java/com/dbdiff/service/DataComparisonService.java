@@ -785,9 +785,9 @@ public class DataComparisonService {
         private String buildQuery(String tableName, String customQuery, List<String> pks, List<String> sortColumns, boolean useSurrogateKey) {
         String orderByClause = "";
         if (sortColumns != null && !sortColumns.isEmpty()) {
-            orderByClause = String.join(", ", sortColumns);
+            orderByClause = sortColumns.stream().map(c -> c + " NULLS FIRST").collect(java.util.stream.Collectors.joining(", "));
         } else if (pks != null && !pks.isEmpty()) {
-            orderByClause = String.join(", ", pks);
+            orderByClause = pks.stream().map(c -> c + " NULLS FIRST").collect(java.util.stream.Collectors.joining(", "));
         }
 
         boolean hasOrderBy = !orderByClause.isEmpty();
@@ -859,23 +859,31 @@ public class DataComparisonService {
             Object sObj = rsS.getObject(idx);
             Object tObj = rsT.getObject(idx);
             
+            // NULL handling — matches SQL "NULLS FIRST" ordering
             if (sObj == null && tObj == null) continue;
             if (sObj == null) return -1;
             if (tObj == null) return 1;
             
-            // Compare exactly as SQL natively sorted them to maintain merge-join alignment
+            // Same Java type + Comparable → use native comparison
+            // This correctly handles Timestamp, Date, String, Boolean, etc.
+            if (sObj.getClass().equals(tObj.getClass()) && sObj instanceof Comparable) {
+                int cmp = ((Comparable<Object>) sObj).compareTo(tObj);
+                if (cmp != 0) return cmp;
+                continue;
+            }
+            
+            // Both Numbers but different types (e.g. Integer vs BigDecimal)
             if (sObj instanceof Number && tObj instanceof Number) {
                 try {
                     java.math.BigDecimal bdS = toBigDecimal(sObj);
                     java.math.BigDecimal bdT = toBigDecimal(tObj);
                     int cmp = bdS.compareTo(bdT);
                     if (cmp != 0) return cmp;
-                    // Numerically equal → continue to next PK column
                     continue;
                 } catch (Exception ignored) {}
             }
             
-            // Fallback: string comparison (for Strings, Dates, UUIDs, or type mismatches)
+            // Fallback: string comparison
             int cmp = sObj.toString().trim().compareTo(tObj.toString().trim());
             if (cmp != 0) return cmp;
         }
