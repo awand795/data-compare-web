@@ -247,12 +247,36 @@ public class DataComparisonService {
         //    → appear as SOURCE_ONLY + TARGET_ONLY so user sees exact change.
         // This avoids ROW_NUMBER() which is non-deterministic and would hide real diffs.
         List<String> effectiveSortColumns = request.getSortColumns();
-        if (useSurrogateKey && (effectiveSortColumns == null || effectiveSortColumns.isEmpty()) && request.getTableName() != null) {
-            logger.info("STREAM COMPARE: Attempting to fetch columns for table='{}', schema='{}'", request.getTableName(), request.getSourceConnection().getSchema());
-            List<String> allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
+        if (useSurrogateKey && (effectiveSortColumns == null || effectiveSortColumns.isEmpty())) {
+            List<String> allCols = new ArrayList<>();
+            
+            // 1. Try JDBC Metadata if table name is provided
+            if (request.getTableName() != null && !request.getTableName().isEmpty()) {
+                logger.info("STREAM COMPARE: Attempting to fetch columns for table='{}', schema='{}'", request.getTableName(), request.getSourceConnection().getSchema());
+                allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
+            }
+
+            // 2. Fallback: Dry-run query LIMIT 0 to get ResultSetMetaData (works for Custom Queries / Views)
+            if (allCols == null || allCols.isEmpty()) {
+                String baseQuery = (request.getCustomQuerySource() != null && !request.getCustomQuerySource().isEmpty()) 
+                    ? request.getCustomQuerySource() 
+                    : "SELECT * FROM " + request.getTableName();
+                logger.info("STREAM COMPARE: Fetching columns via LIMIT 0 dry-run query...");
+                try (Connection conn = sourceDs.getConnection();
+                     java.sql.Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
+                    java.sql.ResultSetMetaData meta = rs.getMetaData();
+                    for (int i = 1; i <= meta.getColumnCount(); i++) {
+                        allCols.add(meta.getColumnLabel(i));
+                    }
+                } catch (Exception e) {
+                    logger.warn("STREAM COMPARE: Failed dry-run column extraction: {}", e.getMessage());
+                }
+            }
+
             if (allCols != null && !allCols.isEmpty()) {
-                exactPks = allCols;
-                effectiveSortColumns = allCols;
+                exactPks = new ArrayList<>(allCols);
+                effectiveSortColumns = new ArrayList<>(allCols);
                 useSurrogateKey = false;
                 logger.info("STREAM COMPARE: ✅ Composite key mode — {} columns: {}", allCols.size(), allCols);
             } else {
