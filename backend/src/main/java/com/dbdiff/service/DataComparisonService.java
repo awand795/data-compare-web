@@ -239,8 +239,22 @@ public class DataComparisonService {
             exactPks = request.getSortColumns();
             useSurrogateKey = false;
         }
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, request.getSortColumns(), useSurrogateKey);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, request.getSortColumns(), useSurrogateKey);
+
+        // When no keys AND no sort columns → fetch ALL columns from metadata
+        // and use them as ORDER BY to guarantee deterministic ordering across both DBs.
+        // Without this, ROW_NUMBER() OVER () assigns arbitrary row numbers and
+        // identical data can appear as "different" because row positions don't match.
+        List<String> effectiveSortColumns = request.getSortColumns();
+        if (useSurrogateKey && (effectiveSortColumns == null || effectiveSortColumns.isEmpty()) && request.getTableName() != null) {
+            List<String> allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
+            if (allCols != null && !allCols.isEmpty()) {
+                effectiveSortColumns = allCols;
+                logger.info("STREAM COMPARE: No keys provided — using ALL {} columns for deterministic ORDER BY", allCols.size());
+            }
+        }
+
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, effectiveSortColumns, useSurrogateKey);
 
         logger.info("STREAM COMPARE: O(1) Merge-Join");
         logger.info("STREAM COMPARE: Source Query = {}", sourceQuery);
@@ -367,8 +381,18 @@ public class DataComparisonService {
             useSurrogateKey = false;
         }
 
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, request.getSortColumns(), useSurrogateKey);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, request.getSortColumns(), useSurrogateKey);
+        // Same deterministic ordering fix as processStream
+        List<String> effectiveSortColumns = request.getSortColumns();
+        if (useSurrogateKey && (effectiveSortColumns == null || effectiveSortColumns.isEmpty()) && request.getTableName() != null) {
+            List<String> allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
+            if (allCols != null && !allCols.isEmpty()) {
+                effectiveSortColumns = allCols;
+                logger.info("BATCH COMPARE: No keys provided — using ALL {} columns for deterministic ORDER BY", allCols.size());
+            }
+        }
+
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, effectiveSortColumns, useSurrogateKey);
 
         // Add LIMIT/OFFSET
         sourceQuery = addLimitOffset(sourceQuery, batchSize, offset);
