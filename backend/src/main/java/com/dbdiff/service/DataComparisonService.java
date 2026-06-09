@@ -248,19 +248,22 @@ public class DataComparisonService {
         // This avoids ROW_NUMBER() which is non-deterministic and would hide real diffs.
         List<String> effectiveSortColumns = request.getSortColumns();
         if (useSurrogateKey && (effectiveSortColumns == null || effectiveSortColumns.isEmpty()) && request.getTableName() != null) {
+            logger.info("STREAM COMPARE: Attempting to fetch columns for table='{}', schema='{}'", request.getTableName(), request.getSourceConnection().getSchema());
             List<String> allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
             if (allCols != null && !allCols.isEmpty()) {
                 exactPks = allCols;
                 effectiveSortColumns = allCols;
                 useSurrogateKey = false;
-                logger.info("STREAM COMPARE: No keys provided — using ALL {} columns as composite key for accurate diff", allCols.size());
+                logger.info("STREAM COMPARE: ✅ Composite key mode — {} columns: {}", allCols.size(), allCols);
+            } else {
+                logger.warn("STREAM COMPARE: ⚠️ getColumns returned EMPTY — falling back to ROW_NUMBER (non-deterministic!)");
             }
         }
 
         String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey);
         String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, effectiveSortColumns, useSurrogateKey);
 
-        logger.info("STREAM COMPARE: O(1) Merge-Join");
+        logger.info("STREAM COMPARE: useSurrogateKey={}, exactPks.size={}", useSurrogateKey, exactPks.size());
         logger.info("STREAM COMPARE: Source Query = {}", sourceQuery);
         logger.info("STREAM COMPARE: Target Query = {}", targetQuery);
 
