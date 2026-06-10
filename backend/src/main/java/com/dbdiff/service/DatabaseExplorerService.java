@@ -183,6 +183,22 @@ public class DatabaseExplorerService {
                 // PostgreSQL Specific Stats
                 String pgSchema = (schema == null || schema.isEmpty()) ? "public" : schema;
                 
+                // Identify object type (Table, View, MatView)
+                String typeQuery = "SELECT relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = ? AND c.relname = ?";
+                List<String> relkinds = jdbc.queryForList(typeQuery, String.class, pgSchema, table);
+                String relkind = relkinds.isEmpty() ? "r" : relkinds.get(0);
+                
+                String typeLabel = "Table";
+                boolean isVirtual = false;
+                if ("v".equals(relkind)) { typeLabel = "Virtual View"; isVirtual = true; }
+                else if ("m".equals(relkind)) { typeLabel = "Materialized View"; }
+                else if ("f".equals(relkind)) { typeLabel = "Foreign Table"; }
+                
+                addStat(statsList, "object_type", typeLabel);
+                if (isVirtual) {
+                    addStat(statsList, "storage_note", "Views are virtual and do not occupy disk space.");
+                }
+
                 // Sizes
                 String sizeQuery = 
                     "SELECT pg_size_pretty(pg_total_relation_size(?)) as total_size, " +
@@ -215,13 +231,19 @@ public class DatabaseExplorerService {
                 
                 if (!results.isEmpty()) {
                     Map<String, Object> r = results.get(0);
+                    String tableType = (String) r.get("TABLE_TYPE");
+                    addStat(statsList, "object_type", "VIEW".equalsIgnoreCase(tableType) ? "Virtual View" : "Table");
+                    
+                    if ("VIEW".equalsIgnoreCase(tableType)) {
+                        addStat(statsList, "storage_note", "MySQL Views are virtual; sizes shown are from metadata.");
+                    }
+
                     addStat(statsList, "engine", r.get("ENGINE"));
                     addStat(statsList, "version", r.get("VERSION"));
                     addStat(statsList, "row_format", r.get("ROW_FORMAT"));
                     
-                    // Convert bytes to Human Readable
                     addStat(statsList, "data_length", formatBytes(r.get("DATA_LENGTH")));
-                    addStat(statsList, "index_length", formatBytes(r.get("INDEX_LENGTH")));
+                    addStat(statsList, "index_length", formatBytes(r.get("index_length")));
                     addStat(statsList, "data_free_fragmentation", formatBytes(r.get("DATA_FREE")));
                     
                     addStat(statsList, "create_time", r.get("CREATE_TIME"));
