@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore, type Connection } from '../store/useAppStore';
 import { useExplorerStore, type ExplorerNode, type ExplorerNodeType } from '../store/useExplorerStore';
 import { ConnectionDialog } from './ConnectionDialog';
-import { Database, Plus, Trash2, Search, ChevronRight, ChevronDown, Table as TableIcon, LayoutList, FileCode2, Link as LinkIcon, Key, Hash, RefreshCw, Server, Settings2 } from 'lucide-react';
+import { Database, Plus, Trash2, Search, ChevronRight, ChevronDown, Table as TableIcon, LayoutList, FileCode2, Link as LinkIcon, Key, Hash, RefreshCw, Server, Settings2, Play } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
 
@@ -168,7 +168,7 @@ export const DatabaseExplorer: React.FC = () => {
 
   const handleContextMenu = (e: React.MouseEvent, nodeId: string) => {
     const node = nodes[nodeId];
-    if (node.type === 'table' || node.type === 'view') {
+    if (node && (node.type === 'table' || node.type === 'view')) {
       e.preventDefault();
       setContextMenu({ x: e.clientX, y: e.clientY, nodeId });
     }
@@ -177,6 +177,7 @@ export const DatabaseExplorer: React.FC = () => {
   const executeAction = (action: string) => {
     if (!contextMenu) return;
     const node = nodes[contextMenu.nodeId];
+    if (!node) return;
     const connId = node.metadata?.connId;
     const schema = node.metadata?.schema;
     const tableName = node.name;
