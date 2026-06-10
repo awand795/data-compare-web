@@ -8,6 +8,9 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import CodeMirror from '@uiw/react-codemirror';
+import { sql } from '@codemirror/lang-sql';
+import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 
 export const ResultFooter: React.FC<{ 
   data: any[]; 
@@ -240,7 +243,7 @@ export const SidePanel = ({
   limit, setLimit, format, setFormat,
   executeQuery, downloadCSV, copyResults, copied
 }: any) => {
-  const { tableMappings, focusedMappingId } = useAppStore();
+  const { tableMappings, focusedMappingId, theme } = useAppStore();
   const isSource = side === 'source';
   const accent   = isSource ? 'blue' : 'emerald';
   const label    = isSource ? 'Source' : 'Target';
@@ -310,14 +313,30 @@ export const SidePanel = ({
 
       <Group orientation="vertical">
         <Panel defaultSize={35} minSize={15}>
-          <textarea
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="SELECT * FROM table_name WHERE ..."
-            spellCheck={false}
-            className="w-full h-full p-3 text-[12px] font-mono bg-bg-editor text-text-main placeholder-slate-500 outline-none resize-none border-none leading-relaxed"
-            onKeyDown={e => { if (e.ctrlKey && e.key === 'Enter') executeQuery(side); }}
-          />
+          <div className="h-full overflow-hidden bg-bg-editor">
+            <CodeMirror
+              value={query}
+              height="100%"
+              theme={theme === 'dark' ? vscodeDark : vscodeLight}
+              extensions={[sql()]}
+              onChange={(value) => setQuery(value)}
+              placeholder="SELECT * FROM table_name WHERE ..."
+              basicSetup={{
+                lineNumbers: true,
+                highlightActiveLine: true,
+                bracketMatching: true,
+                closeBrackets: true,
+                autocompletion: true,
+                foldGutter: true,
+              }}
+              className="h-full text-[12px] font-mono leading-relaxed"
+              onKeyDown={(e) => {
+                if (e.ctrlKey && e.key === 'Enter') {
+                  executeQuery(side);
+                }
+              }}
+            />
+          </div>
         </Panel>
         <Separator className="h-1 transition-all" />
         <Panel defaultSize={65} minSize={20}>
