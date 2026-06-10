@@ -515,13 +515,13 @@ export const TableDetailPanel: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-main">
-                {statsData.map((stat: any, i) => (
+                {Array.isArray(statsData) && statsData.map((stat: any, i) => (
                   <tr key={i} className="hover:bg-bg-hover/50 text-xs text-text-main">
-                    <td className="p-3 font-medium capitalize">{stat.name.replace(/_/g, ' ')}</td>
-                    <td className="p-3 font-mono">{stat.value}</td>
+                    <td className="p-3 font-medium capitalize">{String(stat?.name || '').replace(/_/g, ' ')}</td>
+                    <td className="p-3 font-mono">{String(stat?.value ?? '—')}</td>
                   </tr>
                 ))}
-                {statsData.length === 0 && (
+                {(!Array.isArray(statsData) || statsData.length === 0) && (
                   <tr><td colSpan={2} className="p-6 text-center text-text-muted">No statistics available.</td></tr>
                 )}
               </tbody>

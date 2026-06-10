@@ -168,26 +168,39 @@ public class DatabaseExplorerService {
         }
     }
 
-    public Map<String, Object> getStats(DataSource dataSource, String schema, String table, String dbType) throws Exception {
-        Map<String, Object> stats = new LinkedHashMap<>();
+    public List<Map<String, Object>> getStats(DataSource dataSource, String schema, String table, String dbType) throws Exception {
+        List<Map<String, Object>> statsList = new ArrayList<>();
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         try {
             // Very basic count for all
             String q = "\"";
             String fullTableName = (schema != null && !schema.isEmpty() ? q + schema + q + "." : "") + q + table + q;
             Long count = jdbc.queryForObject("SELECT COUNT(*) FROM " + fullTableName, Long.class);
-            stats.put("rowCount", count);
+            
+            Map<String, Object> rowCountMap = new LinkedHashMap<>();
+            rowCountMap.put("name", "row_count");
+            rowCountMap.put("value", count);
+            statsList.add(rowCountMap);
             
             if ("postgresql".equalsIgnoreCase(dbType)) {
                 List<Map<String, Object>> pgStats = jdbc.queryForList("SELECT * FROM pg_stat_user_tables WHERE schemaname = ? AND relname = ?", schema, table);
                 if (!pgStats.isEmpty()) {
-                    stats.put("pgStats", pgStats.get(0));
+                    Map<String, Object> firstRow = pgStats.get(0);
+                    for (Map.Entry<String, Object> entry : firstRow.entrySet()) {
+                        Map<String, Object> statMap = new LinkedHashMap<>();
+                        statMap.put("name", entry.getKey());
+                        statMap.put("value", entry.getValue() != null ? entry.getValue().toString() : "null");
+                        statsList.add(statMap);
+                    }
                 }
             }
         } catch (Exception e) {
-            stats.put("error", e.getMessage());
+            Map<String, Object> errorMap = new LinkedHashMap<>();
+            errorMap.put("name", "error");
+            errorMap.put("value", e.getMessage());
+            statsList.add(errorMap);
         }
-        return stats;
+        return statsList;
     }
 
     public List<Map<String, Object>> previewData(DataSource dataSource, String schema, String table) throws Exception {
