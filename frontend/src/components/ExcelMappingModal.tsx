@@ -4,6 +4,9 @@ import { useAppStore, type TableMapping } from '../store/useAppStore';
 import { ArrowRight, X, Code, Plus, Pencil, Database, GitMerge, MinusCircle, LayoutTemplate } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
+import CodeMirror from '@uiw/react-codemirror';
+import { sql } from '@codemirror/lang-sql';
+import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 
 interface Props {
   sourceTables: string[];
@@ -24,7 +27,8 @@ interface JoinTable {
 export const ExcelMappingModal: React.FC<Props> = ({ sourceTables, targetTables, editingMapping, excelIsTarget, onClose }) => {
   const { 
     addExcelMapping, updateExcelMapping,
-    targetConnectionId, connections 
+    targetConnectionId, connections,
+    theme
   } = useAppStore();
 
   const sourceConn = connections.find(c => c.id === targetConnectionId);
@@ -525,11 +529,43 @@ export const ExcelMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col">
                     <label className="text-[10px] font-bold text-blue-500/70 uppercase tracking-widest mb-1">Source SQL</label>
-                    <textarea value={sourceQuery} onChange={e => setSourceQuery(e.target.value)} placeholder="SELECT a.*, b.name FROM orders a JOIN customers b ON a.cust_id = b.id" className="w-full h-40 p-3 text-[11px] font-mono bg-bg-input border border-border-input rounded-lg text-text-input placeholder-slate-500 focus:border-blue-500 outline-none resize-none shadow-sm leading-relaxed" />
+                    <div className="w-full h-44 border border-border-input rounded-lg overflow-hidden bg-bg-editor">
+                      <CodeMirror
+                        value={sourceQuery}
+                        height="100%"
+                        theme={theme === 'dark' ? vscodeDark : vscodeLight}
+                        extensions={[sql()]}
+                        onChange={(val) => setSourceQuery(val)}
+                        placeholder="SELECT * FROM table_name ..."
+                        className="text-[11px] font-mono h-full"
+                        basicSetup={{
+                          lineNumbers: true,
+                          foldGutter: false,
+                          highlightActiveLine: false,
+                          autocompletion: true,
+                        }}
+                      />
+                    </div>
                   </div>
                   <div className="flex flex-col">
                     <label className="text-[10px] font-bold text-emerald-600/70 uppercase tracking-widest mb-1">Target SQL</label>
-                    <textarea value={targetQuery} onChange={e => setTargetQuery(e.target.value)} placeholder="SELECT a.*, b.name FROM orders a JOIN customers b ON a.cust_id = b.id" className="w-full h-40 p-3 text-[11px] font-mono bg-bg-input border border-border-input rounded-lg text-text-input placeholder-slate-500 focus:border-blue-500 outline-none resize-none shadow-sm leading-relaxed" />
+                    <div className="w-full h-44 border border-border-input rounded-lg overflow-hidden bg-bg-editor">
+                      <CodeMirror
+                        value={targetQuery}
+                        height="100%"
+                        theme={theme === 'dark' ? vscodeDark : vscodeLight}
+                        extensions={[sql()]}
+                        onChange={(val) => setTargetQuery(val)}
+                        placeholder="SELECT * FROM table_name ..."
+                        className="text-[11px] font-mono h-full"
+                        basicSetup={{
+                          lineNumbers: true,
+                          foldGutter: false,
+                          highlightActiveLine: false,
+                          autocompletion: true,
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-end">
