@@ -15,7 +15,7 @@ export const DatabaseExplorer: React.FC = () => {
     setCustomQuerySource, setSourceConnectionId,
     showAlert 
   } = useAppStore();
-  const { nodes, upsertNode, removeNode, toggleExpand, setLoading, setLoaded, selectedNodeId, setSelectedNodeId } = useExplorerStore();
+  const { nodes, upsertNode, patchNode, removeNode, toggleExpand, setLoading, setLoaded, selectedNodeId, setSelectedNodeId } = useExplorerStore();
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
