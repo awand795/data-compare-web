@@ -17,7 +17,12 @@ import { ToastContainer } from './components/ToastContainer';
 import clsx from 'clsx';
 
 function App() {
-  const { appMode, setAppMode, theme, setTheme, setConnections } = useAppStore();
+  const { 
+    appMode, setAppMode, 
+    theme, setTheme, 
+    fontSize, gridDensity,
+    setConnections 
+  } = useAppStore();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
 
@@ -54,7 +59,11 @@ function App() {
   ];
 
   return (
-    <div className="h-screen flex flex-col bg-bg-main text-text-main font-sans overflow-hidden">
+    <div className={clsx(
+      "h-screen flex flex-col bg-bg-main text-text-main font-sans overflow-hidden",
+      `font-size-${fontSize}`,
+      `grid-${gridDensity}`
+    )}>
       {/* Top Header Bar */}
       <header className="bg-bg-panel border-b border-border-main flex items-center justify-between px-4 h-11 shrink-0">
         <div className="flex items-center gap-3">

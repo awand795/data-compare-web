@@ -268,6 +268,10 @@ type AppState = {
   // Theme
   theme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light') => void;
+  fontSize: 'small' | 'medium' | 'large';
+  setFontSize: (size: 'small' | 'medium' | 'large') => void;
+  gridDensity: 'compact' | 'comfortable';
+  setGridDensity: (density: 'compact' | 'comfortable') => void;
   defaultRowLimit: number;
   setDefaultRowLimit: (limit: number) => void;
 };
@@ -571,6 +575,12 @@ export const useAppStore = create<AppState>()(
   theme: 'light',
   setTheme: (theme) => set({ theme }),
 
+  fontSize: 'medium',
+  setFontSize: (fontSize) => set({ fontSize }),
+
+  gridDensity: 'comfortable',
+  setGridDensity: (gridDensity) => set({ gridDensity }),
+
   maxRowsInMemory: MAX_ROWS_IN_MEMORY,
   setMaxRowsInMemory: (limit) => set({ maxRowsInMemory: limit }),
 
@@ -594,6 +604,8 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         connections: state.connections,
         theme: state.theme,
+        fontSize: state.fontSize,
+        gridDensity: state.gridDensity,
         notificationChannels: state.notificationChannels,
         defaultRowLimit: state.defaultRowLimit,
       }),
