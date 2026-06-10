@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState } from 'react';
-import { X, HelpCircle, Command, BookOpen, GitCompareArrows, Terminal, Table2 } from 'lucide-react';
+import { X, HelpCircle, Command, BookOpen, GitCompareArrows, Terminal, Table2, FileSpreadsheet, CalendarClock } from 'lucide-react';
 import clsx from 'clsx';
 
 export const HelpModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
@@ -85,9 +85,29 @@ export const HelpModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     <Terminal className="w-4 h-4" />
                     Query Workspace
                   </h3>
-                  <p className="text-[13px] text-text-muted leading-relaxed">
+                  <p className="text-[13px] text-text-muted leading-relaxed mb-3">
                     Write raw SQL queries to fetch data from both databases side-by-side. 
                     If you navigate here from a Table Mapping, your query will automatically inherit any Date Filters you set. You can also click <strong>Compare Diff</strong> directly in the workspace to see the row-level differences!
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-bold flex items-center gap-2 mb-3 text-orange-500">
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Excel Compare
+                  </h3>
+                  <p className="text-[13px] text-text-muted leading-relaxed">
+                    Compare a database table with an external <strong>Excel file</strong> (.xlsx or .xls). Upload your file, map the columns, and identify discrepancies. You can even synchronize the data from the Excel file back into your database.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-bold flex items-center gap-2 mb-3 text-pink-500">
+                    <CalendarClock className="w-4 h-4" />
+                    Scheduled Jobs
+                  </h3>
+                  <p className="text-[13px] text-text-muted leading-relaxed">
+                    Automate your data integrity checks. Create <strong>Recurring Jobs</strong> using Cron expressions to compare tables at specific intervals. Get notified via <strong>Telegram</strong> or <strong>Discord</strong> when differences are found.
                   </p>
                 </section>
               </div>
