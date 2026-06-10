@@ -106,17 +106,26 @@ html, body, #root {
 .font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
 
 /* Font Size Scaling */
-.font-size-small { font-size: 12px; }
-.font-size-small .text-xs, .font-size-small .text-[10px], .font-size-small .text-[9px] { font-size: 9px; }
-.font-size-small .text-[13px], .font-size-small .text-sm { font-size: 11px; }
-.font-size-small .text-base, .font-size-small .text-lg { font-size: 13px; }
+.font-size-small { font-size: 12px !important; }
+.font-size-small .text-xs, 
+.font-size-small .text-\[10px\], 
+.font-size-small .text-\[9px\],
+.font-size-small .text-\[11px\] { font-size: 10px !important; }
+.font-size-small .text-\[13px\], 
+.font-size-small .text-sm { font-size: 12px !important; }
+.font-size-small .text-base, 
+.font-size-small .text-lg { font-size: 14px !important; }
 
-.font-size-medium { font-size: 13.5px; }
+.font-size-medium { font-size: 14px !important; }
 
-.font-size-large { font-size: 15px; }
-.font-size-large .text-xs, .font-size-large .text-[10px], .font-size-large .text-[11px] { font-size: 12px; }
-.font-size-large .text-[13px], .font-size-large .text-sm { font-size: 14px; }
-.font-size-large .text-base, .font-size-large .text-lg { font-size: 17px; }
+.font-size-large { font-size: 16px !important; }
+.font-size-large .text-xs, 
+.font-size-large .text-\[10px\], 
+.font-size-large .text-\[11px\] { font-size: 14px !important; }
+.font-size-large .text-\[13px\], 
+.font-size-large .text-sm { font-size: 16px !important; }
+.font-size-large .text-base, 
+.font-size-large .text-lg { font-size: 18px !important; }
 
 /* Grid Density */
 .grid-compact td, .grid-compact th { padding-top: 2px !important; padding-bottom: 2px !important; }
