@@ -172,35 +172,87 @@ public class DatabaseExplorerService {
         List<Map<String, Object>> statsList = new ArrayList<>();
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         try {
-            // Very basic count for all
             String q = "\"";
             String fullTableName = (schema != null && !schema.isEmpty() ? q + schema + q + "." : "") + q + table + q;
-            Long count = jdbc.queryForObject("SELECT COUNT(*) FROM " + fullTableName, Long.class);
             
-            Map<String, Object> rowCountMap = new LinkedHashMap<>();
-            rowCountMap.put("name", "row_count");
-            rowCountMap.put("value", count);
-            statsList.add(rowCountMap);
+            // 1. Basic Row Count (Always available)
+            Long count = jdbc.queryForObject("SELECT COUNT(*) FROM " + fullTableName, Long.class);
+            addStat(statsList, "total_rows", count);
             
             if ("postgresql".equalsIgnoreCase(dbType)) {
-                List<Map<String, Object>> pgStats = jdbc.queryForList("SELECT * FROM pg_stat_user_tables WHERE schemaname = ? AND relname = ?", schema, table);
-                if (!pgStats.isEmpty()) {
-                    Map<String, Object> firstRow = pgStats.get(0);
-                    for (Map.Entry<String, Object> entry : firstRow.entrySet()) {
-                        Map<String, Object> statMap = new LinkedHashMap<>();
-                        statMap.put("name", entry.getKey());
-                        statMap.put("value", entry.getValue() != null ? entry.getValue().toString() : "null");
-                        statsList.add(statMap);
-                    }
+                // PostgreSQL Specific Stats
+                String pgSchema = (schema == null || schema.isEmpty()) ? "public" : schema;
+                
+                // Sizes
+                String sizeQuery = 
+                    "SELECT pg_size_pretty(pg_total_relation_size(?)) as total_size, " +
+                    "       pg_size_pretty(pg_relation_size(?)) as data_size, " +
+                    "       pg_size_pretty(pg_indexes_size(?)) as index_size";
+                
+                try {
+                    Map<String, Object> sizes = jdbc.queryForMap(sizeQuery, fullTableName, fullTableName, fullTableName);
+                    addStat(statsList, "total_size_on_disk", sizes.get("total_size"));
+                    addStat(statsList, "data_size", sizes.get("data_size"));
+                    addStat(statsList, "index_size", sizes.get("index_size"));
+                } catch (Exception e) { /* ignore size errors */ }
+
+                // Maintenance & Health
+                String healthQuery = "SELECT * FROM pg_stat_user_tables WHERE schemaname = ? AND relname = ?";
+                List<Map<String, Object>> healthResults = jdbc.queryForList(healthQuery, pgSchema, table);
+                if (!healthResults.isEmpty()) {
+                    Map<String, Object> h = healthResults.get(0);
+                    addStat(statsList, "live_rows", h.get("n_live_tup"));
+                    addStat(statsList, "dead_rows_bloat", h.get("n_dead_tup"));
+                    addStat(statsList, "sequential_scans", h.get("seq_scan"));
+                    addStat(statsList, "index_scans", h.get("idx_scan"));
+                    addStat(statsList, "last_vacuum", h.get("last_vacuum"));
+                    addStat(statsList, "last_analyze", h.get("last_analyze"));
+                }
+            } else if ("mysql".equalsIgnoreCase(dbType) || "mariadb".equalsIgnoreCase(dbType)) {
+                // MySQL Specific Stats from information_schema
+                String mysqlSchemaQuery = "SELECT * FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?";
+                List<Map<String, Object>> results = jdbc.queryForList(mysqlSchemaQuery, table);
+                
+                if (!results.isEmpty()) {
+                    Map<String, Object> r = results.get(0);
+                    addStat(statsList, "engine", r.get("ENGINE"));
+                    addStat(statsList, "version", r.get("VERSION"));
+                    addStat(statsList, "row_format", r.get("ROW_FORMAT"));
+                    
+                    // Convert bytes to Human Readable
+                    addStat(statsList, "data_length", formatBytes(r.get("DATA_LENGTH")));
+                    addStat(statsList, "index_length", formatBytes(r.get("INDEX_LENGTH")));
+                    addStat(statsList, "data_free_fragmentation", formatBytes(r.get("DATA_FREE")));
+                    
+                    addStat(statsList, "create_time", r.get("CREATE_TIME"));
+                    addStat(statsList, "update_time", r.get("UPDATE_TIME"));
+                    addStat(statsList, "table_collation", r.get("TABLE_COLLATION"));
                 }
             }
         } catch (Exception e) {
-            Map<String, Object> errorMap = new LinkedHashMap<>();
-            errorMap.put("name", "error");
-            errorMap.put("value", e.getMessage());
-            statsList.add(errorMap);
+            addStat(statsList, "error", e.getMessage());
         }
         return statsList;
+    }
+
+    private void addStat(List<Map<String, Object>> list, String name, Object value) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("name", name);
+        map.put("value", value != null ? value.toString() : "—");
+        list.add(map);
+    }
+
+    private String formatBytes(Object bytesObj) {
+        if (bytesObj == null) return "0 B";
+        try {
+            long bytes = Long.parseLong(bytesObj.toString());
+            if (bytes < 1024) return bytes + " B";
+            int exp = (int) (Math.log(bytes) / Math.log(1024));
+            char pre = "KMGTPE".charAt(exp - 1);
+            return String.format("%.2f %cB", bytes / Math.pow(1024, exp), pre);
+        } catch (Exception e) {
+            return bytesObj.toString();
+        }
     }
 
     public List<Map<String, Object>> previewData(DataSource dataSource, String schema, String table) throws Exception {
