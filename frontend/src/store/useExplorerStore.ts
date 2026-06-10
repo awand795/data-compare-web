@@ -23,6 +23,7 @@ type ExplorerState = {
   // Actions
   setNodes: (nodes: Record<string, ExplorerNode>) => void;
   upsertNode: (node: ExplorerNode) => void;
+  patchNode: (id: string, updates: Partial<ExplorerNode>) => void;
   removeNode: (id: string) => void;
   toggleExpand: (id: string, expand?: boolean) => void;
   setLoading: (id: string, isLoading: boolean, error?: string) => void;
@@ -39,6 +40,17 @@ export const useExplorerStore = create<ExplorerState>((set) => ({
   upsertNode: (node) => set((state) => ({
     nodes: { ...state.nodes, [node.id]: node }
   })),
+
+  patchNode: (id, updates) => set((state) => {
+    const node = state.nodes[id];
+    if (!node) return state;
+    return {
+      nodes: {
+        ...state.nodes,
+        [id]: { ...node, ...updates }
+      }
+    };
+  }),
   
   removeNode: (id) => set((state) => {
     const newNodes = { ...state.nodes };

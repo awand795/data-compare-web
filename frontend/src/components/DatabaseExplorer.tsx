@@ -86,11 +86,8 @@ export const DatabaseExplorer: React.FC = () => {
         return id;
       });
       
-      // Update schema label with count
-      const schemaNode = nodes[schemaNodeId];
-      if (schemaNode) {
-        upsertNode({ ...schemaNode, label: `${schemaNode.name} (${tables.length})` });
-      }
+      // Update schema label with count using patchNode to avoid overwriting expansion state
+      patchNode(schemaNodeId, { label: `${schemaName} (${tables.length})` });
 
       setLoaded(schemaNodeId, childIds);
     } catch (e: any) {
