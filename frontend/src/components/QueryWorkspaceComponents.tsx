@@ -114,7 +114,9 @@ export const ResultTable: React.FC<{
   downloadCSV: (side: 'source' | 'target') => void;
   copyResults: (side: 'source' | 'target') => void;
   copied: string | null;
-}> = ({ data, error, loading, side, format, downloadCSV, copyResults, copied }) => {
+  isMaximized?: boolean;
+  onToggleMaximize?: () => void;
+}> = ({ data, error, loading, side, format, downloadCSV, copyResults, copied, isMaximized, onToggleMaximize }) => {
   const [colSearch, setColSearch] = React.useState('');
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -172,13 +174,22 @@ export const ResultTable: React.FC<{
 
   return (
     <div className="h-full flex flex-col">
-      <div className="shrink-0 px-2 py-1 border-b border-border-item bg-bg-header">
+      <div className="shrink-0 px-2 py-1 border-b border-border-item bg-bg-header flex items-center gap-2">
         <input
           value={colSearch}
           onChange={e => setColSearch(e.target.value)}
           placeholder="Filter columns..."
-          className="w-full px-2 py-0.5 text-[10px] bg-bg-input border border-border-input rounded outline-none focus:border-blue-500 text-text-input placeholder-slate-500"
+          className="flex-1 px-2 py-0.5 text-[10px] bg-bg-input border border-border-input rounded outline-none focus:border-blue-500 text-text-input placeholder-slate-500"
         />
+        {onToggleMaximize && (
+          <button
+            onClick={onToggleMaximize}
+            className="p-1 text-text-muted hover:text-blue-500 rounded hover:bg-bg-hover transition-colors"
+            title={isMaximized ? "Restore Editor" : "Full View Results"}
+          >
+            {isMaximized ? <Minimize className="w-3 h-3" /> : <Maximize className="w-3 h-3" />}
+          </button>
+        )}
       </div>
       <div className="flex-1 overflow-auto" ref={parentRef}>
         <table className="w-full text-left border-collapse">
@@ -245,6 +256,8 @@ export const SidePanel = ({
   isFullscreen, toggleFullscreen
 }: any) => {
   const { tableMappings, focusedMappingId, theme } = useAppStore();
+  const [resultsMaximized, setResultsMaximized] = React.useState(false);
+  
   const isSource = side === 'source';
   const accent   = isSource ? 'blue' : 'emerald';
   const label    = isSource ? 'Source' : 'Target';
@@ -323,36 +336,51 @@ export const SidePanel = ({
       </div>
 
       <Group orientation="vertical">
-        <Panel defaultSize={35} minSize={15}>
-          <div className="h-full overflow-hidden bg-bg-editor">
-            <CodeMirror
-              value={query}
-              height="100%"
-              theme={theme === 'dark' ? vscodeDark : vscodeLight}
-              extensions={[sql()]}
-              onChange={(value) => setQuery(value)}
-              placeholder="SELECT * FROM table_name WHERE ..."
-              basicSetup={{
-                lineNumbers: true,
-                highlightActiveLine: true,
-                bracketMatching: true,
-                closeBrackets: true,
-                autocompletion: true,
-                foldGutter: true,
-              }}
-              className="h-full text-[12px] font-mono leading-relaxed"
-              onKeyDown={(e) => {
-                if (e.ctrlKey && e.key === 'Enter') {
-                  executeQuery(side);
-                }
-              }}
-            />
-          </div>
-        </Panel>
-        <Separator className="h-1 transition-all" />
-        <Panel defaultSize={65} minSize={20}>
+        {!resultsMaximized && (
+          <>
+            <Panel defaultSize={50} minSize={15}>
+              <div className="h-full overflow-hidden bg-bg-editor">
+                <CodeMirror
+                  value={query}
+                  height="100%"
+                  theme={theme === 'dark' ? vscodeDark : vscodeLight}
+                  extensions={[sql()]}
+                  onChange={(value) => setQuery(value)}
+                  placeholder="SELECT * FROM table_name WHERE ..."
+                  basicSetup={{
+                    lineNumbers: true,
+                    highlightActiveLine: true,
+                    bracketMatching: true,
+                    closeBrackets: true,
+                    autocompletion: true,
+                    foldGutter: true,
+                  }}
+                  className="h-full text-[12px] font-mono leading-relaxed"
+                  onKeyDown={(e) => {
+                    if (e.ctrlKey && e.key === 'Enter') {
+                      executeQuery(side);
+                    }
+                  }}
+                />
+              </div>
+            </Panel>
+            <Separator className="h-1 transition-all" />
+          </>
+        )}
+        <Panel defaultSize={resultsMaximized ? 100 : 50} minSize={20}>
           <div className="h-full border-t border-border-main">
-            <ResultTable data={results} error={error} loading={loading} side={side} format={format} downloadCSV={downloadCSV} copyResults={copyResults} copied={copied} />
+            <ResultTable 
+              data={results} 
+              error={error} 
+              loading={loading} 
+              side={side} 
+              format={format} 
+              downloadCSV={downloadCSV} 
+              copyResults={copyResults} 
+              copied={copied}
+              isMaximized={resultsMaximized}
+              onToggleMaximize={() => setResultsMaximized(!resultsMaximized)}
+            />
           </div>
         </Panel>
       </Group>
