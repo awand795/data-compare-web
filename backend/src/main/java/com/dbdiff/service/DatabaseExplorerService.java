@@ -27,11 +27,11 @@ public class DatabaseExplorerService {
     }
 
     public List<Map<String, Object>> getTables(DataSource dataSource, String schema) throws Exception {
-        return getObjectsByType(dataSource, schema, new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"});
+        return getObjectsByType(dataSource, schema, new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW", "SYSTEM TABLE", "SYSTEM VIEW"});
     }
 
     public List<Map<String, Object>> getViews(DataSource dataSource, String schema) throws Exception {
-        return getObjectsByType(dataSource, schema, new String[]{"VIEW"});
+        return getObjectsByType(dataSource, schema, new String[]{"VIEW", "SYSTEM VIEW"});
     }
 
     private List<Map<String, Object>> getObjectsByType(DataSource dataSource, String schema, String[] types) throws Exception {
@@ -47,7 +47,12 @@ public class DatabaseExplorerService {
                     }
                     Map<String, Object> map = new LinkedHashMap<>();
                     map.put("name", tName);
-                    map.put("type", rs.getString("TABLE_TYPE"));
+                    String rawType = rs.getString("TABLE_TYPE");
+                    map.put("type", rawType);
+                    // Differentiate system objects for the frontend
+                    if ("SYSTEM TABLE".equals(rawType) || "SYSTEM VIEW".equals(rawType)) {
+                        map.put("isSystem", true);
+                    }
                     objects.add(map);
                 }
             }
@@ -59,14 +64,30 @@ public class DatabaseExplorerService {
         List<Map<String, Object>> columns = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
+            
+            // Get PKs to flag them
+            List<String> pks = new ArrayList<>();
+            try (ResultSet rs = metaData.getPrimaryKeys(null, schema, table)) {
+                while (rs.next()) pks.add(rs.getString("COLUMN_NAME"));
+            }
+
+            // Get FKs to flag them
+            List<String> fks = new ArrayList<>();
+            try (ResultSet rs = metaData.getImportedKeys(null, schema, table)) {
+                while (rs.next()) fks.add(rs.getString("FKCOLUMN_NAME"));
+            }
+
             try (ResultSet rs = metaData.getColumns(null, schema, table, "%")) {
                 while (rs.next()) {
+                    String colName = rs.getString("COLUMN_NAME");
                     Map<String, Object> map = new LinkedHashMap<>();
-                    map.put("name", rs.getString("COLUMN_NAME"));
+                    map.put("name", colName);
                     map.put("type", rs.getString("TYPE_NAME"));
                     map.put("size", rs.getInt("COLUMN_SIZE"));
                     map.put("nullable", rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable);
                     map.put("defaultValue", rs.getString("COLUMN_DEF"));
+                    map.put("isPk", pks.contains(colName));
+                    map.put("isFk", fks.contains(colName));
                     columns.add(map);
                 }
             }
