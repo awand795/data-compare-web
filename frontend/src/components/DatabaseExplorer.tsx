@@ -30,8 +30,41 @@ export const DatabaseExplorer: React.FC = () => {
     return () => window.removeEventListener('click', handleClick);
   }, []);
 
-  // ... (schemas loading unchanged)
-  
+  // Initialize root nodes (servers) when connections change
+  useEffect(() => {
+    connections.forEach(conn => {
+      if (!nodes[conn.id]) {
+        upsertNode({
+          id: conn.id,
+          parentId: null,
+          type: 'server',
+          name: conn.name,
+          label: `${conn.name} (${conn.type})`,
+          isLoaded: false,
+          isLoading: false,
+          isExpanded: false,
+          metadata: conn
+        });
+      }
+    });
+  }, [connections]);
+
+  const loadSchemas = async (connId: string) => {
+    setLoading(connId, true);
+    try {
+      const res = await axios.get(`/api/connections/${connId}/schemas`);
+      const schemas: string[] = res.data;
+      const childIds = schemas.map(s => {
+        const id = `${connId}_schema_${s}`;
+        upsertNode({ id, parentId: connId, type: 'schema', name: s, isLoaded: false, isLoading: false, isExpanded: false, metadata: { connId, schema: s } });
+        return id;
+      });
+      setLoaded(connId, childIds);
+    } catch (e: any) {
+      setLoading(connId, false, e.message);
+    }
+  };
+
   const loadTables = async (connId: string, schemaNodeId: string, schemaName: string) => {
     setLoading(schemaNodeId, true);
     try {
@@ -65,6 +98,41 @@ export const DatabaseExplorer: React.FC = () => {
     }
   };
 
+  const loadColumns = async (connId: string, schemaName: string, tableNodeId: string, tableName: string) => {
+    setLoading(tableNodeId, true);
+    try {
+      const res = await axios.get(`/api/connections/${connId}/schemas/${schemaName}/tables/${tableName}/columns`);
+      const cols: any[] = res.data;
+      const childIds = cols.map(c => {
+        const id = `${tableNodeId}_col_${c.name}`;
+        upsertNode({ 
+          id, parentId: tableNodeId, type: 'column', name: c.name, label: `${c.name} (${c.type})`, 
+          isLoaded: true, isLoading: false, isExpanded: false, metadata: c 
+        });
+        return id;
+      });
+      setLoaded(tableNodeId, childIds);
+    } catch (e: any) {
+      setLoading(tableNodeId, false, e.message);
+    }
+  };
+
+  const handleToggle = async (e: React.MouseEvent, node: ExplorerNode) => {
+    e.stopPropagation();
+    toggleExpand(node.id);
+    if (!node.isExpanded && !node.isLoaded && !node.isLoading) {
+      if (node.type === 'server') {
+        await loadSchemas(node.id);
+      } else if (node.type === 'schema') {
+        await loadTables(node.metadata?.connId || node.parentId, node.id, node.name);
+      } else if (node.type === 'table' || node.type === 'view') {
+        const connId = node.metadata?.connId;
+        const schema = node.metadata?.schema;
+        if (connId && schema) await loadColumns(connId, schema, node.id, node.name);
+      }
+    }
+  };
+
   const handleRefresh = async (e: React.MouseEvent, node: ExplorerNode) => {
     e.stopPropagation();
     // Reset loaded state to force re-fetch
@@ -76,6 +144,20 @@ export const DatabaseExplorer: React.FC = () => {
       const connId = node.metadata?.connId;
       const schema = node.metadata?.schema;
       if (connId && schema) await loadColumns(connId, schema, node.id, node.name);
+    }
+  };
+
+  const handleNodeClick = (node: ExplorerNode) => {
+    setSelectedNodeId(node.id);
+    if (node.type === 'table' || node.type === 'view') {
+      const connId = node.metadata?.connId;
+      const schema = node.metadata?.schema;
+      if (connId) {
+        setExplorerConnectionId(connId);
+        setExplorerSchemaName(schema || null);
+        setExplorerTableName(node.name); 
+        setAppMode('explorer');
+      }
     }
   };
 
@@ -106,7 +188,6 @@ export const DatabaseExplorer: React.FC = () => {
       case 'compare':
         setSourceConnectionId(connId);
         setAppMode('compare');
-        // We could also auto-add a mapping here if desired
         break;
       case 'copyName':
         navigator.clipboard.writeText(fullTable);
