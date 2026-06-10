@@ -119,8 +119,10 @@ export const DatabaseExplorer: React.FC = () => {
 
   const handleToggle = async (e: React.MouseEvent, node: ExplorerNode) => {
     e.stopPropagation();
-    toggleExpand(node.id);
-    if (!node.isExpanded && !node.isLoaded && !node.isLoading) {
+    
+    // If not loaded and not loading, fetch data and force expand
+    if (!node.isLoaded && !node.isLoading) {
+      toggleExpand(node.id, true);
       if (node.type === 'server') {
         await loadSchemas(node.id);
       } else if (node.type === 'schema') {
@@ -130,6 +132,9 @@ export const DatabaseExplorer: React.FC = () => {
         const schema = node.metadata?.schema;
         if (connId && schema) await loadColumns(connId, schema, node.id, node.name);
       }
+    } else {
+      // Toggle if already loaded
+      toggleExpand(node.id);
     }
   };
 
@@ -147,7 +152,7 @@ export const DatabaseExplorer: React.FC = () => {
     }
   };
 
-  const handleNodeClick = (node: ExplorerNode) => {
+  const handleNodeClick = (node: ExplorerNode, e: React.MouseEvent) => {
     setSelectedNodeId(node.id);
     if (node.type === 'table' || node.type === 'view') {
       const connId = node.metadata?.connId;
@@ -158,6 +163,9 @@ export const DatabaseExplorer: React.FC = () => {
         setExplorerTableName(node.name); 
         setAppMode('explorer');
       }
+    } else if (node.type === 'server' || node.type === 'schema') {
+      // For folders, single click also toggles expansion for better UX
+      handleToggle(e, node);
     }
   };
 
@@ -225,7 +233,7 @@ export const DatabaseExplorer: React.FC = () => {
     return (
       <div key={node.id} className="flex flex-col group/node">
         <div 
-          onClick={() => handleNodeClick(node)}
+          onClick={(e) => handleNodeClick(node, e)}
           onContextMenu={(e) => handleContextMenu(e, node.id)}
           className={clsx(
             "flex items-center gap-1.5 py-1 px-2 cursor-pointer transition-colors text-xs font-mono select-none border-l-2 relative",
@@ -260,6 +268,11 @@ export const DatabaseExplorer: React.FC = () => {
         </div>
         {node.error && node.isExpanded && (
           <div className="text-[10px] text-red-400 pl-8 py-1 truncate">{node.error}</div>
+        )}
+        {node.isExpanded && node.isLoading && (
+          <div className="text-[10px] text-text-muted italic py-1" style={{ paddingLeft: `${(depth + 1) * 12 + 24}px` }}>
+            Loading...
+          </div>
         )}
         {node.isExpanded && node.childrenIds?.map(cid => renderNode(cid, depth + 1))}
       </div>
