@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useRef, useMemo } from 'react';
-import { Download, Check, Copy, Loader2, Database, ChevronDown, RefreshCw, Play } from 'lucide-react';
+import { Download, Check, Copy, Loader2, Database, ChevronDown, RefreshCw, Play, Maximize, Minimize } from 'lucide-react';
 import clsx from 'clsx';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { useAppStore } from '../store/useAppStore';
@@ -241,7 +241,8 @@ export const ResultTable: React.FC<{
 export const SidePanel = ({
   side, conn, query, setQuery, loading, results, error,
   limit, setLimit, format, setFormat,
-  executeQuery, downloadCSV, copyResults, copied
+  executeQuery, downloadCSV, copyResults, copied,
+  isFullscreen, toggleFullscreen
 }: any) => {
   const { tableMappings, focusedMappingId, theme } = useAppStore();
   const isSource = side === 'source';
@@ -252,7 +253,10 @@ export const SidePanel = ({
   const hasActiveFilters = m && (m.dateColumn || m.rowLimit || (isSource ? m.extraWhereSource : m.extraWhereTarget));
 
   return (
-    <div className="h-full flex flex-col bg-bg-panel">
+    <div className={clsx(
+      "h-full flex flex-col bg-bg-panel",
+      isFullscreen && "fixed inset-0 z-[120] bg-bg-main"
+    )}>
       <div className="bg-bg-header border-b border-border-main px-3 py-1.5 flex flex-col shrink-0">
         <div className="flex items-center justify-between w-full">
           <div className={`flex items-center gap-2 text-[10px] font-bold text-${accent}-500 dark:text-${accent}-400 uppercase tracking-wider`}>
@@ -300,6 +304,13 @@ export const SidePanel = ({
             >
               {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3 fill-current" />}
               Run
+            </button>
+            <button
+              onClick={toggleFullscreen}
+              className="p-1 text-text-muted hover:text-blue-500 rounded hover:bg-bg-hover transition-colors ml-1"
+              title={isFullscreen ? "Exit Full View" : "Full View"}
+            >
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
             </button>
           </div>
         </div>

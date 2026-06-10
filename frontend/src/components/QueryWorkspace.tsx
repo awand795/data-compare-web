@@ -42,6 +42,7 @@ export const QueryWorkspace: React.FC = () => {
   const [comparing, setComparing] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'DIFFERENT' | 'SOURCE_ONLY' | 'TARGET_ONLY' | 'IDENTICAL'>('ALL');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenPanel, setFullscreenPanel] = useState<'source' | 'target' | null>(null);
   const [returnMatchedRows, setReturnMatchedRows] = useState(true);
 
   const sourceConn = connections.find(c => c.id === sourceConnectionId);
@@ -547,7 +548,7 @@ export const QueryWorkspace: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 relative">
         {viewMode === 'results' ? (
           <Group orientation="horizontal">
             <Panel defaultSize={50} minSize={25}>
@@ -567,6 +568,8 @@ export const QueryWorkspace: React.FC = () => {
                 downloadCSV={downloadCSV}
                 copyResults={copyResults}
                 copied={copied}
+                isFullscreen={fullscreenPanel === 'source'}
+                toggleFullscreen={() => setFullscreenPanel(fullscreenPanel === 'source' ? null : 'source')}
               />
             </Panel>
             <Separator className="w-1 bg-border-main hover:bg-blue-500/50 transition-colors cursor-col-resize flex items-center justify-center">
@@ -589,11 +592,30 @@ export const QueryWorkspace: React.FC = () => {
                 downloadCSV={downloadCSV}
                 copyResults={copyResults}
                 copied={copied}
+                isFullscreen={fullscreenPanel === 'target'}
+                toggleFullscreen={() => setFullscreenPanel(fullscreenPanel === 'target' ? null : 'target')}
               />
             </Panel>
           </Group>
         ) : (
-          <div className="h-full bg-bg-panel flex flex-col p-2 min-h-0">
+          <div className={clsx(
+            "bg-bg-panel flex flex-col p-2 min-h-0 transition-all duration-300",
+            fullscreenPanel === 'diff' ? "fixed inset-0 z-[120] bg-bg-main" : "h-full"
+          )}>
+            <div className="bg-bg-header border-b border-border-main px-3 py-1.5 flex items-center justify-between shrink-0 mb-2 rounded-t-lg">
+                <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-500 uppercase tracking-wider">
+                    <ArrowLeftRight className="w-3 h-3" /> Comparison Results
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setFullscreenPanel(fullscreenPanel === 'diff' ? null : 'diff')}
+                    className="p-1 text-text-muted hover:text-blue-500 rounded hover:bg-bg-hover transition-colors"
+                    title={fullscreenPanel === 'diff' ? "Exit Full View" : "Full View"}
+                  >
+                    {fullscreenPanel === 'diff' ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+            </div>
             {workspaceDiffResult && (
               <div className="flex bg-bg-input p-1 rounded-md mb-2 shrink-0 border border-border-input overflow-x-auto">
                 {[
