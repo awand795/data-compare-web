@@ -210,10 +210,10 @@ export const ConnectionPanel: React.FC = () => {
           </div>
           
           <div className="flex justify-between mt-1 gap-2">
-            <button onClick={handleTest} className="flex-1 px-2 py-1.5 text-xs font-medium border border-border-input bg-bg-panel hover:bg-bg-hover rounded flex items-center justify-center gap-1.5 text-text-main transition-colors">
+            <button onClick={handleTest} className="flex-1 px-2 py-1.5 text-xs font-medium border border-blue-500/30 bg-blue-500/5 text-blue-500 hover:bg-blue-500/10 rounded flex items-center justify-center gap-1.5 transition-colors">
               {testStatus === 'success' && <CheckCircle className="w-3 h-3 text-emerald-500" />}
               {testStatus === 'error' && <XCircle className="w-3 h-3 text-red-500" />}
-              {testStatus === 'idle' && <Server className="w-3 h-3 text-text-muted" />}
+              {testStatus === 'idle' && <Server className="w-3 h-3 text-blue-400" />}
               {testStatus === 'testing' ? 'Testing...' : 'Test'}
             </button>
             <button onClick={handleAdd} className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-semibold shadow-lg shadow-blue-500/20">

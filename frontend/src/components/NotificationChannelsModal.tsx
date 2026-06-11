@@ -65,7 +65,7 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
                         <MessageCircle className="w-5 h-5 text-purple-400" />
                         Notification Profiles
                     </h2>
-                    <button onClick={onClose} className="text-text-muted hover:text-white">
+                    <button onClick={onClose} className="p-1 text-text-muted hover:text-text-main hover:bg-bg-hover rounded transition-colors">
                         <XCircle className="w-5 h-5"/>
                     </button>
                 </div>
@@ -117,7 +117,7 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
                                 )}
                             </div>
                             <div className="flex justify-end gap-2 mt-4 pt-2 border-t border-border-item">
-                                <button type="button" onClick={() => setIsCreating(false)} className="px-3 py-1.5 text-xs font-semibold hover:bg-bg-hover rounded transition-colors">Cancel</button>
+                                <button type="button" onClick={() => setIsCreating(false)} className="px-3 py-1.5 text-xs font-semibold border border-border-input bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main rounded transition-colors">Cancel</button>
                                 <button type="submit" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded shadow transition-colors">Save</button>
                             </div>
                         </form>

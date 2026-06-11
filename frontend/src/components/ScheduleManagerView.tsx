@@ -368,7 +368,7 @@ export const ScheduleManagerView: React.FC = () => {
                     <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[680px] flex flex-col max-h-[90vh] overflow-hidden">
                         <div className="px-4 py-3 border-b border-border-main flex justify-between items-center shrink-0">
                             <h2 className="font-bold text-sm flex items-center gap-2"><Clock className="w-4 h-4 text-purple-400"/> Create Scheduled Jobs</h2>
-                            <button onClick={() => setIsFormOpen(false)} className="text-text-muted hover:text-white"><XCircle className="w-5 h-5"/></button>
+                            <button onClick={() => setIsFormOpen(false)} className="p-1 text-text-muted hover:text-text-main hover:bg-bg-hover rounded transition-colors"><XCircle className="w-5 h-5"/></button>
                         </div>
 
                         {/* Multi-step indicator */}
@@ -427,7 +427,7 @@ export const ScheduleManagerView: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex justify-end gap-2 mt-2">
-                                        <button onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-xs font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors">Cancel</button>
+                                        <button onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-xs font-semibold border border-border-input bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors">Cancel</button>
                                         <button onClick={() => setCurrentStep(1)} disabled={!jobPrefix || !sourceConnectionId || !targetConnectionId} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
                                             Next: Mappings <span className="text-lg leading-none">→</span>
                                         </button>
@@ -576,7 +576,7 @@ export const ScheduleManagerView: React.FC = () => {
                                         <button onClick={() => setCurrentStep(1)} className="px-4 py-2 text-xs font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors flex items-center gap-1">
                                             <span className="text-lg leading-none">←</span> Back
                                         </button>
-                                        <button onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-xs font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors">Cancel</button>
+                                        <button onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-xs font-semibold border border-border-input bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors">Cancel</button>
                                         <button onClick={handleSubmit} disabled={selectedMappingIds.length === 0} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
                                             <Clock className="w-4 h-4" /> Save {selectedMappingIds.length} Job(s)
                                         </button>
