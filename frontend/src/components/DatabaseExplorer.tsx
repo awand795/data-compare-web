@@ -281,7 +281,7 @@ export const DatabaseExplorer: React.FC = () => {
   const rootNodes = Object.values(nodes).filter(n => n.parentId === null);
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-[#0d1628] border-r border-border-main">
+    <div className="flex flex-col h-full bg-bg-main border-r border-border-main">
       <div className="h-10 px-3 flex items-center justify-between border-b border-border-main bg-bg-header shrink-0 border-t-2 border-t-blue-600/30">
         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
           <Database className="w-3.5 h-3.5 text-blue-500" /> Explorer
