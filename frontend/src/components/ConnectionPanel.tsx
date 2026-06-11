@@ -210,7 +210,7 @@ export const ConnectionPanel: React.FC = () => {
           </div>
           
           <div className="flex justify-between mt-1 gap-2">
-            <button onClick={handleTest} disabled={testStatus === 'testing'} className="flex-1 px-2 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded shadow shadow-blue-500/20 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50">
+            <button onClick={handleTest} disabled={testStatus === 'testing'} className="flex-1 px-2 py-1.5 text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white rounded shadow shadow-teal-500/20 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50">
               {testStatus === 'testing' ? (
                 <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : testStatus === 'success' ? (
