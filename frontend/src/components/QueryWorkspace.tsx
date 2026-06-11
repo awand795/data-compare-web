@@ -476,9 +476,17 @@ export const QueryWorkspace: React.FC = () => {
               {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
             </select>
           </div>
-          <div className="w-8 h-8 rounded-full bg-bg-panel flex items-center justify-center border border-border-main mt-6">
+          <button
+            onClick={() => {
+              const temp = sourceConnectionId;
+              setSourceConnectionId(targetConnectionId);
+              setTargetConnectionId(temp);
+            }}
+            className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-6 transition-colors cursor-pointer"
+            title="Swap Source and Target"
+          >
             <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
-          </div>
+          </button>
           <div className="flex flex-col">
             <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
             <select
