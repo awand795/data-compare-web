@@ -33,6 +33,12 @@ export const ScheduleManagerView: React.FC = () => {
     const [tableMappings, setTableMappings] = useState<TableMapping[]>([]);
     const [selectedMappingIds, setSelectedMappingIds] = useState<string[]>([]);
     const [editingMapping, setEditingMapping] = useState<TableMapping | null>(null);
+    const [currentStep, setCurrentStep] = useState(0);
+
+    // Reset step when modal opens
+    useEffect(() => {
+        if (isFormOpen) setCurrentStep(0);
+    }, [isFormOpen]);
 
     const { setSchedules, setNotificationChannels } = useAppStore();
 
@@ -193,18 +199,20 @@ export const ScheduleManagerView: React.FC = () => {
                 />
             )}
 
-            <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-panel shrink-0">
+            <div className="px-4 py-2.5 border-b border-border-main flex justify-between items-center bg-bg-panel shrink-0">
                 <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                        <Clock className="w-5 h-5 text-purple-400" />
+                    <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                        <Clock className="w-4 h-4 text-purple-400" />
                     </div>
                     <div>
-                        <h1 className="font-bold text-lg">Scheduled Jobs</h1>
-                        <p className="text-xs text-text-muted">Automate database comparisons and sync checks</p>
+                        <h1 className="font-bold text-sm">Scheduled Jobs</h1>
+                        <p className="text-[11px] text-text-muted">
+                            {schedules.filter(s => s.isActive).length} job{schedules.filter(s => s.isActive).length !== 1 ? 's' : ''} active
+                        </p>
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={() => setIsFormOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold rounded shadow-lg shadow-purple-500/20 transition-colors">
+                    <button onClick={() => setIsFormOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded shadow-lg shadow-purple-500/20 transition-colors">
                         <Plus className="w-4 h-4" /> New Job
                     </button>
                 </div>
@@ -268,7 +276,7 @@ export const ScheduleManagerView: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td className="py-3 px-4">
-                                                    <span className="px-2 py-0.5 bg-bg-hover border border-border-item rounded-full font-bold text-[9px]">
+                                                    <span className="px-2 py-0.5 bg-bg-hover border border-border-item rounded-full font-bold text-[11px]">
                                                         {jobMappings.length} tables
                                                     </span>
                                                 </td>
@@ -357,97 +365,96 @@ export const ScheduleManagerView: React.FC = () => {
 
             {isFormOpen && (
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[900px] h-[90vh] flex flex-col">
-                        <div className="p-4 border-b border-border-main flex justify-between items-center shrink-0">
-                            <h2 className="font-bold text-lg flex items-center gap-2"><Clock className="w-5 h-5 text-purple-400"/> Create Scheduled Jobs</h2>
+                    <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[680px] flex flex-col">
+                        <div className="px-4 py-3 border-b border-border-main flex justify-between items-center shrink-0">
+                            <h2 className="font-bold text-sm flex items-center gap-2"><Clock className="w-4 h-4 text-purple-400"/> Create Scheduled Jobs</h2>
                             <button onClick={() => setIsFormOpen(false)} className="text-text-muted hover:text-white"><XCircle className="w-5 h-5"/></button>
                         </div>
-                        
+
+                        {/* Multi-step indicator */}
+                        <div className="flex items-center gap-2 px-5 py-3 border-b border-border-main">
+                            {['Job Setup', 'Mappings', 'Notifications'].map((step, i) => (
+                                <div key={i} className={clsx(
+                                    "flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full transition-all",
+                                    currentStep === i ? "bg-purple-500/20 text-purple-400" : 
+                                    currentStep > i ? "text-emerald-400" : "text-text-muted"
+                                )}>
+                                    <span className={clsx("w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold",
+                                        currentStep > i ? "bg-emerald-500/20" : currentStep === i ? "bg-purple-500/20" : "bg-bg-hover"
+                                    )}>{i + 1}</span>
+                                    {step}
+                                </div>
+                            ))}
+                            <div className="flex-1" />
+                            <span className="text-[10px] text-text-muted">Step {currentStep + 1} of 3</span>
+                        </div>
+
                         <div className="flex-1 overflow-auto flex flex-col p-5 gap-6">
                             
-                            {/* Top Section */}
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="col-span-1">
-                                    <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Job Name Prefix</label>
-                                    <input required type="text" value={jobPrefix} onChange={e => setJobPrefix(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" placeholder="e.g. Daily Sync" />
-                                </div>
-                                <div className="col-span-1">
-                                    <label className="block text-xs font-semibold text-blue-400 mb-1 uppercase tracking-widest">Source Connection</label>
-                                    <select required value={sourceConnectionId} onChange={e => {setSourceConnectionId(e.target.value); setTableMappings([]);}} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                                        <option value="">Select...</option>
-                                        {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="col-span-1">
-                                    <label className="block text-xs font-semibold text-emerald-400 mb-1 uppercase tracking-widest">Target Connection</label>
-                                    <select required value={targetConnectionId} onChange={e => {setTargetConnectionId(e.target.value); setTableMappings([]);}} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                                        <option value="">Select...</option>
-                                        {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-
-                            {/* Bottom Section (Cron & Notifications) */}
-                            <div className="grid grid-cols-2 gap-6 pt-2">
-                                <div className="col-span-1">
-                                    <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Cron Expression (Spring Boot)</label>
-                                    <input required type="text" value={cronExpression} onChange={e => setCronExpression(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm font-mono text-blue-400 focus:border-blue-500 focus:outline-none" placeholder="0 0 * * * *" />
-                                </div>
-                                <div className="col-span-1">
-                                    <label className="flex items-center gap-2 cursor-pointer mt-6">
-                                        <input type="checkbox" checked={saveFullData} onChange={e => setSaveFullData(e.target.checked)} className="rounded border-border-input text-purple-500 bg-bg-input focus:ring-purple-500 w-4 h-4" />
-                                        <span className="text-xs font-medium">Save full differing rows to database (Warning: disk space)</span>
-                                    </label>
-                                </div>
-                                
-                                <div className="col-span-2 border-t border-border-main pt-4">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h3 className="text-xs font-bold text-text-muted uppercase tracking-widest">Notifications</h3>
-                                        <button type="button" onClick={() => setIsProfilesModalOpen(true)} className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors">
-                                            <MessageCircle className="w-3.5 h-3.5" /> Manage Profiles
-                                        </button>
+                            {/* Step 1: Job Setup */}
+                            {currentStep === 0 && (
+                                <div className="flex flex-col gap-5">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="col-span-2">
+                                            <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Job Name Prefix</label>
+                                            <input required type="text" value={jobPrefix} onChange={e => setJobPrefix(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" placeholder="e.g. Daily Sync" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-blue-400 mb-1 uppercase tracking-widest">Source Connection</label>
+                                            <select required value={sourceConnectionId} onChange={e => {setSourceConnectionId(e.target.value); setTableMappings([]);}} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+                                                <option value="">Select...</option>
+                                                {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-emerald-400 mb-1 uppercase tracking-widest">Target Connection</label>
+                                            <select required value={targetConnectionId} onChange={e => {setTargetConnectionId(e.target.value); setTableMappings([]);}} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+                                                <option value="">Select...</option>
+                                                {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                            </select>
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-[10px] font-semibold text-text-muted mb-1">Telegram Profile</label>
-                                            <select value={telegramChannelId} onChange={e => setTelegramChannelId(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-xs focus:border-blue-500 focus:outline-none">
-                                                <option value="">None</option>
-                                                {notificationChannels?.filter(c => c.type === 'TELEGRAM').map(c => (
-                                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                                ))}
-                                            </select>
+                                            <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Cron Expression (Spring Boot)</label>
+                                            <input required type="text" value={cronExpression} onChange={e => setCronExpression(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm font-mono text-blue-400 focus:border-blue-500 focus:outline-none" placeholder="0 0 * * * *" />
                                         </div>
-                                        <div>
-                                            <label className="block text-[10px] font-semibold text-text-muted mb-1">Discord Profile</label>
-                                            <select value={discordChannelId} onChange={e => setDiscordChannelId(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-xs focus:border-blue-500 focus:outline-none">
-                                                <option value="">None</option>
-                                                {notificationChannels?.filter(c => c.type === 'DISCORD').map(c => (
-                                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                                ))}
-                                            </select>
+                                        <div className="flex items-end pb-2">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input type="checkbox" checked={saveFullData} onChange={e => setSaveFullData(e.target.checked)} className="rounded border-border-input text-purple-500 bg-bg-input focus:ring-purple-500 w-4 h-4" />
+                                                <span className="text-xs font-medium">Save full differing rows</span>
+                                            </label>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-                        
-                            {/* Mappings Table */}
-                            <div className="flex-1 flex flex-col border border-border-main rounded-xl overflow-hidden min-h-[300px]">
-                                <div className="bg-bg-header px-4 py-2.5 flex items-center justify-between border-b border-border-main shrink-0">
-                                    <div className="flex items-center gap-2 text-sm font-semibold text-text-main">
-                                        <LayoutList className="w-4 h-4 text-purple-400" /> Tables to Schedule
-                                        <span className="px-1.5 py-0.5 bg-bg-hover rounded text-xs text-text-muted">{selectedMappingIds.length} / {tableMappings.length}</span>
+                                    <div className="flex justify-end gap-2 mt-2">
+                                        <button onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-xs font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors">Cancel</button>
+                                        <button onClick={() => setCurrentStep(1)} disabled={!jobPrefix || !sourceConnectionId || !targetConnectionId} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
+                                            Next: Mappings <span className="text-lg leading-none">→</span>
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={openAddModal}
-                                        className="px-3 py-1.5 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-xs font-medium text-text-main flex items-center gap-1.5 transition-colors"
-                                    >
-                                        <Plus className="w-3.5 h-3.5 text-blue-500" /> Add Custom Mapping
-                                    </button>
                                 </div>
-                                
-                                <div className="flex-1 overflow-auto">
-                                    <table className="w-full text-left text-xs">
-                                        <thead className="sticky top-0 z-10 bg-bg-header text-[10px] text-text-muted uppercase tracking-wider border-b border-border-main">
+                            )}
+
+                            {/* Step 2: Mappings */}
+                            {currentStep === 1 && (
+                                <>
+                                    <div className="flex-1 flex flex-col border border-border-main rounded-xl overflow-hidden">
+                                        <div className="bg-bg-header px-4 py-2.5 flex items-center justify-between border-b border-border-main shrink-0">
+                                            <div className="flex items-center gap-2 text-sm font-semibold text-text-main">
+                                                <LayoutList className="w-4 h-4 text-purple-400" /> Tables to Schedule
+                                                <span className="px-1.5 py-0.5 bg-bg-hover rounded text-xs text-text-muted">{selectedMappingIds.length} / {tableMappings.length}</span>
+                                            </div>
+                                            <button
+                                                onClick={openAddModal}
+                                                className="px-3 py-1.5 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-xs font-medium text-text-main flex items-center gap-1.5 transition-colors"
+                                            >
+                                                <Plus className="w-3.5 h-3.5 text-blue-500" /> Add Custom
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="flex-1 overflow-auto">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="sticky top-0 z-10 bg-bg-header text-xs text-text-muted uppercase tracking-wider border-b border-border-main">
                                             <tr>
                                                 <th className="py-2 px-3 w-10 text-center">
                                                     <button onClick={toggleSelectAll} className="text-text-muted hover:text-purple-400 pt-0.5">
@@ -522,15 +529,62 @@ export const ScheduleManagerView: React.FC = () => {
                                     </table>
                                 </div>
                             </div>
+                            <div className="flex justify-end gap-2 px-4 py-3 border-t border-border-main bg-bg-header shrink-0 rounded-b-xl">
+                                        <button onClick={() => setCurrentStep(0)} className="px-4 py-2 text-xs font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors flex items-center gap-1">
+                                            <span className="text-lg leading-none">←</span> Back
+                                        </button>
+                                        <div className="flex-1" />
+                                        <button onClick={() => setCurrentStep(2)} disabled={selectedMappingIds.length === 0} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
+                                            Next: Notifications <span className="text-lg leading-none">→</span>
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Step 3: Notifications */}
+                            {currentStep === 2 && (
+                                <div className="flex flex-col gap-5">
+                                    <div className="border border-border-main rounded-xl p-4">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-xs font-bold text-text-muted uppercase tracking-widest">Notifications</h3>
+                                            <button type="button" onClick={() => setIsProfilesModalOpen(true)} className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                                                <MessageCircle className="w-3.5 h-3.5" /> Manage Profiles
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[11px] font-semibold text-text-muted mb-1">Telegram Profile</label>
+                                                <select value={telegramChannelId} onChange={e => setTelegramChannelId(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-xs focus:border-blue-500 focus:outline-none">
+                                                    <option value="">None</option>
+                                                    {notificationChannels?.filter(c => c.type === 'TELEGRAM').map(c => (
+                                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-semibold text-text-muted mb-1">Discord Profile</label>
+                                                <select value={discordChannelId} onChange={e => setDiscordChannelId(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-xs focus:border-blue-500 focus:outline-none">
+                                                    <option value="">None</option>
+                                                    {notificationChannels?.filter(c => c.type === 'DISCORD').map(c => (
+                                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-2">
+                                        <button onClick={() => setCurrentStep(1)} className="px-4 py-2 text-xs font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors flex items-center gap-1">
+                                            <span className="text-lg leading-none">←</span> Back
+                                        </button>
+                                        <button onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-xs font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors">Cancel</button>
+                                        <button onClick={handleSubmit} disabled={selectedMappingIds.length === 0} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
+                                            <Clock className="w-4 h-4" /> Save {selectedMappingIds.length} Job(s)
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             </div>
-
-                        <div className="p-4 border-t border-border-main bg-bg-header shrink-0 flex justify-end gap-3 rounded-b-xl">
-                            <button onClick={() => setIsFormOpen(false)} className="px-5 py-2 text-sm font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors">Cancel</button>
-                            <button onClick={handleSubmit} disabled={selectedMappingIds.length === 0} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
-                                <Clock className="w-4 h-4" /> Save {selectedMappingIds.length} Job(s)
-                            </button>
-                        </div>
                     </div>
                 </div>
             )}

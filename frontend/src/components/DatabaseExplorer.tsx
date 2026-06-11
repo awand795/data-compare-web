@@ -19,7 +19,6 @@ export const DatabaseExplorer: React.FC = () => {
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, nodeId: string } | null>(null);
@@ -229,12 +228,11 @@ export const DatabaseExplorer: React.FC = () => {
     const isSelected = selectedNodeId === node.id || ((node.type === 'table' || node.type === 'view') && explorerTableName === node.name && explorerConnectionId === node.metadata?.connId);
 
     return (
-      <div key={node.id} className="flex flex-col group/node">
-        <div 
+      <div key={node.id} className="flex flex-col group/node">          <div 
           onClick={(e) => handleNodeClick(node, e)}
           onContextMenu={(e) => handleContextMenu(e, node.id)}
           className={clsx(
-            "flex items-center gap-1.5 py-1 px-2 cursor-pointer transition-colors text-xs font-mono select-none border-l-2 relative",
+            "flex items-center gap-1.5 py-1.5 px-2 cursor-pointer transition-colors text-xs font-mono select-none border-l-[3px] relative",
             isSelected ? "bg-blue-500/10 border-blue-500 text-blue-400" : "border-transparent text-text-main hover:bg-bg-hover"
           )}
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
@@ -250,8 +248,11 @@ export const DatabaseExplorer: React.FC = () => {
               node.isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-text-muted" /> : <ChevronRight className="w-3.5 h-3.5 text-text-muted" />
             )}
           </div>
+          {node.type === 'server' && (
+            <span className={clsx("w-1.5 h-1.5 rounded-full shrink-0", node.isLoaded ? "bg-green-500" : "bg-slate-500")} />
+          )}
           {getNodeIcon(node.type, node.metadata)}
-          <span className="truncate">{node.label || node.name}</span>
+          <span className="truncate text-xs">{node.label || node.name}</span>
           
           <div className="ml-auto flex items-center gap-1 opacity-0 group-hover/node:opacity-100 transition-opacity">
              {(node.type === 'server' || node.type === 'schema' || node.type === 'table' || node.type === 'view') && (
@@ -280,39 +281,39 @@ export const DatabaseExplorer: React.FC = () => {
   const rootNodes = Object.values(nodes).filter(n => n.parentId === null);
 
   return (
-    <div className="flex flex-col h-full bg-bg-panel border-r border-border-main">
-      <div className="px-3 py-2.5 border-b border-border-main flex items-center justify-between bg-bg-header shrink-0">
-        <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
-          <Database className="w-3.5 h-3.5" /> Explorer
+    <div className="flex flex-col h-full bg-slate-50 dark:bg-[#0d1628] border-r border-border-main">
+      <div className="h-10 px-3 flex items-center justify-between border-b border-border-main bg-bg-header shrink-0 border-t-2 border-t-blue-600/30">
+        <span className="text-xs font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+          <Database className="w-3.5 h-3.5 text-blue-500" /> Explorer
         </span>
-        <div className="flex gap-1">
-          <button onClick={() => setIsSearchOpen(!isSearchOpen)} className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors" title="Search">
-            <Search className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => setIsDialogOpen(true)} className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-blue-500 transition-colors" title="New Connection">
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <button onClick={() => setIsDialogOpen(true)} className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-blue-500 transition-colors" title="New Connection">
+          <Plus className="w-3.5 h-3.5" />
+        </button>
       </div>
 
-      {isSearchOpen && (
-        <div className="px-2 py-2 border-b border-border-main bg-bg-main shrink-0 animate-in slide-in-from-top-2">
+      {/* Search bar - always visible */}
+      <div className="px-2 py-2 border-b border-border-main bg-bg-panel shrink-0">
+        <div className="relative">
+          <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
           <input 
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Filter nodes..." 
-            className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-xs text-text-input outline-none focus:border-blue-500"
-            autoFocus
+            className="w-full pl-7 pr-2 h-7 bg-bg-input border border-border-input rounded text-xs text-text-input outline-none focus:border-blue-500 placeholder-slate-500"
           />
         </div>
-      )}
+      </div>
 
       <div className="flex-1 overflow-y-auto py-1">
         {rootNodes.length === 0 ? (
-          <div className="text-xs text-text-muted text-center py-8 px-3 flex flex-col items-center gap-2">
-            <Server className="w-8 h-8 text-text-muted opacity-45" />
-            <span>No connections yet.<br/>Click + to add one.</span>
+          <div className="text-xs text-text-muted text-center py-8 px-3 flex flex-col items-center gap-3">
+            <Server className="w-10 h-10 text-text-muted opacity-30" />
+            <span className="text-[11px]">No connections yet.</span>
+            <button onClick={() => setIsDialogOpen(true)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-medium shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5">
+              <Plus className="w-3.5 h-3.5" />
+              Add your first connection
+            </button>
           </div>
         ) : (
           rootNodes.map(node => renderNode(node.id, 0))

@@ -28,36 +28,44 @@
   --bg-row-alt: #f1f5f9;     /* slate-100 */
   --text-main: #0f172a;      /* slate-900 */
   --text-muted: #475569;     /* slate-600 */
-  --border-main: rgba(203, 213, 225, 0.6); /* slate-300 */
+  --border-main: rgba(148, 163, 184, 0.5); /* slate-400 */
   --border-item: #cbd5e1;    /* slate-300 */
-  --bg-hover: rgba(148, 163, 184, 0.1); /* slate-400 */
-  --bg-active: #cbd5e1;      /* slate-300 */
-  --bg-conn-hover: rgba(59, 130, 246, 0.05);
+  --bg-hover: rgba(148, 163, 184, 0.15); /* slate-400 */
+  --bg-active: rgba(59, 130, 246, 0.12); /* blue-500 active state */
+  --bg-conn-hover: rgba(59, 130, 246, 0.08);
   
   /* Input fields */
   --bg-input: #ffffff;
   --border-input: #cbd5e1;
   --text-input: #0f172a;
+  
+  /* Spacing tokens */
+  --spacing-toolbar: 44px;
+  --spacing-sidebar: 280px;
 }
 
 .dark {
-  --bg-main: #0c1222;
-  --bg-panel: #0f1729;
-  --bg-header: #111a2e;
-  --bg-editor: #0a0f1e;
-  --bg-row-alt: #0e1526;
+  --bg-main: #0b1120;
+  --bg-panel: #101827;
+  --bg-header: #141f33;
+  --bg-editor: #080e1a;
+  --bg-row-alt: #0f1a2e;
   --text-main: #e2e8f0;
   --text-muted: #64748b;
-  --border-main: rgba(51, 65, 85, 0.5);
-  --border-item: #1e293b;
-  --bg-hover: rgba(30, 41, 59, 0.4);
-  --bg-active: #1e293b;
-  --bg-conn-hover: rgba(59, 130, 246, 0.1);
+  --border-main: rgba(55, 75, 105, 0.7);
+  --border-item: rgba(40, 58, 85, 0.9);
+  --bg-hover: rgba(59, 130, 246, 0.08);
+  --bg-active: rgba(30, 58, 138, 0.25);
+  --bg-conn-hover: rgba(59, 130, 246, 0.12);
   
   /* Input fields */
   --bg-input: rgba(30, 41, 59, 0.7);
-  --border-input: rgba(71, 85, 105, 0.4);
+  --border-input: rgba(71, 85, 105, 0.5);
   --text-input: #e2e8f0;
+  
+  /* Spacing tokens */
+  --spacing-toolbar: 44px;
+  --spacing-sidebar: 280px;
 }
 
 html, body, #root {
@@ -81,18 +89,44 @@ html, body, #root {
 [data-panel-resize-handle-id] {
   background: var(--border-item) !important;
   transition: background 0.15s;
+  position: relative;
 }
 
 [data-separator][aria-orientation="vertical"],
 [role="separator"][aria-orientation="vertical"],
 [data-panel-group-direction="horizontal"] > [data-panel-resize-handle-id] {
-  width: 4px !important;
+  width: 5px !important;
 }
 
 [data-separator][aria-orientation="horizontal"],
 [role="separator"][aria-orientation="horizontal"],
 [data-panel-group-direction="vertical"] > [data-panel-resize-handle-id] {
-  height: 4px !important;
+  height: 5px !important;
+}
+
+/* Center indicator for resize handles */
+[data-panel-group-direction="horizontal"] > [data-panel-resize-handle-id]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 32px;
+  background: rgba(100, 116, 139, 0.4);
+  border-radius: 1px;
+}
+
+[data-panel-group-direction="vertical"] > [data-panel-resize-handle-id]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 2px;
+  background: rgba(100, 116, 139, 0.4);
+  border-radius: 1px;
 }
 
 [data-separator]:hover,
@@ -102,8 +136,19 @@ html, body, #root {
   background: #3b82f6 !important;
 }
 
+[data-panel-resize-handle-id]:hover::after,
+[data-separator]:hover::after {
+  background: rgba(255, 255, 255, 0.7) !important;
+}
+
 /* Mono font for data */
 .font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+/* Typography Utilities */
+.text-data-label { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.text-data-value { font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+.text-ui-label   { font-size: 12px; font-weight: 500; }
+.text-ui-caption { font-size: 11px; color: var(--text-muted); }
 
 /* Font Size Scaling */
 .font-size-small { font-size: 12px !important; }

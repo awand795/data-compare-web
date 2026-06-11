@@ -508,11 +508,11 @@ export const DataCompareView: React.FC = () => {
       {/* ── Connection Bar ── */}
       <div className="bg-bg-header border-b border-border-main px-4 py-2.5 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <div className="flex flex-col">
-              <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-0.5">Source</span>
+              <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
               <select
-                className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded-md text-xs font-medium text-text-input w-52 focus:border-blue-500 outline-none"
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
                 value={sourceConnectionId || ''}
                 onChange={e => { setSourceConnectionId(e.target.value); clearTableMappings(); }}
               >
@@ -521,14 +521,14 @@ export const DataCompareView: React.FC = () => {
               </select>
             </div>
 
-            <div className="w-8 h-8 rounded-full bg-bg-panel flex items-center justify-center border border-border-main mt-3">
+            <div className="w-8 h-8 rounded-full bg-bg-panel flex items-center justify-center border border-border-main mt-6">
               <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
             </div>
 
             <div className="flex flex-col">
-              <span className="text-[9px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-widest mb-0.5">Target</span>
+              <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
               <select
-                className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded-md text-xs font-medium text-text-input w-52 focus:border-blue-500 outline-none"
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
                 value={targetConnectionId || ''}
                 onChange={e => { setTargetConnectionId(e.target.value); clearTableMappings(); }}
               >
@@ -591,7 +591,7 @@ export const DataCompareView: React.FC = () => {
           </div>
           <button
             onClick={openAddModal}
-            className="px-3 py-1.5 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-xs font-medium text-text-main flex items-center gap-1.5 transition-colors"
+            className="px-4 py-2 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-xs font-medium text-text-main flex items-center gap-1.5 transition-colors"
           >
             <Plus className="w-3.5 h-3.5 text-blue-500" /> Add Mapping
           </button>
@@ -607,7 +607,7 @@ export const DataCompareView: React.FC = () => {
           <button
             onClick={handleSynchronize}
             disabled={!sourceConn || !targetConn || selectedMappings.size === 0 || loading || syncing}
-            className="px-4 py-1.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white rounded-md flex items-center gap-2 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20 transition-all"
+            className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white rounded-md flex items-center gap-2 text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20 transition-all"
             title="Synchronize Data from Source to Target"
           >
             {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
@@ -617,7 +617,7 @@ export const DataCompareView: React.FC = () => {
           <button
             onClick={handleCompare}
             disabled={!sourceConn || !targetConn || selectedMappings.size === 0 || loading || syncing}
-            className="px-4 py-1.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-md flex items-center gap-2 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 transition-all"
+            className="px-5 py-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-md flex items-center gap-2 text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 transition-all"
           >
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
             {loading ? 'Comparing...' : `Compare (${selectedMappings.size})`}
@@ -633,41 +633,43 @@ export const DataCompareView: React.FC = () => {
           <Panel defaultSize="35%" minSize="15%">
             <div className="h-full bg-bg-panel flex flex-col">
               <div className="bg-bg-header border-b border-border-main px-3 py-1.5 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2 text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+                <div className="flex items-center gap-2 text-xs font-semibold text-text-muted uppercase tracking-wider">
                   <LayoutList className="w-3.5 h-3.5 text-blue-500" /> Table Mappings
-                  <span className="ml-1 px-1.5 py-0.5 bg-bg-hover rounded text-[9px] text-text-muted">{tableMappings.length}</span>
+                  <span className="ml-1 px-1.5 py-0.5 bg-bg-hover rounded text-[10px] text-text-muted">{tableMappings.length}</span>
                 </div>
-                <div className="relative">
-                  <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
-                  <input
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    placeholder="Filter tables..."
-                    className="pl-6 pr-2 py-1 text-[10px] bg-bg-input border border-border-input rounded text-text-input placeholder-slate-500 w-36 outline-none focus:border-blue-500/50"
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
+                    <input
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      placeholder="Filter tables..."
+                      className="pl-6 pr-2 py-1 text-[11px] bg-bg-input border border-border-input rounded text-text-input placeholder-slate-500 w-36 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
                 </div>
               </div>
 
               <div className="flex-1 overflow-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="sticky top-0 z-10 bg-bg-header text-[10px] text-text-muted uppercase tracking-wider border-b border-border-main">
+                  <thead className="sticky top-0 z-10 bg-bg-header text-xs text-text-muted uppercase tracking-wider border-b border-border-main">
                     <tr>
-                      <th className="py-1.5 px-2 w-8 text-center">
+                      <th className="py-2 px-3 w-8 text-center">
                         <button onClick={toggleSelectAll} className="text-text-muted hover:text-blue-500 pt-0.5">
                           {selectedMappings.size === tableMappings.length && tableMappings.length > 0
                             ? <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
                             : <Square className="w-3.5 h-3.5" />}
                         </button>
                       </th>
-                      <th className="py-1.5 px-2">Label / Source</th>
-                      <th className="py-1.5 px-2 text-center w-8">→</th>
-                      <th className="py-1.5 px-2">Target</th>
-                      <th className="py-1.5 px-2 text-center">Status</th>
-                      <th className="py-1.5 px-2 text-right">Diff</th>
-                      <th className="py-1.5 px-2 text-right">Src Only</th>
-                      <th className="py-1.5 px-2 text-right">Tgt Only</th>
-                      <th className="py-1.5 px-2 text-right">Match</th>
-                      <th className="py-1.5 px-2 text-center w-14">Actions</th>
+                      <th className="py-2 px-3">Label / Source</th>
+                      <th className="py-2 px-3 text-center w-8">→</th>
+                      <th className="py-2 px-3">Target</th>
+                      <th className="py-2 px-3 text-center">Status</th>
+                      <th className="py-2 px-3 text-right">Diff</th>
+                      <th className="py-2 px-3 text-right">Src Only</th>
+                      <th className="py-2 px-3 text-right">Tgt Only</th>
+                      <th className="py-2 px-3 text-right">Match</th>
+                      <th className="py-2 px-3 text-center w-14">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -704,75 +706,75 @@ export const DataCompareView: React.FC = () => {
                           className={clsx(
                             "cursor-pointer border-b border-border-item transition-colors",
                             isFocused
-                              ? "bg-blue-500/10 dark:bg-blue-500/20 border-l-2 border-l-blue-500"
-                              : "hover:bg-bg-hover border-l-2 border-l-transparent"
+                              ? "bg-blue-500/10 dark:bg-blue-500/20 border-l-[3px] border-l-blue-500"
+                              : "hover:bg-bg-hover border-l-[3px] border-l-transparent"
                           )}
                         >
-                          <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}>
+                          <td className="py-2 px-3 text-center" onClick={e => e.stopPropagation()}>
                             <button onClick={() => toggleMapping(m.id)} className="pt-0.5">
                               {isChecked
                                 ? <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
                                 : <Square className="w-3.5 h-3.5 text-text-muted" />}
                             </button>
                           </td>
-                          <td className="py-1.5 px-2">
-                            <span className={clsx("font-mono text-[11px] font-medium", m.sourceTable ? "text-text-main" : "text-text-muted italic")}>
+                          <td className="py-2 px-3">
+                            <span className={clsx("font-mono text-xs font-medium", m.sourceTable ? "text-text-main" : "text-text-muted italic")}>
                               {displayName}
                             </span>
                             {hasCustom && (
-                              <span className="ml-1 text-[8px] bg-blue-500/20 text-blue-500 dark:text-blue-400 px-1 py-0.5 rounded font-bold">SQL</span>
+                              <span className="ml-1 text-[10px] bg-blue-500/20 text-blue-500 dark:text-blue-400 px-1.5 py-0.5 rounded font-bold">SQL</span>
                             )}
                             {hasDateFilter && (
-                              <span className="ml-1 text-[8px] bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1 py-0.5 rounded font-bold">DATE</span>
+                              <span className="ml-1 text-[10px] bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold">DATE</span>
                             )}
                             {hasExtraWhere && (
-                              <span className="ml-1 text-[8px] bg-purple-500/20 text-purple-600 dark:text-purple-400 px-1 py-0.5 rounded font-bold">FILTER</span>
+                              <span className="ml-1 text-[10px] bg-purple-500/20 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-bold">FILTER</span>
                             )}
                             {m.rowLimit && (
-                              <span className="ml-1 text-[8px] bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 px-1 py-0.5 rounded font-bold">LIMIT</span>
+                              <span className="ml-1 text-[10px] bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 px-1.5 py-0.5 rounded font-bold">LIMIT</span>
                             )}
                           </td>
-                          <td className="py-1.5 px-2 text-center text-text-muted">
+                          <td className="py-2 px-3 text-center text-text-muted">
                             <ArrowRight className="w-3 h-3 inline" />
                           </td>
-                          <td className="py-1.5 px-2">
-                            <span className={clsx("font-mono text-[11px] font-medium", m.targetTable ? "text-text-main" : "text-text-muted italic")}>
+                          <td className="py-2 px-3">
+                            <span className={clsx("font-mono text-xs font-medium", m.targetTable ? "text-text-main" : "text-text-muted italic")}>
                               {m.targetTable || '(none)'}
                             </span>
                           </td>
-                          <td className="py-1.5 px-2 text-center">
+                          <td className="py-2 px-3 text-center">
                             {diff ? (
                               diff.status === 'comparing'
-                                ? <span className="text-[10px] font-bold text-blue-500 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full animate-pulse whitespace-nowrap">
+                                ? <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 bg-blue-500/10 px-2.5 py-0.5 rounded-full animate-pulse whitespace-nowrap">
                                     Comparing… {diff.rows.length > 0 && `(${diff.rows.length})`}
                                   </span>
                                 : diff.totalDifferences > 0
-                                  ? <span className="text-[10px] font-bold text-amber-500 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">Different</span>
-                                  : <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">Identical</span>
+                                  ? <span className="text-[11px] font-bold text-amber-500 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full">Different</span>
+                                  : <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">Identical</span>
                             ) : isSourceOnly ? (
-                              <span className="text-[10px] font-bold text-red-500 dark:text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">Src Only</span>
+                              <span className="text-[11px] font-bold text-red-500 dark:text-red-400 bg-red-500/10 px-2.5 py-0.5 rounded-full">Src Only</span>
                             ) : isTargetOnly ? (
-                              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">Tgt Only</span>
+                              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">Tgt Only</span>
                             ) : (
-                              <span className="text-[10px] text-text-muted">—</span>
+                              <span className="text-[11px] text-text-muted">—</span>
                             )}
                           </td>
-                          <td className="py-1.5 px-2 text-right font-mono text-[11px] text-amber-500/80">{diff ? diff.differentCount : '—'}</td>
-                          <td className="py-1.5 px-2 text-right font-mono text-[11px] text-red-500/80">{diff ? diff.sourceOnlyCount : '—'}</td>
-                          <td className="py-1.5 px-2 text-right font-mono text-[11px] text-emerald-500/80">{diff ? diff.targetOnlyCount : '—'}</td>
-                          <td className="py-1.5 px-2 text-right font-mono text-[11px] text-text-muted">{diff ? diff.matchCount : '—'}</td>
-                          <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-center gap-1">
+                          <td className="py-2 px-3 text-right font-mono text-xs text-amber-500/80">{diff ? diff.differentCount : '—'}</td>
+                          <td className="py-2 px-3 text-right font-mono text-xs text-red-500/80">{diff ? diff.sourceOnlyCount : '—'}</td>
+                          <td className="py-2 px-3 text-right font-mono text-xs text-emerald-500/80">{diff ? diff.targetOnlyCount : '—'}</td>
+                          <td className="py-2 px-3 text-right font-mono text-xs text-text-muted">{diff ? diff.matchCount : '—'}</td>
+                          <td className="py-2 px-3 text-center" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-0.5">
                               <button
                                 onClick={e => openEditModal(e, m)}
-                                className="p-1 rounded text-text-muted hover:text-blue-500 hover:bg-bg-hover transition-colors"
+                                className="w-6 h-6 rounded text-text-muted hover:text-blue-500 hover:bg-bg-hover transition-colors flex items-center justify-center"
                                 title="Edit mapping"
                               >
                                 <Settings className="w-3 h-3" />
                               </button>
                               <button
                                 onClick={e => { e.stopPropagation(); removeTableMapping(m.id); }}
-                                className="p-1 rounded text-text-muted hover:text-red-500 hover:bg-bg-hover transition-colors"
+                                className="w-6 h-6 rounded text-text-muted hover:text-red-500 hover:bg-bg-hover transition-colors flex items-center justify-center"
                                 title="Remove mapping"
                               >
                                 <Trash2 className="w-3 h-3" />
@@ -815,7 +817,7 @@ export const DataCompareView: React.FC = () => {
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id as any)}
                       className={clsx(
-                        "px-2.5 py-1 text-[10px] font-medium rounded flex items-center gap-1.5 transition-all",
+                        "px-3 py-1.5 text-xs font-medium rounded flex items-center gap-1.5 transition-all",
                         activeTab === tab.id
                           ? "bg-bg-active text-text-main shadow-inner"
                           : "text-text-muted hover:text-text-main hover:bg-bg-hover"
@@ -823,7 +825,7 @@ export const DataCompareView: React.FC = () => {
                     >
                       <span className={tab.color || ''}>{tab.label}</span>
                       <span className={clsx(
-                        "px-1.5 py-0.5 rounded-full text-[9px] font-bold",
+                        "px-1.5 py-0.5 rounded-full text-[10px] font-bold",
                         activeTab === tab.id ? "bg-bg-panel text-text-main" : "bg-bg-active text-text-muted"
                       )}>{tab.count}</span>
                     </button>
@@ -858,13 +860,13 @@ export const DataCompareView: React.FC = () => {
                   {/* Label */}
                   <div className="flex items-center gap-1.5">
                     <Tag className="w-3 h-3 text-text-muted" />
-                    <span className="text-[9px] uppercase font-bold text-text-muted tracking-wider">Label</span>
+                    <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Label</span>
                     <input
                       type="text"
                       placeholder="Alias for this mapping"
                       value={focusedMappingObj.label || ''}
                       onChange={e => updateTableMapping(focusedMappingObj.id, { label: e.target.value })}
-                      className="px-2 py-0.5 text-[11px] bg-bg-input border border-border-input rounded w-32 outline-none focus:border-blue-500"
+                      className="px-2 py-1 text-xs bg-bg-input border border-border-input rounded w-32 outline-none focus:border-blue-500"
                     />
                   </div>
 
@@ -872,17 +874,17 @@ export const DataCompareView: React.FC = () => {
 
                   {/* Date filter */}
                   <div className="flex items-center gap-2">
-                    <CalendarDays className="w-3 h-3 text-blue-500" />
-                    <span className="text-[9px] uppercase font-bold text-blue-500 tracking-wider">Date Filter</span>
+                    <CalendarDays className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="text-[10px] uppercase font-bold text-blue-500 tracking-wider">Date Filter</span>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-text-muted">Column:</span>
+                      <span className="text-[11px] text-text-muted">Column:</span>
                       <input
                         type="text"
                         placeholder="e.g. created_at"
                         value={focusedMappingObj.dateColumn || ''}
                         onChange={e => updateMappingWithDateFilter(focusedMappingObj.id, { dateColumn: e.target.value })}
                         className={clsx(
-                          "px-2 py-0.5 text-[11px] bg-bg-input border rounded w-28 outline-none focus:border-blue-500",
+                          "px-2 py-1 text-xs bg-bg-input border rounded w-28 outline-none focus:border-blue-500",
                           !focusedMappingObj.dateColumn && (focusedMappingObj.startDate || focusedMappingObj.endDate)
                             ? "border-red-500 bg-red-500/10"
                             : "border-border-input"
@@ -891,21 +893,21 @@ export const DataCompareView: React.FC = () => {
                       />
                     </div>
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-text-muted">From:</span>
+                      <span className="text-[11px] text-text-muted">From:</span>
                       <input
                         type="date"
                         value={focusedMappingObj.startDate || ''}
                         onChange={e => updateMappingWithDateFilter(focusedMappingObj.id, { startDate: e.target.value })}
-                        className="px-2 py-0.5 text-[11px] bg-bg-input border border-border-input rounded outline-none focus:border-blue-500"
+                        className="px-2 py-1 text-xs bg-bg-input border border-border-input rounded outline-none focus:border-blue-500"
                       />
                     </div>
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-text-muted">To:</span>
+                      <span className="text-[11px] text-text-muted">To:</span>
                       <input
                         type="date"
                         value={focusedMappingObj.endDate || ''}
                         onChange={e => updateMappingWithDateFilter(focusedMappingObj.id, { endDate: e.target.value })}
-                        className="px-2 py-0.5 text-[11px] bg-bg-input border border-border-input rounded outline-none focus:border-blue-500"
+                        className="px-2 py-1 text-xs bg-bg-input border border-border-input rounded outline-none focus:border-blue-500"
                       />
                     </div>
                   </div>
@@ -914,7 +916,7 @@ export const DataCompareView: React.FC = () => {
 
                   {/* Row limit */}
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] uppercase font-bold text-cyan-600 dark:text-cyan-400 tracking-wider">Limit</span>
+                    <span className="text-[10px] uppercase font-bold text-cyan-600 dark:text-cyan-400 tracking-wider">Limit</span>
                     <input
                       type="number"
                       min={0}
@@ -924,9 +926,9 @@ export const DataCompareView: React.FC = () => {
                         focusedMappingObj.id,
                         { rowLimit: e.target.value ? parseInt(e.target.value) : undefined }
                       )}
-                      className="px-2 py-0.5 text-[11px] bg-bg-input border border-border-input rounded w-24 outline-none focus:border-blue-500"
+                      className="px-2 py-1 text-xs bg-bg-input border border-border-input rounded w-24 outline-none focus:border-blue-500"
                     />
-                    <span className="text-[10px] text-text-muted">rows</span>
+                    <span className="text-[11px] text-text-muted">rows</span>
                   </div>
 
                   {/* Clear all filters */}
@@ -944,14 +946,14 @@ export const DataCompareView: React.FC = () => {
                   {/* Query Preview */}
                   {(focusedMappingObj.dateColumn || focusedMappingObj.startDate || focusedMappingObj.endDate || focusedMappingObj.rowLimit || focusedMappingObj.extraWhereSource) && (
                     <div className="w-full mt-1 flex flex-col gap-1">
-                      <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider">Query Preview</span>
+                      <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Query Preview</span>
                       <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-bg-editor rounded px-2 py-1 font-mono text-[10px] text-blue-400 truncate" title={buildEffectiveQuery(focusedMappingObj.sourceTable, focusedMappingObj, 'source')}>
-                          <span className="text-[8px] text-blue-500/60 font-bold uppercase mr-1">SRC</span>
+                        <div className="bg-bg-editor rounded px-2 py-1 font-mono text-[11px] text-blue-400 truncate" title={buildEffectiveQuery(focusedMappingObj.sourceTable, focusedMappingObj, 'source')}>
+                          <span className="text-[9px] text-blue-500/60 font-bold uppercase mr-1">SRC</span>
                           {buildEffectiveQuery(focusedMappingObj.sourceTable, focusedMappingObj, 'source') || '—'}
                         </div>
-                        <div className="bg-bg-editor rounded px-2 py-1 font-mono text-[10px] text-emerald-400 truncate" title={buildEffectiveQuery(focusedMappingObj.targetTable, focusedMappingObj, 'target')}>
-                          <span className="text-[8px] text-emerald-500/60 font-bold uppercase mr-1">TGT</span>
+                        <div className="bg-bg-editor rounded px-2 py-1 font-mono text-[11px] text-emerald-400 truncate" title={buildEffectiveQuery(focusedMappingObj.targetTable, focusedMappingObj, 'target')}>
+                          <span className="text-[9px] text-emerald-500/60 font-bold uppercase mr-1">TGT</span>
                           {buildEffectiveQuery(focusedMappingObj.targetTable, focusedMappingObj, 'target') || '—'}
                         </div>
                       </div>
@@ -960,7 +962,7 @@ export const DataCompareView: React.FC = () => {
 
                   {/* Warning banner for missing primary key and sort columns */}
                   {!focusedMappingObj.primaryKeys?.length && !focusedMappingObj.sortColumns?.length && (
-                    <div className="w-full mt-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5 font-medium animate-in slide-in-from-top-1 duration-200">
+                    <div className="w-full mt-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5 font-medium animate-in slide-in-from-top-1 duration-200">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                       <span>
                         <strong>No Primary Key or Sort Columns defined:</strong> Comparison will fallback to default database physical ordering (ORDER BY 1) via a surrogate key. This is non-deterministic for views.

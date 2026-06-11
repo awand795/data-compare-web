@@ -466,9 +466,9 @@ export const QueryWorkspace: React.FC = () => {
       <div className="bg-bg-header border-b border-border-main px-4 py-2.5 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
-            <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-0.5">Source</span>
+            <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
             <select
-              className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded-md text-xs font-medium text-text-input w-52 focus:border-blue-500 outline-none"
+              className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
               value={sourceConnectionId || ''}
               onChange={e => setSourceConnectionId(e.target.value)}
             >
@@ -476,13 +476,13 @@ export const QueryWorkspace: React.FC = () => {
               {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
             </select>
           </div>
-          <div className="w-8 h-8 rounded-full bg-bg-panel flex items-center justify-center border border-border-main mt-3">
+          <div className="w-8 h-8 rounded-full bg-bg-panel flex items-center justify-center border border-border-main mt-6">
             <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[9px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-widest mb-0.5">Target</span>
+            <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
             <select
-              className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded-md text-xs font-medium text-text-input w-52 focus:border-blue-500 outline-none"
+              className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
               value={targetConnectionId || ''}
               onChange={e => setTargetConnectionId(e.target.value)}
             >
@@ -493,16 +493,16 @@ export const QueryWorkspace: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex rounded overflow-hidden border border-border-input text-[10px] mr-2">
+          <div className="flex rounded-md overflow-hidden border border-border-input text-xs mr-2">
             <button
               onClick={() => setViewMode('results')}
-              className={clsx("px-2 py-1 transition-colors", viewMode === 'results' ? "bg-blue-500/20 text-blue-500" : "text-text-muted hover:bg-bg-hover")}
+              className={clsx("px-3 py-1.5 font-medium transition-colors", viewMode === 'results' ? "bg-blue-500/20 text-blue-500" : "text-text-muted hover:bg-bg-hover")}
             >
               Side-by-Side
             </button>
           <button
             onClick={() => setViewMode('diff')}
-            className={clsx("px-2 py-1 transition-colors", viewMode === 'diff' ? "bg-amber-500/20 text-amber-500 dark:text-amber-400" : "text-text-muted hover:bg-bg-hover")}
+            className={clsx("px-3 py-1.5 font-medium transition-colors", viewMode === 'diff' ? "bg-amber-500/20 text-amber-500 dark:text-amber-400" : "text-text-muted hover:bg-bg-hover")}
           >
             Compare Diff
           </button>
@@ -532,7 +532,7 @@ export const QueryWorkspace: React.FC = () => {
         <button
           onClick={handleCompare}
             disabled={!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim() || comparing}
-            className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold uppercase tracking-wide disabled:opacity-40 transition-colors flex items-center gap-1.5 shadow-sm"
+            className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold disabled:opacity-40 transition-colors flex items-center gap-1.5 shadow-sm"
           >
             {comparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
             Compare
@@ -629,14 +629,14 @@ export const QueryWorkspace: React.FC = () => {
                         key={tab.id}
                         onClick={() => setFilterStatus(tab.id as any)}
                         className={clsx(
-                          "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all min-w-[100px]",
+                          "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all min-w-[100px]",
                           filterStatus === tab.id
                             ? "bg-bg-panel shadow-sm border border-border-item text-text-main"
                             : "text-text-muted hover:bg-bg-hover hover:text-text-main"
                         )}
                       >
                         <span className={tab.color}>{tab.label}</span>
-                        <span className="bg-bg-main px-1.5 py-0.5 rounded-full text-[9px] border border-border-main">
+                        <span className="bg-bg-main px-1.5 py-0.5 rounded-full text-[10px] border border-border-main">
                           {tab.count}
                         </span>
                       </button>

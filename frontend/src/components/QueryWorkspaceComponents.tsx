@@ -76,7 +76,7 @@ export const ResultFooter: React.FC<{
   };
 
   return (
-    <div className="shrink-0 bg-bg-header border-t border-border-main px-3 py-1 flex items-center justify-between text-[10px] text-text-muted">
+    <div className="shrink-0 bg-bg-header border-t border-border-main px-3 py-1.5 flex items-center justify-between text-xs text-text-muted">
       <span>{data.length} rows × {cols.length} columns</span>
       <div className="flex items-center gap-3">
         <button onClick={() => downloadCSV(side)} className="flex items-center gap-1 hover:text-blue-500 transition-colors">
@@ -84,14 +84,14 @@ export const ResultFooter: React.FC<{
         </button>
         <button
           onClick={handleExportExcel}
-          className="px-2 py-0.5 bg-green-600/10 text-green-600 dark:text-green-400 hover:bg-green-600/20 border border-green-600/20 rounded text-[10px] font-semibold flex items-center gap-1 transition-colors"
+          className="px-2.5 py-1 bg-green-600/10 text-green-600 dark:text-green-400 hover:bg-green-600/20 border border-green-600/20 rounded text-xs font-semibold flex items-center gap-1 transition-colors"
           title="Export to Excel"
         >
           Excel
         </button>
         <button
           onClick={handleExportPDF}
-          className="px-2 py-0.5 bg-red-600/10 text-red-600 dark:text-red-400 hover:bg-red-600/20 border border-red-600/20 rounded text-[10px] font-semibold flex items-center gap-1 transition-colors"
+          className="px-2.5 py-1 bg-red-600/10 text-red-600 dark:text-red-400 hover:bg-red-600/20 border border-red-600/20 rounded text-xs font-semibold flex items-center gap-1 transition-colors"
           title="Export to PDF"
         >
           PDF
@@ -195,9 +195,9 @@ export const ResultTable: React.FC<{
         <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-bg-header border-b border-border-main">
             <tr>
-              <th className="px-2 py-1.5 text-[9px] font-bold text-text-muted uppercase tracking-wider border-b border-border-main bg-bg-header w-10">#</th>
+              <th className="px-2 py-1.5 text-[10px] font-bold text-text-muted uppercase tracking-wider border-b border-border-main bg-bg-header w-10">#</th>
               {filteredCols.map(col => (
-                <th key={col} className="px-2 py-1.5 text-[10px] font-bold text-text-muted uppercase tracking-wider border-b border-border-main border-r border-r-border-item whitespace-nowrap bg-bg-header">
+                <th key={col} className="px-2 py-2 text-xs font-bold text-text-muted uppercase tracking-wider border-b border-border-main border-r border-r-border-item whitespace-nowrap bg-bg-header">
                   {col}
                 </th>
               ))}
@@ -272,23 +272,23 @@ export const SidePanel = ({
     )}>
       <div className="bg-bg-header border-b border-border-main px-3 py-1.5 flex flex-col shrink-0">
         <div className="flex items-center justify-between w-full">
-          <div className={`flex items-center gap-2 text-[10px] font-bold text-${accent}-500 dark:text-${accent}-400 uppercase tracking-wider`}>
+          <div className={`flex items-center gap-2 text-xs font-bold text-${accent}-500 dark:text-${accent}-400 uppercase tracking-wider`}>
             <Database className="w-3 h-3" /> {label} Query
             {conn && (
-              <span className="ml-1 text-[9px] font-normal text-text-muted normal-case">
+              <span className="ml-1 text-[11px] font-normal text-text-muted normal-case">
                 {conn.name} ({conn.database})
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex rounded overflow-hidden border border-border-input text-[10px]">
+            <div className="flex rounded-md overflow-hidden border border-border-input text-xs">
               <button
                 onClick={() => setFormat('table')}
-                className={clsx("px-2 py-0.5", format === 'table' ? `bg-${accent}-500/20 text-${accent}-500` : 'text-text-muted hover:bg-bg-hover')}
+                className={clsx("px-2.5 py-1", format === 'table' ? `bg-${accent}-500/20 text-${accent}-500` : 'text-text-muted hover:bg-bg-hover')}
               >Table</button>
               <button
                 onClick={() => setFormat('json')}
-                className={clsx("px-2 py-0.5", format === 'json' ? `bg-${accent}-500/20 text-${accent}-500` : 'text-text-muted hover:bg-bg-hover')}
+                className={clsx("px-2.5 py-1", format === 'json' ? `bg-${accent}-500/20 text-${accent}-500` : 'text-text-muted hover:bg-bg-hover')}
               >JSON</button>
             </div>
             <div className="flex items-center gap-1 text-[10px] text-text-muted">

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore, type Connection } from '../store/useAppStore';
 import { X, Server, CheckCircle, XCircle, Shield, Key, Settings as SettingsIcon, Plug, Database, ChevronLeft, Upload } from 'lucide-react';
 import axios from 'axios';
+import clsx from 'clsx';
 
 type TabType = 'general' | 'ssl' | 'ssh' | 'advanced';
 
@@ -103,6 +104,10 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
       const res = await axios.post('/api/test-connection', formData);
       setTestStatus(res.data.success ? 'success' : 'error');
       setTestDetails(res.data.message || (res.data.success ? 'Connection successful' : 'Connection failed'));
+      if (res.data.success) {
+        // Show green success state for 2 seconds before reset
+        setTimeout(() => setTestStatus('idle'), 2000);
+      }
     } catch (err: any) {
       setTestStatus('error');
       setTestDetails(err.response?.data?.message || err.message || 'Connection failed');
@@ -423,8 +428,13 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
             {/* Footer */}
             <div className="px-4 py-3 border-t border-border-main bg-bg-header flex justify-between">
-              <button onClick={handleTest} disabled={testStatus === 'testing'} className="px-4 py-1.5 text-xs font-semibold border border-border-input bg-bg-panel hover:bg-bg-hover rounded text-text-main transition-colors disabled:opacity-50">
-                Test Connection
+              <button onClick={handleTest} disabled={testStatus === 'testing'} className={clsx(
+                "px-4 py-1.5 text-xs font-semibold border rounded transition-colors disabled:opacity-50",
+                testStatus === 'success' 
+                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" 
+                  : "border-blue-500/30 bg-blue-500/5 text-blue-500 hover:bg-blue-500/10"
+              )}>
+                {testStatus === 'success' ? '✓ Connected' : testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
               </button>
               <div className="flex gap-2">
                 <button onClick={onClose} className="px-4 py-1.5 text-xs font-semibold text-text-muted hover:text-text-main transition-colors">

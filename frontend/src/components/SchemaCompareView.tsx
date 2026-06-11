@@ -197,7 +197,7 @@ export const SchemaCompareView: React.FC = () => {
       SOURCE_ONLY: 'bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20',
       TARGET_ONLY: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
     };
-    return <span className={clsx("px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider", styles[status] || '')}>{status.replace('_', ' ')}</span>;
+    return <span className={clsx("px-2.5 py-0.5 rounded border text-[11px] font-bold uppercase tracking-wider", styles[status] || '')}>{status.replace('_', ' ')}</span>;
   };
 
   return (
@@ -205,10 +205,9 @@ export const SchemaCompareView: React.FC = () => {
       {/* Connection Bar */}
       <div className="bg-bg-header border-b border-border-main px-4 py-2.5 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex flex-col">
-            <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-0.5">Source</span>
+          <div className="flex flex-col">              <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
             <select 
-              className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded-md text-xs font-medium text-text-input w-52 focus:border-blue-500 outline-none"
+              className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
               value={sourceConnectionId || ''}
               onChange={e => setSourceConnectionId(e.target.value)}
             >
@@ -217,14 +216,14 @@ export const SchemaCompareView: React.FC = () => {
             </select>
           </div>
           
-          <div className="w-8 h-8 rounded-full bg-bg-panel flex items-center justify-center border border-border-main mt-3">
+          <div className="w-8 h-8 rounded-full bg-bg-panel flex items-center justify-center border border-border-main mt-6">
             <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
           </div>
           
           <div className="flex flex-col">
-            <span className="text-[9px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-widest mb-0.5">Target</span>
+            <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
             <select 
-              className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded-md text-xs font-medium text-text-input w-52 focus:border-blue-500 outline-none"
+              className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
               value={targetConnectionId || ''}
               onChange={e => setTargetConnectionId(e.target.value)}
             >
@@ -237,7 +236,7 @@ export const SchemaCompareView: React.FC = () => {
         <button 
           onClick={handleCompareSchema}
           disabled={!sourceConn || !targetConn || loading}
-          className="px-4 py-1.5 bg-gradient-to-r from-purple-600 to-violet-500 hover:from-purple-500 hover:to-violet-400 text-white rounded-md flex items-center gap-2 text-xs font-bold disabled:opacity-40 shadow-lg shadow-purple-500/20 transition-all"
+          className="px-5 py-2 bg-gradient-to-r from-purple-600 to-violet-500 hover:from-purple-500 hover:to-violet-400 text-white rounded-md flex items-center gap-2 text-sm font-bold disabled:opacity-40 shadow-lg shadow-purple-500/20 transition-all"
         >
           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Table2 className="w-3.5 h-3.5" />}
           {loading ? 'Comparing...' : 'Compare Schema'}
@@ -258,13 +257,13 @@ export const SchemaCompareView: React.FC = () => {
               key={f.id}
               onClick={() => setFilterStatus(f.id)}
               className={clsx(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-medium transition-all",
+                "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
                 filterStatus === f.id ? "bg-bg-active text-text-main shadow-inner" : "text-text-muted hover:text-text-main hover:bg-bg-hover"
               )}
             >
               <span className={f.color || ''}>{f.label}</span>
               <span className={clsx(
-                "px-1.5 py-0.5 rounded-full text-[9px] font-bold",
+                "px-1.5 py-0.5 rounded-full text-[10px] font-bold",
                 filterStatus === f.id ? "bg-bg-panel text-text-main" : "bg-bg-active text-text-muted"
               )}>{f.count}</span>
             </button>
@@ -276,7 +275,7 @@ export const SchemaCompareView: React.FC = () => {
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               placeholder="Search tables..."
-              className="pl-6 pr-2 py-1 text-[10px] bg-bg-input border border-border-input rounded text-text-input placeholder-slate-500 w-40 outline-none focus:border-blue-500/50"
+              className="pl-6 pr-2 py-1 text-[11px] bg-bg-input border border-border-input rounded text-text-input placeholder-slate-500 w-40 outline-none focus:border-blue-500/50"
             />
           </div>
           <button
@@ -305,20 +304,21 @@ export const SchemaCompareView: React.FC = () => {
           </div>
         ) : (
           <>
+            <div className="w-px bg-border-main shrink-0" />
             {/* Table List */}
-            <div className="w-72 shrink-0 border-r border-border-main overflow-y-auto bg-bg-panel">
+            <div className="w-80 shrink-0 border-r border-border-main overflow-y-auto bg-bg-panel">
               {filteredResults.map(r => (
                 <div 
                   key={r.tableName}
                   onClick={() => setFocusedTable(r.tableName)}
                   className={clsx(
-                    "flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-border-item transition-colors border-l-2",
+                    "flex items-center gap-2 px-4 py-2.5 cursor-pointer border-b border-border-item transition-colors border-l-[3px]",
                     focusedTable === r.tableName ? "bg-blue-500/10 dark:bg-blue-500/20 border-l-blue-500" : "hover:bg-bg-hover border-l-transparent"
                   )}
                 >
                   {statusIcon(r.status)}
-                  <span className="font-mono text-[11px] text-text-main truncate flex-1 font-medium">{r.tableName}</span>
-                  <span className="text-[9px] text-text-muted">{r.columnDiffs?.length || 0} cols</span>
+                  <span className="font-mono text-xs text-text-main truncate flex-1 font-medium">{r.tableName}</span>
+                  <span className="text-[11px] text-text-muted">{r.columnDiffs?.length || 0} cols</span>
                 </div>
               ))}
             </div>
@@ -335,14 +335,14 @@ export const SchemaCompareView: React.FC = () => {
                   <div className="flex-1 overflow-auto">
                     <table className="w-full text-left">
                       <thead className="sticky top-0 z-10 bg-bg-header border-b border-border-main">
-                        <tr className="text-[10px] text-text-muted uppercase tracking-wider border-b border-border-main">
-                          <th className="px-3 py-2">Column</th>
-                          <th className="px-3 py-2 text-center">Status</th>
-                          <th className="px-3 py-2">Source Type</th>
-                          <th className="px-3 py-2">Target Type</th>
-                          <th className="px-3 py-2 text-center">Source Null?</th>
-                          <th className="px-3 py-2 text-center">Target Null?</th>
-                          <th className="px-3 py-2 text-center">PK</th>
+                        <tr className="text-xs text-text-muted uppercase tracking-wider border-b border-border-main">
+                          <th className="px-4 py-2.5">Column</th>
+                          <th className="px-4 py-2.5 text-center">Status</th>
+                          <th className="px-4 py-2.5">Source Type</th>
+                          <th className="px-4 py-2.5">Target Type</th>
+                          <th className="px-4 py-2.5 text-center">Source Null?</th>
+                          <th className="px-4 py-2.5 text-center">Target Null?</th>
+                          <th className="px-4 py-2.5 text-center">PK</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -357,13 +357,13 @@ export const SchemaCompareView: React.FC = () => {
                               col.status === 'TARGET_ONLY' && "bg-cyan-500/[0.03] dark:bg-cyan-500/[0.05]"
                             )}
                           >
-                            <td className="px-3 py-2 font-mono text-[11px] text-text-main font-medium">{col.columnName}</td>
-                            <td className="px-3 py-2 text-center">{statusBadge(col.status)}</td>
-                            <td className="px-3 py-2 font-mono text-[11px] text-blue-500 dark:text-blue-400">{col.sourceType ? `${col.sourceType}(${col.sourceSize || ''})` : '—'}</td>
-                            <td className="px-3 py-2 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">{col.targetType ? `${col.targetType}(${col.targetSize || ''})` : '—'}</td>
-                            <td className="px-3 py-2 text-center text-[10px]">{col.sourceNullable === 'YES' ? <span className="text-amber-500">NULL</span> : col.sourceNullable ? <span className="text-text-muted">NOT NULL</span> : '—'}</td>
-                            <td className="px-3 py-2 text-center text-[10px]">{col.targetNullable === 'YES' ? <span className="text-amber-500">NULL</span> : col.targetNullable ? <span className="text-text-muted">NOT NULL</span> : '—'}</td>
-                            <td className="px-3 py-2 text-center">{(col.isPrimaryKeySource || col.isPrimaryKeyTarget) && <KeyRound className="w-3 h-3 text-amber-500 dark:text-amber-400 inline" />}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-text-main font-medium">{col.columnName}</td>
+                            <td className="px-4 py-2.5 text-center">{statusBadge(col.status)}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-blue-500 dark:text-blue-400">{col.sourceType ? `${col.sourceType}(${col.sourceSize || ''})` : '—'}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-emerald-600 dark:text-emerald-400">{col.targetType ? `${col.targetType}(${col.targetSize || ''})` : '—'}</td>
+                            <td className="px-4 py-2.5 text-center text-[11px]">{col.sourceNullable === 'YES' ? <span className="text-amber-500">NULL</span> : col.sourceNullable ? <span className="text-text-muted">NOT NULL</span> : '—'}</td>
+                            <td className="px-4 py-2.5 text-center text-[11px]">{col.targetNullable === 'YES' ? <span className="text-amber-500">NULL</span> : col.targetNullable ? <span className="text-text-muted">NOT NULL</span> : '—'}</td>
+                            <td className="px-4 py-2.5 text-center">{(col.isPrimaryKeySource || col.isPrimaryKeyTarget) && <KeyRound className="w-3 h-3 text-amber-500 dark:text-amber-400 inline" />}</td>
                           </tr>
                         ))}
                       </tbody>

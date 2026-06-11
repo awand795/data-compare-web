@@ -259,13 +259,13 @@ export const TableDetailPanel: React.FC = () => {
   return (
     <div className={clsx("flex flex-col bg-bg-main overflow-hidden relative", isFullscreen ? "fixed inset-0 z-[100]" : "h-full min-h-0")}>
       {/* Header */}
-      <div className="px-6 py-4 border-b border-border-main flex items-center justify-between bg-bg-panel shrink-0">
+      <div className="px-4 py-2.5 border-b border-border-main flex items-center justify-between bg-bg-panel shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-            <TableIcon className="w-5 h-5" />
+          <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
+            <TableIcon className="w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-text-main">{explorerTableName}</h1>
+            <h1 className="text-sm font-bold text-text-main">{explorerTableName}</h1>
             <p className="text-[11px] text-text-muted font-mono">{conn.name} • {conn.database}</p>
           </div>
         </div>

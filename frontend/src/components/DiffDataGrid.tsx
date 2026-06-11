@@ -30,7 +30,7 @@ const StatusCell = React.memo(({ value }: { value: string }) => {
     TARGET_ONLY: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
   };
   return (
-    <span className={clsx("px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider whitespace-nowrap", styles[value] || '')}>
+    <span className={clsx("px-2 py-0.5 rounded border text-[11px] font-bold uppercase tracking-wider whitespace-nowrap", styles[value] || '')}>
       {value}
     </span>
   );
@@ -310,7 +310,7 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
       </div>
 
       {/* Footer stats + export */}
-      <div className="shrink-0 bg-bg-header border-t border-border-main px-3 py-1.5 flex items-center gap-4 text-[10px] text-text-muted">
+      <div className="shrink-0 bg-bg-header border-t border-border-main px-3 py-2 flex items-center gap-4 text-xs text-text-muted">
         <span>Total: <strong className="text-text-main">{diffResult.rows.length}</strong> rows</span>
         <span>Source: <strong className="text-text-main">{diffResult.totalSourceRows}</strong></span>
         <span>Target: <strong className="text-text-main">{diffResult.totalTargetRows}</strong></span>
