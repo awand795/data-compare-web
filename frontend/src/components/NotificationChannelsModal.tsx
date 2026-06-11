@@ -117,7 +117,7 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
                                 )}
                             </div>
                             <div className="flex justify-end gap-2 mt-4 pt-2 border-t border-border-item">
-                                <button type="button" onClick={() => setIsCreating(false)} className="px-3 py-1.5 text-xs font-semibold border border-border-input bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main rounded transition-colors">Cancel</button>
+                                <button type="button" onClick={() => setIsCreating(false)} className="px-3 py-1.5 text-xs font-semibold border border-slate-500/30 bg-slate-500/15 text-slate-400 hover:bg-slate-500/25 hover:text-slate-300 rounded transition-colors">Cancel</button>
                                 <button type="submit" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded shadow transition-colors">Save</button>
                             </div>
                         </form>

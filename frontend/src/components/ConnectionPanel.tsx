@@ -210,11 +210,17 @@ export const ConnectionPanel: React.FC = () => {
           </div>
           
           <div className="flex justify-between mt-1 gap-2">
-            <button onClick={handleTest} className="flex-1 px-2 py-1.5 text-xs font-medium border border-blue-500/30 bg-blue-500/5 text-blue-500 hover:bg-blue-500/10 rounded flex items-center justify-center gap-1.5 transition-colors">
-              {testStatus === 'success' && <CheckCircle className="w-3 h-3 text-emerald-500" />}
-              {testStatus === 'error' && <XCircle className="w-3 h-3 text-red-500" />}
-              {testStatus === 'idle' && <Server className="w-3 h-3 text-blue-400" />}
-              {testStatus === 'testing' ? 'Testing...' : 'Test'}
+            <button onClick={handleTest} disabled={testStatus === 'testing'} className="flex-1 px-2 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded shadow shadow-blue-500/20 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50">
+              {testStatus === 'testing' ? (
+                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : testStatus === 'success' ? (
+                <CheckCircle className="w-3 h-3 text-emerald-300" />
+              ) : testStatus === 'error' ? (
+                <XCircle className="w-3 h-3 text-red-300" />
+              ) : (
+                <Server className="w-3 h-3" />
+              )}
+              {testStatus === 'testing' ? 'Testing...' : testStatus === 'success' ? '✓ Connected' : 'Test Connection'}
             </button>
             <button onClick={handleAdd} className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-semibold shadow-lg shadow-blue-500/20">
               Add
