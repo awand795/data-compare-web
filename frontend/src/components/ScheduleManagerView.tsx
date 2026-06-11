@@ -365,7 +365,7 @@ export const ScheduleManagerView: React.FC = () => {
 
             {isFormOpen && (
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[680px] flex flex-col">
+                    <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[680px] flex flex-col max-h-[90vh] overflow-hidden">
                         <div className="px-4 py-3 border-b border-border-main flex justify-between items-center shrink-0">
                             <h2 className="font-bold text-sm flex items-center gap-2"><Clock className="w-4 h-4 text-purple-400"/> Create Scheduled Jobs</h2>
                             <button onClick={() => setIsFormOpen(false)} className="text-text-muted hover:text-white"><XCircle className="w-5 h-5"/></button>
@@ -389,7 +389,7 @@ export const ScheduleManagerView: React.FC = () => {
                             <span className="text-[10px] text-text-muted">Step {currentStep + 1} of 3</span>
                         </div>
 
-                        <div className="flex-1 overflow-auto flex flex-col p-5 gap-6">
+                        <div className="flex-1 flex flex-col p-5 gap-6 min-h-0 overflow-hidden">
                             
                             {/* Step 1: Job Setup */}
                             {currentStep === 0 && (
@@ -437,8 +437,8 @@ export const ScheduleManagerView: React.FC = () => {
 
                             {/* Step 2: Mappings */}
                             {currentStep === 1 && (
-                                <>
-                                    <div className="flex-1 flex flex-col border border-border-main rounded-xl overflow-hidden">
+                                <div className="flex-1 flex flex-col min-h-0">
+                                    <div className="flex-1 flex flex-col border border-border-main rounded-xl overflow-hidden min-h-0">
                                         <div className="bg-bg-header px-4 py-2.5 flex items-center justify-between border-b border-border-main shrink-0">
                                             <div className="flex items-center gap-2 text-sm font-semibold text-text-main">
                                                 <LayoutList className="w-4 h-4 text-purple-400" /> Tables to Schedule
@@ -452,7 +452,7 @@ export const ScheduleManagerView: React.FC = () => {
                                             </button>
                                         </div>
                                         
-                                        <div className="flex-1 overflow-auto">
+                                        <div className="flex-1 overflow-auto min-h-0">
                                             <table className="w-full text-left text-xs">
                                                 <thead className="sticky top-0 z-10 bg-bg-header text-xs text-text-muted uppercase tracking-wider border-b border-border-main">
                                             <tr>
@@ -538,7 +538,7 @@ export const ScheduleManagerView: React.FC = () => {
                                             Next: Notifications <span className="text-lg leading-none">→</span>
                                         </button>
                                     </div>
-                                </>
+                                </div>
                             )}
 
                             {/* Step 3: Notifications */}
