@@ -8,9 +8,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import CodeMirror from '@uiw/react-codemirror';
-import { sql } from '@codemirror/lang-sql';
-import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
+import { SQLEditor } from './SQLEditor';
 
 export const ResultFooter: React.FC<{ 
   data: any[]; 
@@ -340,27 +338,13 @@ export const SidePanel = ({
           <>
             <Panel defaultSize={50} minSize={15}>
               <div className="h-full overflow-hidden bg-bg-editor">
-                <CodeMirror
+                <SQLEditor
                   value={query}
-                  height="100%"
-                  theme={theme === 'dark' ? vscodeDark : vscodeLight}
-                  extensions={[sql()]}
-                  onChange={(value) => setQuery(value)}
+                  onChange={setQuery}
+                  connectionId={conn?.id}
+                  onExecute={() => executeQuery(side)}
                   placeholder="SELECT * FROM table_name WHERE ..."
-                  basicSetup={{
-                    lineNumbers: true,
-                    highlightActiveLine: true,
-                    bracketMatching: true,
-                    closeBrackets: true,
-                    autocompletion: true,
-                    foldGutter: true,
-                  }}
-                  className="h-full text-[12px] font-mono leading-relaxed"
-                  onKeyDown={(e) => {
-                    if (e.ctrlKey && e.key === 'Enter') {
-                      executeQuery(side);
-                    }
-                  }}
+                  className="h-full"
                 />
               </div>
             </Panel>

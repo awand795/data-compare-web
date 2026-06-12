@@ -4,11 +4,10 @@ import { useAppStore, type TableMapping } from '../store/useAppStore';
 import { ArrowRight, X, Code, Plus, Pencil, Database, GitMerge, MinusCircle, LayoutTemplate } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
-import CodeMirror from '@uiw/react-codemirror';
-import { sql } from '@codemirror/lang-sql';
-import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
+import { SQLEditor } from './SQLEditor';
 
-interface Props {
+interface ExcelMappingModalProps {
+
   sourceTables: string[];
   targetTables: string[];
   editingMapping?: TableMapping | null;
@@ -530,40 +529,24 @@ export const ExcelMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
                   <div className="flex flex-col">
                     <label className="text-[10px] font-bold text-blue-500/70 uppercase tracking-widest mb-1">Source SQL</label>
                     <div className="w-full h-44 border border-border-input rounded-lg overflow-hidden bg-bg-editor">
-                      <CodeMirror
+                      <SQLEditor
                         value={sourceQuery}
-                        height="100%"
-                        theme={theme === 'dark' ? vscodeDark : vscodeLight}
-                        extensions={[sql()]}
                         onChange={(val) => setSourceQuery(val)}
+                        connectionId={excelIsTarget ? targetConnectionId : null}
                         placeholder="SELECT * FROM table_name ..."
-                        className="text-[11px] font-mono h-full"
-                        basicSetup={{
-                          lineNumbers: true,
-                          foldGutter: false,
-                          highlightActiveLine: false,
-                          autocompletion: true,
-                        }}
+                        height="100%"
                       />
                     </div>
                   </div>
                   <div className="flex flex-col">
                     <label className="text-[10px] font-bold text-emerald-600/70 uppercase tracking-widest mb-1">Target SQL</label>
                     <div className="w-full h-44 border border-border-input rounded-lg overflow-hidden bg-bg-editor">
-                      <CodeMirror
+                      <SQLEditor
                         value={targetQuery}
-                        height="100%"
-                        theme={theme === 'dark' ? vscodeDark : vscodeLight}
-                        extensions={[sql()]}
                         onChange={(val) => setTargetQuery(val)}
+                        connectionId={excelIsTarget ? null : targetConnectionId}
                         placeholder="SELECT * FROM table_name ..."
-                        className="text-[11px] font-mono h-full"
-                        basicSetup={{
-                          lineNumbers: true,
-                          foldGutter: false,
-                          highlightActiveLine: false,
-                          autocompletion: true,
-                        }}
+                        height="100%"
                       />
                     </div>
                   </div>
