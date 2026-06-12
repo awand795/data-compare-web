@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { useAppStore, type Connection } from '../store/useAppStore';
-import { Database, Plus, Trash2, CheckCircle, XCircle, Server, Plug, ChevronRight, ChevronDown, Table as TableIcon, Loader2, Download, Folder } from 'lucide-react';
+import { Database, Plus, Trash2, CheckCircle, XCircle, Server, Plug, ChevronRight, ChevronDown, Table as TableIcon, Loader2, Download, Folder, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
 
 export type TableInfo = {
@@ -31,6 +31,7 @@ export const ConnectionPanel: React.FC = () => {
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [schemas, setSchemas] = useState<string[]>([]);
   const [loadingSchemas, setLoadingSchemas] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Tree View State
   const [expandedConns, setExpandedConns] = useState<Record<string, boolean>>({});
@@ -206,7 +207,12 @@ export const ConnectionPanel: React.FC = () => {
           )}
           <div className="grid grid-cols-2 gap-1.5">
             <input name="username" onChange={handleChange} className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-xs text-text-input placeholder-slate-500 focus:border-blue-500 outline-none" placeholder="Username" />
-            <input name="password" type="password" onChange={handleChange} className="px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-xs text-text-input placeholder-slate-500 focus:border-blue-500 outline-none" placeholder="Password" />
+            <div className="relative">
+              <input name="password" type={showPassword ? "text" : "password"} onChange={handleChange} className="w-full px-2.5 py-1.5 pr-8 bg-bg-input border border-border-input rounded text-xs text-text-input placeholder-slate-500 focus:border-blue-500 outline-none" placeholder="Password" />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-2 flex items-center text-text-muted hover:text-text-main" tabIndex={-1}>
+                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
           </div>
           
           <div className="flex justify-between mt-1 gap-2">

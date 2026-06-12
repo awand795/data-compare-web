@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { useAppStore, type Connection } from '../store/useAppStore';
-import { X, Server, CheckCircle, XCircle, Shield, Key, Settings as SettingsIcon, Plug, Database, ChevronLeft, Upload } from 'lucide-react';
+import { X, Server, CheckCircle, XCircle, Shield, Key, Settings as SettingsIcon, Plug, Database, ChevronLeft, Upload, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
 
@@ -23,6 +23,9 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
   const { addConnection, addToast } = useAppStore();
   const [step, setStep] = useState<1 | 2>(1);
   const [activeTab, setActiveTab] = useState<TabType>('general');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showSshPassword, setShowSshPassword] = useState(false);
+  const [showSshPassphrase, setShowSshPassphrase] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testDetails, setTestDetails] = useState<string | null>(null);
 
@@ -258,7 +261,12 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     </div>
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-text-muted">Password</label>
-                      <input name="password" type="password" value={formData.password || ''} onChange={handleChange} className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" />
+                      <div className="relative">
+                        <input name="password" type={showPassword ? "text" : "password"} value={formData.password || ''} onChange={handleChange} className="w-full px-2.5 py-1.5 pr-8 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-2 flex items-center text-text-muted hover:text-text-main" tabIndex={-1}>
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -332,7 +340,12 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                       {formData.sshAuthMode === 'password' ? (
                         <div className="flex flex-col gap-1">
                           <label className="text-xs text-text-muted">SSH Password</label>
-                          <input name="sshPassword" type="password" value={formData.sshPassword || ''} onChange={handleChange} className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" />
+                          <div className="relative">
+                            <input name="sshPassword" type={showSshPassword ? "text" : "password"} value={formData.sshPassword || ''} onChange={handleChange} className="w-full px-2.5 py-1.5 pr-8 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" />
+                            <button type="button" onClick={() => setShowSshPassword(!showSshPassword)} className="absolute inset-y-0 right-0 pr-2 flex items-center text-text-muted hover:text-text-main" tabIndex={-1}>
+                              {showSshPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <>
@@ -370,8 +383,13 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                             />
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-xs text-text-muted">Passphrase (Optional)</label>
-                            <input name="sshPassphrase" type="password" value={formData.sshPassphrase || ''} onChange={handleChange} className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" />
+                            <label className="text-xs text-text-muted">Key Passphrase (Optional)</label>
+                            <div className="relative">
+                              <input name="sshPassphrase" type={showSshPassphrase ? "text" : "password"} value={formData.sshPassphrase || ''} onChange={handleChange} className="w-full px-2.5 py-1.5 pr-8 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" />
+                              <button type="button" onClick={() => setShowSshPassphrase(!showSshPassphrase)} className="absolute inset-y-0 right-0 pr-2 flex items-center text-text-muted hover:text-text-main" tabIndex={-1}>
+                                {showSshPassphrase ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            </div>
                           </div>
                         </>
                       )}

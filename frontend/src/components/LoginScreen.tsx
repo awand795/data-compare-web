@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { DatabaseZap, Lock, ArrowRight, AlertCircle } from "lucide-react";
+import { DatabaseZap, Lock, ArrowRight, AlertCircle, Eye, EyeOff } from "lucide-react";
 
 interface LoginScreenProps {
   onLogin: () => void;
@@ -8,6 +8,7 @@ interface LoginScreenProps {
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,13 +44,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                 <Lock className="h-5 w-5 text-text-muted" />
               </div>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(false); }}
-                className={`block w-full pl-10 pr-3 py-3 border ${error ? "border-red-500 focus:border-red-500" : "border-border-input focus:border-blue-500"} rounded-lg bg-bg-input text-text-main placeholder-text-muted focus:outline-none focus:ring-1 ${error ? "focus:ring-red-500" : "focus:ring-blue-500"} transition-colors`}
+                className={`block w-full pl-10 pr-10 py-3 border ${error ? "border-red-500 focus:border-red-500" : "border-border-input focus:border-blue-500"} rounded-lg bg-bg-input text-text-main placeholder-text-muted focus:outline-none focus:ring-1 ${error ? "focus:ring-red-500" : "focus:ring-blue-500"} transition-colors`}
                 placeholder="Enter password"
                 autoFocus
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-text-muted hover:text-text-main transition-colors"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
             </div>
             {error && (
               <div className="mt-2 flex items-center gap-1.5 text-red-500 text-sm">
