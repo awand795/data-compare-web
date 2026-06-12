@@ -203,49 +203,52 @@ export const SchemaCompareView: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-bg-main text-text-main">
       {/* Connection Bar */}
-      <div className="bg-bg-header border-b border-border-main px-4 py-2.5 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col">              <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
-            <select 
-              className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
-              value={sourceConnectionId || ''}
-              onChange={e => setSourceConnectionId(e.target.value)}
+      <div className="bg-bg-header border-b border-border-main px-2 sm:px-4 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <div className="flex flex-col flex-1 sm:flex-none">
+              <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
+              <select 
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
+                value={sourceConnectionId || ''}
+                onChange={e => setSourceConnectionId(e.target.value)}
+              >
+                <option value="">Select source...</option>
+                {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
+              </select>
+            </div>
+            
+            <button
+              onClick={() => {
+                const temp = sourceConnectionId;
+                setSourceConnectionId(targetConnectionId);
+                setTargetConnectionId(temp);
+                setSchemaResults([]);
+              }}
+              className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-4 sm:mt-6 transition-colors cursor-pointer shrink-0"
+              title="Swap Source and Target"
             >
-              <option value="">Select source...</option>
-              {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
-            </select>
-          </div>
-          
-          <button
-            onClick={() => {
-              const temp = sourceConnectionId;
-              setSourceConnectionId(targetConnectionId);
-              setTargetConnectionId(temp);
-              setSchemaResults([]);
-            }}
-            className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-6 transition-colors cursor-pointer"
-            title="Swap Source and Target"
-          >
-            <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
-          </button>
-          
-          <div className="flex flex-col">
-            <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
-            <select 
-              className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
-              value={targetConnectionId || ''}
-              onChange={e => setTargetConnectionId(e.target.value)}
-            >
-              <option value="">Select target...</option>
-              {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
-            </select>
+              <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
+            </button>
+            
+            <div className="flex flex-col flex-1 sm:flex-none">
+              <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
+              <select 
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
+                value={targetConnectionId || ''}
+                onChange={e => setTargetConnectionId(e.target.value)}
+              >
+                <option value="">Select target...</option>
+                {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
+              </select>
+            </div>
           </div>
         </div>
 
         <button 
           onClick={handleCompareSchema}
           disabled={!sourceConn || !targetConn || loading}
-          className="px-5 py-2 bg-gradient-to-r from-purple-600 to-violet-500 hover:from-purple-500 hover:to-violet-400 text-white rounded-md flex items-center gap-2 text-sm font-bold disabled:opacity-40 shadow-lg shadow-purple-500/20 transition-all"
+          className="px-5 py-2 bg-gradient-to-r from-purple-600 to-violet-500 hover:from-purple-500 hover:to-violet-400 text-white rounded-md flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-40 shadow-lg shadow-purple-500/20 transition-all w-full sm:w-auto"
         >
           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Table2 className="w-3.5 h-3.5" />}
           {loading ? 'Comparing...' : 'Compare Schema'}
@@ -254,53 +257,59 @@ export const SchemaCompareView: React.FC = () => {
 
       {/* Summary stats bar */}
       {schemaResults.length > 0 && (
-        <div className="bg-bg-row-alt border-b border-border-main px-4 py-2 flex items-center gap-3 shrink-0">
-          {[
-            { id: 'ALL', label: 'All', count: schemaResults.length },
-            { id: 'IDENTICAL', label: 'Identical', count: statusCounts.IDENTICAL, color: 'text-emerald-600 dark:text-emerald-400' },
-            { id: 'DIFFERENT', label: 'Different', count: statusCounts.DIFFERENT, color: 'text-amber-500 dark:text-amber-400' },
-            { id: 'SOURCE_ONLY', label: 'Source Only', count: statusCounts.SOURCE_ONLY, color: 'text-red-500 dark:text-red-400' },
-            { id: 'TARGET_ONLY', label: 'Target Only', count: statusCounts.TARGET_ONLY, color: 'text-cyan-500 dark:text-cyan-400' },
-          ].map(f => (
-            <button 
-              key={f.id}
-              onClick={() => setFilterStatus(f.id)}
-              className={clsx(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
-                filterStatus === f.id ? "bg-bg-active text-text-main shadow-inner" : "text-text-muted hover:text-text-main hover:bg-bg-hover"
-              )}
-            >
-              <span className={f.color || ''}>{f.label}</span>
-              <span className={clsx(
-                "px-1.5 py-0.5 rounded-full text-[10px] font-bold",
-                filterStatus === f.id ? "bg-bg-panel text-text-main" : "bg-bg-active text-text-muted"
-              )}>{f.count}</span>
-            </button>
-          ))}
-          <div className="flex-1" />
-          <div className="relative">
-            <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
-            <input 
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Search tables..."
-              className="pl-6 pr-2 py-1 text-[11px] bg-bg-input border border-border-input rounded text-text-input placeholder-slate-500 w-40 outline-none focus:border-blue-500/50"
-            />
+        <div className="bg-bg-row-alt border-b border-border-main px-2 sm:px-4 py-2 flex flex-col xl:flex-row items-start xl:items-center gap-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 w-full xl:w-auto">
+            {[
+              { id: 'ALL', label: 'All', count: schemaResults.length },
+              { id: 'IDENTICAL', label: 'Identical', count: statusCounts.IDENTICAL, color: 'text-emerald-600 dark:text-emerald-400' },
+              { id: 'DIFFERENT', label: 'Different', count: statusCounts.DIFFERENT, color: 'text-amber-500 dark:text-amber-400' },
+              { id: 'SOURCE_ONLY', label: 'Source Only', count: statusCounts.SOURCE_ONLY, color: 'text-red-500 dark:text-red-400' },
+              { id: 'TARGET_ONLY', label: 'Target Only', count: statusCounts.TARGET_ONLY, color: 'text-cyan-500 dark:text-cyan-400' },
+            ].map(f => (
+              <button 
+                key={f.id}
+                onClick={() => setFilterStatus(f.id)}
+                className={clsx(
+                  "flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded text-[11px] sm:text-xs font-medium transition-all flex-1 sm:flex-none justify-center sm:justify-start whitespace-nowrap",
+                  filterStatus === f.id ? "bg-bg-active text-text-main shadow-inner" : "text-text-muted hover:text-text-main hover:bg-bg-hover"
+                )}
+              >
+                <span className={f.color || ''}>{f.label}</span>
+                <span className={clsx(
+                  "px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold",
+                  filterStatus === f.id ? "bg-bg-panel text-text-main" : "bg-bg-active text-text-muted"
+                )}>{f.count}</span>
+              </button>
+            ))}
           </div>
-          <button
-            onClick={handleExportExcel}
-            className="px-3 py-1.5 bg-green-600/10 text-green-600 dark:text-green-400 hover:bg-green-600/20 border border-green-600/20 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors"
-          >
-            <FileDown className="w-3.5 h-3.5" />
-            Excel
-          </button>
-          <button
-            onClick={handleExportPDF}
-            className="px-3 py-1.5 bg-red-600/10 text-red-600 dark:text-red-400 hover:bg-red-600/20 border border-red-600/20 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors"
-          >
-            <FileDown className="w-3.5 h-3.5" />
-            PDF
-          </button>
+          <div className="flex-1 hidden xl:block" />
+          <div className="flex items-center gap-2 w-full xl:w-auto justify-between sm:justify-start">
+            <div className="relative flex-1 sm:flex-none">
+              <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
+              <input 
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Search tables..."
+                className="pl-6 pr-2 py-1.5 sm:py-1 text-[11px] bg-bg-input border border-border-input rounded text-text-input placeholder-slate-500 w-full sm:w-40 outline-none focus:border-blue-500/50"
+              />
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleExportExcel}
+                className="px-3 py-1.5 bg-green-600/10 text-green-600 dark:text-green-400 hover:bg-green-600/20 border border-green-600/20 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <FileDown className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Excel</span>
+              </button>
+              <button
+                onClick={handleExportPDF}
+                className="px-3 py-1.5 bg-red-600/10 text-red-600 dark:text-red-400 hover:bg-red-600/20 border border-red-600/20 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <FileDown className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">PDF</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -463,96 +463,100 @@ export const QueryWorkspace: React.FC = () => {
 
   return (
     <div className={clsx("flex flex-col bg-bg-main text-text-main", isFullscreen ? "fixed inset-0 z-[100]" : "h-full min-h-0")}>
-      <div className="bg-bg-header border-b border-border-main px-4 py-2.5 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col">
-            <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
-            <select
-              className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
-              value={sourceConnectionId || ''}
-              onChange={e => setSourceConnectionId(e.target.value)}
+      <div className="bg-bg-header border-b border-border-main px-2 sm:px-4 py-2.5 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 shrink-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full xl:w-auto">
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <div className="flex flex-col flex-1 sm:flex-none">
+              <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
+              <select
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
+                value={sourceConnectionId || ''}
+                onChange={e => setSourceConnectionId(e.target.value)}
+              >
+                <option value="">Select source...</option>
+                {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
+              </select>
+            </div>
+            <button
+              onClick={() => {
+                const temp = sourceConnectionId;
+                setSourceConnectionId(targetConnectionId);
+                setTargetConnectionId(temp);
+              }}
+              className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-4 sm:mt-6 transition-colors cursor-pointer shrink-0"
+              title="Swap Source and Target"
             >
-              <option value="">Select source...</option>
-              {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
-            </select>
-          </div>
-          <button
-            onClick={() => {
-              const temp = sourceConnectionId;
-              setSourceConnectionId(targetConnectionId);
-              setTargetConnectionId(temp);
-            }}
-            className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-6 transition-colors cursor-pointer"
-            title="Swap Source and Target"
-          >
-            <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
-          </button>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
-            <select
-              className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
-              value={targetConnectionId || ''}
-              onChange={e => setTargetConnectionId(e.target.value)}
-            >
-              <option value="">Select target...</option>
-              {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
-            </select>
+              <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
+            </button>
+            <div className="flex flex-col flex-1 sm:flex-none">
+              <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
+              <select
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
+                value={targetConnectionId || ''}
+                onChange={e => setTargetConnectionId(e.target.value)}
+              >
+                <option value="">Select target...</option>
+                {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
+              </select>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-md overflow-hidden border border-border-input text-xs mr-2">
+        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto mt-1 xl:mt-0">
+          <div className="flex rounded-md overflow-hidden border border-border-input text-xs mr-0 sm:mr-2 w-full sm:w-auto order-last sm:order-none mt-2 sm:mt-0">
             <button
               onClick={() => setViewMode('results')}
-              className={clsx("px-3 py-1.5 font-medium transition-colors", viewMode === 'results' ? "bg-blue-500/20 text-blue-500" : "text-text-muted hover:bg-bg-hover")}
+              className={clsx("flex-1 sm:flex-none px-3 py-2 sm:py-1.5 font-medium transition-colors whitespace-nowrap", viewMode === 'results' ? "bg-blue-500/20 text-blue-500" : "text-text-muted hover:bg-bg-hover")}
             >
               Side-by-Side
             </button>
-          <button
-            onClick={() => setViewMode('diff')}
-            className={clsx("px-3 py-1.5 font-medium transition-colors", viewMode === 'diff' ? "bg-amber-500/20 text-amber-500 dark:text-amber-400" : "text-text-muted hover:bg-bg-hover")}
-          >
-            Compare Diff
-          </button>
-        </div>
+            <button
+              onClick={() => setViewMode('diff')}
+              className={clsx("flex-1 sm:flex-none px-3 py-2 sm:py-1.5 font-medium transition-colors whitespace-nowrap", viewMode === 'diff' ? "bg-amber-500/20 text-amber-500 dark:text-amber-400" : "text-text-muted hover:bg-bg-hover")}
+            >
+              Compare Diff
+            </button>
+          </div>
         
-        <button
-          onClick={() => setIsFullscreen(!isFullscreen)}
-          className="px-2 py-1 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main flex items-center justify-center transition-colors mr-2"
-          title={isFullscreen ? "Exit Full View" : "Full View"}
-        >
-          {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-        </button>
-
-        <div className="flex items-center gap-2 mr-1">
-          <input
-            type="checkbox"
-            id="returnMatchedRowsQw"
-            checked={!returnMatchedRows}
-            onChange={e => setReturnMatchedRows(!e.target.checked)}
-            className="w-3 h-3 rounded border-border-input bg-bg-panel text-amber-500 focus:ring-amber-500 focus:ring-offset-bg-header"
-          />
-          <label htmlFor="returnMatchedRowsQw" className="text-[10px] text-text-muted cursor-pointer hover:text-text-main select-none font-medium">
-            Only Diff
-          </label>
-        </div>
-
-        <button
-          onClick={handleCompare}
-            disabled={!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim() || comparing}
-            className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold disabled:opacity-40 transition-colors flex items-center gap-1.5 shadow-sm"
-          >
-            {comparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-            Compare
-          </button>
           <button
-            onClick={executeBoth}
-            disabled={(!sourceConn || !sourceQuery.trim()) && (!targetConn || !targetQuery.trim())}
-            className="px-4 py-1.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-md flex items-center gap-2 text-xs font-bold disabled:opacity-40 shadow-lg shadow-amber-500/20 transition-all"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="px-2 py-1.5 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main flex items-center justify-center transition-colors hidden sm:flex shrink-0"
+            title={isFullscreen ? "Exit Full View" : "Full View"}
           >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            Execute Both
+            {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
           </button>
+
+          <div className="flex items-center gap-1.5 mr-1 bg-bg-input px-2 py-1 rounded-md border border-border-input flex-1 sm:flex-none justify-center">
+            <input
+              type="checkbox"
+              id="returnMatchedRowsQw"
+              checked={!returnMatchedRows}
+              onChange={e => setReturnMatchedRows(!e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-border-item bg-bg-panel text-amber-500 focus:ring-amber-500 focus:ring-offset-bg-main"
+            />
+            <label htmlFor="returnMatchedRowsQw" className="text-[11px] font-medium text-text-muted cursor-pointer hover:text-text-main select-none whitespace-nowrap">
+              Only Diff
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-none">
+            <button
+              onClick={handleCompare}
+              disabled={!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim() || comparing}
+              className="flex-1 sm:flex-none px-4 py-2 sm:py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap"
+            >
+              {comparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+              Compare
+            </button>
+            <button
+              onClick={executeBoth}
+              disabled={(!sourceConn || !sourceQuery.trim()) && (!targetConn || !targetQuery.trim())}
+              className="flex-1 sm:flex-none px-4 py-2 sm:py-1.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-md flex items-center justify-center gap-2 text-xs font-bold disabled:opacity-40 shadow-lg shadow-amber-500/20 transition-all whitespace-nowrap"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              Execute Both
+            </button>
+          </div>
         </div>
       </div>
 

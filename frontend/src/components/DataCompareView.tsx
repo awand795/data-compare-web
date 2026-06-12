@@ -506,18 +506,18 @@ export const DataCompareView: React.FC = () => {
   return (
     <div className={clsx("flex flex-col bg-bg-main text-text-main", isFullscreen ? "fixed inset-0 z-[100]" : "h-full min-h-0")}>
       {/* ── Connection Bar ── */}
-      <div className="bg-bg-header border-b border-border-main px-4 py-2.5 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col">
+      <div className="bg-bg-header border-b border-border-main px-2 sm:px-4 py-2.5 flex flex-col 2xl:flex-row items-start 2xl:items-center justify-between gap-3 shrink-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full 2xl:w-auto">
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
               <select
-                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
                 value={sourceConnectionId || ''}
                 onChange={e => { setSourceConnectionId(e.target.value); clearTableMappings(); }}
               >
                 <option value="">Select source...</option>
-                {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
+                {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
               </select>
             </div>
 
@@ -528,29 +528,29 @@ export const DataCompareView: React.FC = () => {
                 setTargetConnectionId(temp);
                 clearTableMappings();
               }}
-              className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-6 transition-colors cursor-pointer"
+              className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-4 sm:mt-6 transition-colors cursor-pointer shrink-0"
               title="Swap Source and Target"
             >
               <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
             </button>
 
-            <div className="flex flex-col">
+            <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
               <select
-                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[13px] font-medium text-text-input w-52 focus:border-blue-500 outline-none"
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
                 value={targetConnectionId || ''}
                 onChange={e => { setTargetConnectionId(e.target.value); clearTableMappings(); }}
               >
                 <option value="">Select target...</option>
-                {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.database})</option>)}
+                {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
               </select>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full 2xl:w-auto">
           {loading && (
-            <div className="flex flex-col mr-2 min-w-[280px]">
+            <div className="flex flex-col mr-2 min-w-[200px] sm:min-w-[280px] w-full sm:w-auto order-last sm:order-none">
               {/* Mapping-level progress */}
               <div className="flex items-center gap-2 text-xs text-blue-500 font-medium">
                 <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
@@ -586,51 +586,56 @@ export const DataCompareView: React.FC = () => {
               })}
             </div>
           )}
-          <div className="flex items-center gap-1.5 mr-1 ml-2 bg-bg-input px-2 py-1 rounded-md border border-border-input">
-            <input
-              type="checkbox"
-              id="returnMatchedRows"
-              checked={!returnMatchedRows}
-              onChange={e => setReturnMatchedRows(!e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-border-item bg-bg-panel text-amber-500 focus:ring-amber-500 focus:ring-offset-bg-main"
-            />
-            <label htmlFor="returnMatchedRows" className="text-[11px] font-medium text-text-muted cursor-pointer hover:text-text-main select-none whitespace-nowrap">
-              Only Diff (Fast)
-            </label>
-          </div>
-          <button
-            onClick={openAddModal}
-            className="px-4 py-2 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-xs font-medium text-text-main flex items-center gap-1.5 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5 text-blue-500" /> Add Mapping
-          </button>
           
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="px-2 py-1.5 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main flex items-center justify-center transition-colors"
-            title={isFullscreen ? "Exit Full View" : "Full View"}
-          >
-            {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-          </button>
+          <div className="flex flex-1 sm:flex-none items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 bg-bg-input px-2 py-1 rounded-md border border-border-input flex-1 sm:flex-none justify-center">
+              <input
+                type="checkbox"
+                id="returnMatchedRows"
+                checked={!returnMatchedRows}
+                onChange={e => setReturnMatchedRows(!e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-border-item bg-bg-panel text-amber-500 focus:ring-amber-500 focus:ring-offset-bg-main"
+              />
+              <label htmlFor="returnMatchedRows" className="text-[11px] font-medium text-text-muted cursor-pointer hover:text-text-main select-none whitespace-nowrap">
+                Only Diff (Fast)
+              </label>
+            </div>
+            <button
+              onClick={openAddModal}
+              className="px-3 sm:px-4 py-2 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-xs font-medium text-text-main flex items-center justify-center gap-1.5 transition-colors flex-1 sm:flex-none whitespace-nowrap"
+            >
+              <Plus className="w-3.5 h-3.5 text-blue-500" /> Add Mapping
+            </button>
+            
+            <button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="px-2 py-1.5 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main flex items-center justify-center transition-colors hidden sm:flex shrink-0"
+              title={isFullscreen ? "Exit Full View" : "Full View"}
+            >
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+            </button>
+          </div>
 
-          <button
-            onClick={handleSynchronize}
-            disabled={!sourceConn || !targetConn || selectedMappings.size === 0 || loading || syncing}
-            className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white rounded-md flex items-center gap-2 text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20 transition-all"
-            title="Synchronize Data from Source to Target"
-          >
-            {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            {syncing ? 'Syncing...' : 'Synchronize'}
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+            <button
+              onClick={handleSynchronize}
+              disabled={!sourceConn || !targetConn || selectedMappings.size === 0 || loading || syncing}
+              className="px-3 sm:px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white rounded-md flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20 transition-all flex-1"
+              title="Synchronize Data from Source to Target"
+            >
+              {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {syncing ? 'Syncing...' : 'Synchronize'}
+            </button>
 
-          <button
-            onClick={handleCompare}
-            disabled={!sourceConn || !targetConn || selectedMappings.size === 0 || loading || syncing}
-            className="px-5 py-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-md flex items-center gap-2 text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 transition-all"
-          >
-            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-            {loading ? 'Comparing...' : `Compare (${selectedMappings.size})`}
-          </button>
+            <button
+              onClick={handleCompare}
+              disabled={!sourceConn || !targetConn || selectedMappings.size === 0 || loading || syncing}
+              className="px-3 sm:px-5 py-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-md flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 transition-all flex-1 whitespace-nowrap"
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+              {loading ? 'Comparing...' : `Compare (${selectedMappings.size})`}
+            </button>
+          </div>
         </div>
       </div>
 

@@ -259,20 +259,29 @@ export const TableDetailPanel: React.FC = () => {
   return (
     <div className={clsx("flex flex-col bg-bg-main overflow-hidden relative", isFullscreen ? "fixed inset-0 z-[100]" : "h-full min-h-0")}>
       {/* Header */}
-      <div className="px-4 py-2.5 border-b border-border-main flex items-center justify-between bg-bg-panel shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-            <TableIcon className="w-4 h-4" />
+      <div className="px-2 sm:px-4 py-2.5 border-b border-border-main flex flex-col xl:flex-row items-start xl:items-center justify-between bg-bg-panel shrink-0 gap-3 xl:gap-0">
+        <div className="flex items-center gap-3 w-full xl:w-auto justify-between xl:justify-start">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 shrink-0">
+              <TableIcon className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-sm font-bold text-text-main truncate">{explorerTableName}</h1>
+              <p className="text-[11px] text-text-muted font-mono truncate">{conn.name} • {conn.database}</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-sm font-bold text-text-main">{explorerTableName}</h1>
-            <p className="text-[11px] text-text-muted font-mono">{conn.name} • {conn.database}</p>
-          </div>
+          <button
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="p-2 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main flex xl:hidden items-center justify-center transition-colors shrink-0"
+            title={isFullscreen ? "Exit Full View" : "Full View"}
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+          </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 bg-bg-input p-1 rounded-lg border border-border-input overflow-x-auto hide-scrollbar">
+        <div className="flex items-center gap-3 w-full xl:w-auto overflow-hidden">
+          <div className="flex items-center gap-1 bg-bg-input p-1 rounded-lg border border-border-input overflow-x-auto hide-scrollbar w-full xl:w-auto">
             {[
               { id: 'columns', label: 'Columns', icon: TableIcon },
               { id: 'indexes', label: 'Indexes', icon: Database },
@@ -284,7 +293,7 @@ export const TableDetailPanel: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as TabType)}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0
                   ${activeTab === tab.id ? 'bg-bg-panel text-blue-500 shadow-sm border border-border-item' : 'text-text-muted hover:text-text-main'}
                 `}
               >
@@ -295,10 +304,10 @@ export const TableDetailPanel: React.FC = () => {
           
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-2 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main flex items-center justify-center transition-colors ml-2"
+            className="p-2 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main hidden xl:flex items-center justify-center transition-colors shrink-0"
             title={isFullscreen ? "Exit Full View" : "Full View"}
           >
-            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+            {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>
