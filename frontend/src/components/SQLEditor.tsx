@@ -7,7 +7,6 @@ import { useAppStore } from '../store/useAppStore';
 import { Play, AlignLeft, Search, Loader2, Maximize2, Minimize2, X } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
-import { createPortal } from 'react-dom';
 
 interface SQLEditorProps {
   value: string;
@@ -20,7 +19,6 @@ interface SQLEditorProps {
   showMaximize?: boolean;
 }
 
-// Simple cache to avoid redundant metadata fetches
 const schemaCache: Record<string, { tables: string[], schema: Record<string, string[]> }> = {};
 
 export const SQLEditor: React.FC<SQLEditorProps> = ({
@@ -42,8 +40,6 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
   const fetchSchema = useCallback(async () => {
     if (!connectionId || !conn) return;
-    
-    // Check cache
     if (schemaCache[connectionId]) {
       setSchemaData(schemaCache[connectionId].schema);
       return;
@@ -51,44 +47,28 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
     setLoadingSchema(true);
     try {
-      // 1. Fetch tables
       const tablesRes = await axios.post('/api/tables', conn);
       const tables: any[] = tablesRes.data;
-      
       const newSchema: Record<string, string[]> = {};
-      
-      // For performance, we only fetch columns for the first 50 tables 
-      // or we can just fetch tables for now and suggest them.
-      // DBeaver fetches columns on demand, but CodeMirror's sql() extension 
-      // likes a static schema object for basic autocompletion.
-      
       for (const table of tables) {
         newSchema[table.name] = [];
       }
-      
-      // Fetch columns for some tables if needed, or just leave as empty arrays (will still autocomplete table names)
       setSchemaData(newSchema);
       schemaCache[connectionId] = { tables: tables.map(t => t.name), schema: newSchema };
       
-      // Speculatively fetch columns for the first 50 tables to make it look "alive"
       const tablesToFetch = tables.slice(0, 50).map(t => t.name);
-      
-      // Use a batch approach or just loop if the API is fast
       for (const tableName of tablesToFetch) {
         axios.post('/api/columns', { connection: conn, tableName }).then(res => {
             const cols = res.data;
             setSchemaData(prev => {
                 const updated = { ...prev, [tableName]: cols };
-                if (schemaCache[connectionId]) {
-                    schemaCache[connectionId].schema = updated;
-                }
+                if (schemaCache[connectionId]) schemaCache[connectionId].schema = updated;
                 return updated;
             });
         }).catch(() => {});
       }
-
     } catch (err) {
-      console.error("Failed to fetch schema for autocomplete", err);
+      console.error("Failed to fetch schema", err);
     } finally {
       setLoadingSchema(false);
     }
@@ -100,10 +80,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
   const handleFormat = () => {
     try {
-      const formatted = format(value, {
-        language: 'sql',
-        keywordCase: 'upper',
-      });
+      const formatted = format(value, { language: 'sql', keywordCase: 'upper' });
       onChange(formatted);
     } catch (err) {
       console.warn("SQL Formatting failed", err);
@@ -112,135 +89,119 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
   const sqlExtension = useMemo(() => sql({ schema: schemaData }), [schemaData]);
 
-  const editorContent = (
-    <div className={clsx(
-        "flex flex-col group relative",
-        isMaximized ? "fixed inset-0 z-[100] bg-bg-panel p-6 animate-in fade-in zoom-in-95 duration-200" : "h-full"
-    )}>
-      {/* Toolbar */}
-      <div className={clsx(
-          "absolute right-4 z-10 flex items-center gap-1 transition-opacity",
-          isMaximized ? "top-8 opacity-100" : "top-2 opacity-0 group-hover:opacity-100"
-      )}>
-        {loadingSchema && (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-bg-panel/80 backdrop-blur border border-border-main rounded text-[10px] text-text-muted mr-2">
-                <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
-                Updating Schema...
-            </div>
-        )}
-        
-        <button
-          onClick={handleFormat}
-          className="p-1.5 bg-bg-panel hover:bg-bg-hover border border-border-main rounded text-text-muted hover:text-blue-500 transition-all shadow-sm"
-          title="Format SQL (Beautify)"
-        >
-          <AlignLeft className="w-3.5 h-3.5" />
-        </button>
-
-        {showMaximize && (
-          <button
-            onClick={() => setIsMaximized(!isMaximized)}
-            className={clsx(
-                "p-1.5 border border-border-main rounded transition-all shadow-sm",
-                isMaximized ? "bg-orange-500/10 text-orange-500 hover:bg-orange-500/20" : "bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-blue-500"
-            )}
-            title={isMaximized ? "Restore" : "Fullscreen"}
-          >
-            {isMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-          </button>
-        )}
-
-        {onExecute && (
-          <button
-            onClick={onExecute}
-            className="p-1.5 bg-blue-500 hover:bg-blue-600 border border-blue-400/20 rounded text-white transition-all shadow-sm"
-            title="Execute Query (Ctrl+Enter)"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-          </button>
-        )}
-
-        {isMaximized && (
-            <button
-                onClick={() => setIsMaximized(false)}
-                className="p-1.5 bg-red-500 hover:bg-red-600 border border-red-400/20 rounded text-white transition-all shadow-sm ml-2"
-                title="Close Fullscreen"
-            >
-                <X className="w-3.5 h-3.5" />
-            </button>
-        )}
-      </div>
-
-      {isMaximized && (
-          <div className="mb-4 flex flex-col gap-1">
-              <h2 className="text-lg font-bold text-text-main flex items-center gap-2">
-                  <Maximize2 className="w-5 h-5 text-blue-500" />
-                  SQL Editor (Full View)
-              </h2>
-              <p className="text-xs text-text-muted">
-                  Editing query for: <span className="text-blue-500 font-mono">{conn?.name || 'Unknown Connection'}</span>
-              </p>
-          </div>
-      )}
-
-      <CodeMirror
-        value={value}
-        height="100%"
-        theme={theme === 'dark' ? vscodeDark : vscodeLight}
-        extensions={[sqlExtension]}
-        onChange={onChange}
-        placeholder={placeholder}
-        basicSetup={{
-          lineNumbers: true,
-          highlightActiveLine: true,
-          bracketMatching: true,
-          closeBrackets: true,
-          autocompletion: true,
-          foldGutter: true,
-        }}
-        className={clsx(
-            "flex-1 font-mono leading-relaxed overflow-hidden rounded-md border border-border-main",
-            isMaximized ? "text-base shadow-2xl" : "text-[13px]"
-        )}
-        onKeyDown={(e) => {
-          if (e.ctrlKey && e.key === 'Enter' && onExecute) {
-            e.preventDefault();
-            onExecute();
-          }
-          if (e.key === 'Escape' && isMaximized) {
-            setIsMaximized(false);
-          }
-        }}
-      />
-      
-      <div className={clsx("absolute z-10 pointer-events-none", isMaximized ? "bottom-10 left-10" : "bottom-2 left-12")}>
-         {!value && (
-            <div className="text-[11px] text-text-muted/40 italic flex items-center gap-1.5">
-                <Search className="w-3 h-3" />
-                Type to see suggestions (tables, columns, keywords)
-            </div>
-         )}
-      </div>
-      
-      {isMaximized && (
-          <div className="mt-4 flex items-center justify-between text-[11px] text-text-muted border-t border-border-main pt-4">
-              <div className="flex items-center gap-4">
-                  <span>Lines: {value.split('\n').length}</span>
-                  <span>Characters: {value.length}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                  <span className="bg-bg-input px-2 py-0.5 rounded border border-border-input font-mono">ESC to Restore</span>
-                  <span className="bg-bg-input px-2 py-0.5 rounded border border-border-input font-mono">CTRL + ENTER to Run</span>
-              </div>
-          </div>
-      )}
-    </div>
-  );
-
   return (
-    <div className={clsx("relative flex flex-col group", className)} style={{ height: isMaximized ? '0px' : height }}>
-       {!isMaximized && editorContent}
-       {isMaximized && createPortal(editorContent, document.body)}
+    <div 
+      className={clsx(
+        "flex flex-col bg-bg-panel border border-border-main rounded-md overflow-hidden transition-all duration-200",
+        isMaximized ? "fixed inset-0 z-[9999] m-0 rounded-none p-6" : "relative h-full w-full",
+        className
+      )}
+      style={!isMaximized ? { height } : {}}
+    >
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-3 py-2 bg-bg-header border-b border-border-main shrink-0">
+        <div className="flex items-center gap-2">
+            {isMaximized ? (
+                <div className="flex items-center gap-2">
+                    <Maximize2 className="w-4 h-4 text-blue-500" />
+                    <span className="text-sm font-bold text-text-main">SQL Editor (Full View)</span>
+                    <span className="text-xs text-text-muted px-2 py-0.5 bg-bg-input rounded border border-border-main ml-2 font-mono">
+                        {conn?.name || 'No Connection'}
+                    </span>
+                </div>
+            ) : (
+                <div className="flex items-center gap-1.5">
+                    {loadingSchema && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
+                    <span className="text-[10px] text-text-muted font-medium uppercase tracking-wider">Editor</span>
+                </div>
+            )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleFormat}
+            className="p-1.5 hover:bg-bg-hover rounded text-text-muted hover:text-blue-500 transition-colors"
+            title="Format SQL"
+          >
+            <AlignLeft className="w-3.5 h-3.5" />
+          </button>
+
+          {showMaximize && (
+            <button
+              onClick={() => setIsMaximized(!isMaximized)}
+              className={clsx(
+                "p-1.5 rounded transition-colors",
+                isMaximized ? "text-orange-500 hover:bg-orange-500/10" : "text-text-muted hover:text-blue-500 hover:bg-bg-hover"
+              )}
+              title={isMaximized ? "Restore" : "Maximize"}
+            >
+              {isMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          )}
+
+          {isMaximized && (
+              <button
+                onClick={() => setIsMaximized(false)}
+                className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded ml-1"
+                title="Close"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 relative min-h-0 bg-bg-editor">
+        <CodeMirror
+          value={value}
+          height="100%"
+          theme={theme === 'dark' ? vscodeDark : vscodeLight}
+          extensions={[sqlExtension]}
+          onChange={onChange}
+          placeholder={placeholder}
+          basicSetup={{
+            lineNumbers: true,
+            highlightActiveLine: true,
+            bracketMatching: true,
+            closeBrackets: true,
+            autocompletion: true,
+            foldGutter: true,
+          }}
+          className={clsx(
+            "h-full font-mono leading-relaxed",
+            isMaximized ? "text-base" : "text-[12px]"
+          )}
+          onKeyDown={(e) => {
+            if (e.ctrlKey && e.key === 'Enter' && onExecute) {
+              e.preventDefault();
+              onExecute();
+            }
+            if (e.key === 'Escape' && isMaximized) {
+              setIsMaximized(false);
+            }
+          }}
+        />
+        
+        {!value && (
+            <div className="absolute bottom-3 left-12 pointer-events-none opacity-40 flex items-center gap-1.5 text-[10px]">
+                <Search className="w-3 h-3" />
+                Type for suggestions...
+            </div>
+        )}
+      </div>
+      
+      {isMaximized && (
+          <div className="flex items-center justify-between px-4 py-2 bg-bg-header border-t border-border-main text-[10px] text-text-muted shrink-0">
+              <div className="flex gap-4">
+                  <span>Lines: {value.split('\n').length}</span>
+                  <span>Chars: {value.length}</span>
+              </div>
+              <div className="flex gap-3">
+                  <span><kbd className="bg-bg-input px-1 rounded border border-border-main">ESC</kbd> to Restore</span>
+                  <span><kbd className="bg-bg-input px-1 rounded border border-border-main">CTRL+ENTER</kbd> to Run</span>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
