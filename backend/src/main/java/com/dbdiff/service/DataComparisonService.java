@@ -106,15 +106,15 @@ public class DataComparisonService {
         return result;
     }
 
-    private static final int MAX_SYNC_ROWS = 100_000;
+    private static final int MAX_SYNC_ROWS = 50_000;
 
     private List<Map<String, Object>> fetchWithCursor(DataSource ds, String sql) {
-        List<Map<String, Object>> results = new ArrayList<>(Math.min(10_000, MAX_SYNC_ROWS));
+        List<Map<String, Object>> results = new ArrayList<>(Math.min(5_000, MAX_SYNC_ROWS));
         try (Connection conn = ds.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql,
                  ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
             conn.setAutoCommit(false);
-            ps.setFetchSize(5000);
+            ps.setFetchSize(2000);
             try (ResultSet rs = ps.executeQuery()) {
                 ResultSetMetaData meta = rs.getMetaData();
                 int colCount = meta.getColumnCount();
@@ -306,8 +306,8 @@ public class DataComparisonService {
                 try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
                      PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                     
-                    psSource.setFetchSize(5000);
-                    psTarget.setFetchSize(5000);
+                    psSource.setFetchSize(2000);
+                    psTarget.setFetchSize(2000);
 
                     try (ResultSet rsSource = psSource.executeQuery(); 
                          ResultSet rsTarget = psTarget.executeQuery()) {

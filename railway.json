@@ -5,6 +5,8 @@
   },
   "deploy": {
     "healthcheckPath": "/api/ping",
-    "restartPolicyType": "ON_FAILURE"
+    "healthcheckTimeoutSec": 30,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
   }
 }

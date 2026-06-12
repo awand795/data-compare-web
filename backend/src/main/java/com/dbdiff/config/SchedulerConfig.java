@@ -13,7 +13,7 @@ public class SchedulerConfig {
     @Bean
     public TaskScheduler taskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(5);
+        scheduler.setPoolSize(2); // Reduced from 5 to limit concurrent scheduled jobs
         scheduler.setThreadNamePrefix("ScheduledTask-");
         scheduler.initialize();
         return scheduler;
@@ -23,10 +23,11 @@ public class SchedulerConfig {
     public org.springframework.core.task.TaskExecutor taskExecutor() {
         org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor executor =
             new org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(4);
-        executor.setMaxPoolSize(10);
-        executor.setQueueCapacity(50);
-        executor.setThreadNamePrefix("warmup-");
+        executor.setCorePoolSize(2);  // Reduced from 4 to save memory
+        executor.setMaxPoolSize(4);   // Reduced from 10 to prevent too many concurrent tasks
+        executor.setQueueCapacity(20); // Reduced from 50 to prevent backlog
+        executor.setThreadNamePrefix("async-");
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(10);
         executor.initialize();

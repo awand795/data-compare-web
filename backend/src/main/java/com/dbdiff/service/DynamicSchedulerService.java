@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.Semaphore;
 
 @Service
 public class DynamicSchedulerService {
@@ -36,6 +37,13 @@ public class DynamicSchedulerService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final Map<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
+    
+    // Limit concurrent scheduled compare jobs to prevent OOM
+    // Only 1 job runs at a time; others queue up
+    private final Semaphore jobSemaphore = new Semaphore(1);
+
+    @Autowired
+    private org.springframework.core.task.TaskExecutor taskExecutor;
 
     @Autowired
     public DynamicSchedulerService(TaskScheduler taskScheduler,
@@ -74,7 +82,7 @@ public class DynamicSchedulerService {
             // (toggle ON), bukan saat update schedule yang sudah aktif
             if (!wasScheduled) {
                 logger.info("Triggering immediate execution for schedule: {} ({})", schedule.getName(), scheduleId);
-                new Thread(() -> executeCompareJob(scheduleId)).start();
+                taskExecutor.execute(() -> executeCompareJob(scheduleId));
             }
         }
     }
@@ -99,6 +107,28 @@ public class DynamicSchedulerService {
     }
 
     public void executeCompareJob(String scheduleId) {
+        // Acquire semaphore to limit concurrent jobs — prevents OOM from multiple large comparisons
+        boolean acquired = false;
+        try {
+            acquired = jobSemaphore.tryAcquire(5, java.util.concurrent.TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.warn("Job {} interrupted while waiting for semaphore", scheduleId);
+            return;
+        }
+        if (!acquired) {
+            logger.warn("Job {} skipped — another job is still running after 5min wait", scheduleId);
+            return;
+        }
+        
+        try {
+            executeCompareJobInternal(scheduleId);
+        } finally {
+            jobSemaphore.release();
+        }
+    }
+
+    private void executeCompareJobInternal(String scheduleId) {
         logger.info("Executing scheduled compare job for schedule: {}", scheduleId);
         ScheduleConfig schedule = scheduleManagerService.getSchedule(scheduleId);
         if (schedule == null) return;
@@ -189,7 +219,9 @@ public class DynamicSchedulerService {
                     request.setReturnMatchedRows(false);
                     int[] mArr = {0}, dArr = {0}, sArr = {0}, tArr = {0};
                     int[] totalsArr = {0}; // totalSource from onTotals
-                    List<DiffRow> collectedRows = new ArrayList<>();
+                    // FIX: Stream rows directly to DB instead of collecting in memory
+                    String displayTableName = sourceTable != null ? sourceTable : "Custom Query";
+                    final String resultId = result.getId();
 
                     dataComparisonService.processStream(request, new DiffRowConsumer() {
                         @Override
@@ -205,8 +237,15 @@ public class DynamicSchedulerService {
                                 case TARGET_ONLY: tArr[0]++; break;
                                 default: break;
                             }
+                            // Save each row directly to DB instead of accumulating in List
                             if (schedule.isSaveFullData()) {
-                                collectedRows.add(row);
+                                ScheduleResultRow rr = new ScheduleResultRow();
+                                rr.setResultId(resultId);
+                                rr.setRowKey(row.getRowKey());
+                                rr.setStatus(row.getStatus().name());
+                                rr.setDataJson(objectMapper.writeValueAsString(row.getCells()));
+                                rr.setTableName(displayTableName);
+                                scheduleManagerService.saveResultRow(rr);
                             }
                         }
 
@@ -226,27 +265,15 @@ public class DynamicSchedulerService {
                     totalTgtOnly += tArr[0];
 
                     Map<String, Object> tableResult = new HashMap<>();
-                    tableResult.put("tableName", sourceTable != null ? sourceTable : "Custom Query");
+                    tableResult.put("tableName", displayTableName);
                     tableResult.put("match", mArr[0]);
                     tableResult.put("different", dArr[0]);
                     tableResult.put("sourceOnly", sArr[0]);
                     tableResult.put("targetOnly", tArr[0]);
                     tableResult.put("totalSourceRows", totalsArr[0]);
                     executionDetails.add(tableResult);
-
-                    String displayTableName = sourceTable != null ? sourceTable : "Custom Query";
-                    if (schedule.isSaveFullData() && !collectedRows.isEmpty()) {
-                        for (DiffRow row : collectedRows) {
-                            ScheduleResultRow rr = new ScheduleResultRow();
-                            rr.setResultId(result.getId());
-                            rr.setRowKey(row.getRowKey());
-                            rr.setStatus(row.getStatus().name());
-                            rr.setDataJson(objectMapper.writeValueAsString(row.getCells()));
-                            rr.setTableName(displayTableName);
-                            scheduleManagerService.saveResultRow(rr);
-                        }
-                    }
                 } catch (Exception e) {
+                    logger.error("Error comparing mapping: {}", e.getMessage(), e);
                     Map<String, Object> errorTable = new HashMap<>();
                     errorTable.put("tableName", mapping.get("sourceTable"));
                     errorTable.put("error", e.getMessage());
@@ -356,7 +383,11 @@ public class DynamicSchedulerService {
         } catch (Exception e) {
             logger.error("Error executing job: {}", e.getMessage(), e);
             result.setErrorMessage(e.getMessage());
-            scheduleManagerService.saveResult(result);
+            try {
+                scheduleManagerService.updateResult(result);
+            } catch (Exception saveErr) {
+                logger.error("Failed to save error result: {}", saveErr.getMessage());
+            }
         }
     }
 }
