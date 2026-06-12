@@ -204,7 +204,7 @@ function App() {
         ) : (
           <Group orientation="horizontal">
             {/* Left Sidebar - Explorer */}
-            <Panel defaultSize={18} minSize={12} maxSize={30}>
+            <Panel defaultSize="18%" minSize="12%" maxSize="30%">
               <div className="h-full bg-bg-panel border-r border-border-main flex flex-col">
                 <DatabaseExplorer />
               </div>
@@ -213,7 +213,7 @@ function App() {
             <Separator className="w-1 transition-all hover:bg-blue-500/50" />
             
             {/* Central Workspace */}
-            <Panel defaultSize={82}>
+            <Panel defaultSize="82%">
               <div className="h-full flex flex-col overflow-hidden">
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'data' && "hidden")}>
                   <DataCompareView />
