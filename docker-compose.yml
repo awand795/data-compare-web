@@ -4,10 +4,10 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: datasync-db
+    container_name: darkosync-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: datasync_studio
+      POSTGRES_DB: darkosync_studio
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:-Awanda213}
     ports:
@@ -22,18 +22,18 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - datasync-network
+      - darkosync-network
 
   # Spring Boot Backend
   backend:
     build:
       context: ./backend
-    container_name: datasync-backend
+    container_name: darkosync-backend
     restart: unless-stopped
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: datasync_studio
+      DB_NAME: darkosync_studio
       DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD:-Awanda213}
     ports:
@@ -42,7 +42,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - datasync-network
+      - darkosync-network
 
   # React Frontend with Nginx
   frontend:
@@ -50,19 +50,19 @@ services:
       context: ./frontend
       args:
         VITE_API_URL: ""
-    container_name: datasync-frontend
+    container_name: darkosync-frontend
     restart: unless-stopped
     ports:
       - "5173:80"
     depends_on:
       - backend
     networks:
-      - datasync-network
+      - darkosync-network
 
 volumes:
   postgres_data:
     driver: local
 
 networks:
-  datasync-network:
+  darkosync-network:
     driver: bridge

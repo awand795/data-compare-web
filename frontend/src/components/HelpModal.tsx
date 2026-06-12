@@ -33,7 +33,7 @@ export const HelpModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             {[
               { id: 'guide', label: 'User Guide', icon: BookOpen },
               { id: 'shortcuts', label: 'Shortcuts', icon: Command },
-              { id: 'about', label: 'About DataSync', icon: HelpCircle },
+              { id: 'about', label: 'About Darkosync', icon: HelpCircle },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -143,7 +143,7 @@ export const HelpModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-4">
                   <GitCompareArrows className="w-8 h-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold text-text-main mb-2">DataSync Studio</h2>
+                <h2 className="text-2xl font-bold text-text-main mb-2">Darkosync Studio</h2>
                 <div className="text-[13px] font-medium text-text-muted bg-bg-hover px-3 py-1 rounded-full mb-6">
                   Version 2.0.4
                 </div>

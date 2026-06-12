@@ -91,7 +91,7 @@ function App() {
               <DatabaseZap className="w-4 h-4 md:w-5 md:h-5 text-white" />
             </div>
             <h1 className="text-sm md:text-base font-bold tracking-wide bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent truncate hidden sm:block">
-              DataSync Studio
+              Darkosync Studio
             </h1>
           </div>
           
@@ -241,7 +241,7 @@ function App() {
 
       {/* Status Bar */}
       <footer className="bg-bg-editor border-t border-border-main h-7 flex items-center px-3 text-[11px] text-text-muted shrink-0 z-10">
-        <span className="font-semibold text-text-main/60 hidden sm:block">DataSync Studio <span className="font-normal text-text-muted/60">v2.0</span></span>
+        <span className="font-semibold text-text-main/60 hidden sm:block">Darkosync Studio <span className="font-normal text-text-muted/60">v2.0</span></span>
         <div className="flex-1" />
         <span className="flex items-center gap-1.5 text-[11px]">
           <DatabaseZap className="w-3 h-3 text-blue-500/60" />

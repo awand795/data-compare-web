@@ -407,7 +407,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                   </div>
                   <div className="col-span-2 flex flex-col gap-1 mt-2">
                     <label className="text-xs text-text-muted">Extra JDBC Properties (key=value, multiline)</label>
-                    <textarea name="extraProps" value={formData.extraProps || ''} onChange={(e) => setFormData({...formData, extraProps: e.target.value})} className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500 h-20" placeholder="application_name=DataSyncStudio" />
+                    <textarea name="extraProps" value={formData.extraProps || ''} onChange={(e) => setFormData({...formData, extraProps: e.target.value})} className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500 h-20" placeholder="application_name=DarkosyncStudio" />
                   </div>
                 </div>
               )}
