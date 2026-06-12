@@ -4,9 +4,10 @@ import { sql } from '@codemirror/lang-sql';
 import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import { format } from 'sql-formatter';
 import { useAppStore } from '../store/useAppStore';
-import { Play, AlignLeft, Search, Loader2 } from 'lucide-react';
+import { Play, AlignLeft, Search, Loader2, Maximize2, Minimize2, X } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
+import { createPortal } from 'react-dom';
 
 interface SQLEditorProps {
   value: string;
@@ -16,6 +17,7 @@ interface SQLEditorProps {
   height?: string;
   onExecute?: () => void;
   className?: string;
+  showMaximize?: boolean;
 }
 
 // Simple cache to avoid redundant metadata fetches
@@ -28,11 +30,13 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   placeholder = "SELECT * FROM ...",
   height = "100%",
   onExecute,
-  className
+  className,
+  showMaximize = true
 }) => {
   const { theme, connections } = useAppStore();
   const [loadingSchema, setLoadingSchema] = useState(false);
   const [schemaData, setSchemaData] = useState<Record<string, string[]>>({});
+  const [isMaximized, setIsMaximized] = useState(false);
 
   const conn = useMemo(() => connections.find(c => c.id === connectionId), [connections, connectionId]);
 
@@ -108,15 +112,23 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
   const sqlExtension = useMemo(() => sql({ schema: schemaData }), [schemaData]);
 
-  return (
-    <div className={clsx("relative flex flex-col group", className)} style={{ height }}>
-      <div className="absolute right-4 top-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+  const editorContent = (
+    <div className={clsx(
+        "flex flex-col group relative",
+        isMaximized ? "fixed inset-0 z-[100] bg-bg-panel p-6 animate-in fade-in zoom-in-95 duration-200" : "h-full"
+    )}>
+      {/* Toolbar */}
+      <div className={clsx(
+          "absolute right-4 z-10 flex items-center gap-1 transition-opacity",
+          isMaximized ? "top-8 opacity-100" : "top-2 opacity-0 group-hover:opacity-100"
+      )}>
         {loadingSchema && (
             <div className="flex items-center gap-1.5 px-2 py-1 bg-bg-panel/80 backdrop-blur border border-border-main rounded text-[10px] text-text-muted mr-2">
                 <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
                 Updating Schema...
             </div>
         )}
+        
         <button
           onClick={handleFormat}
           className="p-1.5 bg-bg-panel hover:bg-bg-hover border border-border-main rounded text-text-muted hover:text-blue-500 transition-all shadow-sm"
@@ -124,6 +136,20 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
         >
           <AlignLeft className="w-3.5 h-3.5" />
         </button>
+
+        {showMaximize && (
+          <button
+            onClick={() => setIsMaximized(!isMaximized)}
+            className={clsx(
+                "p-1.5 border border-border-main rounded transition-all shadow-sm",
+                isMaximized ? "bg-orange-500/10 text-orange-500 hover:bg-orange-500/20" : "bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-blue-500"
+            )}
+            title={isMaximized ? "Restore" : "Fullscreen"}
+          >
+            {isMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </button>
+        )}
+
         {onExecute && (
           <button
             onClick={onExecute}
@@ -133,7 +159,29 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
             <Play className="w-3.5 h-3.5 fill-current" />
           </button>
         )}
+
+        {isMaximized && (
+            <button
+                onClick={() => setIsMaximized(false)}
+                className="p-1.5 bg-red-500 hover:bg-red-600 border border-red-400/20 rounded text-white transition-all shadow-sm ml-2"
+                title="Close Fullscreen"
+            >
+                <X className="w-3.5 h-3.5" />
+            </button>
+        )}
       </div>
+
+      {isMaximized && (
+          <div className="mb-4 flex flex-col gap-1">
+              <h2 className="text-lg font-bold text-text-main flex items-center gap-2">
+                  <Maximize2 className="w-5 h-5 text-blue-500" />
+                  SQL Editor (Full View)
+              </h2>
+              <p className="text-xs text-text-muted">
+                  Editing query for: <span className="text-blue-500 font-mono">{conn?.name || 'Unknown Connection'}</span>
+              </p>
+          </div>
+      )}
 
       <CodeMirror
         value={value}
@@ -150,16 +198,22 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
           autocompletion: true,
           foldGutter: true,
         }}
-        className="flex-1 text-[13px] font-mono leading-relaxed overflow-hidden rounded-md border border-border-main"
+        className={clsx(
+            "flex-1 font-mono leading-relaxed overflow-hidden rounded-md border border-border-main",
+            isMaximized ? "text-base shadow-2xl" : "text-[13px]"
+        )}
         onKeyDown={(e) => {
           if (e.ctrlKey && e.key === 'Enter' && onExecute) {
             e.preventDefault();
             onExecute();
           }
+          if (e.key === 'Escape' && isMaximized) {
+            setIsMaximized(false);
+          }
         }}
       />
       
-      <div className="absolute bottom-2 left-12 z-10 pointer-events-none">
+      <div className={clsx("absolute z-10 pointer-events-none", isMaximized ? "bottom-10 left-10" : "bottom-2 left-12")}>
          {!value && (
             <div className="text-[11px] text-text-muted/40 italic flex items-center gap-1.5">
                 <Search className="w-3 h-3" />
@@ -167,6 +221,26 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
             </div>
          )}
       </div>
+      
+      {isMaximized && (
+          <div className="mt-4 flex items-center justify-between text-[11px] text-text-muted border-t border-border-main pt-4">
+              <div className="flex items-center gap-4">
+                  <span>Lines: {value.split('\n').length}</span>
+                  <span>Characters: {value.length}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                  <span className="bg-bg-input px-2 py-0.5 rounded border border-border-input font-mono">ESC to Restore</span>
+                  <span className="bg-bg-input px-2 py-0.5 rounded border border-border-input font-mono">CTRL + ENTER to Run</span>
+              </div>
+          </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className={clsx("relative flex flex-col group", className)} style={{ height: isMaximized ? '0px' : height }}>
+       {!isMaximized && editorContent}
+       {isMaximized && createPortal(editorContent, document.body)}
     </div>
   );
 };

@@ -345,6 +345,7 @@ export const SidePanel = ({
                   onExecute={() => executeQuery(side)}
                   placeholder="SELECT * FROM table_name WHERE ..."
                   className="h-full"
+                  showMaximize={false}
                 />
               </div>
             </Panel>
