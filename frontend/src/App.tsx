@@ -14,6 +14,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
 import { AlertModal } from './components/AlertModal';
 import { ToastContainer } from './components/ToastContainer';
+import { LoginScreen } from './components/LoginScreen';
 import clsx from 'clsx';
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
   } = useAppStore();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('darkosync_auth') === 'true');
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -67,6 +69,13 @@ function App() {
     { id: 'excel' as const, label: 'Excel Compare', icon: FileSpreadsheet, desc: 'Compare DB table against an uploaded Excel file' },
     { id: 'schedule' as const, label: 'Scheduled Jobs', icon: CalendarClock, desc: 'Automated data comparison tasks' },
   ];
+
+  if (!isAuthenticated) {
+    return <LoginScreen onLogin={() => {
+      localStorage.setItem('darkosync_auth', 'true');
+      setIsAuthenticated(true);
+    }} />;
+  }
 
   return (
     <div className={clsx(
