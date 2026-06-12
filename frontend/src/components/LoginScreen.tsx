@@ -11,7 +11,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === "Adaulardisepatuku123456789#$#$") {
+    if (password === "Menujutakterbatasdanmelampauinya123#$#*@") {
       setError(false);
       onLogin();
     } else {
