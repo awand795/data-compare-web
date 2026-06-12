@@ -4,7 +4,7 @@ import { sql } from '@codemirror/lang-sql';
 import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import { format } from 'sql-formatter';
 import { useAppStore } from '../store/useAppStore';
-import { Play, AlignLeft, Search, Loader2, Maximize2, Minimize2, X } from 'lucide-react';
+import { AlignLeft, Search, Loader2, Maximize2, Minimize2, X } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
 import { createPortal } from 'react-dom';
