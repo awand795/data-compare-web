@@ -7,6 +7,7 @@ import { useAppStore } from '../store/useAppStore';
 import { Play, AlignLeft, Search, Loader2, Maximize2, Minimize2, X } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
+import { createPortal } from 'react-dom';
 
 interface SQLEditorProps {
   value: string;
@@ -78,6 +79,16 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
     fetchSchema();
   }, [fetchSchema]);
 
+  // Handle body scroll locking when maximized
+  useEffect(() => {
+    if (isMaximized) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isMaximized]);
+
   const handleFormat = () => {
     try {
       const formatted = format(value, { language: 'sql', keywordCase: 'upper' });
@@ -89,19 +100,17 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
   const sqlExtension = useMemo(() => sql({ schema: schemaData }), [schemaData]);
 
-  return (
+  const editorUI = (isFullScreen: boolean) => (
     <div 
       className={clsx(
-        "flex flex-col bg-bg-panel border border-border-main rounded-md overflow-hidden transition-all duration-200",
-        isMaximized ? "fixed inset-0 z-[9999] m-0 rounded-none p-6" : "relative h-full w-full",
-        className
+        "flex flex-col bg-bg-panel border border-border-main overflow-hidden",
+        isFullScreen ? "fixed inset-0 z-[10000] p-6 shadow-2xl" : "h-full w-full rounded-md"
       )}
-      style={!isMaximized ? { height } : {}}
+      style={!isFullScreen ? { height } : {}}
     >
-      {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-2 bg-bg-header border-b border-border-main shrink-0">
         <div className="flex items-center gap-2">
-            {isMaximized ? (
+            {isFullScreen ? (
                 <div className="flex items-center gap-2">
                     <Maximize2 className="w-4 h-4 text-blue-500" />
                     <span className="text-sm font-bold text-text-main">SQL Editor (Full View)</span>
@@ -112,7 +121,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
             ) : (
                 <div className="flex items-center gap-1.5">
                     {loadingSchema && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
-                    <span className="text-[10px] text-text-muted font-medium uppercase tracking-wider">Editor</span>
+                    <span className="text-[10px] text-text-muted font-medium uppercase tracking-wider">SQL Editor</span>
                 </div>
             )}
         </div>
@@ -131,19 +140,19 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
               onClick={() => setIsMaximized(!isMaximized)}
               className={clsx(
                 "p-1.5 rounded transition-colors",
-                isMaximized ? "text-orange-500 hover:bg-orange-500/10" : "text-text-muted hover:text-blue-500 hover:bg-bg-hover"
+                isFullScreen ? "text-orange-500 bg-orange-500/10 hover:bg-orange-500/20" : "text-text-muted hover:text-blue-500 hover:bg-bg-hover"
               )}
-              title={isMaximized ? "Restore" : "Maximize"}
+              title={isFullScreen ? "Restore" : "Maximize to Fullscreen"}
             >
-              {isMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              {isFullScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
           )}
 
-          {isMaximized && (
+          {isFullScreen && (
               <button
                 onClick={() => setIsMaximized(false)}
-                className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded ml-1"
-                title="Close"
+                className="p-1.5 bg-red-500 text-white hover:bg-red-600 rounded ml-1 shadow-sm"
+                title="Close Fullscreen"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -169,14 +178,14 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
           }}
           className={clsx(
             "h-full font-mono leading-relaxed",
-            isMaximized ? "text-base" : "text-[12px]"
+            isFullScreen ? "text-base" : "text-[12px]"
           )}
           onKeyDown={(e) => {
             if (e.ctrlKey && e.key === 'Enter' && onExecute) {
               e.preventDefault();
               onExecute();
             }
-            if (e.key === 'Escape' && isMaximized) {
+            if (e.key === 'Escape' && isFullScreen) {
               setIsMaximized(false);
             }
           }}
@@ -190,18 +199,39 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
         )}
       </div>
       
-      {isMaximized && (
-          <div className="flex items-center justify-between px-4 py-2 bg-bg-header border-t border-border-main text-[10px] text-text-muted shrink-0">
-              <div className="flex gap-4">
-                  <span>Lines: {value.split('\n').length}</span>
-                  <span>Chars: {value.length}</span>
+      {isFullScreen && (
+          <div className="flex items-center justify-between px-4 py-3 bg-bg-header border-t border-border-main text-[11px] text-text-muted shrink-0">
+              <div className="flex gap-6">
+                  <span><strong className="text-text-main">Lines:</strong> {value.split('\n').length}</span>
+                  <span><strong className="text-text-main">Characters:</strong> {value.length}</span>
               </div>
-              <div className="flex gap-3">
-                  <span><kbd className="bg-bg-input px-1 rounded border border-border-main">ESC</kbd> to Restore</span>
-                  <span><kbd className="bg-bg-input px-1 rounded border border-border-main">CTRL+ENTER</kbd> to Run</span>
+              <div className="flex gap-4">
+                  <span><kbd className="bg-bg-input px-1.5 py-0.5 rounded border border-border-main font-mono text-text-main">ESC</kbd> to Restore</span>
+                  <span><kbd className="bg-bg-input px-1.5 py-0.5 rounded border border-border-main font-mono text-text-main">CTRL + ENTER</kbd> to Run</span>
               </div>
           </div>
       )}
     </div>
+  );
+
+  return (
+    <>
+      {/* Normal mode rendering */}
+      {!isMaximized && (
+        <div className={clsx("relative", className)} style={{ height }}>
+          {editorUI(false)}
+        </div>
+      )}
+
+      {/* Maximized mode rendering via Portal to Body */}
+      {isMaximized && createPortal(
+        <div className="fixed inset-0 z-[10000] bg-black/50 backdrop-blur-sm flex items-center justify-center">
+            <div className="w-full h-full animate-in fade-in zoom-in-95 duration-200">
+                {editorUI(true)}
+            </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 };
