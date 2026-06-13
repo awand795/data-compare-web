@@ -619,7 +619,7 @@ export const DataCompareView: React.FC = () => {
           <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
             <button
               onClick={handleSynchronize}
-              disabled={!sourceConn || !targetConn || selectedMappings.size === 0 || loading || syncing}
+              disabled={true}
               className="px-3 sm:px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white rounded-md flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20 transition-all flex-1"
               title="Synchronize Data from Source to Target"
             >

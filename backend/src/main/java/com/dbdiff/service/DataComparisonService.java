@@ -106,7 +106,7 @@ public class DataComparisonService {
         return result;
     }
 
-    private static final int MAX_SYNC_ROWS = 50_000;
+    private static final int MAX_SYNC_ROWS = 5_000;
 
     private List<Map<String, Object>> fetchWithCursor(DataSource ds, String sql) {
         List<Map<String, Object>> results = new ArrayList<>(Math.min(5_000, MAX_SYNC_ROWS));

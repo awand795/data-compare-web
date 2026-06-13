@@ -175,14 +175,14 @@ public class ConnectionManagerService {
             }
         }
 
-        config.setMaximumPoolSize(5);
+        config.setMaximumPoolSize(10);
         config.setMinimumIdle(1);
         // Frontend sends timeout in seconds, HikariCP expects milliseconds
         int timeoutMs = details.getConnectionTimeout() != null ? details.getConnectionTimeout() * 1000 : 30000;
         if (timeoutMs < 250) timeoutMs = 250;
         config.setConnectionTimeout(timeoutMs);
         config.setIdleTimeout(300000);
-        config.setMaxLifetime(1800000);
+        config.setMaxLifetime(240000);
         config.setLeakDetectionThreshold(600000);
 
         HikariDataSource ds = new HikariDataSource(config);

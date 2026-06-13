@@ -159,7 +159,10 @@ public class ApiController {
             request.setReturnMatchedRows(
                 !payload.containsKey("returnMatchedRows") || Boolean.TRUE.equals(payload.get("returnMatchedRows")));
 
-            int batchSize = payload.containsKey("batchSize") ? ((Number) payload.get("batchSize")).intValue() : 50000;
+            int batchSize = payload.containsKey("batchSize") ? ((Number) payload.get("batchSize")).intValue() : 5000;
+            if (batchSize > 10000) {
+                batchSize = 10000; // Cap to prevent OOM
+            }
             int offset = payload.containsKey("offset") ? ((Number) payload.get("offset")).intValue() : 0;
 
             Map<String, Object> result = comparisonService.compareBatch(request, batchSize, offset);
