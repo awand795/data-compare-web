@@ -500,14 +500,11 @@ export const QueryWorkspace: React.FC = () => {
                 {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
               </select>
             </div>
-
-            <div className="hidden sm:block w-px h-8 bg-border-main mx-1"></div>
-            
-            <TemplateManager appMode="query" />
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto mt-1 xl:mt-0">
+        <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end mt-1 xl:mt-0">
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-start xl:justify-end">
           <div className="flex rounded-md overflow-hidden border border-border-input text-xs mr-0 sm:mr-2 w-full sm:w-auto order-last sm:order-none mt-2 sm:mt-0">
             <button
               onClick={() => setViewMode('results')}
@@ -561,6 +558,10 @@ export const QueryWorkspace: React.FC = () => {
               <Play className="w-3.5 h-3.5 fill-current" />
               Execute Both
             </button>
+          </div>
+          
+          <div className="flex items-center justify-end w-full">
+            <TemplateManager appMode="query" />
           </div>
         </div>
       </div>

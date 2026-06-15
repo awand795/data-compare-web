@@ -546,15 +546,12 @@ export const DataCompareView: React.FC = () => {
                 {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
               </select>
             </div>
-            
-            <div className="hidden sm:block w-px h-8 bg-border-main mx-1"></div>
-            
-            <TemplateManager appMode="data" />
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
-          {loading && (
+        <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end">
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-start xl:justify-end">
+            {loading && (
             <div className="flex flex-col mr-2 min-w-[200px] sm:min-w-[280px] w-full sm:w-auto order-last sm:order-none">
               {/* Mapping-level progress */}
               <div className="flex items-center gap-2 text-xs text-blue-500 font-medium">
@@ -640,6 +637,10 @@ export const DataCompareView: React.FC = () => {
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
               {loading ? 'Comparing...' : `Compare (${selectedMappings.size})`}
             </button>
+          </div>
+          
+          <div className="flex items-center justify-end w-full">
+            <TemplateManager appMode="data" />
           </div>
         </div>
       </div>
