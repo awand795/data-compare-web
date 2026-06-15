@@ -100,6 +100,11 @@ public class ConnectionManagerService {
                 config.addDataSourceProperty("defaultRowFetchSize", details.getFetchSize() != null ? String.valueOf(details.getFetchSize()) : "5000");
                 config.addDataSourceProperty("reWriteBatchedInserts", "true");
                 
+                // OPTIMIZATION: Boost work_mem to 256MB (up from default 4MB) to allow 
+                // in-memory sorting of millions of rows when no PK is defined.
+                // This prevents PostgreSQL from doing a slow Disk Sort.
+                config.setConnectionInitSql("SET work_mem = '256MB'");
+                
                 if (details.getSslMode() != null && !details.getSslMode().isEmpty() && !"disable".equalsIgnoreCase(details.getSslMode())) {
                     config.addDataSourceProperty("ssl", "true");
                     config.addDataSourceProperty("sslmode", details.getSslMode());
