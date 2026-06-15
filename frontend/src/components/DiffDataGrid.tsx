@@ -1,18 +1,17 @@
 // @ts-nocheck
-import React, { useMemo, useRef, useCallback, useEffect } from 'react';
-import { useAppStore, type DiffRow } from '../store/useAppStore';
-import {
-  createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  getFilteredRowModel,
-  type ColumnDef,
-} from '@tanstack/react-table';
+import React, { useMemo, useCallback } from 'react';
+import { useAppStore } from '../store/useAppStore';
 import { Database, ArrowRight } from 'lucide-react';
-import clsx from 'clsx';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { buildEffectiveQuery } from '../utils/queryHelpers';
+
+import {
+  DataEditor,
+  GridCell,
+  GridCellKind,
+  GridColumn,
+  Theme,
+} from '@glideapps/glide-data-grid';
+import '@glideapps/glide-data-grid/dist/index.css';
 
 interface DiffDataGridProps {
   mappingId?: string | null;
@@ -20,121 +19,72 @@ interface DiffDataGridProps {
   directResult?: any;
 }
 
-/* ── Memoised cell renderers ─────────────────────────────────────── */
-
-const StatusCell = React.memo(({ value }: { value: string }) => {
-  const styles: Record<string, string> = {
-    MATCH: 'bg-bg-hover text-text-muted border-border-main',
-    DIFFERENT: 'bg-amber-500/10 text-amber-500 dark:text-amber-400 border-amber-500/20',
-    SOURCE_ONLY: 'bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20',
-    TARGET_ONLY: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-  };
-  return (
-    <span className={clsx("px-2 py-0.5 rounded border text-[11px] font-bold uppercase tracking-wider whitespace-nowrap", styles[value] || '')}>
-      {value}
-    </span>
-  );
-});
-StatusCell.displayName = 'StatusCell';
-
-const KeyCell = React.memo(({ value }: { value: string }) => (
-  <div className="font-mono text-[11px] text-blue-500 dark:text-blue-400 font-medium whitespace-nowrap">{value}</div>
-));
-KeyCell.displayName = 'KeyCell';
-
-const DiffCell = React.memo(({ cell }: { cell: { sourceValue: any; targetValue: any; isDifferent: boolean } | undefined }) => {
-  if (!cell) return <span className="text-text-muted text-[10px]">—</span>;
-
-  if (cell.isDifferent) {
-    return (
-      <div className="flex flex-col text-[10px] font-mono border border-border-main rounded overflow-hidden min-w-[100px]">
-        <div className="bg-red-500/5 text-red-500 dark:text-red-300 px-2 py-1 border-b border-border-item flex items-baseline gap-1.5">
-          <span className="text-[8px] text-red-500/60 font-bold uppercase shrink-0">SRC</span>
-          <span className="break-all leading-snug">{String(cell.sourceValue ?? 'NULL')}</span>
-        </div>
-        <div className="bg-emerald-500/5 text-emerald-600 dark:text-emerald-300 px-2 py-1 flex items-baseline gap-1.5">
-          <span className="text-[8px] text-emerald-500/60 font-bold uppercase shrink-0">TGT</span>
-          <span className="break-all leading-snug">{String(cell.targetValue ?? 'NULL')}</span>
-        </div>
-      </div>
-    );
-  }
-
-  return <div className="text-[11px] font-mono text-text-main px-0.5 whitespace-nowrap">{String(cell.sourceValue ?? 'NULL')}</div>;
-});
-DiffCell.displayName = 'DiffCell';
-
-/* ── Main component ──────────────────────────────────────────────── */
-
 export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterStatus, directResult }) => {
-  const { diffResults, showAlert, addToast } = useAppStore();
+  const { diffResults, addToast } = useAppStore();
   const diffResult = directResult || (mappingId ? diffResults[mappingId] : null);
-
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  const columnHelper = createColumnHelper<DiffRow>();
-
-  const columns = useMemo(() => {
-    if (!diffResult) return [];
-
-    const cols: ColumnDef<DiffRow, any>[] = [
-      columnHelper.accessor('status', {
-        header: 'Status',
-        size: 100,
-        cell: info => <StatusCell value={info.getValue()} />,
-      }),
-      columnHelper.accessor('rowKey', {
-        header: 'Key',
-        size: 120,
-        cell: info => <KeyCell value={info.getValue()} />,
-      }),
-    ];
-
-    diffResult.columns.forEach((colName: string) => {
-      cols.push(
-        columnHelper.accessor(row => row.cells[colName], {
-          id: `col_${colName}`,
-          header: colName,
-          cell: info => <DiffCell cell={info.getValue()} />,
-        })
-      );
-    });
-
-    return cols;
-  }, [diffResult?.columns]);
 
   const filteredData = useMemo(() => {
     if (!diffResult) return [];
-    // Always slice/copy to create a new reference so useReactTable detects the change
-    // This fixes the 'data not appearing until tab switch' bug without causing double-render
-    if (filterStatus === 'ALL') return diffResult.rows.slice();
+    if (filterStatus === 'ALL') return diffResult.rows;
     if (filterStatus === 'IDENTICAL') return diffResult.rows.filter((r: any) => r.status === 'MATCH');
     return diffResult.rows.filter((r: any) => r.status === filterStatus);
   }, [diffResult?._v, diffResult?.rows, filterStatus]);
 
-  const table = useReactTable({
-    data: filteredData,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-  });
+  const columns = useMemo<GridColumn[]>(() => {
+    if (!diffResult) return [];
+    const cols: GridColumn[] = [
+      { title: 'Status', width: 100, id: 'status' },
+      { title: 'Key', width: 150, id: 'rowKey' },
+    ];
+    diffResult.columns.forEach((colName: string) => {
+      cols.push({ title: colName, width: 150, id: colName });
+    });
+    return cols;
+  }, [diffResult?.columns]);
 
-  const { rows: tableRows } = table.getRowModel();
+  const getCellContent = useCallback(
+    ([colIdx, rowIdx]: readonly [number, number]): GridCell => {
+      const row = filteredData[rowIdx];
+      const colId = columns[colIdx].id;
 
-  const rowVirtualizer = useVirtualizer({
-    count: tableRows.length,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 36,
-    overscan: 20,
-    initialRect: { width: 800, height: 600 },
-  });
+      let displayData = '';
+      let themeOverride: Partial<Theme> | undefined = undefined;
 
-  // Force virtualizer to re-measure when rows arrive or status changes
-  useEffect(() => {
-    if (tableRows.length > 0) {
-      rowVirtualizer.measure();
-    }
-  }, [tableRows.length, diffResult?.status, rowVirtualizer]);
+      if (colId === 'status') {
+        displayData = row.status;
+        if (row.status === 'DIFFERENT') themeOverride = { textDark: '#f59e0b', bgCell: 'rgba(245, 158, 11, 0.05)' };
+        else if (row.status === 'SOURCE_ONLY') themeOverride = { textDark: '#ef4444', bgCell: 'rgba(239, 68, 68, 0.05)' };
+        else if (row.status === 'TARGET_ONLY') themeOverride = { textDark: '#10b981', bgCell: 'rgba(16, 185, 129, 0.05)' };
+        else themeOverride = { textDark: '#64748b' };
+      } else if (colId === 'rowKey') {
+        displayData = row.rowKey;
+        themeOverride = { textDark: '#3b82f6', baseFontStyle: '600 12px monospace' };
+      } else {
+        const cell = row.cells[colId];
+        if (!cell) {
+          displayData = '—';
+          themeOverride = { textDark: '#94a3b8' };
+        } else if (cell.isDifferent) {
+          const src = String(cell.sourceValue ?? 'NULL');
+          const tgt = String(cell.targetValue ?? 'NULL');
+          displayData = `SRC: ${src} \nTGT: ${tgt}`;
+          themeOverride = { textDark: '#f59e0b', bgCell: 'rgba(245, 158, 11, 0.05)', baseFontStyle: '11px monospace' };
+        } else {
+          displayData = String(cell.sourceValue ?? 'NULL');
+          themeOverride = { baseFontStyle: '11px monospace' };
+        }
+      }
+
+      return {
+        kind: GridCellKind.Text,
+        allowOverlay: true,
+        displayData,
+        data: displayData,
+        themeOverride,
+      };
+    },
+    [filteredData, columns]
+  );
 
   /* ── Export handlers ─────────────────────────────────────────── */
 
@@ -210,85 +160,40 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
 
   if (!diffResult) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-text-muted gap-3">
-        <div className="flex items-center gap-2 text-text-muted opacity-50">
+      <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-3">
+        <div className="flex items-center gap-2 text-slate-500 opacity-50">
           <Database className="w-6 h-6" />
           <ArrowRight className="w-4 h-4" />
           <Database className="w-6 h-6" />
         </div>
-        <span className="text-xs">Select table mappings and click <strong className="text-text-main">Compare</strong> to view differences</span>
+        <span className="text-xs">Select table mappings and click <strong className="text-slate-800 dark:text-slate-200">Compare</strong> to view differences</span>
       </div>
     );
   }
 
-  /* ── Virtualised table ───────────────────────────────────────── */
-
-  const virtualItems = rowVirtualizer.getVirtualItems();
-
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex-1 overflow-auto" ref={scrollContainerRef}>
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 z-10 bg-bg-header shadow-md border-b border-border-main">
-            {table.getHeaderGroups().map(headerGroup => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map(header => (
-                  <th key={header.id} className="px-2.5 py-2 text-[10px] font-bold text-text-muted uppercase tracking-wider border-b border-border-main border-r border-r-border-item last:border-r-0 whitespace-nowrap bg-bg-header">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {virtualItems.length > 0 && (
-              <tr>
-                <td style={{ height: `${virtualItems[0].start}px` }} colSpan={columns.length} />
-              </tr>
-            )}
-            {virtualItems.map(virtualRow => {
-              const row = tableRows[virtualRow.index];
-              const i = virtualRow.index;
-              const status = row.original.status;
-              const rowClass = clsx(
-                "border-b border-border-item transition-colors",
-                i % 2 === 0 ? "bg-bg-main" : "bg-bg-row-alt",
-                status === 'DIFFERENT' && "bg-amber-500/[0.03] dark:bg-amber-500/[0.05] border-l-2 border-l-amber-500/40",
-                status === 'SOURCE_ONLY' && "bg-red-500/[0.03] dark:bg-red-500/[0.05] border-l-2 border-l-red-500/40",
-                status === 'TARGET_ONLY' && "bg-emerald-500/[0.03] dark:bg-emerald-500/[0.05] border-l-2 border-l-emerald-500/40",
-                "hover:bg-bg-hover"
-              );
-
-              return (
-                <tr
-                  key={row.id}
-                  data-index={virtualRow.index}
-                  ref={rowVirtualizer.measureElement}
-                  className={rowClass}
-                >
-                  {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className="px-2 py-1.5 align-top border-r border-border-item last:border-r-0">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-            {virtualItems.length > 0 && (
-              <tr>
-                <td
-                  style={{ height: `${rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end}px` }}
-                  colSpan={columns.length}
-                />
-              </tr>
-            )}
-          </tbody>
-        </table>
-
-        {filteredData.length === 0 && (
-          <div className="p-12 text-center text-xs text-text-muted flex flex-col items-center justify-center gap-2">
+    <div className="h-full flex flex-col w-full bg-white dark:bg-[#0b1120]">
+      <div className="flex-1 overflow-hidden relative">
+        {filteredData.length > 0 ? (
+          <DataEditor
+            getCellContent={getCellContent}
+            columns={columns}
+            rows={filteredData.length}
+            smoothScrollX={true}
+            smoothScrollY={true}
+            theme={{
+              bgCell: 'transparent',
+              bgHeader: '#f8fafc',
+              textDark: '#334155',
+              textHeader: '#64748b',
+              borderColor: '#e2e8f0',
+              fontFamily: 'Inter, sans-serif',
+              baseFontStyle: '12px',
+              headerFontStyle: '600 11px',
+            }}
+          />
+        ) : (
+          <div className="p-12 h-full text-center text-xs text-slate-500 flex flex-col items-center justify-center gap-2">
             {diffResult.status === 'comparing' && diffResult.rows.length === 0 ? (
               <>
                 <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -296,10 +201,10 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
               </>
             ) : (
               <div className="flex flex-col items-center gap-1">
-                <Database className="w-8 h-8 text-text-muted/30" />
+                <Database className="w-8 h-8 text-slate-500/30" />
                 <span>No data matches this filter.</span>
                 {diffResult.rows.length > 0 && (
-                  <span className="text-[10px] text-text-muted/60">
+                  <span className="text-[10px] text-slate-500/60">
                     {diffResult.rows.length.toLocaleString()} total rows, none match "{filterStatus.replace(/_/g, ' ')}".
                   </span>
                 )}
@@ -310,12 +215,12 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
       </div>
 
       {/* Footer stats + export */}
-      <div className="shrink-0 bg-bg-header border-t border-border-main px-3 py-2 flex items-center gap-4 text-xs text-text-muted">
-        <span>Total: <strong className="text-text-main">{diffResult.rows.length}</strong> rows</span>
-        <span>Source: <strong className="text-text-main">{diffResult.totalSourceRows}</strong></span>
-        <span>Target: <strong className="text-text-main">{diffResult.totalTargetRows}</strong></span>
+      <div className="shrink-0 bg-slate-50 dark:bg-[#0f172a] border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
+        <span>Total: <strong className="text-slate-800 dark:text-slate-200">{diffResult.rows.length}</strong> rows</span>
+        <span>Source: <strong className="text-slate-800 dark:text-slate-200">{diffResult.totalSourceRows}</strong></span>
+        <span>Target: <strong className="text-slate-800 dark:text-slate-200">{diffResult.totalTargetRows}</strong></span>
         <span className="text-amber-500 dark:text-amber-400 font-semibold">Δ {diffResult.totalDifferences}</span>
-        <span>Showing: <strong className="text-text-main">{filteredData.length}</strong></span>
+        <span>Showing: <strong className="text-slate-800 dark:text-slate-200">{filteredData.length}</strong></span>
 
         {/* Spacer */}
         <div className="flex-1" />
