@@ -335,8 +335,8 @@ export const DataCompareView: React.FC = () => {
     const failedMappings: { tableName: string; error: string }[] = [];
 
     try {
-      // Run mappings with concurrency limit (max 3 at a time) to prevent connection pool exhaustion
-      const concurrency = 3;
+      // Run mappings with concurrency limit (max 2 at a time) to prevent connection pool exhaustion
+      const concurrency = 2;
       const executing = new Set<Promise<void>>();
       const promises: Promise<void>[] = [];
 

@@ -302,72 +302,54 @@ public class DataComparisonService {
         int[] totalTargetRows = {0};
         int[] differences = {0};
 
-        try (Connection sConn = sourceDs.getConnection(); 
-             Connection tConn = targetDs.getConnection()) {
-            
-            sConn.setAutoCommit(false);
-            tConn.setAutoCommit(false);
+        boolean isSameDataSource = sourceDs == targetDs;
+        Connection sConn = sourceDs.getConnection();
+        Connection tConn = isSameDataSource ? sourceDs.getConnection() : targetDs.getConnection();
+        sConn.setAutoCommit(false);
+        tConn.setAutoCommit(false);
+        try {
+            try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+                 PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                
+                psSource.setFetchSize(2000);
+                psTarget.setFetchSize(2000);
 
-            try {
-                try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-                     PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                try (ResultSet rsSource = psSource.executeQuery(); 
+                     ResultSet rsTarget = psTarget.executeQuery()) {
                     
-                    psSource.setFetchSize(2000);
-                    psTarget.setFetchSize(2000);
+                    ResultSetMetaData meta = rsSource.getMetaData();
+                    columns = extractColumnsFromMeta(meta, excludeSet);
+                    if (useSurrogateKey) {
+                        exactPks = Collections.singletonList("__rn__");
+                    } else {
+                        exactPks = resolveExactPks(pkInput, dbPks, columns);
+                    }
+                    consumer.onColumns(columns);
+                    logger.info("STREAM COMPARE: {} kolom, PKs={}", columns.size(), exactPks);
 
-                    try (ResultSet rsSource = psSource.executeQuery(); 
-                         ResultSet rsTarget = psTarget.executeQuery()) {
-                        
-                        ResultSetMetaData meta = rsSource.getMetaData();
-                        columns = extractColumnsFromMeta(meta, excludeSet);
-                        if (useSurrogateKey) {
-                            exactPks = Collections.singletonList("__rn__");
-                        } else {
-                            exactPks = resolveExactPks(pkInput, dbPks, columns);
-                        }
-                        consumer.onColumns(columns);
-                        logger.info("STREAM COMPARE: {} kolom, PKs={}", columns.size(), exactPks);
+                    int[] colIdx = resolveColumnIndices(meta, columns);
+                    int[] pkIdx = resolveColumnIndices(meta, exactPks);
+                    
+                    boolean hasSource = rsSource.next();
+                    boolean hasTarget = rsTarget.next();
 
-                        int[] colIdx = resolveColumnIndices(meta, columns);
-                        int[] pkIdx = resolveColumnIndices(meta, exactPks);
-                        
-                        boolean hasSource = rsSource.next();
-                        boolean hasTarget = rsTarget.next();
-
-                        while (hasSource || hasTarget) {
-                            if (hasSource && hasTarget) {
-                                int cmp = compareKeys(rsSource, rsTarget, pkIdx);
-                                if (cmp == 0) {
-                                    String sKey = buildKeyFromRs(rsSource, pkIdx);
-                                    Object[] sRow = getRow(rsSource, columns.size(), colIdx);
-                                    Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
-                                    DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
-                                    if (diffRow.getStatus() != DiffRow.Status.MATCH) differences[0]++;
-                                    if (request.isReturnMatchedRows() || diffRow.getStatus() != DiffRow.Status.MATCH) {
-                                        consumer.onRow(diffRow);
-                                    }
-                                    totalSourceRows[0]++;
-                                    totalTargetRows[0]++;
-                                    hasSource = rsSource.next();
-                                    hasTarget = rsTarget.next();
-                                } else if (cmp < 0) {
-                                    String sKey = buildKeyFromRs(rsSource, pkIdx);
-                                    Object[] sRow = getRow(rsSource, columns.size(), colIdx);
-                                    DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
-                                    differences[0]++;
+                    while (hasSource || hasTarget) {
+                        if (hasSource && hasTarget) {
+                            int cmp = compareKeys(rsSource, rsTarget, pkIdx);
+                            if (cmp == 0) {
+                                String sKey = buildKeyFromRs(rsSource, pkIdx);
+                                Object[] sRow = getRow(rsSource, columns.size(), colIdx);
+                                Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
+                                DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
+                                if (diffRow.getStatus() != DiffRow.Status.MATCH) differences[0]++;
+                                if (request.isReturnMatchedRows() || diffRow.getStatus() != DiffRow.Status.MATCH) {
                                     consumer.onRow(diffRow);
-                                    totalSourceRows[0]++;
-                                    hasSource = rsSource.next();
-                                } else {
-                                    String tKey = buildKeyFromRs(rsTarget, pkIdx);
-                                    Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
-                                    DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
-                                    differences[0]++;
-                                    consumer.onRow(diffRow);
-                                    totalTargetRows[0]++;
-                                    hasTarget = rsTarget.next();
                                 }
-                            } else if (hasSource) {
+                                totalSourceRows[0]++;
+                                totalTargetRows[0]++;
+                                hasSource = rsSource.next();
+                                hasTarget = rsTarget.next();
+                            } else if (cmp < 0) {
                                 String sKey = buildKeyFromRs(rsSource, pkIdx);
                                 Object[] sRow = getRow(rsSource, columns.size(), colIdx);
                                 DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
@@ -384,13 +366,31 @@ public class DataComparisonService {
                                 totalTargetRows[0]++;
                                 hasTarget = rsTarget.next();
                             }
+                        } else if (hasSource) {
+                            String sKey = buildKeyFromRs(rsSource, pkIdx);
+                            Object[] sRow = getRow(rsSource, columns.size(), colIdx);
+                            DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
+                            differences[0]++;
+                            consumer.onRow(diffRow);
+                            totalSourceRows[0]++;
+                            hasSource = rsSource.next();
+                        } else {
+                            String tKey = buildKeyFromRs(rsTarget, pkIdx);
+                            Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
+                            DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
+                            differences[0]++;
+                            consumer.onRow(diffRow);
+                            totalTargetRows[0]++;
+                            hasTarget = rsTarget.next();
                         }
                     }
                 }
-            } finally {
-                try { sConn.rollback(); } catch (Exception ignored) {}
-                try { tConn.rollback(); } catch (Exception ignored) {}
             }
+        } finally {
+            try { sConn.rollback(); } catch (Exception ignored) {}
+            try { if (!isSameDataSource || tConn != sConn) tConn.rollback(); } catch (Exception ignored) {}
+            try { sConn.close(); } catch (Exception ignored) {}
+            try { tConn.close(); } catch (Exception ignored) {}
         }
 
         logger.info("STREAM COMPARE: SELESAI. Total={}ms", (System.currentTimeMillis() - startTime));
@@ -550,11 +550,23 @@ public class DataComparisonService {
     // ─────────────────────────────────────────────────────────────────────────
     private String addLimitOffset(String query, int limit, int offset) {
         String trimmed = query.trim();
-        // Remove trailing semicolon if present
         if (trimmed.endsWith(";")) {
             trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
         }
-        // For PostgreSQL
+        // Detect SQL Server by checking if this is a subquery of ROW_NUMBER pattern
+        // For safety, wrap as subquery with standard syntax
+        // PostgreSQL & MySQL: LIMIT/OFFSET
+        // SQL Server: OFFSET/FETCH (requires ORDER BY)
+        boolean hasSqlServerPattern = trimmed.toUpperCase().contains("ROW_NUMBER()") 
+            || trimmed.toUpperCase().contains("TOP ");
+        if (hasSqlServerPattern) {
+            // SQL Server: wrap and use OFFSET FETCH
+            if (!trimmed.toUpperCase().contains("ORDER BY")) {
+                trimmed = trimmed + " ORDER BY (SELECT NULL)";
+            }
+            return trimmed + " OFFSET " + offset + " ROWS FETCH NEXT " + limit + " ROWS ONLY";
+        }
+        // Default PostgreSQL / MySQL
         return trimmed + " LIMIT " + limit + " OFFSET " + offset;
     }
 
