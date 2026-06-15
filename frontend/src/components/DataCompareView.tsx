@@ -732,21 +732,28 @@ export const DataCompareView: React.FC = () => {
                             </button>
                           </td>
                           <td className="py-2 px-3">
-                            <span className={clsx("font-mono text-xs font-medium", m.sourceTable ? "text-text-main" : "text-text-muted italic")}>
-                              {displayName}
-                            </span>
-                            {hasCustom && (
-                              <span className="ml-1 text-[10px] bg-blue-500/20 text-blue-500 dark:text-blue-400 px-1.5 py-0.5 rounded font-bold">SQL</span>
-                            )}
-                            {hasDateFilter && (
-                              <span className="ml-1 text-[10px] bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold">DATE</span>
-                            )}
-                            {hasExtraWhere && (
-                              <span className="ml-1 text-[10px] bg-purple-500/20 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-bold">FILTER</span>
-                            )}
-                            {m.rowLimit && (
-                              <span className="ml-1 text-[10px] bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 px-1.5 py-0.5 rounded font-bold">LIMIT</span>
-                            )}
+                            <div className="flex flex-col gap-0.5">
+                              {m.label && (
+                                <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">{m.label}</span>
+                              )}
+                              <div className="flex items-center flex-wrap gap-1">
+                                <span className={clsx("font-mono text-xs font-medium", m.sourceTable ? "text-text-main" : "text-text-muted italic")}>
+                                  {m.sourceTable || (m.customQuerySource ? '(Custom SQL)' : '(none)')}
+                                </span>
+                                {hasCustom && (
+                                  <span className="text-[10px] bg-blue-500/20 text-blue-500 dark:text-blue-400 px-1.5 py-0.5 rounded font-bold">SQL</span>
+                                )}
+                                {hasDateFilter && (
+                                  <span className="text-[10px] bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold">DATE</span>
+                                )}
+                                {hasExtraWhere && (
+                                  <span className="text-[10px] bg-purple-500/20 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-bold">FILTER</span>
+                                )}
+                                {m.rowLimit && (
+                                  <span className="text-[10px] bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 px-1.5 py-0.5 rounded font-bold">LIMIT</span>
+                                )}
+                              </div>
+                            </div>
                           </td>
                           <td className="py-2 px-3 text-center text-text-muted">
                             <ArrowRight className="w-3 h-3 inline" />
