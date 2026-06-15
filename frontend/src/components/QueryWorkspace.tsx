@@ -248,7 +248,6 @@ export const QueryWorkspace: React.FC = () => {
       returnMatchedRows,
     };
 
-    const store = useAppStore.getState();
     if (m) {
       store.initDiffResult(m.id);
     }

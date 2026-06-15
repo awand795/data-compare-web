@@ -206,7 +206,6 @@ export const DataCompareView: React.FC = () => {
       returnMatchedRows,
     };
 
-    const store = useAppStore.getState();
     store.initDiffResult(mapping.id);
 
     // Step 1: Get row counts first (for progress bar)
