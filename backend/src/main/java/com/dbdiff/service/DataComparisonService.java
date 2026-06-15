@@ -112,7 +112,8 @@ public class DataComparisonService {
         return result;
     }
 
-    private static final int MAX_SYNC_ROWS = 5_000;
+    private static final int MAX_SYNC_ROWS = 3_000;
+    private static final int MAX_STREAM_ROWS = Integer.MAX_VALUE; // Safety cap — streaming does not accumulate rows in memory, so no practical limit
 
     private List<Map<String, Object>> fetchWithCursor(DataSource ds, String sql) {
         List<Map<String, Object>> results = new ArrayList<>(Math.min(5_000, MAX_SYNC_ROWS));
@@ -120,7 +121,7 @@ public class DataComparisonService {
              PreparedStatement ps = conn.prepareStatement(sql,
                  ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
             conn.setAutoCommit(false);
-            ps.setFetchSize(2000);
+            ps.setFetchSize(1000);
             try (ResultSet rs = ps.executeQuery()) {
                 ResultSetMetaData meta = rs.getMetaData();
                 int colCount = meta.getColumnCount();
@@ -185,7 +186,11 @@ public class DataComparisonService {
                     gen.writeEndObject();
                     gen.writeRaw('\n');
                     rowCount[0]++;
-                    if (rowCount[0] % 5000 == 0) gen.flush();
+                    if (rowCount[0] % 1000 == 0) gen.flush();
+                    if (rowCount[0] >= MAX_STREAM_ROWS) {
+                        logger.warn("STREAM COMPARE: Stopped at {} rows to prevent OOM", MAX_STREAM_ROWS);
+                        throw new StreamLimitReachedException(MAX_STREAM_ROWS);
+                    }
                 }
 
                 @Override
@@ -203,9 +208,25 @@ public class DataComparisonService {
                     gen.flush();
                 }
             });
+        } catch (StreamLimitReachedException e) {
+            // Gracefully handle stream limit — not a real error
+            logger.info("Stream compare reached safety limit: {} rows", e.getLimit());
         } catch (Exception e) {
             throw new IOException("Failed to stream JSON", e);
         }
+    }
+
+    /**
+     * Thrown to signal the streaming compare has reached its row safety cap.
+     * This prevents OOM on extremely large tables.
+     */
+    public static class StreamLimitReachedException extends RuntimeException {
+        private final int limit;
+        public StreamLimitReachedException(int limit) {
+            super("Stream limit reached: " + limit + " rows");
+            this.limit = limit;
+        }
+        public int getLimit() { return limit; }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -311,8 +332,8 @@ public class DataComparisonService {
             try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
                  PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                 
-                psSource.setFetchSize(2000);
-                psTarget.setFetchSize(2000);
+                psSource.setFetchSize(1000);
+                psTarget.setFetchSize(1000);
 
                 try (ResultSet rsSource = psSource.executeQuery(); 
                      ResultSet rsTarget = psTarget.executeQuery()) {
@@ -341,10 +362,13 @@ public class DataComparisonService {
                                 Object[] sRow = getRow(rsSource, columns.size(), colIdx);
                                 Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
                                 DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
+                                sRow = null; // allow GC
+                                tRow = null; // allow GC
                                 if (diffRow.getStatus() != DiffRow.Status.MATCH) differences[0]++;
                                 if (request.isReturnMatchedRows() || diffRow.getStatus() != DiffRow.Status.MATCH) {
                                     consumer.onRow(diffRow);
                                 }
+                                diffRow = null; // allow GC setelah dikirim
                                 totalSourceRows[0]++;
                                 totalTargetRows[0]++;
                                 hasSource = rsSource.next();
@@ -353,16 +377,20 @@ public class DataComparisonService {
                                 String sKey = buildKeyFromRs(rsSource, pkIdx);
                                 Object[] sRow = getRow(rsSource, columns.size(), colIdx);
                                 DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
+                                sRow = null; // allow GC
                                 differences[0]++;
                                 consumer.onRow(diffRow);
+                                diffRow = null; // allow GC setelah dikirim
                                 totalSourceRows[0]++;
                                 hasSource = rsSource.next();
                             } else {
                                 String tKey = buildKeyFromRs(rsTarget, pkIdx);
                                 Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
                                 DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
+                                tRow = null; // allow GC
                                 differences[0]++;
                                 consumer.onRow(diffRow);
+                                diffRow = null; // allow GC setelah dikirim
                                 totalTargetRows[0]++;
                                 hasTarget = rsTarget.next();
                             }
@@ -370,22 +398,31 @@ public class DataComparisonService {
                             String sKey = buildKeyFromRs(rsSource, pkIdx);
                             Object[] sRow = getRow(rsSource, columns.size(), colIdx);
                             DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
+                            sRow = null; // allow GC
                             differences[0]++;
                             consumer.onRow(diffRow);
+                            diffRow = null; // allow GC setelah dikirim
                             totalSourceRows[0]++;
                             hasSource = rsSource.next();
                         } else {
                             String tKey = buildKeyFromRs(rsTarget, pkIdx);
                             Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
                             DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
+                            tRow = null; // allow GC
                             differences[0]++;
                             consumer.onRow(diffRow);
+                            diffRow = null; // allow GC setelah dikirim
                             totalTargetRows[0]++;
                             hasTarget = rsTarget.next();
                         }
                     }
                 }
             }
+        } catch (StreamLimitReachedException e) {
+            // Stream hit safety cap — still send partial totals before propagating
+            logger.warn("STREAM COMPARE: Hit row limit {}. Sending partial totals.", e.getLimit());
+            try { consumer.onTotals(totalSourceRows[0], totalTargetRows[0], differences[0]); } catch (Exception ignored) {}
+            throw e; // Re-throw so caller knows it was truncated
         } finally {
             try { sConn.rollback(); } catch (Exception ignored) {}
             try { if (!isSameDataSource || tConn != sConn) tConn.rollback(); } catch (Exception ignored) {}
@@ -772,6 +809,15 @@ public class DataComparisonService {
         return pks;
     }
 
+    // Cached DateTimeFormatters to avoid creating new instances on every comparison (called millions of times)
+    private static final java.time.format.DateTimeFormatter[] DT_FORMATTERS = {
+        java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME,
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.S"),
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SS"),
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
+    };
+
     private boolean normalizedEquals(Object a, Object b) {
         // Both null → equal
         if (a == null && b == null) return true;
@@ -811,14 +857,7 @@ public class DataComparisonService {
         if (epochA != Long.MIN_VALUE || epochB != Long.MIN_VALUE) {
             long epoch = epochA != Long.MIN_VALUE ? epochA : epochB;
             String dateStr = epochA != Long.MIN_VALUE ? strB : strA;
-            java.time.format.DateTimeFormatter[] dtFormatters = {
-                java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME,
-                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
-                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.S"),
-                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SS"),
-                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
-            };
-            for (java.time.format.DateTimeFormatter fmt : dtFormatters) {
+            for (java.time.format.DateTimeFormatter fmt : DT_FORMATTERS) {
                 try {
                     long dateMillis = java.time.LocalDateTime.parse(dateStr, fmt)
                         .atZone(java.time.ZoneId.of("UTC"))

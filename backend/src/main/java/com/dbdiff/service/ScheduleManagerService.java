@@ -13,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -124,6 +125,20 @@ public class ScheduleManagerService {
     public void saveResultRow(ScheduleResultRow row) {
         String sql = "INSERT INTO schedule_result_rows (result_id, row_key, status, data_json, table_name) VALUES (?, ?, ?, ?, ?)";
         jdbcTemplate.update(sql, row.getResultId(), row.getRowKey(), row.getStatus(), row.getDataJson(), row.getTableName());
+    }
+
+    /**
+     * Batch insert multiple result rows in a single DB round-trip to reduce I/O pressure.
+     * Use this instead of calling saveResultRow() in a loop.
+     */
+    public void saveResultRowsBatch(List<ScheduleResultRow> rows) {
+        if (rows == null || rows.isEmpty()) return;
+        String sql = "INSERT INTO schedule_result_rows (result_id, row_key, status, data_json, table_name) VALUES (?, ?, ?, ?, ?)";
+        List<Object[]> batchArgs = new ArrayList<>(rows.size());
+        for (ScheduleResultRow row : rows) {
+            batchArgs.add(new Object[]{row.getResultId(), row.getRowKey(), row.getStatus(), row.getDataJson(), row.getTableName()});
+        }
+        jdbcTemplate.batchUpdate(sql, batchArgs);
     }
 
     public List<ScheduleResult> getResultsForSchedule(String scheduleId) {

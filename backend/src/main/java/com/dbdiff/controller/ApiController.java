@@ -257,7 +257,7 @@ public class ApiController {
                     boolean isPostgres = conn.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres");
                     if (isPostgres) {
                         conn.setAutoCommit(false);
-                        ps.setFetchSize(5000);
+                        ps.setFetchSize(1000);
                     }
 
                     try (ResultSet rs = ps.executeQuery()) {

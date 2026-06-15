@@ -15,4 +15,18 @@ COPY --from=build /app/target/*.jar app.jar
 RUN mkdir -p /app/logs
 
 EXPOSE 8081
-ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -XX:MaxRAMPercentage=55.0 -XX:InitialRAMPercentage=20.0 -XX:MaxMetaspaceSize=72m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=2m -XX:+UseStringDeduplication -XX:SoftRefLRUPolicyMSPerMB=0 $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "exec java \
+  -XX:+UseContainerSupport \
+  -XX:MaxRAMPercentage=40.0 \
+  -XX:InitialRAMPercentage=15.0 \
+  -XX:MaxMetaspaceSize=70m \
+  -XX:+UseG1GC \
+  -XX:G1HeapRegionSize=1m \
+  -XX:MaxGCPauseMillis=150 \
+  -XX:InitiatingHeapOccupancyPercent=25 \
+  -XX:+ParallelRefProcEnabled \
+  -XX:+UseStringDeduplication \
+  -XX:SoftRefLRUPolicyMSPerMB=0 \
+  -XX:+ExitOnOutOfMemoryError \
+  $JAVA_OPTS \
+  -jar app.jar"]

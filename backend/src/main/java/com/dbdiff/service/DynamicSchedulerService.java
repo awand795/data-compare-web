@@ -228,6 +228,9 @@ public class DynamicSchedulerService {
                     final String resultId = result.getId();
 
                     dataComparisonService.processStream(request, new DiffRowConsumer() {
+                        private static final int BATCH_FLUSH_SIZE = 100;
+                        private final List<ScheduleResultRow> rowBuffer = new ArrayList<>(BATCH_FLUSH_SIZE);
+
                         @Override
                         public void onColumns(List<String> columns) throws Exception {}
 
@@ -241,7 +244,7 @@ public class DynamicSchedulerService {
                                 case TARGET_ONLY: tArr[0]++; break;
                                 default: break;
                             }
-                            // Save each row directly to DB instead of accumulating in List
+                            // Buffer rows and flush in batches to reduce DB round-trips
                             if (schedule.isSaveFullData()) {
                                 ScheduleResultRow rr = new ScheduleResultRow();
                                 rr.setResultId(resultId);
@@ -249,12 +252,24 @@ public class DynamicSchedulerService {
                                 rr.setStatus(row.getStatus().name());
                                 rr.setDataJson(objectMapper.writeValueAsString(row.getCells()));
                                 rr.setTableName(displayTableName);
-                                scheduleManagerService.saveResultRow(rr);
+                                rowBuffer.add(rr);
+                                if (rowBuffer.size() >= BATCH_FLUSH_SIZE) {
+                                    flushBuffer();
+                                }
+                            }
+                        }
+
+                        private void flushBuffer() {
+                            if (!rowBuffer.isEmpty()) {
+                                scheduleManagerService.saveResultRowsBatch(rowBuffer);
+                                rowBuffer.clear();
                             }
                         }
 
                         @Override
                         public void onTotals(int totalSource, int totalTarget, int totalDiffs) throws Exception {
+                            // Flush remaining buffered rows before finishing
+                            flushBuffer();
                             // Calculate match count from totals:
                             // totalSource = M + D + S  →  M = totalSource - D - S
                             totalsArr[0] = totalSource;

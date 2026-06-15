@@ -358,8 +358,10 @@ public class ReportExportService {
                 }
 
                 // Batch flush to document to prevent OutOfMemoryError on large datasets
-                if (printedRows % 500 == 0) {
+                if (printedRows % 100 == 0) {
                     document.add(table);
+                    table = null; // hint GC sebelum alokasi PdfPTable baru
+                    System.gc();  // soft hint — opsional tapi berguna di lingkungan heap kecil
                     table = new PdfPTable(columns.size() + 2);
                     table.setWidthPercentage(100);
                     // Add headers for the new table batch
