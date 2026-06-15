@@ -62,12 +62,16 @@ public class DynamicSchedulerService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void init() {
-        logger.info("Initializing Dynamic Scheduler...");
-        List<ScheduleConfig> schedules = scheduleManagerService.getAllSchedules();
-        for (ScheduleConfig schedule : schedules) {
-            if (schedule.isActive()) {
-                scheduleTask(schedule);
+        try {
+            logger.info("Initializing Dynamic Scheduler...");
+            List<ScheduleConfig> schedules = scheduleManagerService.getAllSchedules();
+            for (ScheduleConfig schedule : schedules) {
+                if (schedule.isActive()) {
+                    scheduleTask(schedule);
+                }
             }
+        } catch (Exception e) {
+            logger.error("Failed to initialize scheduler (DB might be unavailable): {}", e.getMessage());
         }
     }
 
