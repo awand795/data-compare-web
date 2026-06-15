@@ -187,7 +187,7 @@ public class DataComparisonService {
                     gen.writeEndObject();
                     gen.writeRaw('\n');
                     rowCount[0]++;
-                    if (rowCount[0] % 1000 == 0) gen.flush();
+                    if (rowCount[0] % 5000 == 0) gen.flush();
                     if (rowCount[0] >= MAX_STREAM_ROWS) {
                         logger.warn("STREAM COMPARE: Stopped at {} rows to prevent OOM", MAX_STREAM_ROWS);
                         throw new StreamLimitReachedException(MAX_STREAM_ROWS);
@@ -373,14 +373,24 @@ public class DataComparisonService {
                                 String sKey = buildKeyFromRs(rsSource, sPkIdx);
                                 Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
                                 Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
-                                DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
-                                sRow = null; // allow GC
-                                tRow = null; // allow GC
-                                if (diffRow.getStatus() != DiffRow.Status.MATCH) differences[0]++;
-                                if (request.isReturnMatchedRows() || diffRow.getStatus() != DiffRow.Status.MATCH) {
+                                // Fast check: are all cells equal?
+                                boolean allEqual = true;
+                                for (int ci = 0; ci < sRow.length; ci++) {
+                                    if (!normalizedEquals(sRow[ci], tRow[ci])) { allEqual = false; break; }
+                                }
+                                if (allEqual) {
+                                    // MATCH — skip building full DiffRow if not needed
+                                    if (request.isReturnMatchedRows()) {
+                                        DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
+                                        consumer.onRow(diffRow);
+                                    }
+                                } else {
+                                    differences[0]++;
+                                    DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
                                     consumer.onRow(diffRow);
                                 }
-                                diffRow = null; // allow GC setelah dikirim
+                                sRow = null;
+                                tRow = null;
                                 totalSourceRows[0]++;
                                 totalTargetRows[0]++;
                                 hasSource = rsSource.next();
@@ -835,70 +845,65 @@ public class DataComparisonService {
     };
 
     private boolean normalizedEquals(Object a, Object b) {
-        // Both null → equal
-        if (a == null && b == null) return true;
-        
-        // Null vs empty string → treat as equal (Excel imports empty cells as "" but original may have NULL)
+        if (a == b) return true; // same reference or both null
         if (a == null) return b.toString().trim().isEmpty();
         if (b == null) return a.toString().trim().isEmpty();
-        
-        // Same reference or equals → equal
         if (a.equals(b)) return true;
+        
+        // Same class fast path — most common case in DB comparisons
+        if (a.getClass() == b.getClass()) {
+            if (a instanceof Number) return ((Number) a).doubleValue() == ((Number) b).doubleValue();
+            return a.toString().trim().equalsIgnoreCase(b.toString().trim());
+        }
+        
+        // Both Numbers but different types (e.g. Integer vs Long)
+        if (a instanceof Number && b instanceof Number) {
+            double da = ((Number) a).doubleValue();
+            double db = ((Number) b).doubleValue();
+            if (da == db) return true;
+            // Fall through to BigDecimal for precision
+            try {
+                return new java.math.BigDecimal(a.toString()).compareTo(new java.math.BigDecimal(b.toString())) == 0;
+            } catch (Exception e) { return false; }
+        }
         
         String strA = a.toString().trim();
         String strB = b.toString().trim();
-        
-        // Trimmed strings match → equal
         if (strA.equalsIgnoreCase(strB)) return true;
         
-        // Try to parse both as epoch millis (long) — handles "1780375745783"
-        try {
-            long epochA = Long.parseLong(strA);
-            long epochB = Long.parseLong(strB);
-            if (epochA == epochB) return true;
-        } catch (Exception ignored) {}
-        
-        // Date comparison: normalize to epoch millis
-        // Handles: java.sql.Timestamp vs epoch-millis-string from Excel import
+        // Date vs epoch comparison
         if (a instanceof java.util.Date || b instanceof java.util.Date) {
-            long dateEpochA = a instanceof java.util.Date ? ((java.util.Date) a).getTime() : tryParseEpoch(strA);
-            long dateEpochB = b instanceof java.util.Date ? ((java.util.Date) b).getTime() : tryParseEpoch(strB);
-            if (dateEpochA != Long.MIN_VALUE && dateEpochB != Long.MIN_VALUE && dateEpochA == dateEpochB) return true;
-        }
-        
-        // Try matching one value as epoch millis string vs the other as a date-format string
-        // e.g. "1780375745783" (epoch) vs "2026-06-05 15:22:52.683" (Timestamp.toString())
-        long epochA = tryParseEpoch(strA);
-        long epochB = tryParseEpoch(strB);
-        if (epochA != Long.MIN_VALUE || epochB != Long.MIN_VALUE) {
+            long epochA = a instanceof java.util.Date ? ((java.util.Date) a).getTime() : tryParseEpoch(strA);
+            long epochB = b instanceof java.util.Date ? ((java.util.Date) b).getTime() : tryParseEpoch(strB);
+            if (epochA != Long.MIN_VALUE && epochB != Long.MIN_VALUE && epochA == epochB) return true;
+            // Try date string formats only when one side is a Date
             long epoch = epochA != Long.MIN_VALUE ? epochA : epochB;
             String dateStr = epochA != Long.MIN_VALUE ? strB : strA;
-            for (java.time.format.DateTimeFormatter fmt : DT_FORMATTERS) {
-                try {
-                    long dateMillis = java.time.LocalDateTime.parse(dateStr, fmt)
-                        .atZone(java.time.ZoneId.of("UTC"))
-                        .toInstant().toEpochMilli();
-                    if (epoch == dateMillis) return true;
-                } catch (Exception ignored2) {}
+            if (epoch != Long.MIN_VALUE) {
+                for (java.time.format.DateTimeFormatter fmt : DT_FORMATTERS) {
+                    try {
+                        long dateMillis = java.time.LocalDateTime.parse(dateStr, fmt)
+                            .atZone(java.time.ZoneId.of("UTC")).toInstant().toEpochMilli();
+                        if (epoch == dateMillis) return true;
+                    } catch (Exception ignored) {}
+                }
             }
-            // Also try date-only formats (midnight)
-            try {
-                long dateMillis = java.time.LocalDate.parse(dateStr)
-                    .atStartOfDay(java.time.ZoneId.of("UTC"))
-                    .toInstant().toEpochMilli();
-                if (epoch == dateMillis) return true;
-            } catch (Exception ignored2) {}
         }
         
-        // Numeric comparison: compare as BigDecimal
-        try {
-            java.math.BigDecimal bdA = new java.math.BigDecimal(strA);
-            java.math.BigDecimal bdB = new java.math.BigDecimal(strB);
-            if (bdA.compareTo(bdB) == 0) return true;
-        } catch (Exception ignored) {
+        // Numeric string comparison — only if both look numeric (start with digit or minus)
+        if (looksNumeric(strA) && looksNumeric(strB)) {
+            try {
+                return new java.math.BigDecimal(strA).compareTo(new java.math.BigDecimal(strB)) == 0;
+            } catch (Exception ignored) {}
         }
         
         return false;
+    }
+    
+    private static boolean looksNumeric(String s) {
+        if (s.isEmpty()) return false;
+        char c = s.charAt(0);
+        return (c >= '0' && c <= '9') || c == '-' || c == '.';
     }
 
         private String buildQuery(String tableName, String customQuery, List<String> pks, List<String> sortColumns, boolean useSurrogateKey) {

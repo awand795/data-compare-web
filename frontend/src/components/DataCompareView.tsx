@@ -287,13 +287,13 @@ export const DataCompareView: React.FC = () => {
               rowCount++;
               
               const now = Date.now();
-              // Flush every 3000 rows OR every 300ms for smooth but efficient UI updates
-              if (rowBatch.length >= 3000 || (now - lastFlushTime > 300 && rowBatch.length > 0)) {
+              // Flush every 10000 rows OR every 500ms for efficient UI updates
+              if (rowBatch.length >= 10000 || (now - lastFlushTime > 500 && rowBatch.length > 0)) {
                 flushRowBatch();
                 lastFlushTime = now;
               }
               // Update progress periodically
-              if (totalRows > 0 && rowCount % 3000 === 0) {
+              if (totalRows > 0 && rowCount % 10000 === 0) {
                 store.setBatchProgress(mapping.id, rowCount, totalRows);
               }
             } else if (obj.type === 'summary') {

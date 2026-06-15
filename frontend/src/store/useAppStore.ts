@@ -62,6 +62,7 @@ export type DiffResult = {
   sourceOnlyCount: number;
   targetOnlyCount: number;
   status?: 'comparing' | 'done' | 'error';
+  _rowVersion?: number;
 };
 
 export type ColumnDiff = {
@@ -371,20 +372,11 @@ export const useAppStore = create<AppState>()(
     }
 
     const maxRows = state.maxRowsInMemory || 100000;
-    let updatedRows: DiffRow[];
-
-    if (existing.rows.length + newRows.length <= 50000) {
-      // Small dataset: safe to spread (immutable, React detects change)
-      updatedRows = [...existing.rows, ...newRows];
-    } else {
-      // Large dataset: push in-place then create new reference to trigger React
-      existing.rows.push(...newRows);
-      // Trim oldest rows if over memory limit
-      if (existing.rows.length > maxRows) {
-        existing.rows.splice(0, existing.rows.length - maxRows);
-      }
-      // New array reference without full copy — React sees different ref
-      updatedRows = existing.rows.slice(0);
+    // Mutate in-place for performance — avoid copying large arrays
+    existing.rows.push(...newRows);
+    // Trim oldest rows if over memory limit
+    if (existing.rows.length > maxRows) {
+      existing.rows.splice(0, existing.rows.length - maxRows);
     }
 
     return {
@@ -392,11 +384,12 @@ export const useAppStore = create<AppState>()(
         ...state.diffResults,
         [mappingId]: {
           ...existing,
-          rows: updatedRows,
+          rows: existing.rows,
           matchCount,
           differentCount,
           sourceOnlyCount,
-          targetOnlyCount
+          targetOnlyCount,
+          _rowVersion: (existing._rowVersion || 0) + 1  // trigger React re-render without array copy
         }
       }
     };
