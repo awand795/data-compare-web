@@ -324,14 +324,21 @@ public class DataComparisonService {
         int[] differences = {0};
 
         boolean isSameDataSource = sourceDs == targetDs;
-        Connection sConn = sourceDs.getConnection();
-        Connection tConn = isSameDataSource ? sourceDs.getConnection() : targetDs.getConnection();
-        sConn.setAutoCommit(false);
-        tConn.setAutoCommit(false);
+        Connection sConn = null;
+        Connection tConn = null;
         try {
+            sConn = sourceDs.getConnection();
+            tConn = isSameDataSource ? sConn : targetDs.getConnection();
+            
+            sConn.setAutoCommit(false);
+            if (!isSameDataSource) {
+                tConn.setAutoCommit(false);
+            }
             try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
                  PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                 
+                psSource.setQueryTimeout(3600); // 1 hour safety timeout
+                psTarget.setQueryTimeout(3600); // 1 hour safety timeout
                 psSource.setFetchSize(1000);
                 psTarget.setFetchSize(1000);
 
@@ -424,10 +431,10 @@ public class DataComparisonService {
             try { consumer.onTotals(totalSourceRows[0], totalTargetRows[0], differences[0]); } catch (Exception ignored) {}
             throw e; // Re-throw so caller knows it was truncated
         } finally {
-            try { sConn.rollback(); } catch (Exception ignored) {}
-            try { if (!isSameDataSource || tConn != sConn) tConn.rollback(); } catch (Exception ignored) {}
-            try { sConn.close(); } catch (Exception ignored) {}
-            try { tConn.close(); } catch (Exception ignored) {}
+            try { if (sConn != null) sConn.rollback(); } catch (Exception ignored) {}
+            try { if (!isSameDataSource && tConn != null) tConn.rollback(); } catch (Exception ignored) {}
+            try { if (sConn != null) sConn.close(); } catch (Exception ignored) {}
+            try { if (!isSameDataSource && tConn != null) tConn.close(); } catch (Exception ignored) {}
         }
 
         logger.info("STREAM COMPARE: SELESAI. Total={}ms", (System.currentTimeMillis() - startTime));
