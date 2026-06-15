@@ -413,10 +413,6 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     <label className="text-xs text-text-muted">Socket Timeout (s) (0 = inf)</label>
                     <input name="socketTimeout" type="number" value={formData.socketTimeout || 0} onChange={handleChange} className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" />
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-text-muted">Fetch Size (Rows)</label>
-                    <input name="fetchSize" type="number" value={formData.fetchSize || 1000} onChange={handleChange} className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" />
-                  </div>
                   <div className="flex flex-col gap-1 justify-center mt-4">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" name="readOnly" checked={formData.readOnly || false} onChange={handleChange} className="w-4 h-4 rounded border-border-input bg-bg-input text-blue-500 focus:ring-blue-500" />

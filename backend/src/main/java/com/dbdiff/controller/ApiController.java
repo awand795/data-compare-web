@@ -122,7 +122,9 @@ public class ApiController {
     @PostMapping("/compare")
     public ResponseEntity<StreamingResponseBody> compareData(@RequestBody DiffRequest request) {
         StreamingResponseBody stream = out -> {
-            comparisonService.compareAndStream(request, out);
+            try (java.io.BufferedOutputStream bos = new java.io.BufferedOutputStream(out, 65536)) {
+                comparisonService.compareAndStream(request, bos);
+            }
         };
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE)

@@ -338,10 +338,11 @@ public class DataComparisonService {
             try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
                  PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                 
+                int fetchSize = 10000;
+                psSource.setFetchSize(fetchSize);
+                psTarget.setFetchSize(fetchSize);
                 psSource.setQueryTimeout(3600); // 1 hour safety timeout
                 psTarget.setQueryTimeout(3600); // 1 hour safety timeout
-                psSource.setFetchSize(1000);
-                psTarget.setFetchSize(1000);
 
                 try (ResultSet rsSource = psSource.executeQuery(); 
                      ResultSet rsTarget = psTarget.executeQuery()) {

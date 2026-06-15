@@ -89,20 +89,6 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                         />
                       </div>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg border border-border-item bg-bg-main mt-3">
-                      <div>
-                        <div className="text-[13px] font-semibold text-text-main">Default Fetch Size</div>
-                        <div className="text-[11px] text-text-muted mt-0.5">The default number of rows fetched per batch across network.</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="number" 
-                          value={defaultFetchSize}
-                          onChange={e => setDefaultFetchSize(Number(e.target.value) || 10000)}
-                          className="w-24 px-3 py-1.5 bg-bg-input border border-border-input rounded-md text-[13px] text-text-main outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
