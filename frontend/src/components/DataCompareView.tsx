@@ -252,6 +252,7 @@ export const DataCompareView: React.FC = () => {
     let rowBatch: any[] = [];
     let rowCount = 0;
     let columnsSet = false;
+    let streamColumns: string[] = [];
     let summaryData: any = null;
     let lastFlushTime = Date.now();
 
@@ -280,7 +281,26 @@ export const DataCompareView: React.FC = () => {
             if (obj.type === 'columns') {
               if (!columnsSet) {
                 store.setDiffColumns(mapping.id, obj.data);
+                streamColumns = obj.data;
                 columnsSet = true;
+              }
+            } else if (obj.type === 'm') {
+              // Compact MATCH row — reconstruct cells from values array
+              const cells: Record<string, any> = {};
+              const vals = obj.v;
+              for (let i = 0; i < streamColumns.length && i < vals.length; i++) {
+                cells[streamColumns[i]] = { sourceValue: vals[i], targetValue: vals[i], isDifferent: false };
+              }
+              rowBatch.push({ rowKey: obj.k, status: 'MATCH', cells });
+              rowCount++;
+              
+              const now = Date.now();
+              if (rowBatch.length >= 10000 || (now - lastFlushTime > 500 && rowBatch.length > 0)) {
+                flushRowBatch();
+                lastFlushTime = now;
+              }
+              if (totalRows > 0 && rowCount % 10000 === 0) {
+                store.setBatchProgress(mapping.id, rowCount, totalRows);
               }
             } else if (obj.type === 'row') {
               rowBatch.push(obj.data);

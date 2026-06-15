@@ -169,22 +169,36 @@ public class DataComparisonService {
 
                 @Override
                 public void onRow(DiffRow row) throws Exception {
-                    gen.writeStartObject();
-                    gen.writeStringField("type", "row");
-                    gen.writeObjectFieldStart("data");
-                    gen.writeStringField("rowKey", row.getRowKey());
-                    gen.writeObjectFieldStart("cells");
-                    for (Map.Entry<String, DiffCell> e : row.getCells().entrySet()) {
-                        gen.writeObjectFieldStart(e.getKey());
-                        gen.writeObjectField("sourceValue", e.getValue().getSourceValue());
-                        gen.writeObjectField("targetValue", e.getValue().getTargetValue());
-                        gen.writeBooleanField("isDifferent", e.getValue().isDifferent());
+                    if (row.getStatus() == DiffRow.Status.MATCH) {
+                        // Compact format for MATCH rows — ~10x smaller JSON payload
+                        gen.writeStartObject();
+                        gen.writeStringField("type", "m");
+                        gen.writeStringField("k", row.getRowKey());
+                        gen.writeArrayFieldStart("v");
+                        for (DiffCell cell : row.getCells().values()) {
+                            gen.writeObject(cell.getSourceValue());
+                        }
+                        gen.writeEndArray();
+                        gen.writeEndObject();
+                    } else {
+                        // Full format for DIFF/SOURCE_ONLY/TARGET_ONLY
+                        gen.writeStartObject();
+                        gen.writeStringField("type", "row");
+                        gen.writeObjectFieldStart("data");
+                        gen.writeStringField("rowKey", row.getRowKey());
+                        gen.writeObjectFieldStart("cells");
+                        for (Map.Entry<String, DiffCell> e : row.getCells().entrySet()) {
+                            gen.writeObjectFieldStart(e.getKey());
+                            gen.writeObjectField("sourceValue", e.getValue().getSourceValue());
+                            gen.writeObjectField("targetValue", e.getValue().getTargetValue());
+                            gen.writeBooleanField("isDifferent", e.getValue().isDifferent());
+                            gen.writeEndObject();
+                        }
+                        gen.writeEndObject();
+                        gen.writeStringField("status", row.getStatus().name());
+                        gen.writeEndObject();
                         gen.writeEndObject();
                     }
-                    gen.writeEndObject();
-                    gen.writeStringField("status", row.getStatus().name());
-                    gen.writeEndObject();
-                    gen.writeEndObject();
                     gen.writeRaw('\n');
                     rowCount[0]++;
                     if (rowCount[0] % 5000 == 0) gen.flush();
