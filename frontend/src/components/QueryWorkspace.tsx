@@ -11,6 +11,7 @@ import clsx from 'clsx';
 import { buildEffectiveQuery } from '../utils/queryHelpers';
 import { DiffDataGrid } from './DiffDataGrid';
 import { SidePanel } from './QueryWorkspaceComponents';
+import { TemplateManager } from './TemplateManager';
 
 export const QueryWorkspace: React.FC = () => {
   const {
@@ -499,6 +500,10 @@ export const QueryWorkspace: React.FC = () => {
                 {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
               </select>
             </div>
+
+            <div className="hidden sm:block w-px h-8 bg-border-main mx-1"></div>
+            
+            <TemplateManager appMode="query" />
           </div>
         </div>
 

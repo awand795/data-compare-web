@@ -10,6 +10,7 @@ import {
 import axios from 'axios';
 import { DiffDataGrid } from './DiffDataGrid';
 import { TableMappingModal } from './TableMappingModal';
+import { TemplateManager } from './TemplateManager';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import clsx from 'clsx';
 import { buildEffectiveQuery } from '../utils/queryHelpers';
@@ -545,6 +546,10 @@ export const DataCompareView: React.FC = () => {
                 {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
               </select>
             </div>
+            
+            <div className="hidden sm:block w-px h-8 bg-border-main mx-1"></div>
+            
+            <TemplateManager appMode="data" />
           </div>
         </div>
 

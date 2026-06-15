@@ -110,6 +110,16 @@ export type TableMapping = {
   sortColumns?: string[];
 };
 
+export type Template = {
+  id: string;
+  name: string;
+  appMode: 'data' | 'query';
+  sourceConnectionId: string | null;
+  targetConnectionId: string | null;
+  tableMappings?: TableMapping[];
+  customQuerySource?: string;
+  customQueryTarget?: string;
+};
 
 export type ScheduleConfig = {
   id: string;
@@ -264,6 +274,13 @@ type AppState = {
   updateScheduleStatus: (id: string, isActive: boolean) => void;
   runScheduleNow: (id: string) => void;
 
+  // Templates
+  templates: Template[];
+  addTemplate: (template: Template) => void;
+  updateTemplate: (id: string, updates: Partial<Template>) => void;
+  removeTemplate: (id: string) => void;
+  activeTemplateId: string | null;
+  setActiveTemplateId: (id: string | null) => void;
 
   // Theme
   theme: 'dark' | 'light';
@@ -571,6 +588,17 @@ export const useAppStore = create<AppState>()(
     }
   },
 
+  templates: [],
+  addTemplate: (template) => set((state) => ({ templates: [...state.templates, template] })),
+  updateTemplate: (id, updates) => set((state) => ({
+    templates: state.templates.map(t => t.id === id ? { ...t, ...updates } : t)
+  })),
+  removeTemplate: (id) => set((state) => ({
+    templates: state.templates.filter(t => t.id !== id),
+    activeTemplateId: state.activeTemplateId === id ? null : state.activeTemplateId
+  })),
+  activeTemplateId: null,
+  setActiveTemplateId: (id) => set({ activeTemplateId: id }),
 
   theme: 'light',
   setTheme: (theme) => set({ theme }),
@@ -608,6 +636,7 @@ export const useAppStore = create<AppState>()(
         gridDensity: state.gridDensity,
         notificationChannels: state.notificationChannels,
         defaultRowLimit: state.defaultRowLimit,
+        templates: state.templates,
       }),
     }
   )
