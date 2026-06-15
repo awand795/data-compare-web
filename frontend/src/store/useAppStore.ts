@@ -374,9 +374,27 @@ export const useAppStore = create<AppState>()(
     const maxRows = state.maxRowsInMemory || 100000;
     // Mutate in-place for performance — avoid copying large arrays
     existing.rows.push(...newRows);
-    // Trim oldest rows if over memory limit
+    
+    // Trim if over memory limit, prioritizing removal of MATCH rows first
     if (existing.rows.length > maxRows) {
-      existing.rows.splice(0, existing.rows.length - maxRows);
+      const excess = existing.rows.length - maxRows;
+      let dropped = 0;
+      const filtered = [];
+      
+      for (const row of existing.rows) {
+        if (row.status === 'MATCH' && dropped < excess) {
+          dropped++;
+        } else {
+          filtered.push(row);
+        }
+      }
+      
+      // If we still exceed the limit (e.g., too many DIFFERENT rows), drop the oldest ones
+      if (filtered.length > maxRows) {
+        filtered.splice(0, filtered.length - maxRows);
+      }
+      
+      existing.rows = filtered;
     }
 
     return {
