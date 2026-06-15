@@ -184,9 +184,9 @@ public class ConnectionManagerService {
         int timeoutMs = details.getConnectionTimeout() != null ? details.getConnectionTimeout() * 1000 : 30000;
         if (timeoutMs < 250) timeoutMs = 250;
         config.setConnectionTimeout(timeoutMs);
-        config.setIdleTimeout(180000);
-        config.setMaxLifetime(240000);
-        config.setKeepaliveTime(120000);
+        config.setIdleTimeout(60000);    // 1 menit — lepas koneksi idle lebih cepat
+        config.setMaxLifetime(180000);   // 3 menit
+        config.setKeepaliveTime(90000);  // 1.5 menit — harus > idleTimeout
         config.setLeakDetectionThreshold(60000);
 
         HikariDataSource ds = new HikariDataSource(config);

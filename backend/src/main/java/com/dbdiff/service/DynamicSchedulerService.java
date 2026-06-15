@@ -307,7 +307,16 @@ public class DynamicSchedulerService {
                 StringBuilder tableDetailsDiscord = new StringBuilder();
                 tableDetailsHtml.append("\n<b>📋 Per-Table Breakdown:</b>\n");
                 tableDetailsDiscord.append("\n**📋 Per-Table Breakdown:**\n");
+                int shownTables = 0;
+                int maxTablesToShow = 20;
                 for (Map<String, Object> td : executionDetails) {
+                    if (shownTables >= maxTablesToShow) {
+                        int remaining = executionDetails.size() - maxTablesToShow;
+                        tableDetailsHtml.append(String.format("  ... and %d more tables (see dashboard)\n", remaining));
+                        tableDetailsDiscord.append(String.format("  ... and %d more tables (see dashboard)\n", remaining));
+                        break;
+                    }
+                    shownTables++;
                     if (td.containsKey("error")) {                        String errTable = (String) td.getOrDefault("tableName", "unknown");
                         tableDetailsHtml.append(String.format(
                                 "  ❌ <i>%s</i>: ERROR - %s\n", errTable, td.get("error")));
