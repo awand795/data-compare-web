@@ -13,7 +13,7 @@ services:
       DB_USER: neondb_owner
       DB_PASSWORD: npg_lSm6g8kRZEoL
     ports:
-      - "8081:8081"
+      - "5300:8081"
     networks:
       - darkosync-network
     logging:
