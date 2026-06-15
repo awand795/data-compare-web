@@ -507,53 +507,56 @@ export const DataCompareView: React.FC = () => {
   return (
     <div className={clsx("flex flex-col bg-bg-main text-text-main", isFullscreen ? "fixed inset-0 z-[100]" : "h-full min-h-0")}>
       {/* ── Connection Bar ── */}
-      <div className="bg-bg-header border-b border-border-main px-2 sm:px-4 py-2.5 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 shrink-0">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full xl:w-auto">
-          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            <div className="flex flex-col flex-1 sm:flex-none">
-              <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
-              <select
-                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
-                value={sourceConnectionId || ''}
-                onChange={e => { setSourceConnectionId(e.target.value); clearTableMappings(); }}
+      <div className="flex flex-col gap-4 bg-bg-panel border-b border-border-main p-4 sticky top-0 z-20">
+          
+          {/* Top Row: Connections & Templates */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 w-full">
+            <div className="flex flex-wrap items-end gap-3 sm:gap-4 w-full md:w-auto">
+              <div className="flex flex-col flex-1 sm:flex-none">
+                <span className="text-[11px] font-bold text-blue-500 uppercase tracking-wider mb-0.5">Source</span>
+                <select
+                  className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
+                  value={sourceConnectionId || ''}
+                  onChange={e => { setSourceConnectionId(e.target.value); clearTableMappings(); }}
+                >
+                  <option value="">Select source...</option>
+                  {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
+                </select>
+              </div>
+
+              <button
+                onClick={() => {
+                  const temp = sourceConnectionId;
+                  setSourceConnectionId(targetConnectionId);
+                  setTargetConnectionId(temp);
+                  clearTableMappings();
+                }}
+                className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-4 sm:mt-6 transition-colors cursor-pointer shrink-0"
+                title="Swap Source and Target"
               >
-                <option value="">Select source...</option>
-                {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
-              </select>
+                <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
+              </button>
+
+              <div className="flex flex-col flex-1 sm:flex-none">
+                <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
+                <select
+                  className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
+                  value={targetConnectionId || ''}
+                  onChange={e => { setTargetConnectionId(e.target.value); clearTableMappings(); }}
+                >
+                  <option value="">Select target...</option>
+                  {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
+                </select>
+              </div>
             </div>
 
-            <button
-              onClick={() => {
-                const temp = sourceConnectionId;
-                setSourceConnectionId(targetConnectionId);
-                setTargetConnectionId(temp);
-                clearTableMappings();
-              }}
-              className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-4 sm:mt-6 transition-colors cursor-pointer shrink-0"
-              title="Swap Source and Target"
-            >
-              <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
-            </button>
-
-            <div className="flex flex-col flex-1 sm:flex-none">
-              <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
-              <select
-                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
-                value={targetConnectionId || ''}
-                onChange={e => { setTargetConnectionId(e.target.value); clearTableMappings(); }}
-              >
-                <option value="">Select target...</option>
-                {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
-              </select>
+            <div className="flex items-center shrink-0">
+              <TemplateManager appMode="data" />
             </div>
-            
-            <div className="hidden sm:block w-px h-8 bg-border-main mx-1"></div>
-            
-            <TemplateManager appMode="data" />
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+          {/* Bottom Row: Actions */}
+          <div className="flex flex-wrap items-center justify-between gap-2 w-full border-t border-border-main pt-3">
           {loading && (
             <div className="flex flex-col mr-2 min-w-[200px] sm:min-w-[280px] w-full sm:w-auto order-last sm:order-none">
               {/* Mapping-level progress */}
