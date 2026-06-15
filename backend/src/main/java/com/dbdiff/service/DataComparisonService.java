@@ -121,6 +121,7 @@ public class DataComparisonService {
              PreparedStatement ps = conn.prepareStatement(sql,
                  ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
             conn.setAutoCommit(false);
+            ps.setQueryTimeout(3600); // 1 hour safety timeout
             ps.setFetchSize(1000);
             try (ResultSet rs = ps.executeQuery()) {
                 ResultSetMetaData meta = rs.getMetaData();
