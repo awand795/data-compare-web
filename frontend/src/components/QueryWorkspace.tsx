@@ -559,7 +559,8 @@ export const QueryWorkspace: React.FC = () => {
               Execute Both
             </button>
           </div>
-          
+          </div>
+
           <div className="flex items-center justify-end w-full">
             <TemplateManager appMode="query" />
           </div>

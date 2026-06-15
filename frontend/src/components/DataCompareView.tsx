@@ -638,7 +638,8 @@ export const DataCompareView: React.FC = () => {
               {loading ? 'Comparing...' : `Compare (${selectedMappings.size})`}
             </button>
           </div>
-          
+          </div>
+
           <div className="flex items-center justify-end w-full">
             <TemplateManager appMode="data" />
           </div>
