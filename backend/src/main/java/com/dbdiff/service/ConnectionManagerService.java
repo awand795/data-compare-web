@@ -120,6 +120,7 @@ public class ConnectionManagerService {
                 config.addDataSourceProperty("prepStmtCacheSize", "250");
                 config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
                 config.addDataSourceProperty("useServerPrepStmts", "true");
+                config.addDataSourceProperty("useCursorFetch", "true");
                 if (details.getFetchSize() != null) {
                     config.addDataSourceProperty("defaultFetchSize", String.valueOf(details.getFetchSize()));
                 } else {
@@ -144,6 +145,8 @@ public class ConnectionManagerService {
                 config.setAutoCommit(true);
                 config.addDataSourceProperty("cachePrepStmts", "true");
                 config.addDataSourceProperty("prepStmtCacheSize", "250");
+                config.addDataSourceProperty("useServerPrepStmts", "true");
+                config.addDataSourceProperty("useCursorFetch", "true");
                 if (details.getFetchSize() != null) {
                     config.addDataSourceProperty("defaultFetchSize", String.valueOf(details.getFetchSize()));
                 } else {
@@ -183,7 +186,7 @@ public class ConnectionManagerService {
         config.setConnectionTimeout(timeoutMs);
         config.setIdleTimeout(300000);
         config.setMaxLifetime(240000);
-        config.setLeakDetectionThreshold(600000);
+        config.setLeakDetectionThreshold(60000);
 
         HikariDataSource ds = new HikariDataSource(config);
         

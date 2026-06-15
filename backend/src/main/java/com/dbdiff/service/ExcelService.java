@@ -32,6 +32,9 @@ public class ExcelService {
      * @return The name of the generated table.
      */
     public String importExcelToDatabase(MultipartFile file, ConnectionDetails dbConnection) throws Exception {
+        if (file.getSize() > 10 * 1024 * 1024) {
+            throw new Exception("File terlalu besar. Maksimal 10MB untuk mencegah kehabisan memori.");
+        }
         DataSource ds = connectionManagerService.getDataSource(dbConnection);
         JdbcTemplate jdbc = new JdbcTemplate(ds);
         
