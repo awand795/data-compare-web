@@ -27,7 +27,7 @@ function App() {
   } = useAppStore();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('darkosync_auth') === 'true');
+  const [isAuthenticated, setIsAuthenticated] = useState(() => sessionStorage.getItem('darkosync_auth') === 'true');
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -72,7 +72,7 @@ function App() {
 
   if (!isAuthenticated) {
     return <LoginScreen onLogin={() => {
-      localStorage.setItem('darkosync_auth', 'true');
+      sessionStorage.setItem('darkosync_auth', 'true');
       setIsAuthenticated(true);
     }} />;
   }
