@@ -14,5 +14,5 @@ COPY --from=build /app/target/*.jar app.jar
 # Create logs directory
 RUN mkdir -p /app/logs
 
-EXPOSE 8081
+
 ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=40.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=4m -XX:+UseStringDeduplication -XX:MaxMetaspaceSize=96m -Xss512k -XX:SoftRefLRUPolicyMSPerMB=50 $JAVA_OPTS -jar app.jar"]
