@@ -99,11 +99,11 @@ public class ConnectionManagerService {
                 config.addDataSourceProperty("preparedStatementCacheSizeMiB", "5");
                 config.addDataSourceProperty("defaultRowFetchSize", details.getFetchSize() != null ? String.valueOf(details.getFetchSize()) : "5000");
                 config.addDataSourceProperty("reWriteBatchedInserts", "true");
+                config.addDataSourceProperty("socketReceiveBufferSize", "1048576"); // 1MB buffer
                 
-                // OPTIMIZATION: Boost work_mem to 256MB (up from default 4MB) to allow 
-                // in-memory sorting of millions of rows when no PK is defined.
-                // This prevents PostgreSQL from doing a slow Disk Sort.
-                config.setConnectionInitSql("SET work_mem = '256MB'");
+                // OPTIMIZATION: Boost work_mem to 256MB and enable 4 parallel workers 
+                // for ultra-fast in-memory sorting of millions of rows.
+                config.setConnectionInitSql("SET work_mem = '256MB'; SET max_parallel_workers_per_gather = 4; SET parallel_setup_cost = 0; SET parallel_tuple_cost = 0;");
                 
                 if (details.getSslMode() != null && !details.getSslMode().isEmpty() && !"disable".equalsIgnoreCase(details.getSslMode())) {
                     config.addDataSourceProperty("ssl", "true");
@@ -131,6 +131,10 @@ public class ConnectionManagerService {
                 } else {
                     config.addDataSourceProperty("defaultFetchSize", "1000");
                 }
+                config.addDataSourceProperty("socketRcvBufSize", "1048576"); // 1MB buffer
+                
+                // OPTIMIZATION: Boost MySQL sort and read buffers to keep 1M+ rows in memory
+                config.setConnectionInitSql("SET SESSION sort_buffer_size = 268435456; SET SESSION read_rnd_buffer_size = 268435456; SET SESSION join_buffer_size = 67108864; SET SESSION max_sort_length = 1024;");
                 
                 if (details.getSslMode() != null && !details.getSslMode().isEmpty()) {
                     config.addDataSourceProperty("useSSL", "true");

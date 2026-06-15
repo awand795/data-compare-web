@@ -168,20 +168,34 @@ public class DataComparisonService {
                 }
 
                 @Override
+                public void onMatchRow(String key, Object[] values, List<String> columns) throws Exception {
+                    // Ultra-fast compact JSON for MATCH rows without allocating DiffRow/DiffCell
+                    gen.writeStartObject();
+                    gen.writeStringField("type", "m");
+                    gen.writeStringField("k", key);
+                    gen.writeArrayFieldStart("v");
+                    for (Object val : values) {
+                        gen.writeObject(val);
+                    }
+                    gen.writeEndArray();
+                    gen.writeEndObject();
+                    gen.writeRaw('\n');
+                    rowCount[0]++;
+                    if (rowCount[0] % 10000 == 0) gen.flush(); // Increased from 5000 to 10000
+                    if (rowCount[0] >= MAX_STREAM_ROWS) {
+                        logger.warn("STREAM COMPARE: Stopped at {} rows to prevent OOM", MAX_STREAM_ROWS);
+                        throw new StreamLimitReachedException(MAX_STREAM_ROWS);
+                    }
+                }
+
+                @Override
                 public void onRow(DiffRow row) throws Exception {
                     if (row.getStatus() == DiffRow.Status.MATCH) {
-                        // Compact format for MATCH rows — ~10x smaller JSON payload
-                        gen.writeStartObject();
-                        gen.writeStringField("type", "m");
-                        gen.writeStringField("k", row.getRowKey());
-                        gen.writeArrayFieldStart("v");
-                        for (DiffCell cell : row.getCells().values()) {
-                            gen.writeObject(cell.getSourceValue());
-                        }
-                        gen.writeEndArray();
-                        gen.writeEndObject();
-                    } else {
-                        // Full format for DIFF/SOURCE_ONLY/TARGET_ONLY
+                        onMatchRow(row.getRowKey(), row.getCells().values().stream().map(c -> c.getSourceValue()).toArray(), null);
+                        return;
+                    }
+                    
+                    // Full format for DIFF/SOURCE_ONLY/TARGET_ONLY
                         gen.writeStartObject();
                         gen.writeStringField("type", "row");
                         gen.writeObjectFieldStart("data");
@@ -201,7 +215,7 @@ public class DataComparisonService {
                     }
                     gen.writeRaw('\n');
                     rowCount[0]++;
-                    if (rowCount[0] % 5000 == 0) gen.flush();
+                    if (rowCount[0] % 10000 == 0) gen.flush(); // Increased from 5000 to 10000
                     if (rowCount[0] >= MAX_STREAM_ROWS) {
                         logger.warn("STREAM COMPARE: Stopped at {} rows to prevent OOM", MAX_STREAM_ROWS);
                         throw new StreamLimitReachedException(MAX_STREAM_ROWS);
@@ -384,21 +398,19 @@ public class DataComparisonService {
                         if (hasSource && hasTarget) {
                             int cmp = compareKeys(rsSource, rsTarget, sPkIdx, tPkIdx);
                             if (cmp == 0) {
-                                String sKey = buildKeyFromRs(rsSource, sPkIdx);
-                                Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
-                                Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
                                 // Fast check: are all cells equal?
-                                boolean allEqual = true;
-                                for (int ci = 0; ci < sRow.length; ci++) {
-                                    if (!normalizedEquals(sRow[ci], tRow[ci])) { allEqual = false; break; }
-                                }
+                                boolean allEqual = fastRowEquals(rsSource, rsTarget, sColIdx, tColIdx, columns.size());
                                 if (allEqual) {
-                                    // MATCH — skip building full DiffRow if not needed
+                                    // MATCH — skip building DiffRow and DiffCell objects
                                     if (request.isReturnMatchedRows()) {
-                                        DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
-                                        consumer.onRow(diffRow);
+                                        String sKey = buildKeyFromRs(rsSource, sPkIdx);
+                                        Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
+                                        consumer.onMatchRow(sKey, sRow, columns);
                                     }
                                 } else {
+                                    String sKey = buildKeyFromRs(rsSource, sPkIdx);
+                                    Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
+                                    Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
                                     differences[0]++;
                                     DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
                                     consumer.onRow(diffRow);
@@ -753,8 +765,11 @@ public class DataComparisonService {
         return idx;
     }
 
+    private static final ThreadLocal<StringBuilder> KEY_SB = ThreadLocal.withInitial(() -> new StringBuilder(128));
+
     private String buildKeyFromRs(ResultSet rs, int[] exactPkIdx) throws Exception {
-        StringBuilder sb = new StringBuilder(64);
+        StringBuilder sb = KEY_SB.get();
+        sb.setLength(0);
         for (int i = 0; i < exactPkIdx.length; i++) {
             if (i > 0) sb.append('|');
             if (exactPkIdx[i] > 0) {
@@ -779,6 +794,17 @@ public class DataComparisonService {
         row.setStatus(isDiff ? DiffRow.Status.DIFFERENT : DiffRow.Status.MATCH);
         row.setCells(cells);
         return row;
+    }
+
+    private boolean fastRowEquals(ResultSet rs1, ResultSet rs2, int[] idx1, int[] idx2, int size) throws Exception {
+        for (int i = 0; i < size; i++) {
+            if (idx1[i] > 0 && idx2[i] > 0) {
+                if (!normalizedEquals(rs1.getObject(idx1[i]), rs2.getObject(idx2[i]))) return false;
+            } else if (idx1[i] > 0 || idx2[i] > 0) {
+                return false; // one has the column, other doesn't
+            }
+        }
+        return true;
     }
 
     private DiffRow buildSourceOnlyRow(String key, Object[] sRow, List<String> columns) {
