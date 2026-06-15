@@ -346,8 +346,9 @@ public class DataComparisonService {
                 try (ResultSet rsSource = psSource.executeQuery(); 
                      ResultSet rsTarget = psTarget.executeQuery()) {
                     
-                    ResultSetMetaData meta = rsSource.getMetaData();
-                    columns = extractColumnsFromMeta(meta, excludeSet);
+                    ResultSetMetaData sMeta = rsSource.getMetaData();
+                    ResultSetMetaData tMeta = rsTarget.getMetaData();
+                    columns = extractColumnsFromMeta(sMeta, excludeSet);
                     if (useSurrogateKey) {
                         exactPks = Collections.singletonList("__rn__");
                     } else {
@@ -356,19 +357,21 @@ public class DataComparisonService {
                     consumer.onColumns(columns);
                     logger.info("STREAM COMPARE: {} kolom, PKs={}", columns.size(), exactPks);
 
-                    int[] colIdx = resolveColumnIndices(meta, columns);
-                    int[] pkIdx = resolveColumnIndices(meta, exactPks);
+                    int[] sColIdx = resolveColumnIndices(sMeta, columns);
+                    int[] tColIdx = resolveColumnIndices(tMeta, columns);
+                    int[] sPkIdx = resolveColumnIndices(sMeta, exactPks);
+                    int[] tPkIdx = resolveColumnIndices(tMeta, exactPks);
                     
                     boolean hasSource = rsSource.next();
                     boolean hasTarget = rsTarget.next();
 
                     while (hasSource || hasTarget) {
                         if (hasSource && hasTarget) {
-                            int cmp = compareKeys(rsSource, rsTarget, pkIdx);
+                            int cmp = compareKeys(rsSource, rsTarget, sPkIdx, tPkIdx);
                             if (cmp == 0) {
-                                String sKey = buildKeyFromRs(rsSource, pkIdx);
-                                Object[] sRow = getRow(rsSource, columns.size(), colIdx);
-                                Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
+                                String sKey = buildKeyFromRs(rsSource, sPkIdx);
+                                Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
+                                Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
                                 DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
                                 sRow = null; // allow GC
                                 tRow = null; // allow GC
@@ -382,8 +385,8 @@ public class DataComparisonService {
                                 hasSource = rsSource.next();
                                 hasTarget = rsTarget.next();
                             } else if (cmp < 0) {
-                                String sKey = buildKeyFromRs(rsSource, pkIdx);
-                                Object[] sRow = getRow(rsSource, columns.size(), colIdx);
+                                String sKey = buildKeyFromRs(rsSource, sPkIdx);
+                                Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
                                 DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
                                 sRow = null; // allow GC
                                 differences[0]++;
@@ -392,8 +395,8 @@ public class DataComparisonService {
                                 totalSourceRows[0]++;
                                 hasSource = rsSource.next();
                             } else {
-                                String tKey = buildKeyFromRs(rsTarget, pkIdx);
-                                Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
+                                String tKey = buildKeyFromRs(rsTarget, tPkIdx);
+                                Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
                                 DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
                                 tRow = null; // allow GC
                                 differences[0]++;
@@ -403,8 +406,8 @@ public class DataComparisonService {
                                 hasTarget = rsTarget.next();
                             }
                         } else if (hasSource) {
-                            String sKey = buildKeyFromRs(rsSource, pkIdx);
-                            Object[] sRow = getRow(rsSource, columns.size(), colIdx);
+                            String sKey = buildKeyFromRs(rsSource, sPkIdx);
+                            Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
                             DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
                             sRow = null; // allow GC
                             differences[0]++;
@@ -413,8 +416,8 @@ public class DataComparisonService {
                             totalSourceRows[0]++;
                             hasSource = rsSource.next();
                         } else {
-                            String tKey = buildKeyFromRs(rsTarget, pkIdx);
-                            Object[] tRow = getRow(rsTarget, columns.size(), colIdx);
+                            String tKey = buildKeyFromRs(rsTarget, tPkIdx);
+                            Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
                             DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
                             tRow = null; // allow GC
                             differences[0]++;
@@ -720,7 +723,7 @@ public class DataComparisonService {
         int[] idx = new int[columns.size()];
         for (int i = 0; i < columns.size(); i++) {
             Integer ci = labelToIdx.get(columns.get(i).toLowerCase());
-            idx[i] = (ci != null) ? ci : (i + 1);
+            idx[i] = (ci != null) ? ci : -1;
         }
         return idx;
     }
@@ -729,7 +732,11 @@ public class DataComparisonService {
         StringBuilder sb = new StringBuilder(64);
         for (int i = 0; i < exactPkIdx.length; i++) {
             if (i > 0) sb.append('|');
-            sb.append(rs.getString(exactPkIdx[i]));
+            if (exactPkIdx[i] > 0) {
+                sb.append(rs.getString(exactPkIdx[i]));
+            } else {
+                sb.append("null");
+            }
         }
         return sb.toString();
     }
@@ -961,14 +968,20 @@ public class DataComparisonService {
     private Object[] getRow(ResultSet rs, int size, int[] colIdx) throws Exception {
         Object[] row = new Object[size];
         for (int i = 0; i < size; i++) {
-            try { row[i] = rs.getObject(colIdx[i]); } catch (Exception e) {}
+            if (colIdx[i] > 0) {
+                try { row[i] = rs.getObject(colIdx[i]); } catch (Exception e) {}
+            } else {
+                row[i] = null;
+            }
         }
         return row;
-    }    @SuppressWarnings("unchecked")
-    private int compareKeys(ResultSet rsS, ResultSet rsT, int[] exactPkIdx) throws Exception {
-        for (int idx : exactPkIdx) {
-            Object sObj = rsS.getObject(idx);
-            Object tObj = rsT.getObject(idx);
+    }
+
+    @SuppressWarnings("unchecked")
+    private int compareKeys(ResultSet rsS, ResultSet rsT, int[] sPkIdx, int[] tPkIdx) throws Exception {
+        for (int i = 0; i < sPkIdx.length; i++) {
+            Object sObj = sPkIdx[i] > 0 ? rsS.getObject(sPkIdx[i]) : null;
+            Object tObj = tPkIdx[i] > 0 ? rsT.getObject(tPkIdx[i]) : null;
             
             // NULL handling — matches SQL "NULLS FIRST" ordering
             if (sObj == null && tObj == null) continue;
