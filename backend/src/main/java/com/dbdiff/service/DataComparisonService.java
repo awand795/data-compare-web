@@ -56,8 +56,9 @@ public class DataComparisonService {
             pksForOrder = request.getSortColumns();
             useSurrogateKey = false;
         }
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), pksForOrder, request.getSortColumns(), useSurrogateKey);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), pksForOrder, request.getSortColumns(), useSurrogateKey);
+        String dbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), pksForOrder, request.getSortColumns(), useSurrogateKey, false, dbType);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), pksForOrder, request.getSortColumns(), useSurrogateKey, false, dbType);
 
         if (useSurrogateKey) {
             pksForOrder = Collections.singletonList("__rn__");
@@ -339,8 +340,10 @@ public class DataComparisonService {
             }
         }
 
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, effectiveSortColumns, useSurrogateKey);
+        boolean useMd5Fallback = !useSurrogateKey && exactPks != null && exactPks.equals(effectiveSortColumns) && exactPks.size() > 5;
+        String dbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, dbType);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, dbType);
 
         logger.info("STREAM COMPARE: useSurrogateKey={}, exactPks.size={}", useSurrogateKey, exactPks.size());
         logger.info("STREAM COMPARE: Source Query = {}", sourceQuery);
@@ -512,8 +515,10 @@ public class DataComparisonService {
             }
         }
 
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, effectiveSortColumns, useSurrogateKey);
+        boolean useMd5Fallback = !useSurrogateKey && exactPks != null && exactPks.equals(effectiveSortColumns) && exactPks.size() > 5;
+        String dbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, dbType);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, dbType);
 
         // Add LIMIT/OFFSET
         sourceQuery = addLimitOffset(sourceQuery, batchSize, offset);
@@ -943,9 +948,17 @@ public class DataComparisonService {
         return (c >= '0' && c <= '9') || c == '-' || c == '.';
     }
 
-        private String buildQuery(String tableName, String customQuery, List<String> pks, List<String> sortColumns, boolean useSurrogateKey) {
+        private String buildQuery(String tableName, String customQuery, List<String> pks, List<String> sortColumns, boolean useSurrogateKey, boolean useMd5Fallback, String dbType) {
         String orderByClause = "";
-        if (sortColumns != null && !sortColumns.isEmpty()) {
+        
+        if (useMd5Fallback) {
+            List<String> colsToHash = (sortColumns != null && !sortColumns.isEmpty()) ? sortColumns : pks;
+            String concatCols = colsToHash.stream().map(c -> {
+                if ("postgresql".equals(dbType)) return "COALESCE(" + c + "::text, '')";
+                else return "IFNULL(" + c + ", '')";
+            }).collect(java.util.stream.Collectors.joining(", '|', "));
+            orderByClause = "MD5(CONCAT_WS('|', " + concatCols + "))";
+        } else if (sortColumns != null && !sortColumns.isEmpty()) {
             orderByClause = sortColumns.stream().map(c -> c + " NULLS FIRST").collect(java.util.stream.Collectors.joining(", "));
         } else if (pks != null && !pks.isEmpty()) {
             orderByClause = pks.stream().map(c -> c + " NULLS FIRST").collect(java.util.stream.Collectors.joining(", "));
@@ -958,6 +971,8 @@ public class DataComparisonService {
             if (useSurrogateKey) {
                 String window = hasOrderBy ? " ORDER BY " + orderByClause : "";
                 q = "SELECT ROW_NUMBER() OVER (" + window + ") as __rn__, tmp.* FROM (" + q + ") as tmp ORDER BY __rn__";
+            } else if (useMd5Fallback) {
+                q = "SELECT tmp.* FROM (" + q + ") as tmp ORDER BY " + orderByClause;
             } else if (!q.toUpperCase().contains("ORDER BY") && hasOrderBy) {
                 q = q + " ORDER BY " + orderByClause;
             }
