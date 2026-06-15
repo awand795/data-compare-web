@@ -789,7 +789,7 @@ export const DataCompareView: React.FC = () => {
                             {diff ? (
                               diff.status === 'comparing'
                                 ? <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 bg-blue-500/10 px-2.5 py-0.5 rounded-full animate-pulse whitespace-nowrap">
-                                    Comparing… {diff.rows.length > 0 && `(${diff.rows.length})`}
+                                    Comparing… {(diff as any).batchCurrent > 0 ? `(${(diff as any).batchCurrent})` : diff.rows.length > 0 ? `(${diff.rows.length})` : ''}
                                   </span>
                                 : diff.totalDifferences > 0
                                   ? <span className="text-[11px] font-bold text-amber-500 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full">Different</span>
