@@ -45,6 +45,7 @@ export const DataCompareView: React.FC = () => {
   const [fadingOutMappings, setFadingOutMappings] = useState<Set<string>>(new Set());
   const prevComparingRef = useRef<Set<string>>(new Set());
   const creatingMappingsRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Detect mappings that just finished comparing → trigger fade-out animation
   useEffect(() => {
@@ -188,7 +189,7 @@ export const DataCompareView: React.FC = () => {
     }
   }, [sourceTables, targetTables, sourceConn?.id, loadingTables]);
 
-  const streamLoadMapping = async (mapping: TableMapping) => {
+  const streamLoadMapping = async (mapping: TableMapping, signal?: AbortSignal) => {
     const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
     const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
 
@@ -213,7 +214,8 @@ export const DataCompareView: React.FC = () => {
       const countRes = await fetch('/api/compare-count', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal
       });
       if (countRes.ok) {
         const countData = await countRes.json();
@@ -229,7 +231,8 @@ export const DataCompareView: React.FC = () => {
     const response = await fetch('/api/compare', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal
     });
 
     if (!response.ok) {
@@ -326,8 +329,15 @@ export const DataCompareView: React.FC = () => {
   };
 
   const handleCompare = async () => {
+    if (loading) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      return;
+    }
     if (!sourceConn || !targetConn || selectedMappings.size === 0) return;
     setLoading(true);
+    abortControllerRef.current = new AbortController();
     const mappingsToCompare = tableMappings.filter(
       m => selectedMappings.has(m.id) && (m.sourceTable || m.customQuerySource) && (m.targetTable || m.customQueryTarget)
     );
@@ -336,15 +346,15 @@ export const DataCompareView: React.FC = () => {
     const failedMappings: { tableName: string; error: string }[] = [];
 
     try {
-      // Run mappings with concurrency limit (max 2 at a time) to prevent connection pool exhaustion
       const concurrency = 2;
       const executing = new Set<Promise<void>>();
       const promises: Promise<void>[] = [];
 
       for (const mapping of mappingsToCompare) {
-        const p = streamLoadMapping(mapping).then(() => {
+        const p = streamLoadMapping(mapping, abortControllerRef.current.signal).then(() => {
           setProgress(prev => ({ current: prev.current + 1, total: prev.total }));
         }).catch(err => {
+          if (err.name === 'AbortError') throw err;
           console.error("Mapping failed", mapping.id, err);
           failedMappings.push({
             tableName: mapping.sourceTable || 'Custom SQL Mapping',
@@ -386,9 +396,14 @@ export const DataCompareView: React.FC = () => {
         }
       }
     } catch (err: any) {
-      console.error(err);
-      addToast({ type: 'error', title: 'Comparison Blocked', message: err.response?.data?.message || err.message || 'An unexpected error occurred.' });
+      if (err.name === 'AbortError') {
+        addToast({ type: 'warning', title: 'Comparison Stopped', message: 'The comparison process was stopped by the user.' });
+      } else {
+        console.error(err);
+        addToast({ type: 'error', title: 'Comparison Blocked', message: err.response?.data?.message || err.message || 'An unexpected error occurred.' });
+      }
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
       setProgress({ current: 0, total: 0 });
     }
@@ -631,11 +646,11 @@ export const DataCompareView: React.FC = () => {
 
             <button
               onClick={handleCompare}
-              disabled={!sourceConn || !targetConn || selectedMappings.size === 0 || loading || syncing}
+              disabled={(!loading && (!sourceConn || !targetConn || selectedMappings.size === 0)) || syncing}
               className="px-3 sm:px-5 py-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-md flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 transition-all flex-1 whitespace-nowrap"
             >
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-              {loading ? 'Comparing...' : `Compare (${selectedMappings.size})`}
+              {loading ? 'Stop Comparing' : `Compare (${selectedMappings.size})`}
             </button>
           </div>
           </div>

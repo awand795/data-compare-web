@@ -39,12 +39,13 @@ export const QueryWorkspace: React.FC = () => {
   const [targetFormat, setTargetFormat]   = useState<'table' | 'json'>('table');
 
   const [viewMode, setViewMode] = useState<'results' | 'diff'>('results');
-  const [workspaceDiffResult, setWorkspaceDiffResult] = useState<any>(null);
+  const [workspaceDiffResult, setWorkspaceDiffResult] = useState<any>({ columns: [], rows: [], summary: null });
   const [comparing, setComparing] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'DIFFERENT' | 'SOURCE_ONLY' | 'TARGET_ONLY' | 'IDENTICAL'>('ALL');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [fullscreenPanel, setFullscreenPanel] = useState<'source' | 'target' | null>(null);
+  const [fullscreenPanel, setFullscreenPanel] = useState<'source' | 'target' | 'diff' | null>(null);
   const [returnMatchedRows, setReturnMatchedRows] = useState(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const sourceConn = connections.find(c => c.id === sourceConnectionId);
   const targetConn = connections.find(c => c.id === targetConnectionId);
@@ -93,9 +94,6 @@ export const QueryWorkspace: React.FC = () => {
     if (!extraWhere) return query;
     const trimmed = query.trim().replace(/;$/, '');
     if (/\bWHERE\b/i.test(trimmed)) {
-      // If there's an existing WHERE or GROUP BY / ORDER BY / LIMIT, we ideally parse AST.
-      // But for simplicity in custom queries, we assume simple SELECT * FROM X WHERE ...
-      // If there's a LIMIT at the end, we need to inject WHERE before LIMIT.
       let q = trimmed;
       let limitPart = '';
       const limitMatch = q.match(/\bLIMIT\s+\d+\s*$/i);
@@ -106,7 +104,6 @@ export const QueryWorkspace: React.FC = () => {
       return `${q} AND (${extraWhere}) ${limitPart}`.trim();
     }
     
-    // Inject WHERE
     let q = trimmed;
     let limitPart = '';
     const limitMatch = q.match(/\bLIMIT\s+\d+\s*$/i);
@@ -133,7 +130,6 @@ export const QueryWorkspace: React.FC = () => {
     
     let finalQuery = applyLimit(rawQuery, limit);
 
-    // Apply data compare filters if a mapping is active
     const m = tableMappings.find(x => x.id === focusedMappingId);
     if (m) {
       if (m.dateColumn && (m.startDate || m.endDate)) {
@@ -154,7 +150,7 @@ export const QueryWorkspace: React.FC = () => {
     }
 
     try {
-      setResults([]); // Start with empty results to show incoming rows
+      setResults([]); 
       const response = await fetch('/api/execute-query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -216,8 +212,13 @@ export const QueryWorkspace: React.FC = () => {
   };
 
   const handleCompare = async () => {
+    if (comparing) {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      return;
+    }
     if (!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim()) return;
     setComparing(true);
+    abortControllerRef.current = new AbortController();
     setViewMode('diff');
     setWorkspaceDiffResult({ columns: [], rows: [], summary: null, status: 'comparing' });
     
@@ -256,7 +257,8 @@ export const QueryWorkspace: React.FC = () => {
       const countRes = await fetch('/api/compare-count', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: abortControllerRef.current?.signal
       });
       if (countRes.ok) {
         const countData = await countRes.json();
@@ -271,7 +273,8 @@ export const QueryWorkspace: React.FC = () => {
       const response = await fetch('/api/compare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: abortControllerRef.current?.signal
       });
 
       if (!response.ok) {
@@ -391,7 +394,7 @@ export const QueryWorkspace: React.FC = () => {
             finalSummary = msg.data;
             setWorkspaceDiffResult({
               columns: finalColumns,
-              rows: [...allRows], // Final immutable copy for rendering the grid
+              rows: [...allRows],
               summary: finalSummary,
               counters: { ...counters },
               status: 'done'
@@ -400,7 +403,6 @@ export const QueryWorkspace: React.FC = () => {
           }
         } catch (e) {}
       }
-      
       
       flushRowBatchToStore();
       
@@ -424,10 +426,15 @@ export const QueryWorkspace: React.FC = () => {
       });
       
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Comparison Failed', message: err.message || 'An unexpected error occurred.' });
+      if (err.name === 'AbortError') {
+        addToast({ type: 'warning', title: 'Comparison Stopped', message: 'The comparison process was cancelled.' });
+      } else {
+        addToast({ type: 'error', title: 'Comparison Failed', message: err.message || 'An unexpected error occurred.' });
+      }
       setWorkspaceDiffResult((prev: any) => ({ ...prev, status: 'error' }));
-      if (m) store.setDiffSummary(m.id, { totalSourceRows: 0, totalTargetRows: 0, totalDifferences: 0 }); // handle error state
+      if (m) store.setDiffSummary(m.id, { totalSourceRows: 0, totalTargetRows: 0, totalDifferences: 0 });
     } finally {
+      abortControllerRef.current = null;
       setComparing(false);
     }
   };
@@ -544,11 +551,11 @@ export const QueryWorkspace: React.FC = () => {
           <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-none">
             <button
               onClick={handleCompare}
-              disabled={!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim() || comparing}
+              disabled={(!comparing && (!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim())) || (loadingSource || loadingTarget)}
               className="flex-1 sm:flex-none px-4 py-2 sm:py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap"
             >
               {comparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-              Compare
+              {comparing ? 'Stop' : 'Compare'}
             </button>
             <button
               onClick={executeBoth}
