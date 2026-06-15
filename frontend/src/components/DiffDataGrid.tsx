@@ -15,7 +15,7 @@ interface DiffDataGridProps {
 }
 
 export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterStatus, directResult }) => {
-  const { diffResults, addToast } = useAppStore();
+  const { diffResults, addToast, theme } = useAppStore();
   const diffResult = directResult || (mappingId ? diffResults[mappingId] : null);
 
   const filteredData = useMemo(() => {
@@ -176,8 +176,17 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
             rows={filteredData.length}
             smoothScrollX={true}
             smoothScrollY={true}
-            theme={{
-              bgCell: 'transparent',
+            theme={theme === 'dark' ? {
+              bgCell: '#0b1120',
+              bgHeader: '#0f172a',
+              textDark: '#e2e8f0',
+              textHeader: '#94a3b8',
+              borderColor: '#1e293b',
+              fontFamily: 'Inter, sans-serif',
+              baseFontStyle: '12px',
+              headerFontStyle: '600 11px',
+            } : {
+              bgCell: '#ffffff',
               bgHeader: '#f8fafc',
               textDark: '#334155',
               textHeader: '#64748b',
