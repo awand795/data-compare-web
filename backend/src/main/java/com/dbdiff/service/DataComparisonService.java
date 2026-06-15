@@ -415,8 +415,6 @@ public class DataComparisonService {
                                     DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
                                     consumer.onRow(diffRow);
                                 }
-                                sRow = null;
-                                tRow = null;
                                 totalSourceRows[0]++;
                                 totalTargetRows[0]++;
                                 hasSource = rsSource.next();
