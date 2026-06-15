@@ -209,6 +209,8 @@ type AppState = {
   setMaxRowsInMemory: (limit: number) => void;
 
   // Data compare
+  defaultFetchSize: number;
+  setDefaultFetchSize: (size: number) => void;
   diffResults: Record<string, DiffResult>;
   setDiffResult: (mappingId: string, result: DiffResult) => void;
   initDiffResult: (mappingId: string) => void;

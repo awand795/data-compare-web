@@ -193,9 +193,10 @@ export const DataCompareView: React.FC = () => {
     const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
     const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
 
+    const store = useAppStore.getState();
     const payload = {
-      sourceConnection: sourceConn,
-      targetConnection: targetConn,
+      sourceConnection: { ...sourceConn, fetchSize: sourceConn.fetchSize || store.defaultFetchSize || 10000 },
+      targetConnection: { ...targetConn, fetchSize: targetConn.fetchSize || store.defaultFetchSize || 10000 },
       tableName: null,
       customQuerySource: sqFinal,
       customQueryTarget: tqFinal,
@@ -442,9 +443,10 @@ export const DataCompareView: React.FC = () => {
             const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
             const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
 
+            const store = useAppStore.getState();
             const payload = {
-              sourceConnection: sourceConn,
-              targetConnection: targetConn,
+              sourceConnection: { ...sourceConn, fetchSize: sourceConn.fetchSize || store.defaultFetchSize || 10000 },
+              targetConnection: { ...targetConn, fetchSize: targetConn.fetchSize || store.defaultFetchSize || 10000 },
               tableName: mapping.targetTable,
               customQuerySource: sqFinal,
               customQueryTarget: tqFinal,
