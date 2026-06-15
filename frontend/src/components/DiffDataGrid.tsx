@@ -4,13 +4,8 @@ import { useAppStore } from '../store/useAppStore';
 import { Database, ArrowRight } from 'lucide-react';
 import { buildEffectiveQuery } from '../utils/queryHelpers';
 
-import {
-  DataEditor,
-  GridCell,
-  GridCellKind,
-  GridColumn,
-  Theme,
-} from '@glideapps/glide-data-grid';
+import { DataEditor, GridCellKind } from '@glideapps/glide-data-grid';
+import type { GridCell, GridColumn, Theme } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
 
 interface DiffDataGridProps {
