@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore, type Template } from '../store/useAppStore';
 import { Save, Copy, FolderOpen, X, Trash2, Search } from 'lucide-react';
-import clsx from 'clsx';
 
 interface Props {
   appMode: 'data' | 'query';
