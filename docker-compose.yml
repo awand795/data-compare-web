@@ -42,9 +42,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      darkosync-network:
-        aliases:
-          - backend.railway.internal
+      - darkosync-network
 
   # React Frontend with Nginx
   frontend:
