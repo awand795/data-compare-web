@@ -212,7 +212,6 @@ public class DataComparisonService {
                         gen.writeStringField("status", row.getStatus().name());
                         gen.writeEndObject();
                         gen.writeEndObject();
-                    }
                     gen.writeRaw('\n');
                     rowCount[0]++;
                     if (rowCount[0] % 10000 == 0) gen.flush(); // Increased from 5000 to 10000
