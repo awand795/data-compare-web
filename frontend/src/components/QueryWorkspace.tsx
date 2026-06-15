@@ -464,13 +464,11 @@ export const QueryWorkspace: React.FC = () => {
 
   return (
     <div className={clsx("flex flex-col bg-bg-main text-text-main", isFullscreen ? "fixed inset-0 z-[100]" : "h-full min-h-0")}>
-      <div className="flex flex-col gap-4 bg-bg-panel border-b border-border-main p-4 sticky top-0 z-20">
-        
-        {/* Top Row: Connections & Templates */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 w-full">
-          <div className="flex flex-wrap items-end gap-3 sm:gap-4 w-full md:w-auto">
+      <div className="bg-bg-header border-b border-border-main px-2 sm:px-4 py-2.5 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 shrink-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full xl:w-auto">
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
             <div className="flex flex-col flex-1 sm:flex-none">
-              <span className="text-[11px] font-bold text-blue-500 uppercase tracking-wider mb-0.5">Source</span>
+              <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
               <select
                 className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
                 value={sourceConnectionId || ''}
@@ -502,15 +500,14 @@ export const QueryWorkspace: React.FC = () => {
                 {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
               </select>
             </div>
-          </div>
 
-          <div className="flex items-center shrink-0">
+            <div className="hidden sm:block w-px h-8 bg-border-main mx-1"></div>
+            
             <TemplateManager appMode="query" />
           </div>
         </div>
 
-        {/* Bottom Row: Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-2 w-full border-t border-border-main pt-3">
+        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto mt-1 xl:mt-0">
           <div className="flex rounded-md overflow-hidden border border-border-input text-xs mr-0 sm:mr-2 w-full sm:w-auto order-last sm:order-none mt-2 sm:mt-0">
             <button
               onClick={() => setViewMode('results')}
