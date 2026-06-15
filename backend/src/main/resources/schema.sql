@@ -106,3 +106,14 @@ ALTER TABLE schedules ADD COLUMN IF NOT EXISTS mappings TEXT;
 ALTER TABLE schedule_results ADD COLUMN IF NOT EXISTS details TEXT;
 ALTER TABLE schedule_result_rows ADD COLUMN IF NOT EXISTS table_name VARCHAR(200);
 
+CREATE TABLE IF NOT EXISTS templates (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    app_mode VARCHAR(20) NOT NULL,
+    source_connection_id VARCHAR(50),
+    target_connection_id VARCHAR(50),
+    table_mappings TEXT,
+    custom_query_source TEXT,
+    custom_query_target TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

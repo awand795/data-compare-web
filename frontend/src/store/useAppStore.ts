@@ -276,6 +276,7 @@ type AppState = {
 
   // Templates
   templates: Template[];
+  setTemplates: (templates: Template[]) => void;
   addTemplate: (template: Template) => void;
   updateTemplate: (id: string, updates: Partial<Template>) => void;
   removeTemplate: (id: string) => void;
@@ -589,14 +590,30 @@ export const useAppStore = create<AppState>()(
   },
 
   templates: [],
-  addTemplate: (template) => set((state) => ({ templates: [...state.templates, template] })),
-  updateTemplate: (id, updates) => set((state) => ({
-    templates: state.templates.map(t => t.id === id ? { ...t, ...updates } : t)
-  })),
-  removeTemplate: (id) => set((state) => ({
-    templates: state.templates.filter(t => t.id !== id),
-    activeTemplateId: state.activeTemplateId === id ? null : state.activeTemplateId
-  })),
+  setTemplates: (templates) => set({ templates }),
+  addTemplate: (template) => {
+    const payload = { ...template, tableMappings: template.tableMappings ? JSON.stringify(template.tableMappings) : null };
+    axios.post('/api/templates', payload).catch(e => console.error('Failed to save template to backend:', e));
+    set((state) => ({ templates: [...state.templates, template] }));
+  },
+  updateTemplate: (id, updates) => {
+    set((state) => {
+      const newTemplates = state.templates.map(t => t.id === id ? { ...t, ...updates } : t);
+      const updated = newTemplates.find(t => t.id === id);
+      if (updated) {
+        const payload = { ...updated, tableMappings: updated.tableMappings ? JSON.stringify(updated.tableMappings) : null };
+        axios.put(`/api/templates/${id}`, payload).catch(e => console.error('Failed to update template on backend:', e));
+      }
+      return { templates: newTemplates };
+    });
+  },
+  removeTemplate: (id) => {
+    axios.delete(`/api/templates/${id}`).catch(e => console.error('Failed to delete template from backend:', e));
+    set((state) => ({
+      templates: state.templates.filter(t => t.id !== id),
+      activeTemplateId: state.activeTemplateId === id ? null : state.activeTemplateId
+    }));
+  },
   activeTemplateId: null,
   setActiveTemplateId: (id) => set({ activeTemplateId: id }),
 
@@ -636,7 +653,6 @@ export const useAppStore = create<AppState>()(
         gridDensity: state.gridDensity,
         notificationChannels: state.notificationChannels,
         defaultRowLimit: state.defaultRowLimit,
-        templates: state.templates,
       }),
     }
   )

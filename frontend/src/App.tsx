@@ -52,6 +52,22 @@ function App() {
         }
       })
       .catch(err => console.error('Failed to load connections:', err));
+
+    // Load templates
+    axios.get('/api/templates')
+      .then(res => {
+        if (res.data && Array.isArray(res.data)) {
+          const parsed = res.data.map((t: any) => {
+            let parsedMappings = undefined;
+            if (t.tableMappings) {
+              try { parsedMappings = JSON.parse(t.tableMappings); } catch(e) {}
+            }
+            return { ...t, tableMappings: parsedMappings };
+          });
+          useAppStore.getState().setTemplates(parsed);
+        }
+      })
+      .catch(err => console.error('Failed to load templates:', err));
   }, [setConnections]);
 
   useEffect(() => {
