@@ -75,10 +75,6 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
       customQuerySource: appMode === 'query' ? customQuerySource : undefined,
       customQueryTarget: appMode === 'query' ? customQueryTarget : undefined,
     };
-    addTemplate(newTemplate);
-    // Note: addTemplate pushes to backend. The active ID won't match exactly until we reload if we rely on backend IDs, but since we generate ID in backend, let's just use the name for now, or update state after save.
-    // Actually our addTemplate in useAppStore currently saves the object to state directly. Wait, if it has no ID it might break editing.
-    // Let's generate a temporary ID, backend will replace it, but frontend needs an ID to select it immediately.
     const tempId = 'tpl_' + Date.now();
     newTemplate.id = tempId;
     
