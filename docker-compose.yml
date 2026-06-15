@@ -1,46 +1,20 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:16-alpine
-    container_name: darkosync-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: darkosync_studio
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-Awanda213}
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./backend/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    networks:
-      - darkosync-network
-
-  # Spring Boot Backend
+  # Spring Boot Backend (Connected to Neon Database)
   backend:
     build:
       context: ./backend
     container_name: darkosync-backend
     restart: unless-stopped
     environment:
-      DB_HOST: postgres
+      DB_HOST: ***REMOVED***
       DB_PORT: 5432
-      DB_NAME: darkosync_studio
-      DB_USER: postgres
-      DB_PASSWORD: ${DB_PASSWORD:-Awanda213}
+      DB_NAME: neondb
+      DB_USER: neondb_owner
+      DB_PASSWORD: npg_lSm6g8kRZEoL
     ports:
       - "8081:8081"
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - darkosync-network
 
@@ -58,10 +32,6 @@ services:
       - backend
     networks:
       - darkosync-network
-
-volumes:
-  postgres_data:
-    driver: local
 
 networks:
   darkosync-network:
