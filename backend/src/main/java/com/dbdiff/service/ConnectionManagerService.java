@@ -19,7 +19,7 @@ public class ConnectionManagerService {
 
     private static final Logger logger = LoggerFactory.getLogger(ConnectionManagerService.class);
 
-    private final int MAX_POOL_CACHE = 6;
+    private final int MAX_POOL_CACHE = 4;
     private final Map<String, DataSource> dataSourceCache = Collections.synchronizedMap(
       new LinkedHashMap<String, DataSource>(MAX_POOL_CACHE, 0.75f, true) {
         @Override
@@ -175,7 +175,7 @@ public class ConnectionManagerService {
             }
         }
 
-        config.setMaximumPoolSize(10);
+        config.setMaximumPoolSize(3);
         config.setMinimumIdle(1);
         // Frontend sends timeout in seconds, HikariCP expects milliseconds
         int timeoutMs = details.getConnectionTimeout() != null ? details.getConnectionTimeout() * 1000 : 30000;

@@ -233,19 +233,9 @@ public class ReportExportService {
                             continue;
                         }
                         if (dc.isDifferent()) {
-                            XSSFRichTextString richString = new XSSFRichTextString();
-                            int start = 0;
-                            
-                            String srcStr = "[SRC] " + (dc.getSourceValue() != null ? dc.getSourceValue() : "NULL") + "\n";
-                            richString.append(srcStr);
-                            richString.applyFont(start, start + srcStr.length(), (XSSFFont) rf);
-                            start += srcStr.length();
-
+                            String srcStr = "[SRC] " + (dc.getSourceValue() != null ? dc.getSourceValue() : "NULL");
                             String tgtStr = "[TGT] " + (dc.getTargetValue() != null ? dc.getTargetValue() : "NULL");
-                            richString.append(tgtStr);
-                            richString.applyFont(start, start + tgtStr.length(), (XSSFFont) gf);
-                            
-                            c.setCellValue(richString);
+                            c.setCellValue(srcStr + "\n" + tgtStr);
                         } else {
                             c.setCellValue(String.valueOf(dc.getSourceValue()));
                         }
@@ -365,6 +355,17 @@ public class ReportExportService {
                         c.addElement(new Phrase(String.valueOf(dc.getSourceValue()), currentFont));
                     }
                     table.addCell(c);
+                }
+
+                // Batch flush to document to prevent OutOfMemoryError on large datasets
+                if (printedRows % 500 == 0) {
+                    document.add(table);
+                    table = new PdfPTable(columns.size() + 2);
+                    table.setWidthPercentage(100);
+                    // Add headers for the new table batch
+                    addHeader("Status", headerFont);
+                    addHeader("RowKey", headerFont);
+                    for (String c : columns) addHeader(c, headerFont);
                 }
             }
 

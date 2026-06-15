@@ -160,8 +160,8 @@ public class ApiController {
                 !payload.containsKey("returnMatchedRows") || Boolean.TRUE.equals(payload.get("returnMatchedRows")));
 
             int batchSize = payload.containsKey("batchSize") ? ((Number) payload.get("batchSize")).intValue() : 5000;
-            if (batchSize > 10000) {
-                batchSize = 10000; // Cap to prevent OOM
+            if (batchSize > 5000) {
+                batchSize = 5000; // Cap to prevent OOM
             }
             int offset = payload.containsKey("offset") ? ((Number) payload.get("offset")).intValue() : 0;
 
@@ -289,6 +289,14 @@ public class ApiController {
                             gen.writeEndObject();
                             gen.writeRaw('\n');
                             rowCount++;
+                            if (rowCount >= 50000) {
+                                gen.writeStartObject();
+                                gen.writeStringField("type", "error");
+                                gen.writeStringField("message", "Query execution stopped at 50,000 rows to prevent memory exhaustion.");
+                                gen.writeEndObject();
+                                gen.writeRaw('\n');
+                                break;
+                            }
                             if (rowCount % 5000 == 0) gen.flush();
                         }
 

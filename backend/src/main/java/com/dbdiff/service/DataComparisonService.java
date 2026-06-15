@@ -71,9 +71,15 @@ public class DataComparisonService {
 
         long start = System.currentTimeMillis();
         sourceData = fetchWithCursor(sourceDs, sourceQuery);
+        if (sourceData.size() >= MAX_SYNC_ROWS) {
+            logger.warn("COMPARE DATA: Source capped at {} rows — use streaming compare for larger datasets", MAX_SYNC_ROWS);
+        }
         logger.info("COMPARE DATA: Source {} rows in {}ms", sourceData.size(), (System.currentTimeMillis() - start));
         start = System.currentTimeMillis();
         targetData = fetchWithCursor(targetDs, targetQuery);
+        if (targetData.size() >= MAX_SYNC_ROWS) {
+            logger.warn("COMPARE DATA: Target capped at {} rows — use streaming compare for larger datasets", MAX_SYNC_ROWS);
+        }
         logger.info("COMPARE DATA: Target {} rows in {}ms", targetData.size(), (System.currentTimeMillis() - start));
 
         Set<String> excludeSet = buildExcludeSet(request);
@@ -431,53 +437,59 @@ public class DataComparisonService {
         sourceQuery = addLimitOffset(sourceQuery, batchSize, offset);
         targetQuery = addLimitOffset(targetQuery, batchSize, offset);
 
-        JdbcTemplate sourceJdbc = new JdbcTemplate(sourceDs);
-        JdbcTemplate targetJdbc = new JdbcTemplate(targetDs);
-
         logger.info("BATCH COMPARE: offset={} batchSize={}", offset, batchSize);
         logger.info("BATCH COMPARE: Source Query = {}", sourceQuery);
         logger.info("BATCH COMPARE: Target Query = {}", targetQuery);
 
-        List<Map<String, Object>> sourceData = sourceJdbc.queryForList(sourceQuery);
-        List<Map<String, Object>> targetData = targetJdbc.queryForList(targetQuery);
+        // Memory-efficient: fetch with cursor instead of queryForList() which loads entire batch at once
+        List<Map<String, Object>> sourceData = fetchWithCursor(sourceDs, sourceQuery);
+        List<Map<String, Object>> targetData = fetchWithCursor(targetDs, targetQuery);
 
         Set<String> excludeSet = buildExcludeSet(request);
         List<String> columns = extractColumns(sourceData, targetData, excludeSet);
         List<String> pks = resolvePks(request, sourceDs, columns);
 
+        // Build source map, then null out sourceData to free memory before building target map
+        int sourceSize = sourceData.size();
+        int targetSize = targetData.size();
         Map<String, Map<String, Object>> sourceMap = mapByKeys(sourceData, pks);
-        Map<String, Map<String, Object>> targetMap = mapByKeys(targetData, pks);
+        sourceData = null; // Allow GC to reclaim
 
         int matchCount = 0, differentCount = 0, sourceOnlyCount = 0, targetOnlyCount = 0;
-        List<DiffRow> rows = new ArrayList<>(Math.max(sourceMap.size(), targetMap.size()));
+        // Pre-size for diffs only (most rows are typically matches)
+        List<DiffRow> rows = new ArrayList<>(Math.min(1000, Math.max(sourceSize, targetSize)));
 
-        Set<String> allKeys = new LinkedHashSet<>();
-        allKeys.addAll(sourceMap.keySet());
-        allKeys.addAll(targetMap.keySet());
-
-        for (String key : allKeys) {
-            DiffRow row = buildDiffRow(key, sourceMap.get(key), targetMap.get(key), columns);
-            rows.add(row);
+        // Process target data row-by-row instead of building a full targetMap
+        Set<String> matchedSourceKeys = new HashSet<>();
+        for (Map<String, Object> tRow : targetData) {
+            String key = buildKey(tRow, pks);
+            Map<String, Object> sRow = sourceMap.get(key);
+            DiffRow row = buildDiffRow(key, sRow, tRow, columns);
+            if (sRow != null) matchedSourceKeys.add(key);
             switch (row.getStatus()) {
                 case MATCH: matchCount++; break;
                 case DIFFERENT: differentCount++; break;
                 case SOURCE_ONLY: sourceOnlyCount++; break;
                 case TARGET_ONLY: targetOnlyCount++; break;
             }
-        }
-
-        boolean hasMore = sourceData.size() >= batchSize || targetData.size() >= batchSize;
-
-        // Filter MATCH rows if user only wants diffs (Only Diff mode)
-        if (!request.isReturnMatchedRows()) {
-            List<DiffRow> filtered = new ArrayList<>();
-            for (DiffRow row : rows) {
-                if (row.getStatus() != DiffRow.Status.MATCH) {
-                    filtered.add(row);
-                }
+            if (request.isReturnMatchedRows() || row.getStatus() != DiffRow.Status.MATCH) {
+                rows.add(row);
             }
-            rows = filtered;
         }
+        targetData = null; // Allow GC to reclaim
+
+        // Process source-only keys (keys in source but not matched from target)
+        for (Map.Entry<String, Map<String, Object>> entry : sourceMap.entrySet()) {
+            if (!matchedSourceKeys.contains(entry.getKey())) {
+                DiffRow row = buildDiffRow(entry.getKey(), entry.getValue(), null, columns);
+                sourceOnlyCount++;
+                rows.add(row);
+            }
+        }
+        sourceMap = null; // Allow GC to reclaim
+        matchedSourceKeys = null;
+
+        boolean hasMore = sourceSize >= batchSize || targetSize >= batchSize;
 
         Map<String, Object> result = new HashMap<>();
         result.put("columns", columns);
@@ -487,9 +499,9 @@ public class DataComparisonService {
         result.put("sourceOnlyCount", sourceOnlyCount);
         result.put("targetOnlyCount", targetOnlyCount);
         result.put("hasMore", hasMore);
-        result.put("nextOffset", offset + Math.max(sourceData.size(), targetData.size()));
-        result.put("sourceBatchRows", sourceData.size());
-        result.put("targetBatchRows", targetData.size());
+        result.put("nextOffset", offset + Math.max(sourceSize, targetSize));
+        result.put("sourceBatchRows", sourceSize);
+        result.put("targetBatchRows", targetSize);
         result.put("elapsedMs", System.currentTimeMillis() - startTime);
 
         logger.info("BATCH COMPARE: SELESAI offset={} rows={} diff={} hasMore={} elapsed={}ms",
@@ -550,6 +562,16 @@ public class DataComparisonService {
     // syncData()
     // ─────────────────────────────────────────────────────────────────────────
     public Map<String, Object> syncData(DiffRequest request) {
+        // Safety check: count rows first to prevent OOM on large tables
+        Map<String, Object> counts = countRows(request);
+        int srcCount = ((Number) counts.get("sourceCount")).intValue();
+        int tgtCount = ((Number) counts.get("targetCount")).intValue();
+        if (srcCount > MAX_SYNC_ROWS || tgtCount > MAX_SYNC_ROWS) {
+            throw new IllegalArgumentException(
+                String.format("Sync is limited to %d rows for memory safety. Source has %d rows, Target has %d rows. " +
+                    "Please use a smaller dataset or filter with custom query.", MAX_SYNC_ROWS, srcCount, tgtCount));
+        }
+
         DiffResult diff = compare(request);
         DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
         JdbcTemplate targetJdbc = new JdbcTemplate(targetDs);
@@ -584,6 +606,9 @@ public class DataComparisonService {
                 deleted++;
             }
         }
+
+        // Release diff data immediately
+        diff = null;
 
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
