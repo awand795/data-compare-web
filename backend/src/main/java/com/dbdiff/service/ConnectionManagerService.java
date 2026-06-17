@@ -105,7 +105,7 @@ public class ConnectionManagerService {
         
         if (details.isUseSsh()) {
             effectivePort = sshTunnelService.getOrOpenTunnel(details);
-            effectiveHost = "localhost";
+            effectiveHost = "127.0.0.1";
         }
         
         config.setJdbcUrl(details.getJdbcUrl(effectiveHost, effectivePort));
