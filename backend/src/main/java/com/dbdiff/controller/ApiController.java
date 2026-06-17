@@ -497,7 +497,7 @@ public class ApiController {
             DataSource ds = connectionManagerService.getDataSource(details);
             return ResponseEntity.ok(explorerService.getSchemas(ds));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }
 
@@ -509,7 +509,7 @@ public class ApiController {
             DataSource ds = connectionManagerService.getDataSource(details);
             return ResponseEntity.ok(explorerService.getTables(ds, "null".equals(schema) ? null : schema));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }
 
@@ -521,7 +521,7 @@ public class ApiController {
             DataSource ds = connectionManagerService.getDataSource(details);
             return ResponseEntity.ok(explorerService.getViews(ds, "null".equals(schema) ? null : schema));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }
 
@@ -533,7 +533,7 @@ public class ApiController {
             DataSource ds = connectionManagerService.getDataSource(details);
             return ResponseEntity.ok(explorerService.getColumns(ds, "null".equals(schema) ? null : schema, table));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }
 
@@ -545,7 +545,7 @@ public class ApiController {
             DataSource ds = connectionManagerService.getDataSource(details);
             return ResponseEntity.ok(explorerService.getIndexes(ds, "null".equals(schema) ? null : schema, table));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }
 
@@ -557,7 +557,7 @@ public class ApiController {
             DataSource ds = connectionManagerService.getDataSource(details);
             return ResponseEntity.ok(explorerService.getForeignKeys(ds, "null".equals(schema) ? null : schema, table));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }
 
@@ -569,7 +569,7 @@ public class ApiController {
             DataSource ds = connectionManagerService.getDataSource(details);
             return ResponseEntity.ok(Map.of("ddl", explorerService.getDdl(ds, "null".equals(schema) ? null : schema, table, details.getType())));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }
 
@@ -581,7 +581,7 @@ public class ApiController {
             DataSource ds = connectionManagerService.getDataSource(details);
             return ResponseEntity.ok(explorerService.getStats(ds, "null".equals(schema) ? null : schema, table, details.getType()));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }
 
@@ -593,7 +593,7 @@ public class ApiController {
             DataSource ds = connectionManagerService.getDataSource(details);
             return ResponseEntity.ok(explorerService.previewData(ds, "null".equals(schema) ? null : schema, table));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }
 

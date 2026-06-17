@@ -47,9 +47,25 @@ public class ConnectionRepository {
             c.setSshPort(rs.getObject("ssh_port") != null ? rs.getInt("ssh_port") : null);
             c.setSshUsername(rs.getString("ssh_username"));
             c.setSshAuthMode(rs.getString("ssh_auth_mode"));
-            c.setSshPassword(rs.getString("ssh_password"));
+            String rawSshPwd = rs.getString("ssh_password");
+            if (rawSshPwd != null) {
+                try {
+                    c.setSshPassword(new String(Base64.getDecoder().decode(rawSshPwd)));
+                } catch (Exception e) {
+                    c.setSshPassword(rawSshPwd);
+                }
+            }
+
             c.setSshKeyFile(rs.getString("ssh_key_file"));
-            c.setSshPassphrase(rs.getString("ssh_passphrase"));
+
+            String rawSshPassphrase = rs.getString("ssh_passphrase");
+            if (rawSshPassphrase != null) {
+                try {
+                    c.setSshPassphrase(new String(Base64.getDecoder().decode(rawSshPassphrase)));
+                } catch (Exception e) {
+                    c.setSshPassphrase(rawSshPassphrase);
+                }
+            }
             c.setConnectionTimeout(rs.getObject("connection_timeout") != null ? rs.getInt("connection_timeout") : null);
             c.setSocketTimeout(rs.getObject("socket_timeout") != null ? rs.getInt("socket_timeout") : null);
             c.setFetchSize(rs.getObject("fetch_size") != null ? rs.getInt("fetch_size") : null);
