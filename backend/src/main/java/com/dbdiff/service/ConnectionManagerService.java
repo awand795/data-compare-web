@@ -25,7 +25,7 @@ public class ConnectionManagerService {
         @Override
         protected boolean removeEldestEntry(Map.Entry<String, DataSource> eldest) {
           if (size() > MAX_POOL_CACHE) {
-            closeQuietly(eldest.getValue());
+            closeQuietly(eldest.getKey(), eldest.getValue());
             return true;
           }
           return false;
@@ -33,15 +33,39 @@ public class ConnectionManagerService {
       }
     );
 
-    private void closeQuietly(DataSource ds) {
+    private void closeQuietly(String key, DataSource ds) {
       try {
         if (ds instanceof com.zaxxer.hikari.HikariDataSource hds) {
           hds.close();
           logger.info("Closed evicted HikariCP pool: {}", hds.getPoolName());
         }
+        if (key != null && key.contains("|")) {
+          String connId = key.substring(0, key.indexOf('|'));
+          if (!connId.startsWith("jdbc:")) {
+            sshTunnelService.closeTunnel(connId);
+            logger.info("Closed evicted SSH tunnel for connection: {}", connId);
+          }
+        }
       } catch (Exception e) {
         logger.warn("Failed to close evicted DataSource: {}", e.getMessage());
       }
+    }
+
+    public void evictConnection(String connectionId) {
+        if (connectionId == null || connectionId.isBlank()) return;
+        synchronized (dataSourceCache) {
+            java.util.List<String> keysToRemove = new java.util.ArrayList<>();
+            for (String key : dataSourceCache.keySet()) {
+                if (key.startsWith(connectionId + "|")) {
+                    keysToRemove.add(key);
+                }
+            }
+            for (String key : keysToRemove) {
+                DataSource ds = dataSourceCache.remove(key);
+                closeQuietly(key, ds);
+            }
+        }
+        sshTunnelService.closeTunnel(connectionId);
     }
 
     @Autowired

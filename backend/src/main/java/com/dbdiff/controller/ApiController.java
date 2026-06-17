@@ -60,12 +60,14 @@ public class ApiController {
 
     @PostMapping("/connections")
     public ResponseEntity<?> saveConnection(@RequestBody ConnectionDetails details) {
+        connectionManagerService.evictConnection(details.getId());
         connectionRepository.save(details);
         return ResponseEntity.ok(Map.of("success", true, "connection", details));
     }
 
     @DeleteMapping("/connections/{id}")
     public ResponseEntity<?> deleteConnection(@PathVariable String id) {
+        connectionManagerService.evictConnection(id);
         connectionRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("success", true));
     }
