@@ -70,9 +70,12 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
         }
       }
 
+      const isDataCol = colId !== 'status' && colId !== 'rowKey';
+
       return {
         kind: GridCellKind.Text,
         allowOverlay: true,
+        allowWrapping: isDataCol,
         displayData,
         data: displayData,
         themeOverride,
@@ -166,6 +169,14 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
     );
   }
 
+  const getRowHeight = useCallback((rowIdx: number) => {
+    const row = filteredData[rowIdx];
+    if (row.status === 'DIFFERENT') {
+      return 60; // Larger height for DIFFERENT rows to show both SRC and TGT
+    }
+    return 40; // Default slightly larger height for wrapping normal cells
+  }, [filteredData]);
+
   return (
     <div className="h-full flex flex-col w-full bg-white dark:bg-[#0b1120]">
       <div className="flex-1 overflow-hidden relative">
@@ -174,6 +185,7 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
             getCellContent={getCellContent}
             columns={columns}
             rows={filteredData.length}
+            rowHeight={getRowHeight}
             smoothScrollX={true}
             smoothScrollY={true}
             theme={theme === 'dark' ? {

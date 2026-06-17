@@ -616,7 +616,7 @@ export const DataCompareView: React.FC = () => {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="whitespace-nowrap">{dr.batchCurrent?.toLocaleString()} / {dr.batchTotal?.toLocaleString()} processed</span>
+                    <span className="whitespace-nowrap">{(dr.batchCurrent || 0).toLocaleString()} / {(dr.batchTotal || 0).toLocaleString()} processed</span>
                     <span className="whitespace-nowrap text-amber-500">Δ {dr.differentCount + dr.sourceOnlyCount + dr.targetOnlyCount}</span>
                     {dr.rows.length > 0 && <span className="whitespace-nowrap text-text-muted">({dr.rows.length.toLocaleString()} shown)</span>}
                   </div>
