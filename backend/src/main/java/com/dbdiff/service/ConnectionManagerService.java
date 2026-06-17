@@ -62,7 +62,12 @@ public class ConnectionManagerService {
                 dataSourceCache.put(cacheKey, ds);
                 return ds;
             } catch (Exception e) {
-                throw new RuntimeException("Failed to create data source", e);
+                Throwable cause = e;
+                while (cause.getCause() != null && cause.getCause() != cause) {
+                    cause = cause.getCause();
+                }
+                String msg = cause.getMessage() != null ? cause.getMessage() : e.getMessage();
+                throw new RuntimeException("Failed to create data source: " + msg, e);
             }
         }
     }
