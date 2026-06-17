@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Database, ArrowRight } from 'lucide-react';
 import { buildEffectiveQuery } from '../utils/queryHelpers';
@@ -18,6 +18,14 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
   const { diffResults, addToast, theme } = useAppStore();
   const diffResult = directResult || (mappingId ? diffResults[mappingId] : null);
 
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
+  const onColumnResize = useCallback((column: GridColumn, newSize: number) => {
+    if (column.id) {
+      setColumnWidths(prev => ({ ...prev, [column.id!]: newSize }));
+    }
+  }, []);
+
   const filteredData = useMemo(() => {
     if (!diffResult) return [];
     if (filterStatus === 'ALL') return diffResult.rows;
@@ -28,14 +36,14 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
   const columns = useMemo<GridColumn[]>(() => {
     if (!diffResult) return [];
     const cols: GridColumn[] = [
-      { title: 'Status', width: 100, id: 'status' },
-      { title: 'Key', width: 150, id: 'rowKey' },
+      { title: 'Status', width: columnWidths['status'] || 100, id: 'status' },
+      { title: 'Key', width: columnWidths['rowKey'] || 150, id: 'rowKey' },
     ];
     diffResult.columns.forEach((colName: string) => {
-      cols.push({ title: colName, width: 150, id: colName });
+      cols.push({ title: colName, width: columnWidths[colName] || 150, id: colName });
     });
     return cols;
-  }, [diffResult?.columns]);
+  }, [diffResult?.columns, columnWidths]);
 
   const getCellContent = useCallback(
     ([colIdx, rowIdx]: readonly [number, number]): GridCell => {
@@ -154,6 +162,14 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
   }, [buildExportPayload, filterStatus, mappingId]);
 
 
+  const getRowHeight = useCallback((rowIdx: number) => {
+    const row = filteredData[rowIdx];
+    if (row?.status === 'DIFFERENT') {
+      return 60; // Larger height for DIFFERENT rows to show both SRC and TGT
+    }
+    return 40; // Default slightly larger height for wrapping normal cells
+  }, [filteredData]);
+
   /* ── Empty state ─────────────────────────────────────────────── */
 
   if (!diffResult) {
@@ -169,13 +185,6 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
     );
   }
 
-  const getRowHeight = useCallback((rowIdx: number) => {
-    const row = filteredData[rowIdx];
-    if (row.status === 'DIFFERENT') {
-      return 60; // Larger height for DIFFERENT rows to show both SRC and TGT
-    }
-    return 40; // Default slightly larger height for wrapping normal cells
-  }, [filteredData]);
 
   return (
     <div className="h-full flex flex-col w-full bg-white dark:bg-[#0b1120]">
@@ -186,6 +195,7 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
             columns={columns}
             rows={filteredData.length}
             rowHeight={getRowHeight}
+            onColumnResize={onColumnResize}
             smoothScrollX={true}
             smoothScrollY={true}
             theme={theme === 'dark' ? {

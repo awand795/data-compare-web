@@ -5,10 +5,8 @@ import clsx from 'clsx';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { useAppStore } from '../store/useAppStore';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { SQLEditor } from './SQLEditor';
+import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
 export const ResultFooter: React.FC<{ 
   data: any[]; 
@@ -25,52 +23,29 @@ export const ResultFooter: React.FC<{
       cols.forEach(col => { filtered[col] = row[col]; });
       return filtered;
     });
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
-    XLSX.writeFile(workbook, `${side}_query_export.xlsx`);
+    exportToExcel({
+      title: `Query Results - ${side.toUpperCase()}`,
+      subtitle: `Columns: ${cols.length} | Rows: ${data.length} | Generated: ${new Date().toLocaleString()}`,
+      columns: cols,
+      data: exportData,
+      fileName: `${side}_query_export.xlsx`
+    });
   };
 
   const handleExportPDF = () => {
     if (data.length === 0) return;
-    const doc = new jsPDF('l', 'pt', 'a4');
-    
-    // Title
-    doc.setFontSize(14);
-    doc.setTextColor(30, 64, 175);
-    doc.text(`Query Results - ${side.toUpperCase()}`, 40, 30);
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 40, 38);
-    doc.text(`Columns: ${cols.length}  |  Rows: ${data.length}`, 40, 44);
-    
-    // Separator
-    doc.setDrawColor(200, 200, 200);
-    doc.line(40, 48, 770, 48);
-    
-    autoTable(doc, {
-      head: [cols],
-      body: data.map(row => cols.map(col => String(row[col] ?? ''))),
-      startY: 52,
-      styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
-      headStyles: { fillColor: [59, 130, 246], fontSize: 8, halign: 'center' },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
-      theme: 'grid',
-      pageBreak: 'auto',
-      margin: { top: 40 },
+    const exportData = data.map(row => {
+      const filtered: Record<string, any> = {};
+      cols.forEach(col => { filtered[col] = row[col]; });
+      return filtered;
     });
-    
-    // Footer with page numbers
-    const pageCount = doc.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(7);
-      doc.setTextColor(150, 150, 150);
-      doc.text(`Page ${i} of ${pageCount}`, 770, 555, { align: 'right' });
-      doc.text(`Data Sync Studio - ${side.toUpperCase()} Query`, 40, 555);
-    }
-    
-    doc.save(`${side}_query_export.pdf`);
+    exportToPDF({
+      title: `Query Results - ${side.toUpperCase()}`,
+      subtitle: `Columns: ${cols.length} | Rows: ${data.length} | Generated: ${new Date().toLocaleString()}`,
+      columns: cols,
+      data: exportData,
+      fileName: `${side}_query_export.pdf`
+    });
   };
 
   return (

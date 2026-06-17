@@ -4,16 +4,17 @@ import { useAppStore } from '../store/useAppStore';
 import { Table as TableIcon, LayoutList, Database, Loader2, ChevronLeft, ChevronRight, AlertCircle, Search, Maximize, Minimize, Key, Link as LinkIcon, FileCode2 } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ColumnDiff } from '../store/useAppStore';
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { DataEditor, GridCellKind } from '@glideapps/glide-data-grid';
+import type { GridCell, GridColumn } from '@glideapps/glide-data-grid';
+import '@glideapps/glide-data-grid/dist/index.css';
+import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
 type TabType = 'data' | 'columns' | 'indexes' | 'foreign_keys' | 'ddl' | 'stats';
 
 export const TableDetailPanel: React.FC = () => {
-  const { connections, explorerConnectionId, explorerTableName, explorerSchemaName, defaultRowLimit } = useAppStore();
+  const { connections, explorerConnectionId, explorerTableName, explorerSchemaName, defaultRowLimit, theme } = useAppStore();
   const [activeTab, setActiveTab] = useState<TabType>('data');
   const [isFullscreen, setIsFullscreen] = useState(false);
   
@@ -37,14 +38,64 @@ export const TableDetailPanel: React.FC = () => {
   const [hasMoreUnlimited, setHasMoreUnlimited] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
 
-  const parentRef = useRef<HTMLDivElement>(null);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
-  const rowVirtualizer = useVirtualizer({
-    count: tableData.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 32, // roughly 32px per row
-    overscan: 10, // load 10 items outside of the viewport
-  });
+  const onColumnResizeGrid = React.useCallback((column: GridColumn, newSize: number) => {
+    if (column.id) {
+      setColumnWidths(prev => ({ ...prev, [column.id!]: newSize }));
+    }
+  }, []);
+
+  const gridColumns = React.useMemo<GridColumn[]>(() => {
+    return columns.map(col => ({
+      title: col,
+      id: col,
+      width: columnWidths[col] || 200,
+    }));
+  }, [columns, columnWidths]);
+
+  const getCellContent = React.useCallback(
+    ([colIdx, rowIdx]: readonly [number, number]): GridCell => {
+      const row = tableData[rowIdx];
+      if (!row) {
+         return {
+           kind: GridCellKind.Text,
+           allowOverlay: false,
+           displayData: '',
+           data: '',
+         };
+      }
+      const colId = columns[colIdx];
+      const val = row[colId];
+      
+      let displayData = '';
+      let themeOverride = undefined;
+
+      if (val === null) {
+        displayData = 'null';
+        themeOverride = { textDark: '#94a3b8', baseFontStyle: 'italic 12px monospace' };
+      } else if (typeof val === 'object') {
+        displayData = JSON.stringify(val);
+        themeOverride = { baseFontStyle: '12px monospace' };
+      } else if (typeof val === 'boolean') {
+        displayData = val ? 'true' : 'false';
+        themeOverride = { textDark: val ? '#10b981' : '#ef4444', baseFontStyle: '12px monospace' };
+      } else {
+        displayData = String(val);
+        themeOverride = { baseFontStyle: '12px monospace' };
+      }
+
+      return {
+        kind: GridCellKind.Text,
+        allowOverlay: true,
+        allowWrapping: false,
+        displayData,
+        data: displayData,
+        themeOverride,
+      };
+    },
+    [tableData, columns]
+  );
 
   const conn = connections.find(c => c.id === explorerConnectionId);
 
@@ -62,17 +113,7 @@ export const TableDetailPanel: React.FC = () => {
     }
   }, [offset]);
 
-  const virtualItems = rowVirtualizer.getVirtualItems();
 
-  useEffect(() => {
-    if (limit === 'unlimited' && !loading && !isFetchingMore && hasMoreUnlimited) {
-      const lastItem = virtualItems[virtualItems.length - 1];
-      if (lastItem && lastItem.index >= tableData.length - 2) {
-        setIsFetchingMore(true);
-        fetchData(true).finally(() => setIsFetchingMore(false));
-      }
-    }
-  }, [virtualItems, limit, loading, isFetchingMore, hasMoreUnlimited, tableData.length]);
 
   const fetchData = async (isLoadMore = false) => {
     if (!conn || !explorerTableName) return;
@@ -174,52 +215,24 @@ export const TableDetailPanel: React.FC = () => {
 
   const handleExportExcel = () => {
     if (tableData.length === 0) return;
-    const worksheet = XLSX.utils.json_to_sheet(tableData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
-    XLSX.writeFile(workbook, `${explorerTableName}_export.xlsx`);
+    exportToExcel({
+      title: `Table: ${explorerTableName}`,
+      subtitle: conn ? `Connection: ${conn.name} (${conn.database}) | Generated: ${new Date().toLocaleString()}` : undefined,
+      columns,
+      data: tableData,
+      fileName: `${explorerTableName}_export.xlsx`
+    });
   };
 
   const handleExportPDF = () => {
     if (tableData.length === 0) return;
-    const doc = new jsPDF('l', 'pt', 'a4');
-    
-    // Title
-    doc.setFontSize(14);
-    doc.setTextColor(30, 64, 175);
-    doc.text(`Table: ${explorerTableName}`, 40, 30);
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 40, 38);
-    if (conn) doc.text(`Connection: ${conn.name} (${conn.database})`, 40, 44);
-    
-    // Separator
-    doc.setDrawColor(200, 200, 200);
-    doc.line(40, 48, 770, 48);
-    
-    autoTable(doc, {
-      head: [columns],
-      body: tableData.map(row => columns.map(col => String(row[col] ?? ''))),
-      startY: 52,
-      styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
-      headStyles: { fillColor: [59, 130, 246], fontSize: 8, halign: 'center' },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
-      theme: 'grid',
-      pageBreak: 'auto',
-      margin: { top: 40 },
+    exportToPDF({
+      title: `Table: ${explorerTableName}`,
+      subtitle: conn ? `Connection: ${conn.name} (${conn.database}) | Generated: ${new Date().toLocaleString()}` : undefined,
+      columns,
+      data: tableData,
+      fileName: `${explorerTableName}_export.pdf`
     });
-    
-    // Footer
-    const pageCount = doc.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(7);
-      doc.setTextColor(150, 150, 150);
-      doc.text(`Page ${i} of ${pageCount}`, 770, 555, { align: 'right' });
-      doc.text(`Data Sync Studio - ${explorerTableName}`, 40, 555);
-    }
-    
-    doc.save(`${explorerTableName}_export.pdf`);
   };
 
   const handleNextPage = () => {
@@ -402,7 +415,7 @@ export const TableDetailPanel: React.FC = () => {
       )}
 
       {/* Content Area */}
-      <div className="flex-1 overflow-auto relative p-4">
+      <div className="flex-1 overflow-hidden relative p-4 flex flex-col">
         {loading && (
           <div className="absolute inset-0 bg-bg-main/50 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -539,7 +552,7 @@ export const TableDetailPanel: React.FC = () => {
         )}
 
         {!loading && !error && activeTab === 'data' && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 h-full">
             {limit === 'unlimited' && tableData.length > 5000 && (
               <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 px-3 py-2 rounded text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -553,67 +566,48 @@ export const TableDetailPanel: React.FC = () => {
                 <Loader2 className="w-3 h-3 animate-spin" /> Fetching more data...
               </div>
             )}
-            <div ref={parentRef} className="border border-border-main rounded-lg overflow-auto bg-bg-panel" style={{ maxHeight: 'calc(100vh - 200px)' }}>
-              <table className="text-left border-collapse whitespace-nowrap" style={{ tableLayout: 'fixed', minWidth: '100%' }}>
-                <thead className="sticky top-0 z-10 bg-bg-panel shadow-sm">
-                  <tr className="border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted bg-bg-hover">
-                    {columns.map(col => (
-                      <th key={col} className="p-2.5 font-semibold truncate border-r border-border-main last:border-r-0" style={{ width: 200, minWidth: 200, maxWidth: 200 }}>{col}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-main">
-                {tableData.length === 0 ? (
-                  <tr>
-                    <td colSpan={Math.max(1, columns.length)} className="p-8 text-center text-text-muted text-sm">
-                      No data found.
-                    </td>
-                  </tr>
-                ) : (
-                  <>
-                    {rowVirtualizer.getVirtualItems().length > 0 && (
-                      <tr>
-                        <td style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }} colSpan={columns.length} />
-                      </tr>
-                    )}
-                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                      const row = tableData[virtualRow.index];
-                      return (
-                        <tr 
-                          key={virtualRow.index} 
-                          data-index={virtualRow.index}
-                          ref={rowVirtualizer.measureElement}
-                          className="hover:bg-bg-hover/50 text-xs text-text-main"
-                        >
-                          {columns.map(col => {
-                            const val = row[col];
-                            let display = val;
-                            if (val === null) display = <span className="text-text-muted italic">null</span>;
-                            else if (typeof val === 'object') display = JSON.stringify(val);
-                            else if (typeof val === 'boolean') display = val ? 'true' : 'false';
-                            
-                            return (
-                              <td key={col} className="p-2.5 truncate font-mono border-r border-border-main last:border-r-0" style={{ width: 200, minWidth: 200, maxWidth: 200 }}>
-                                {display}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                    {rowVirtualizer.getVirtualItems().length > 0 && (
-                      <tr>
-                        <td 
-                          style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }} 
-                          colSpan={columns.length} 
-                        />
-                      </tr>
-                    )}
-                  </>
-                )}
-              </tbody>
-            </table>
-          </div>
+            <div className="border border-border-main rounded-lg overflow-hidden bg-bg-panel flex-1 relative min-h-[400px]">
+              {tableData.length === 0 ? (
+                <div className="p-8 text-center text-text-muted text-sm">No data found.</div>
+              ) : (
+                <DataEditor
+                  getCellContent={getCellContent}
+                  columns={gridColumns}
+                  rows={tableData.length}
+                  onColumnResize={onColumnResizeGrid}
+                  onVisibleRegionChanged={(range) => {
+                    if (limit === 'unlimited' && !loading && !isFetchingMore && hasMoreUnlimited) {
+                      if (range.y + range.height >= tableData.length - 10) {
+                        setIsFetchingMore(true);
+                        fetchData(true).finally(() => setIsFetchingMore(false));
+                      }
+                    }
+                  }}
+                  smoothScrollX={true}
+                  smoothScrollY={true}
+                  rowHeight={32}
+                  theme={theme === 'dark' ? {
+                    bgCell: '#0b1120',
+                    bgHeader: '#0f172a',
+                    textDark: '#e2e8f0',
+                    textHeader: '#94a3b8',
+                    borderColor: '#1e293b',
+                    fontFamily: 'Inter, sans-serif',
+                    baseFontStyle: '12px',
+                    headerFontStyle: '600 11px',
+                  } : {
+                    bgCell: '#ffffff',
+                    bgHeader: '#f8fafc',
+                    textDark: '#334155',
+                    textHeader: '#64748b',
+                    borderColor: '#e2e8f0',
+                    fontFamily: 'Inter, sans-serif',
+                    baseFontStyle: '12px',
+                    headerFontStyle: '600 11px',
+                  }}
+                />
+              )}
+            </div>
         </div>
         )}
       </div>
