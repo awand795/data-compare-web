@@ -190,7 +190,7 @@ export const DatabaseExplorer: React.FC = () => {
         setExplorerConnectionId(connId);
         setExplorerSchemaName(schema);
         setExplorerTableName(tableName);
-        setCustomQuerySource(`SELECT * FROM ${fullTable} LIMIT 100`);
+        setCustomQuerySource(`SELECT * FROM ${fullTable}`);
         setAppMode('query');
         break;
       case 'compare':
@@ -334,7 +334,7 @@ export const DatabaseExplorer: React.FC = () => {
             onClick={() => executeAction('top100')}
             className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-blue-500 hover:text-white transition-colors flex items-center gap-2"
           >
-            <Play className="w-3 h-3" /> Select Top 100
+            <Play className="w-3 h-3" /> Select All Rows
           </button>
           <button 
             onClick={() => executeAction('compare')}

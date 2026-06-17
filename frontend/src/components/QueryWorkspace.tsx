@@ -33,8 +33,8 @@ export const QueryWorkspace: React.FC = () => {
   const [loadingSource, setLoadingSource] = useState(false);
   const [loadingTarget, setLoadingTarget] = useState(false);
   const [copied, setCopied]               = useState<'source' | 'target' | null>(null);
-  const [sourceLimit, setSourceLimit]     = useState(defaultRowLimit.toString());
-  const [targetLimit, setTargetLimit]     = useState(defaultRowLimit.toString());
+  const [sourceLimit, setSourceLimit]     = useState('');
+  const [targetLimit, setTargetLimit]     = useState('');
   const [sourceFormat, setSourceFormat]   = useState<'table' | 'json'>('table');
   const [targetFormat, setTargetFormat]   = useState<'table' | 'json'>('table');
 
