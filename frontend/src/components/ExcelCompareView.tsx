@@ -174,6 +174,24 @@ export const ExcelCompareView: React.FC = () => {
             const parsed = JSON.parse(line);
             if (parsed.type === 'columns') {
               store.setDiffColumns(mapping.id, parsed.data);
+            } else if (parsed.type === 'm') {
+              const cells: Record<string, any> = {};
+              const vals = parsed.v;
+              const storeCols = useAppStore.getState().diffResults[mapping.id]?.columns || [];
+              for (let i = 0; i < storeCols.length && i < vals.length; i++) {
+                cells[storeCols[i]] = { sourceValue: vals[i], targetValue: vals[i], isDifferent: false };
+              }
+              const rowData = { rowKey: parsed.k, status: 'MATCH', cells };
+              
+              rowBatch.push(rowData);
+              if (rowBatch.length >= 500) {
+                flushRows();
+              } else if (!batchTimer) {
+                batchTimer = setTimeout(() => {
+                  flushRows();
+                  batchTimer = null;
+                }, 100);
+              }
             } else if (parsed.type === 'row') {
               rowBatch.push(parsed.data);
               if (rowBatch.length >= 500) {
@@ -182,7 +200,7 @@ export const ExcelCompareView: React.FC = () => {
                 batchTimer = setTimeout(() => {
                   flushRows();
                   batchTimer = null;
-                }, 100); // Throttle state updates to 100ms
+                }, 100);
               }
             } else if (parsed.type === 'summary') {
               if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }

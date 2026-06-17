@@ -346,8 +346,29 @@ export const QueryWorkspace: React.FC = () => {
                pendingColumns = msg.data;
                finalColumns = msg.data;
                if (m) store.setDiffColumns(m.id, msg.data);
-            }
-              else if (msg.type === 'row') {
+            } else if (msg.type === 'm') {
+                 const cells: Record<string, any> = {};
+                 const vals = msg.v;
+                 for (let i = 0; i < finalColumns.length && i < vals.length; i++) {
+                   cells[finalColumns[i]] = { sourceValue: vals[i], targetValue: vals[i], isDifferent: false };
+                 }
+                 const rowData = { rowKey: msg.k, status: 'MATCH', cells };
+                 
+                 pendingRows.push(rowData);
+                 allRows.push(rowData);
+                 rowBatch.push(rowData);
+                 rowCount++;
+                 counters.match++;
+                 
+                 const now = Date.now();
+                 if (rowBatch.length >= 3000 || (now - lastFlushTime > 300 && rowBatch.length > 0)) {
+                   flushRowBatchToStore();
+                   lastFlushTime = now;
+                 }
+                 if (m && totalRows > 0 && rowCount % 3000 === 0) {
+                   store.setBatchProgress(m.id, rowCount, totalRows);
+                 }
+            } else if (msg.type === 'row') {
                  pendingRows.push(msg.data);
                  allRows.push(msg.data);
                  rowBatch.push(msg.data);
@@ -366,10 +387,11 @@ export const QueryWorkspace: React.FC = () => {
                  if (m && totalRows > 0 && rowCount % 3000 === 0) {
                    store.setBatchProgress(m.id, rowCount, totalRows);
                  }
-              }
-            else if (msg.type === 'summary') {
+            } else if (msg.type === 'summary') {
                pendingSummary = msg.data;
                finalSummary = msg.data;
+            } else if (msg.type === 'error') {
+               throw new Error(msg.message || 'Stream error');
             }
           } catch (e) {
             console.error("Parse error", line, e);
