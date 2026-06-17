@@ -18,7 +18,9 @@ public class SshTunnelService {
         if (!details.isUseSsh()) {
             return details.getPort();
         }
-        String connId = details.getId();
+        String connId = details.getId() != null && !details.getId().isBlank() 
+            ? details.getId() 
+            : "temp_" + java.util.UUID.randomUUID().toString();
         if (activeSessions.containsKey(connId) && activeSessions.get(connId).isConnected()) {
             return localPorts.get(connId);
         }

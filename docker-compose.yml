@@ -14,6 +14,8 @@ services:
       DB_PASSWORD: npg_lSm6g8kRZEoL
     ports:
       - "5300:8081"
+    volumes:
+      - ./ssh-keys:/app/ssh-keys:ro
     networks:
       - darkosync-network
     logging:

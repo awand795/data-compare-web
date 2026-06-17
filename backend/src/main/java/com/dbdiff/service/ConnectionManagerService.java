@@ -75,9 +75,10 @@ public class ConnectionManagerService {
     private org.springframework.core.task.TaskExecutor taskExecutor;
 
     public DataSource getDataSource(ConnectionDetails details) {
+        String safeUsername = details.getUsername() != null ? details.getUsername() : "";
         String cacheKey = details.getId() != null && !details.getId().isBlank()
-            ? details.getId() + "|" + details.getUsername()
-            : (details.getJdbcUrl().toLowerCase().trim() + "|" + details.getUsername().toLowerCase().trim());
+            ? details.getId() + "|" + safeUsername
+            : (details.getJdbcUrl() != null ? details.getJdbcUrl().toLowerCase().trim() : "") + "|" + safeUsername.toLowerCase().trim();
         synchronized (dataSourceCache) {
             DataSource existing = dataSourceCache.get(cacheKey);
             if (existing != null) return existing;
