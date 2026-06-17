@@ -1,3 +1,35 @@
 nul
 .qoder/
 RESUME_ANTIGRAVITY.md
+
+# Node.js / Frontend
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Java / Backend
+target/
+*.class
+*.jar
+*.war
+*.ear
+.mvn/wrapper/maven-wrapper.jar
+.idea/
+*.iml
+.vscode/
+
+# Logs and databases
+logs/
+*.log
+*.sqlite
+*.db
+
+# OS Generated
+.DS_Store
+Thumbs.db
