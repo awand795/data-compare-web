@@ -131,16 +131,14 @@ public class ConnectionManagerService {
                 config.addDataSourceProperty("reWriteBatchedInserts", "true");
                 config.addDataSourceProperty("socketReceiveBufferSize", "1048576"); // 1MB buffer
                 
-                // OPTIMIZATION: Boost work_mem to 256MB and enable 4 parallel workers 
-                // for ultra-fast in-memory sorting of millions of rows.
-                config.setConnectionInitSql("SET work_mem = '256MB'; SET max_parallel_workers_per_gather = 4; SET parallel_setup_cost = 0; SET parallel_tuple_cost = 0;");
-                
                 if (details.getSslMode() != null && !details.getSslMode().isEmpty() && !"disable".equalsIgnoreCase(details.getSslMode())) {
                     config.addDataSourceProperty("ssl", "true");
                     config.addDataSourceProperty("sslmode", details.getSslMode());
                     if (details.getSslCaFile() != null) config.addDataSourceProperty("sslrootcert", details.getSslCaFile());
                     if (details.getSslCertFile() != null) config.addDataSourceProperty("sslcert", details.getSslCertFile());
                     if (details.getSslKeyFile() != null) config.addDataSourceProperty("sslkey", details.getSslKeyFile());
+                } else {
+                    config.addDataSourceProperty("sslmode", "disable");
                 }
                 
                 if (details.getSocketTimeout() != null) {
@@ -255,14 +253,12 @@ public class ConnectionManagerService {
             }
         } catch (Exception e) {
             logger.error("Connection test failed: {}", e.getMessage(), e);
-            // Unwrap to get the real root cause message
             Throwable cause = e;
             while (cause.getCause() != null && cause.getCause() != cause) {
                 cause = cause.getCause();
             }
             String msg = cause.getMessage() != null ? cause.getMessage() : e.getMessage();
             if (msg == null) msg = "Unknown connection error";
-            // Clean up common verbose messages
             if (msg.contains("\n")) msg = msg.substring(0, msg.indexOf('\n'));
             return Map.of("success", false, "message", msg);
         }

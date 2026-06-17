@@ -47,7 +47,7 @@ public class SshTunnelService {
         session.setConfig("StrictHostKeyChecking", "no");
         session.connect(30000);
 
-        int assignedLocalPort = session.setPortForwardingL(0, details.getHost(), details.getPort());
+        int assignedLocalPort = session.setPortForwardingL("127.0.0.1", 0, details.getHost(), details.getPort());
         
         activeSessions.put(connId, session);
         localPorts.put(connId, assignedLocalPort);
