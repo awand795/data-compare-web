@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS connections (
     ssh_username VARCHAR(100),
     ssh_auth_mode VARCHAR(50),
     ssh_password VARCHAR(200),
-    ssh_key_file VARCHAR(255),
+    ssh_key_file TEXT,
     ssh_passphrase VARCHAR(200),
     connection_timeout INT,
     socket_timeout INT,
@@ -38,7 +38,7 @@ ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_port INT;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_username VARCHAR(100);
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_auth_mode VARCHAR(50);
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_password VARCHAR(200);
-ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_key_file VARCHAR(255);
+ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_key_file TEXT;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_passphrase VARCHAR(200);
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS connection_timeout INT;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS socket_timeout INT;

@@ -56,7 +56,14 @@ public class ConnectionRepository {
                 }
             }
 
-            c.setSshKeyFile(rs.getString("ssh_key_file"));
+            String rawSshKey = rs.getString("ssh_key_file");
+            if (rawSshKey != null) {
+                try {
+                    c.setSshKeyFile(new String(Base64.getDecoder().decode(rawSshKey)));
+                } catch (Exception e) {
+                    c.setSshKeyFile(rawSshKey);
+                }
+            }
 
             String rawSshPassphrase = rs.getString("ssh_passphrase");
             if (rawSshPassphrase != null) {

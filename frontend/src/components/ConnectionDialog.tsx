@@ -128,6 +128,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     if (secureData.password) secureData.password = btoa(secureData.password);
     if (secureData.sshPassword) secureData.sshPassword = btoa(secureData.sshPassword);
     if (secureData.sshPassphrase) secureData.sshPassphrase = btoa(secureData.sshPassphrase);
+    if (secureData.sshKeyFile) secureData.sshKeyFile = btoa(secureData.sshKeyFile);
 
     const encodedConn = { ...secureData, id: Date.now().toString() } as Connection;
     try {
@@ -365,7 +366,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                       reader.onload = (e) => {
                                         const text = e.target?.result;
                                         if (typeof text === 'string') {
-                                          setFormData(prev => ({ ...prev, sshKeyContent: text }));
+                                          setFormData(prev => ({ ...prev, sshKeyFile: text }));
                                         }
                                       };
                                       reader.readAsText(file);
@@ -375,9 +376,9 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                               </label>
                             </div>
                             <textarea 
-                              name="sshKeyContent" 
-                              value={formData.sshKeyContent || ''} 
-                              onChange={(e) => setFormData(prev => ({ ...prev, sshKeyContent: e.target.value }))}
+                              name="sshKeyFile" 
+                              value={formData.sshKeyFile || ''} 
+                              onChange={(e) => setFormData(prev => ({ ...prev, sshKeyFile: e.target.value }))}
                               className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-xs font-mono text-text-input outline-none focus:border-blue-500 h-24 whitespace-pre" 
                               placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----" 
                             />

@@ -27,12 +27,12 @@ public class SshTunnelService {
 
         JSch jsch = new JSch();
         
-        if ("key".equalsIgnoreCase(details.getSshAuthMode()) && details.getSshKeyFile() != null && !details.getSshKeyFile().isEmpty()) {
-            if (details.getSshPassphrase() != null && !details.getSshPassphrase().isEmpty()) {
-                jsch.addIdentity(details.getSshKeyFile(), details.getSshPassphrase());
-            } else {
-                jsch.addIdentity(details.getSshKeyFile());
-            }
+        if ("key".equalsIgnoreCase(details.getSshAuthMode()) && details.getSshKeyFile() != null && !details.getSshKeyFile().trim().isEmpty()) {
+            byte[] prvk = details.getSshKeyFile().getBytes();
+            byte[] passphrase = (details.getSshPassphrase() != null && !details.getSshPassphrase().isEmpty()) 
+                                    ? details.getSshPassphrase().getBytes() 
+                                    : null;
+            jsch.addIdentity("ssh-key", prvk, null, passphrase);
         }
 
         int sshPort = (details.getSshPort() != null && details.getSshPort() > 0) ? details.getSshPort() : 22;
