@@ -60,7 +60,8 @@ export const DatabaseExplorer: React.FC = () => {
       });
       setLoaded(connId, childIds);
     } catch (e: any) {
-      setLoading(connId, false, e.message);
+      const errorMsg = e.response?.data?.error || e.response?.data?.message || e.message;
+      setLoading(connId, false, errorMsg);
     }
   };
 
@@ -90,7 +91,8 @@ export const DatabaseExplorer: React.FC = () => {
 
       setLoaded(schemaNodeId, childIds);
     } catch (e: any) {
-      setLoading(schemaNodeId, false, e.message);
+      const errorMsg = e.response?.data?.error || e.response?.data?.message || e.message;
+      setLoading(schemaNodeId, false, errorMsg);
     }
   };
 
@@ -109,7 +111,8 @@ export const DatabaseExplorer: React.FC = () => {
       });
       setLoaded(tableNodeId, childIds);
     } catch (e: any) {
-      setLoading(tableNodeId, false, e.message);
+      const errorMsg = e.response?.data?.error || e.response?.data?.message || e.message;
+      setLoading(tableNodeId, false, errorMsg);
     }
   };
 
