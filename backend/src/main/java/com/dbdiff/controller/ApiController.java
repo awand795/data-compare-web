@@ -630,20 +630,61 @@ public class ApiController {
         }
     }
 
-    // Helper mapper just for quick parsing of generic payload
     private ConnectionDetails mapToDetails(Map<String, Object> map) {
+        if (map == null) return null;
+        String id = (String) map.get("id");
+        if (id != null && !id.trim().isEmpty()) {
+            ConnectionDetails dbDetails = connectionRepository.findById(id);
+            if (dbDetails != null) {
+                if (map.containsKey("schema") && map.get("schema") != null) {
+                    dbDetails.setSchema((String) map.get("schema"));
+                }
+                return dbDetails;
+            }
+        }
         ConnectionDetails details = new ConnectionDetails();
-        details.setId((String) map.get("id"));
+        details.setId(id);
         details.setName((String) map.get("name"));
         details.setType((String) map.get("type"));
         details.setHost((String) map.get("host"));
-        details.setPort(map.get("port") instanceof Integer ? (Integer) map.get("port") : Integer.parseInt(map.get("port").toString()));
+        if (map.get("port") != null) {
+            details.setPort(map.get("port") instanceof Integer ? (Integer) map.get("port") : Integer.parseInt(map.get("port").toString()));
+        }
         details.setDatabase((String) map.get("database"));
         details.setUsername((String) map.get("username"));
         details.setPassword((String) map.get("password"));
         if (map.containsKey("schema")) {
             details.setSchema((String) map.get("schema"));
         }
+        
+        details.setSslMode((String) map.get("sslMode"));
+        details.setSslCaFile((String) map.get("sslCaFile"));
+        details.setSslCertFile((String) map.get("sslCertFile"));
+        details.setSslKeyFile((String) map.get("sslKeyFile"));
+
+        details.setUseSsh(map.containsKey("useSsh") && Boolean.TRUE.equals(map.get("useSsh")));
+        details.setSshHost((String) map.get("sshHost"));
+        if (map.get("sshPort") != null) {
+            details.setSshPort(map.get("sshPort") instanceof Integer ? (Integer) map.get("sshPort") : Integer.parseInt(map.get("sshPort").toString()));
+        }
+        details.setSshUsername((String) map.get("sshUsername"));
+        details.setSshAuthMode((String) map.get("sshAuthMode"));
+        details.setSshPassword((String) map.get("sshPassword"));
+        details.setSshKeyFile((String) map.get("sshKeyFile"));
+        details.setSshPassphrase((String) map.get("sshPassphrase"));
+
+        if (map.get("connectionTimeout") != null) {
+            details.setConnectionTimeout(map.get("connectionTimeout") instanceof Integer ? (Integer) map.get("connectionTimeout") : Integer.parseInt(map.get("connectionTimeout").toString()));
+        }
+        if (map.get("socketTimeout") != null) {
+            details.setSocketTimeout(map.get("socketTimeout") instanceof Integer ? (Integer) map.get("socketTimeout") : Integer.parseInt(map.get("socketTimeout").toString()));
+        }
+        if (map.get("fetchSize") != null) {
+            details.setFetchSize(map.get("fetchSize") instanceof Integer ? (Integer) map.get("fetchSize") : Integer.parseInt(map.get("fetchSize").toString()));
+        }
+        details.setReadOnly(map.containsKey("readOnly") && Boolean.TRUE.equals(map.get("readOnly")));
+        details.setExtraProps((String) map.get("extraProps"));
+
         return details;
     }
 }
