@@ -49,22 +49,57 @@ export const detectPrimaryKeysFromQuery = (query: string): string[] => {
   if (!query) return [];
   const upperQuery = query.toUpperCase();
   const orderByIndex = upperQuery.lastIndexOf('ORDER BY');
-  if (orderByIndex !== -1) {
-    let orderClause = query.substring(orderByIndex + 8).trim();
-    const limitIndex = orderClause.toUpperCase().indexOf('LIMIT');
-    if (limitIndex !== -1) {
-      orderClause = orderClause.substring(0, limitIndex).trim();
-    }
-    if (orderClause.endsWith(';')) {
-      orderClause = orderClause.substring(0, orderClause.length - 1).trim();
-    }
-    
-    const extracted = orderClause.split(',').map(part => {
-       let col = part.trim().split(/\s+/)[0]; 
-       if (col.includes('.')) col = col.split('.').pop() || col; 
-       return col.replace(/['"`\[\]]/g, ''); 
-    }).filter(Boolean);
-    return extracted;
+  if (orderByIndex === -1) return [];
+
+  let orderClause = query.substring(orderByIndex + 8).trim();
+  const limitIndex = orderClause.toUpperCase().indexOf('LIMIT');
+  if (limitIndex !== -1) {
+    orderClause = orderClause.substring(0, limitIndex).trim();
   }
-  return [];
+  const offsetIndex = orderClause.toUpperCase().indexOf('OFFSET');
+  if (offsetIndex !== -1) {
+    orderClause = orderClause.substring(0, offsetIndex).trim();
+  }
+  if (orderClause.endsWith(';')) {
+    orderClause = orderClause.substring(0, orderClause.length - 1).trim();
+  }
+  
+  const orderCols = orderClause.split(',').map(part => {
+     let col = part.trim().split(/\s+/)[0]; 
+     if (col.includes('.')) col = col.split('.').pop() || col; 
+     return col.replace(/['"`\[\]]/g, ''); 
+  }).filter(Boolean);
+
+  const selectIndex = upperQuery.indexOf('SELECT');
+  const fromIndex = upperQuery.indexOf('FROM');
+  if (selectIndex !== -1 && fromIndex !== -1 && fromIndex > selectIndex) {
+    const selectClause = query.substring(selectIndex + 6, fromIndex).trim();
+    const selectItems = selectClause.split(',');
+    
+    const aliasMap: Record<string, string> = {};
+    
+    selectItems.forEach(item => {
+      const trimmed = item.trim();
+      const match = trimmed.match(/(.+?)\s+AS\s+(\w+)\s*$/i) || trimmed.match(/(.+?)\s+(\w+)\s*$/);
+      if (match) {
+        const expr = match[1].trim();
+        const alias = match[2].trim().replace(/['"`\[\]]/g, '');
+        let baseExpr = expr;
+        if (baseExpr.includes('.')) baseExpr = baseExpr.split('.').pop() || baseExpr;
+        baseExpr = baseExpr.replace(/['"`\[\]]/g, '').trim().toLowerCase();
+        
+        aliasMap[baseExpr] = alias;
+      }
+    });
+
+    return orderCols.map(col => {
+      const lowerCol = col.toLowerCase();
+      if (aliasMap[lowerCol]) {
+        return aliasMap[lowerCol];
+      }
+      return col;
+    });
+  }
+
+  return orderCols;
 };
