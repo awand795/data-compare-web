@@ -117,3 +117,5 @@ CREATE TABLE IF NOT EXISTS templates (
     custom_query_target TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS query_primary_keys TEXT;

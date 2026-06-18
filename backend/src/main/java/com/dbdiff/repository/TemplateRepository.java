@@ -28,6 +28,7 @@ public class TemplateRepository {
             t.setTableMappings(rs.getString("table_mappings"));
             t.setCustomQuerySource(rs.getString("custom_query_source"));
             t.setCustomQueryTarget(rs.getString("custom_query_target"));
+            t.setQueryPrimaryKeys(rs.getString("query_primary_keys"));
             if (rs.getTimestamp("created_at") != null) {
                 t.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
             }
@@ -45,16 +46,17 @@ public class TemplateRepository {
     }
 
     public void save(Template t) {
-        String sql = "INSERT INTO templates (id, name, app_mode, source_connection_id, target_connection_id, table_mappings, custom_query_source, custom_query_target) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
+        String sql = "INSERT INTO templates (id, name, app_mode, source_connection_id, target_connection_id, table_mappings, custom_query_source, custom_query_target, query_primary_keys) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                      "ON CONFLICT (id) DO UPDATE SET " +
                      "name = EXCLUDED.name, app_mode = EXCLUDED.app_mode, " +
                      "source_connection_id = EXCLUDED.source_connection_id, " +
                      "target_connection_id = EXCLUDED.target_connection_id, " +
                      "table_mappings = EXCLUDED.table_mappings, " +
                      "custom_query_source = EXCLUDED.custom_query_source, " +
-                     "custom_query_target = EXCLUDED.custom_query_target";
-        jdbcTemplate.update(sql, t.getId(), t.getName(), t.getAppMode(), t.getSourceConnectionId(), t.getTargetConnectionId(), t.getTableMappings(), t.getCustomQuerySource(), t.getCustomQueryTarget());
+                     "custom_query_target = EXCLUDED.custom_query_target, " +
+                     "query_primary_keys = EXCLUDED.query_primary_keys";
+        jdbcTemplate.update(sql, t.getId(), t.getName(), t.getAppMode(), t.getSourceConnectionId(), t.getTargetConnectionId(), t.getTableMappings(), t.getCustomQuerySource(), t.getCustomQueryTarget(), t.getQueryPrimaryKeys());
     }
 
     public void deleteById(String id) {

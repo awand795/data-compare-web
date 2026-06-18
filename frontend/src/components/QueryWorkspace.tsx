@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import {
   Play, ArrowLeftRight, Loader2, Database, Copy, Check,
-  Download, RefreshCw, ChevronDown, Maximize, Minimize
+  Download, RefreshCw, ChevronDown, Maximize, Minimize,
+  Key, X
 } from 'lucide-react';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import axios from 'axios';
@@ -43,6 +44,7 @@ export const QueryWorkspace: React.FC = () => {
   const [workspaceDiffResult, setWorkspaceDiffResult] = useState<any>({ columns: [], rows: [], summary: null });
   const [comparing, setComparing] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'DIFFERENT' | 'SOURCE_ONLY' | 'TARGET_ONLY' | 'IDENTICAL'>('ALL');
+  const [showPrimaryKeyModal, setShowPrimaryKeyModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenPanel, setFullscreenPanel] = useState<'source' | 'target' | 'diff' | null>(null);
   const [returnMatchedRows, setReturnMatchedRows] = useState(true);
@@ -599,19 +601,60 @@ export const QueryWorkspace: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-start xl:justify-end">
             <TemplateManager appMode="query" />
             {!focusedMappingId && (
-              <div className="flex items-center gap-1.5 bg-bg-input px-2 py-1.5 rounded-md border border-border-input h-[34px]">
-                <input
-                  type="text"
-                  placeholder="Primary Keys (Optional)... e.g. id, code"
-                  value={queryPrimaryKeys}
-                  onChange={e => setQueryPrimaryKeys(e.target.value)}
-                  className="bg-transparent border-none outline-none text-[12px] font-mono text-text-main placeholder-text-muted/50 w-[200px] sm:w-[250px]"
-                />
-              </div>
+              <button
+                onClick={() => setShowPrimaryKeyModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-bg-hover text-text-main text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
+                title="Set Primary Keys"
+              >
+                <Key className="w-3.5 h-3.5 text-blue-500" />
+                Primary Keys
+                {queryPrimaryKeys.trim() && (
+                  <span className="ml-1 bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                    {queryPrimaryKeys.split(',').length}
+                  </span>
+                )}
+              </button>
             )}
           </div>
         </div>
       </div>
+      
+      {showPrimaryKeyModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-bg-main w-full max-w-sm rounded-xl shadow-2xl border border-border-main flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-border-main">
+              <h3 className="text-lg font-bold text-text-main flex items-center gap-2">
+                <Key className="w-5 h-5 text-blue-500" />
+                Set Primary Keys
+              </h3>
+              <button onClick={() => setShowPrimaryKeyModal(false)} className="p-1 hover:bg-bg-hover rounded text-text-muted transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4">
+              <label className="block text-sm font-medium text-text-muted mb-1.5">Primary Keys (comma-separated)</label>
+              <input
+                autoFocus
+                type="text"
+                placeholder="e.g. id, code"
+                value={queryPrimaryKeys}
+                onChange={e => setQueryPrimaryKeys(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && setShowPrimaryKeyModal(false)}
+                className="w-full px-3 py-2 bg-bg-input border border-border-input rounded-md text-sm text-text-main font-mono outline-none focus:border-blue-500 transition-colors"
+              />
+              <p className="text-xs text-text-muted mt-2">These keys will be used to accurately match rows during comparison.</p>
+            </div>
+            <div className="p-4 border-t border-border-main bg-bg-panel flex justify-end rounded-b-xl">
+              <button 
+                onClick={() => setShowPrimaryKeyModal(false)}
+                className="px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-md transition-colors shadow-lg shadow-blue-500/20"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
 
       <div className="flex-1 min-h-0 relative">

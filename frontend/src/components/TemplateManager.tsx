@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore, type Template } from '../store/useAppStore';
-import { Save, Copy, FolderOpen, X, Trash2, Search } from 'lucide-react';
+import { Save, Copy, FolderOpen, X, Trash2, Search, Edit2, Check } from 'lucide-react';
 
 interface Props {
   appMode: 'data' | 'query';
@@ -20,6 +20,9 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
   
   const [newTemplateName, setNewTemplateName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   const filteredTemplates = templates.filter(t => t.appMode === appMode);
   const searchedTemplates = filteredTemplates.filter(t => 
@@ -167,20 +170,79 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
               ) : (
                 <div className="grid gap-2">
                   {searchedTemplates.map(t => (
-                    <div key={t.id} className="flex items-center justify-between p-3 rounded-lg border border-border-item hover:border-blue-500/50 bg-bg-panel hover:bg-blue-500/5 group cursor-pointer transition-colors" onClick={() => handleLoad(t)}>
-                      <div className="flex flex-col">
-                        <span className="font-bold text-sm text-text-main group-hover:text-blue-500 transition-colors">{t.name}</span>
-                        <span className="text-xs text-text-muted mt-0.5">
-                          {appMode === 'data' ? `${t.tableMappings?.length || 0} mappings` : 'Custom Query'}
-                        </span>
+                    <div key={t.id} className="flex items-center justify-between p-3 rounded-lg border border-border-item hover:border-blue-500/50 bg-bg-panel hover:bg-blue-500/5 group cursor-pointer transition-colors" onClick={() => { if (editingTemplateId !== t.id) handleLoad(t); }}>
+                      <div className="flex flex-col w-full pr-4">
+                        {editingTemplateId === t.id ? (
+                          <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                            <input
+                              autoFocus
+                              type="text"
+                              value={editingName}
+                              onChange={e => setEditingName(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  if (editingName.trim() && editingName !== t.name) {
+                                    updateTemplate(t.id, { name: editingName.trim() });
+                                    useAppStore.getState().addToast({ type: 'success', title: 'Template Renamed', message: 'Name updated.' });
+                                  }
+                                  setEditingTemplateId(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingTemplateId(null);
+                                }
+                              }}
+                              className="px-2 py-1 bg-bg-input border border-border-input rounded text-sm text-text-main outline-none focus:border-blue-500 w-full"
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (editingName.trim() && editingName !== t.name) {
+                                  updateTemplate(t.id, { name: editingName.trim() });
+                                  useAppStore.getState().addToast({ type: 'success', title: 'Template Renamed', message: 'Name updated.' });
+                                }
+                                setEditingTemplateId(null);
+                              }}
+                              className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded transition-colors"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingTemplateId(null); }}
+                              className="p-1.5 text-text-muted hover:bg-bg-hover rounded transition-colors"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="font-bold text-sm text-text-main group-hover:text-blue-500 transition-colors">{t.name}</span>
+                            <span className="text-xs text-text-muted mt-0.5">
+                              {appMode === 'data' ? `${t.tableMappings?.length || 0} mappings` : 'Custom Query'}
+                            </span>
+                          </>
+                        )}
                       </div>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); removeTemplate(t.id); }}
-                        className="p-2 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded transition-colors opacity-0 group-hover:opacity-100"
-                        title="Delete template"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {editingTemplateId !== t.id && (
+                          <button 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              setEditingTemplateId(t.id);
+                              setEditingName(t.name);
+                            }}
+                            className="p-2 text-text-muted hover:text-blue-500 hover:bg-blue-500/10 rounded transition-colors"
+                            title="Edit name"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); removeTemplate(t.id); }}
+                          className="p-2 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                          title="Delete template"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

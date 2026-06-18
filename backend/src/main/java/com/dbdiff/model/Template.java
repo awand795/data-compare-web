@@ -11,6 +11,7 @@ public class Template {
     private String tableMappings; // JSON string
     private String customQuerySource;
     private String customQueryTarget;
+    private String queryPrimaryKeys;
     private LocalDateTime createdAt;
 
     public String getId() { return id; }
@@ -29,6 +30,8 @@ public class Template {
     public void setCustomQuerySource(String customQuerySource) { this.customQuerySource = customQuerySource; }
     public String getCustomQueryTarget() { return customQueryTarget; }
     public void setCustomQueryTarget(String customQueryTarget) { this.customQueryTarget = customQueryTarget; }
+    public String getQueryPrimaryKeys() { return queryPrimaryKeys; }
+    public void setQueryPrimaryKeys(String queryPrimaryKeys) { this.queryPrimaryKeys = queryPrimaryKeys; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
