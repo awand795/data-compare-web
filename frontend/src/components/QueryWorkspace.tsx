@@ -263,8 +263,7 @@ export const QueryWorkspace: React.FC = () => {
 
         if (extracted.length > 0) {
           pks = extracted;
-          console.log("Auto-detected Primary Keys from ORDER BY:", pks);
-          addToast(`Auto-detected Primary Keys: ${pks.join(', ')}`, 'info');
+          addToast({ type: 'info', title: 'Smart Auto-Detect', message: `Auto-detected Primary Keys: ${pks.join(', ')}` });
         }
       }
     }
