@@ -909,6 +909,14 @@ public class DataComparisonService {
             } catch (Exception e) { return false; }
         }
         
+        // Boolean vs Number (e.g., MySQL TINYINT vs Postgres BOOLEAN)
+        if (a instanceof Boolean && b instanceof Number) {
+            return ((Boolean) a) ? ((Number) b).intValue() == 1 : ((Number) b).intValue() == 0;
+        }
+        if (b instanceof Boolean && a instanceof Number) {
+            return ((Boolean) b) ? ((Number) a).intValue() == 1 : ((Number) a).intValue() == 0;
+        }
+
         String strA = a.toString().trim();
         String strB = b.toString().trim();
         if (strA.equalsIgnoreCase(strB)) return true;
@@ -922,12 +930,18 @@ public class DataComparisonService {
             long epoch = epochA != Long.MIN_VALUE ? epochA : epochB;
             String dateStr = epochA != Long.MIN_VALUE ? strB : strA;
             if (epoch != Long.MIN_VALUE) {
-                for (java.time.format.DateTimeFormatter fmt : DT_FORMATTERS) {
-                    try {
-                        long dateMillis = java.time.LocalDateTime.parse(dateStr, fmt)
-                            .atZone(java.time.ZoneId.of("UTC")).toInstant().toEpochMilli();
-                        if (epoch == dateMillis) return true;
-                    } catch (Exception ignored) {}
+                long parsedEpoch = tryParseDateString(dateStr);
+                if (parsedEpoch != Long.MIN_VALUE && epoch == parsedEpoch) return true;
+            }
+        }
+        
+        // Two Strings that look like Dates (e.g. "2026-06-18 10:00:00.0" vs "2026-06-18 10:00:00")
+        if (a instanceof String && b instanceof String && strA.length() >= 10 && strB.length() >= 10) {
+            if (Character.isDigit(strA.charAt(0)) && Character.isDigit(strB.charAt(0))) {
+                long epochA = tryParseDateString(strA);
+                if (epochA != Long.MIN_VALUE) {
+                    long epochB = tryParseDateString(strB);
+                    if (epochA == epochB) return true;
                 }
             }
         }
@@ -1097,5 +1111,14 @@ public class DataComparisonService {
         } catch (Exception e) {
             return Long.MIN_VALUE;
         }
+    }
+
+    private long tryParseDateString(String s) {
+        for (java.time.format.DateTimeFormatter fmt : DT_FORMATTERS) {
+            try {
+                return java.time.LocalDateTime.parse(s, fmt).atZone(java.time.ZoneId.of("UTC")).toInstant().toEpochMilli();
+            } catch (Exception ignored) {}
+        }
+        return Long.MIN_VALUE;
     }
 }
