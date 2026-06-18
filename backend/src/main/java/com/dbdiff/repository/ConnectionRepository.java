@@ -10,6 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Base64;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
 
 @Repository
 public class ConnectionRepository {
@@ -29,14 +30,7 @@ public class ConnectionRepository {
             c.setDatabase(rs.getString("database_name"));
             c.setUsername(rs.getString("username"));
             // Password stored base64-encoded from frontend; decode when loading
-            String rawPwd = rs.getString("password");
-            if (rawPwd != null) {
-                try {
-                    c.setPassword(new String(Base64.getDecoder().decode(rawPwd)));
-                } catch (Exception e) {
-                    c.setPassword(rawPwd); // not base64, use as-is
-                }
-            }
+            c.setPassword(decodeOrKeepRaw(rs.getString("password")));
             c.setSchema(rs.getString("schema_name"));
             c.setSslMode(rs.getString("ssl_mode"));
             c.setSslCaFile(rs.getString("ssl_ca_file"));
@@ -47,32 +41,9 @@ public class ConnectionRepository {
             c.setSshPort(rs.getObject("ssh_port") != null ? rs.getInt("ssh_port") : null);
             c.setSshUsername(rs.getString("ssh_username"));
             c.setSshAuthMode(rs.getString("ssh_auth_mode"));
-            String rawSshPwd = rs.getString("ssh_password");
-            if (rawSshPwd != null) {
-                try {
-                    c.setSshPassword(new String(Base64.getDecoder().decode(rawSshPwd)));
-                } catch (Exception e) {
-                    c.setSshPassword(rawSshPwd);
-                }
-            }
-
-            String rawSshKey = rs.getString("ssh_key_file");
-            if (rawSshKey != null) {
-                try {
-                    c.setSshKeyFile(new String(Base64.getDecoder().decode(rawSshKey)));
-                } catch (Exception e) {
-                    c.setSshKeyFile(rawSshKey);
-                }
-            }
-
-            String rawSshPassphrase = rs.getString("ssh_passphrase");
-            if (rawSshPassphrase != null) {
-                try {
-                    c.setSshPassphrase(new String(Base64.getDecoder().decode(rawSshPassphrase)));
-                } catch (Exception e) {
-                    c.setSshPassphrase(rawSshPassphrase);
-                }
-            }
+            c.setSshPassword(decodeOrKeepRaw(rs.getString("ssh_password")));
+            c.setSshKeyFile(decodeOrKeepRaw(rs.getString("ssh_key_file")));
+            c.setSshPassphrase(decodeOrKeepRaw(rs.getString("ssh_passphrase")));
             c.setConnectionTimeout(rs.getObject("connection_timeout") != null ? rs.getInt("connection_timeout") : null);
             c.setSocketTimeout(rs.getObject("socket_timeout") != null ? rs.getInt("socket_timeout") : null);
             c.setFetchSize(rs.getObject("fetch_size") != null ? rs.getInt("fetch_size") : null);
@@ -116,5 +87,24 @@ public class ConnectionRepository {
 
     public void deleteById(String id) {
         jdbcTemplate.update("DELETE FROM connections WHERE id = ?", id);
+    }
+
+    private String decodeOrKeepRaw(String raw) {
+        if (raw == null) return null;
+        try {
+            byte[] decoded = Base64.getDecoder().decode(raw);
+            String decodedStr = new String(decoded, StandardCharsets.UTF_8);
+            if (decodedStr.contains("\uFFFD")) {
+                return raw; // Invalid UTF-8 sequence, so it's likely a raw password that happened to be valid Base64 length
+            }
+            for (char ch : decodedStr.toCharArray()) {
+                if (ch < 32 && ch != '\t' && ch != '\n' && ch != '\r') {
+                    return raw; // Contains unprintable control characters, likely a raw password
+                }
+            }
+            return decodedStr;
+        } catch (Exception e) {
+            return raw;
+        }
     }
 }

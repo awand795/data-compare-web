@@ -312,101 +312,105 @@ public class DynamicSchedulerService {
             int diffs = result.getDifferentCount() + result.getSourceOnlyCount() + result.getTargetOnlyCount();
             logger.info("Job {} finished. Total diffs: {}", schedule.getName(), diffs);
             
-            if (diffs > 0) {
-                logger.info("Differences detected for job {}. Checking notification channels...", schedule.getName());
-                logger.debug("Telegram Channel ID: {}", schedule.getTelegramChannelId());
-                logger.debug("Discord Channel ID: {}", schedule.getDiscordChannelId());
+            boolean hasDiffs = diffs > 0;
+            logger.info("Checking notification channels for job {}...", schedule.getName());
+            logger.debug("Telegram Channel ID: {}", schedule.getTelegramChannelId());
+            logger.debug("Discord Channel ID: {}", schedule.getDiscordChannelId());
 
-                // Build per-table breakdown
-                StringBuilder tableDetailsHtml = new StringBuilder();
-                StringBuilder tableDetailsDiscord = new StringBuilder();
-                tableDetailsHtml.append("\n<b>📋 Per-Table Breakdown:</b>\n");
-                tableDetailsDiscord.append("\n**📋 Per-Table Breakdown:**\n");
-                int shownTables = 0;
-                int maxTablesToShow = 20;
-                for (Map<String, Object> td : executionDetails) {
-                    if (shownTables >= maxTablesToShow) {
-                        int remaining = executionDetails.size() - maxTablesToShow;
-                        tableDetailsHtml.append(String.format("  ... and %d more tables (see dashboard)\n", remaining));
-                        tableDetailsDiscord.append(String.format("  ... and %d more tables (see dashboard)\n", remaining));
-                        break;
-                    }
-                    shownTables++;
-                    if (td.containsKey("error")) {                        String errTable = (String) td.getOrDefault("tableName", "unknown");
-                        tableDetailsHtml.append(String.format(
-                                "  ❌ <i>%s</i>: ERROR - %s\n", errTable, td.get("error")));
-                        tableDetailsDiscord.append(String.format(
-                                "  ❌ *%s*: ERROR - %s\n", errTable, td.get("error")));
-                        continue;
-                    }
-                    String tn = (String) td.getOrDefault("tableName", "unknown");
-                    int match = ((Number) td.getOrDefault("match", 0)).intValue();
-                    int diff = ((Number) td.getOrDefault("different", 0)).intValue();
-                    int srcOnly = ((Number) td.getOrDefault("sourceOnly", 0)).intValue();
-                    int tgtOnly = ((Number) td.getOrDefault("targetOnly", 0)).intValue();
-                    int perTableDiff = diff + srcOnly + tgtOnly;
-
-                    if (perTableDiff > 0) {
-                        tableDetailsHtml.append(String.format(
-                                "  🔴 <i>%s</i> — %d different, %d source-only, %d target-only (match: %d)\n",
-                                tn, diff, srcOnly, tgtOnly, match));
-                        tableDetailsDiscord.append(String.format(
-                                "  🔴 *%s* — %d different, %d source-only, %d target-only (match: %d)\n",
-                                tn, diff, srcOnly, tgtOnly, match));
-                    } else {
-                        tableDetailsHtml.append(String.format("  ✅ <i>%s</i> — %d rows match, no differences\n", tn, match));
-                        tableDetailsDiscord.append(String.format("  ✅ *%s* — %d rows match, no differences\n", tn, match));
-                    }
+            // Build per-table breakdown
+            StringBuilder tableDetailsHtml = new StringBuilder();
+            StringBuilder tableDetailsDiscord = new StringBuilder();
+            tableDetailsHtml.append("\n<b>📋 Per-Table Breakdown:</b>\n");
+            tableDetailsDiscord.append("\n**📋 Per-Table Breakdown:**\n");
+            int shownTables = 0;
+            int maxTablesToShow = 20;
+            for (Map<String, Object> td : executionDetails) {
+                if (shownTables >= maxTablesToShow) {
+                    int remaining = executionDetails.size() - maxTablesToShow;
+                    tableDetailsHtml.append(String.format("  ... and %d more tables (see dashboard)\n", remaining));
+                    tableDetailsDiscord.append(String.format("  ... and %d more tables (see dashboard)\n", remaining));
+                    break;
                 }
-
-                String message = String.format(
-                        "<b>🚨 Data Mismatch Detected!</b>\n\n" +
-                        "<b>Job:</b> <i>%s</i>\n" +
-                        "<b>Run Time:</b> %s\n" +
-                        "<b>Status:</b> ⚠️ %d differences found\n\n" +
-                        "<b>📊 Total Summary:</b>\n" +
-                        "  ✅ Match: %d\n" +
-                        "  🔴 Different: %d\n" +
-                        "  🔵 Source Only: %d\n" +
-                        "  🟡 Target Only: %d\n" +
-                        "%s\n" +
-                        "━━━━━━━━━━━━━━━━━━━\n" +
-                        "<i>Check the Dashboard for full details.</i>",
-                        schedule.getName(),
-                        result.getRunTime().toString().replace("T", " "),
-                        diffs,
-                        result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount(),
-                        tableDetailsHtml.toString());
-
-                String discordMessage = String.format(
-                        "🚨 **Data Mismatch Detected!**\n\n" +
-                        "**Job:** *%s*\n" +
-                        "**Run Time:** %s\n" +
-                        "**Status:** ⚠️ %d differences found\n\n" +
-                        "**📊 Total Summary:**\n" +
-                        "  ✅ Match: %d\n" +
-                        "  🔴 Different: %d\n" +
-                        "  🔵 Source Only: %d\n" +
-                        "  🟡 Target Only: %d\n" +
-                        "%s\n" +
-                        "━━━━━━━━━━━━━━━━━━━\n" +
-                        "*Check the Dashboard for full details.*",
-                        schedule.getName(),
-                        result.getRunTime().toString().replace("T", " "),
-                        diffs,
-                        result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount(),
-                        tableDetailsDiscord.toString());
-
-                if (schedule.getTelegramChannelId() != null && !schedule.getTelegramChannelId().isEmpty()) {
-                    logger.info("Sending to Telegram channel: {}", schedule.getTelegramChannelId());
-                    notificationService.sendToChannel(schedule.getTelegramChannelId(), message);
+                shownTables++;
+                if (td.containsKey("error")) {                        String errTable = (String) td.getOrDefault("tableName", "unknown");
+                    tableDetailsHtml.append(String.format(
+                            "  ❌ <i>%s</i>: ERROR - %s\n", errTable, td.get("error")));
+                    tableDetailsDiscord.append(String.format(
+                            "  ❌ *%s*: ERROR - %s\n", errTable, td.get("error")));
+                    continue;
                 }
-                if (schedule.getDiscordChannelId() != null && !schedule.getDiscordChannelId().isEmpty()) {
-                    logger.info("Sending to Discord channel: {}", schedule.getDiscordChannelId());
-                    notificationService.sendToChannel(schedule.getDiscordChannelId(), discordMessage);
+                String tn = (String) td.getOrDefault("tableName", "unknown");
+                int match = ((Number) td.getOrDefault("match", 0)).intValue();
+                int diff = ((Number) td.getOrDefault("different", 0)).intValue();
+                int srcOnly = ((Number) td.getOrDefault("sourceOnly", 0)).intValue();
+                int tgtOnly = ((Number) td.getOrDefault("targetOnly", 0)).intValue();
+                int perTableDiff = diff + srcOnly + tgtOnly;
+
+                if (perTableDiff > 0) {
+                    tableDetailsHtml.append(String.format(
+                            "  🔴 <i>%s</i> — %d different, %d source-only, %d target-only (match: %d)\n",
+                            tn, diff, srcOnly, tgtOnly, match));
+                    tableDetailsDiscord.append(String.format(
+                            "  🔴 *%s* — %d different, %d source-only, %d target-only (match: %d)\n",
+                            tn, diff, srcOnly, tgtOnly, match));
+                } else {
+                    tableDetailsHtml.append(String.format("  ✅ <i>%s</i> — %d rows match, no differences\n", tn, match));
+                    tableDetailsDiscord.append(String.format("  ✅ *%s* — %d rows match, no differences\n", tn, match));
                 }
-            } else {
-                logger.info("No differences detected for job {}. Skipping notifications.", schedule.getName());
+            }
+
+            String titleHtml = hasDiffs ? "<b>🚨 Data Mismatch Detected!</b>" : "<b>✅ All Data Match!</b>";
+            String titleDiscord = hasDiffs ? "🚨 **Data Mismatch Detected!**" : "✅ **All Data Match!**";
+            String statusHtml = hasDiffs ? String.format("⚠️ %d differences found", diffs) : "✅ No differences found";
+            String statusDiscord = hasDiffs ? String.format("⚠️ %d differences found", diffs) : "✅ No differences found";
+
+            String message = String.format(
+                    "%s\n\n" +
+                    "<b>Job:</b> <i>%s</i>\n" +
+                    "<b>Run Time:</b> %s\n" +
+                    "<b>Status:</b> %s\n\n" +
+                    "<b>📊 Total Summary:</b>\n" +
+                    "  ✅ Match semua: %d\n" +
+                    "  🔴 Different: %d\n" +
+                    "  🔵 Source Only: %d\n" +
+                    "  🟡 Target Only: %d\n" +
+                    "%s\n" +
+                    "━━━━━━━━━━━━━━━━━━━\n" +
+                    "<i>Check the Dashboard for full details.</i>",
+                    titleHtml,
+                    schedule.getName(),
+                    result.getRunTime().toString().replace("T", " "),
+                    statusHtml,
+                    result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount(),
+                    tableDetailsHtml.toString());
+
+            String discordMessage = String.format(
+                    "%s\n\n" +
+                    "**Job:** *%s*\n" +
+                    "**Run Time:** %s\n" +
+                    "**Status:** %s\n\n" +
+                    "**📊 Total Summary:**\n" +
+                    "  ✅ Match semua: %d\n" +
+                    "  🔴 Different: %d\n" +
+                    "  🔵 Source Only: %d\n" +
+                    "  🟡 Target Only: %d\n" +
+                    "%s\n" +
+                    "━━━━━━━━━━━━━━━━━━━\n" +
+                    "*Check the Dashboard for full details.*",
+                    titleDiscord,
+                    schedule.getName(),
+                    result.getRunTime().toString().replace("T", " "),
+                    statusDiscord,
+                    result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount(),
+                    tableDetailsDiscord.toString());
+
+            if (schedule.getTelegramChannelId() != null && !schedule.getTelegramChannelId().isEmpty()) {
+                logger.info("Sending to Telegram channel: {}", schedule.getTelegramChannelId());
+                notificationService.sendToChannel(schedule.getTelegramChannelId(), message);
+            }
+            if (schedule.getDiscordChannelId() != null && !schedule.getDiscordChannelId().isEmpty()) {
+                logger.info("Sending to Discord channel: {}", schedule.getDiscordChannelId());
+                notificationService.sendToChannel(schedule.getDiscordChannelId(), discordMessage);
             }
         } catch (Exception e) {
             logger.error("Error executing job: {}", e.getMessage(), e);

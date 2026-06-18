@@ -74,10 +74,10 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                   <tr>
                     <th className="py-3 px-4 font-bold border-b border-border-main w-8"></th>
                     <th className="py-3 px-4 font-bold border-b border-border-main">Run Time</th>
-                    <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Matches</th>
-                    <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Diffs</th>
-                    <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Src Only</th>
-                    <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Tgt Only</th>
+                    <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Match semua</th>
+                    <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Different</th>
+                    <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Source Only</th>
+                    <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Target Only</th>
                     <th className="py-3 px-4 font-bold border-b border-border-main">Status</th>
                   </tr>
                 </thead>
@@ -116,13 +116,13 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                               {r.matchCount}
                             </span>
                           </td>
+                          <td className={clsx("py-3 px-4 text-center font-bold", r.sourceOnlyCount > 0 ? "text-orange-500" : "text-text-muted")}>{r.sourceOnlyCount}</td>
+                          <td className={clsx("py-3 px-4 text-center font-bold", r.targetOnlyCount > 0 ? "text-blue-500" : "text-text-muted")}>{r.targetOnlyCount}</td>
                           <td className="py-3 px-4 text-center">
                             <span className={clsx("px-2 py-0.5 rounded-full font-bold", r.differentCount > 0 ? "bg-red-500/10 text-red-500" : "bg-bg-hover text-text-muted")}>
                               {r.differentCount}
                             </span>
                           </td>
-                          <td className={clsx("py-3 px-4 text-center font-bold", r.sourceOnlyCount > 0 ? "text-orange-500" : "text-text-muted")}>{r.sourceOnlyCount}</td>
-                          <td className={clsx("py-3 px-4 text-center font-bold", r.targetOnlyCount > 0 ? "text-blue-500" : "text-text-muted")}>{r.targetOnlyCount}</td>
                           <td className="py-3 px-4">
                             {r.errorMessage ? (
                               <div className="flex items-center gap-1.5 text-red-400 group relative">
@@ -148,10 +148,10 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                                   <thead>
                                     <tr className="text-text-muted border-b border-border-item bg-bg-panel/50">
                                       <th className="py-2 px-3 font-bold">Table Name</th>
-                                      <th className="py-2 px-3 font-bold text-center">Match</th>
-                                      <th className="py-2 px-3 font-bold text-center">Diff</th>
-                                      <th className="py-2 px-3 font-bold text-center">Src Only</th>
-                                      <th className="py-2 px-3 font-bold text-center">Tgt Only</th>
+                                      <th className="py-2 px-3 font-bold text-center">Match semua</th>
+                                      <th className="py-2 px-3 font-bold text-center">Different</th>
+                                      <th className="py-2 px-3 font-bold text-center">Source Only</th>
+                                      <th className="py-2 px-3 font-bold text-center">Target Only</th>
                                       <th className="py-2 px-3 font-bold text-center">Actions</th>
                                     </tr>
                                   </thead>
@@ -180,7 +180,7 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                                             <span className="text-red-400 italic text-[10px]">{td.error}</span>
                                           ) : (td.different === 0 && td.sourceOnly === 0 && td.targetOnly === 0) ? (
                                             <span className="flex items-center gap-1 mx-auto justify-center text-emerald-500 font-bold text-[10px]">
-                                              <CheckCircle className="w-3 h-3" /> Identical
+                                              <CheckCircle className="w-3 h-3" /> Match semua
                                             </span>
                                           ) : (
                                             <button 

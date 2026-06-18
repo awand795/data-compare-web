@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore, type Connection } from '../store/useAppStore';
 import { useExplorerStore, type ExplorerNode, type ExplorerNodeType } from '../store/useExplorerStore';
 import { ConnectionDialog } from './ConnectionDialog';
-import { Database, Plus, Trash2, Search, ChevronRight, ChevronDown, Table as TableIcon, LayoutList, FileCode2, Link as LinkIcon, Key, Hash, RefreshCw, Server, Settings2, Play } from 'lucide-react';
+import { Database, Plus, Trash2, Search, ChevronRight, ChevronDown, Table as TableIcon, LayoutList, FileCode2, Link as LinkIcon, Key, Hash, RefreshCw, Server, Settings2, Play, Edit2 } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
 
@@ -18,6 +18,7 @@ export const DatabaseExplorer: React.FC = () => {
   const { nodes, upsertNode, patchNode, removeNode, toggleExpand, setLoading, setLoaded, selectedNodeId, setSelectedNodeId } = useExplorerStore();
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Context Menu State
@@ -264,7 +265,10 @@ export const DatabaseExplorer: React.FC = () => {
                </button>
              )}
              {node.type === 'server' && (
-               <button onClick={(e) => { e.stopPropagation(); showAlert({ title: 'Delete Connection', message: `Are you sure you want to delete "${node.name}"? This action cannot be undone.`, type: 'error', confirmLabel: 'Delete', onConfirm: () => { removeConnection(node.id); removeNode(node.id); } }); }} className="text-text-muted hover:text-red-500 p-0.5" title="Remove Connection"><Trash2 className="w-3 h-3" /></button>
+               <>
+                 <button onClick={(e) => { e.stopPropagation(); setEditingConnectionId(node.id); setIsDialogOpen(true); }} className="text-text-muted hover:text-blue-500 p-0.5" title="Edit Connection"><Edit2 className="w-3 h-3" /></button>
+                 <button onClick={(e) => { e.stopPropagation(); showAlert({ title: 'Delete Connection', message: `Are you sure you want to delete "${node.name}"? This action cannot be undone.`, type: 'error', confirmLabel: 'Delete', onConfirm: () => { removeConnection(node.id); removeNode(node.id); } }); }} className="text-text-muted hover:text-red-500 p-0.5" title="Remove Connection"><Trash2 className="w-3 h-3" /></button>
+               </>
              )}
           </div>
         </div>
@@ -289,7 +293,7 @@ export const DatabaseExplorer: React.FC = () => {
         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
           <Database className="w-3.5 h-3.5 text-blue-500" /> Explorer
         </span>
-        <button onClick={() => setIsDialogOpen(true)} className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-blue-500 transition-colors" title="New Connection">
+        <button onClick={() => { setEditingConnectionId(null); setIsDialogOpen(true); }} className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-blue-500 transition-colors" title="New Connection">
           <Plus className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -313,7 +317,7 @@ export const DatabaseExplorer: React.FC = () => {
           <div className="text-xs text-text-muted text-center py-8 px-3 flex flex-col items-center gap-3">
             <Server className="w-10 h-10 text-text-muted opacity-30" />
             <span className="text-[11px]">No connections yet.</span>
-            <button onClick={() => setIsDialogOpen(true)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-medium shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5">
+            <button onClick={() => { setEditingConnectionId(null); setIsDialogOpen(true); }} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-medium shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5">
               <Plus className="w-3.5 h-3.5" />
               Add your first connection
             </button>
@@ -352,7 +356,11 @@ export const DatabaseExplorer: React.FC = () => {
         </div>
       )}
 
-      <ConnectionDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} />
+      <ConnectionDialog 
+        isOpen={isDialogOpen} 
+        onClose={() => { setIsDialogOpen(false); setEditingConnectionId(null); }} 
+        editingConnection={editingConnectionId ? connections.find(c => c.id === editingConnectionId) : null}
+      />
     </div>
   );
 };

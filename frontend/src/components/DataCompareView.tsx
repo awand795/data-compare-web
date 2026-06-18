@@ -723,9 +723,9 @@ export const DataCompareView: React.FC = () => {
                       <th className="py-2 px-3">Target</th>
                       <th className="py-2 px-3 text-center">Status</th>
                       <th className="py-2 px-3 text-right">Diff</th>
-                      <th className="py-2 px-3 text-right">Src Only</th>
-                      <th className="py-2 px-3 text-right">Tgt Only</th>
-                      <th className="py-2 px-3 text-right">Match</th>
+                      <th className="py-2 px-3 text-right">Source Only</th>
+                      <th className="py-2 px-3 text-right">Target Only</th>
+                      <th className="py-2 px-3 text-right">Match semua</th>
                       <th className="py-2 px-3 text-center w-14">Actions</th>
                     </tr>
                   </thead>
@@ -814,11 +814,11 @@ export const DataCompareView: React.FC = () => {
                                   </span>
                                 : diff.totalDifferences > 0
                                   ? <span className="text-[11px] font-bold text-amber-500 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full">Different</span>
-                                  : <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">Identical</span>
+                                  : <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">Match semua</span>
                             ) : isSourceOnly ? (
-                              <span className="text-[11px] font-bold text-red-500 dark:text-red-400 bg-red-500/10 px-2.5 py-0.5 rounded-full">Src Only</span>
+                              <span className="text-[11px] font-bold text-red-500 dark:text-red-400 bg-red-500/10 px-2.5 py-0.5 rounded-full">Source Only</span>
                             ) : isTargetOnly ? (
-                              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">Tgt Only</span>
+                              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">Target Only</span>
                             ) : (
                               <span className="text-[11px] text-text-muted">—</span>
                             )}
@@ -873,9 +873,9 @@ export const DataCompareView: React.FC = () => {
                   {([
                     { id: 'ALL', label: 'All', count: focusedDiff?.rows.length || 0, color: '' },
                     { id: 'DIFFERENT', label: 'Different', count: focusedDiff?.differentCount || 0, color: 'text-amber-500 dark:text-amber-400' },
-                    { id: 'SOURCE_ONLY', label: 'Src Only', count: focusedDiff?.sourceOnlyCount || 0, color: 'text-red-500 dark:text-red-400' },
-                    { id: 'TARGET_ONLY', label: 'Tgt Only', count: focusedDiff?.targetOnlyCount || 0, color: 'text-emerald-600 dark:text-emerald-400' },
-                    { id: 'IDENTICAL', label: 'Identical', count: focusedDiff?.matchCount || 0, color: '' },
+                    { id: 'SOURCE_ONLY', label: 'Source Only', count: focusedDiff?.sourceOnlyCount || 0, color: 'text-red-500 dark:text-red-400' },
+                    { id: 'TARGET_ONLY', label: 'Target Only', count: focusedDiff?.targetOnlyCount || 0, color: 'text-emerald-600 dark:text-emerald-400' },
+                    { id: 'IDENTICAL', label: 'Match semua', count: focusedDiff?.matchCount || 0, color: '' },
                   ] as { id: string, label: string, count: number, color: string }[]).map(tab => (
                     <button
                       key={tab.id}

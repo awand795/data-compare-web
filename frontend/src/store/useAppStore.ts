@@ -185,6 +185,7 @@ type AppState = {
   connections: Connection[];
   setConnections: (conns: Connection[]) => void;
   addConnection: (conn: Connection) => void;
+  updateConnection: (id: string, updates: Partial<Connection>) => void;
   removeConnection: (id: string) => void;
 
   sourceConnectionId: string | null;
@@ -274,6 +275,7 @@ type AppState = {
   schedules: ScheduleConfig[];
   setSchedules: (schedules: ScheduleConfig[]) => void;
   addSchedule: (schedule: ScheduleConfig) => void;
+  updateSchedule: (id: string, updates: Partial<ScheduleConfig>) => void;
   updateScheduleStatus: (id: string, isActive: boolean) => void;
   runScheduleNow: (id: string) => void;
 
@@ -305,6 +307,14 @@ export const useAppStore = create<AppState>()(
       connections: [],
   setConnections: (conns) => set({ connections: conns }),
   addConnection: (conn) => set((state) => ({ connections: [...state.connections, conn] })),
+  updateConnection: (id, updates) => set((state) => {
+    const newConnections = state.connections.map(c => c.id === id ? { ...c, ...updates } : c);
+    const updated = newConnections.find(c => c.id === id);
+    if (updated) {
+      axios.put(`/api/connections/${id}`, updated).catch(err => console.error('Failed to update connection:', err));
+    }
+    return { connections: newConnections };
+  }),
   removeConnection: (id) => {
     axios.delete(`/api/connections/${id}`).catch(err => {
       console.error('Failed to delete connection on backend:', err);
@@ -553,6 +563,14 @@ export const useAppStore = create<AppState>()(
   schedules: [],
   setSchedules: (schedules) => set({ schedules }),
   addSchedule: (schedule) => set((state) => ({ schedules: [...state.schedules, schedule] })),
+  updateSchedule: (id, updates) => set((state) => {
+    const newSchedules = state.schedules.map(s => s.id === id ? { ...s, ...updates } : s);
+    const updated = newSchedules.find(s => s.id === id);
+    if (updated) {
+      axios.put(`/api/schedules/${id}`, updated).catch(err => console.error('Failed to update schedule:', err));
+    }
+    return { schedules: newSchedules };
+  }),
   updateScheduleStatus: async (id, isActive) => {
     console.log("[Toggle] Updating ID:", id, "to:", isActive);
     

@@ -65,6 +65,14 @@ public class ApiController {
         return ResponseEntity.ok(Map.of("success", true, "connection", details));
     }
 
+    @PutMapping("/connections/{id}")
+    public ResponseEntity<?> updateConnection(@PathVariable String id, @RequestBody ConnectionDetails details) {
+        details.setId(id);
+        connectionManagerService.evictConnection(id);
+        connectionRepository.save(details);
+        return ResponseEntity.ok(Map.of("success", true, "connection", details));
+    }
+
     @DeleteMapping("/connections/{id}")
     public ResponseEntity<?> deleteConnection(@PathVariable String id) {
         connectionManagerService.evictConnection(id);

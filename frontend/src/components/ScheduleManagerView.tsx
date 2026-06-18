@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Play, Plus, Clock, FileText, Settings, Database, RefreshCw, XCircle, MessageCircle, CheckSquare, Square, Trash2, LayoutList, Eye } from 'lucide-react';
+import { Play, Plus, Clock, FileText, Settings, Database, RefreshCw, XCircle, MessageCircle, CheckSquare, Square, Trash2, LayoutList, Eye, Edit, Save } from 'lucide-react';
 import { useAppStore, type ScheduleConfig, type TableMapping } from '../store/useAppStore';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
 import { ScheduleMappingModal } from './ScheduleMappingModal';
@@ -12,6 +12,7 @@ export const ScheduleManagerView: React.FC = () => {
     const { connections, addSchedule, schedules, updateScheduleStatus, runScheduleNow, notificationChannels, addToast } = useAppStore();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isProfilesModalOpen, setIsProfilesModalOpen] = useState(false);
+    const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
     const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
     const [viewingResultsJob, setViewingResultsJob] = useState<{id: string, name: string} | null>(null);
     const [expandedJobIds, setExpandedJobIds] = useState<string[]>([]);
@@ -153,10 +154,17 @@ export const ScheduleManagerView: React.FC = () => {
                 mappings: JSON.stringify(mappingsToSchedule),
             };
 
-            await axios.post('/api/schedules', payload);
-            addToast({ type: 'success', title: 'Job Created', message: `Successfully created grouped job: ${jobPrefix}` });
+            if (editingScheduleId) {
+                payload.id = editingScheduleId;
+                await axios.put(`/api/schedules/${editingScheduleId}`, payload);
+                addToast({ type: 'success', title: 'Job Updated', message: `Successfully updated job: ${jobPrefix}` });
+            } else {
+                await axios.post('/api/schedules', payload);
+                addToast({ type: 'success', title: 'Job Created', message: `Successfully created grouped job: ${jobPrefix}` });
+            }
             
             setIsFormOpen(false);
+            setEditingScheduleId(null);
             setTableMappings([]);
             setSelectedMappingIds([]);
             setSourceConnectionId('');
@@ -182,6 +190,31 @@ export const ScheduleManagerView: React.FC = () => {
     const openEditModal = (m: TableMapping) => {
         setEditingMapping(m);
         setIsMappingModalOpen(true);
+    };
+
+    const handleEditSchedule = (job: ScheduleConfig) => {
+        setEditingScheduleId(job.id);
+        setJobPrefix(job.name);
+        setSourceConnectionId(job.sourceConnectionId);
+        setTargetConnectionId(job.targetConnectionId);
+        setCronExpression(job.cronExpression);
+        setTelegramChannelId(job.telegramChannelId || '');
+        setDiscordChannelId(job.discordChannelId || '');
+        setSaveFullData(job.saveFullData || false);
+
+        if (job.mappings) {
+            try {
+                const parsed = typeof job.mappings === 'string' ? JSON.parse(job.mappings) : job.mappings;
+                setTableMappings(parsed);
+                setSelectedMappingIds(parsed.map((m: any) => m.id));
+            } catch (e) { console.error("Failed to parse mappings", e); }
+        } else {
+            setTableMappings([]);
+            setSelectedMappingIds([]);
+        }
+
+        setIsFormOpen(true);
+        setCurrentStep(1);
     };
 
     return (
@@ -289,6 +322,13 @@ export const ScheduleManagerView: React.FC = () => {
                                                 <td className="py-3 px-4 text-center">
                                                     <div className="flex items-center justify-center gap-1">
                                                         <button 
+                                                            onClick={() => handleEditSchedule(job)}
+                                                            className="p-1.5 text-text-muted hover:text-purple-400 hover:bg-purple-400/10 rounded transition-colors" 
+                                                            title="Edit Job"
+                                                        >
+                                                            <Edit className="w-4 h-4" />
+                                                        </button>
+                                                        <button 
                                                             onClick={() => setViewingResultsJob({id: job.id, name: job.name})}
                                                             className="p-1.5 text-text-muted hover:text-blue-400 hover:bg-blue-400/10 rounded transition-colors" 
                                                             title="View Execution History"
@@ -367,8 +407,8 @@ export const ScheduleManagerView: React.FC = () => {
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[680px] flex flex-col max-h-[90vh] overflow-hidden">
                         <div className="px-4 py-3 border-b border-border-main flex justify-between items-center shrink-0">
-                            <h2 className="font-bold text-sm flex items-center gap-2"><Clock className="w-4 h-4 text-purple-400"/> Create Scheduled Jobs</h2>
-                            <button onClick={() => setIsFormOpen(false)} className="p-1 text-text-muted hover:text-text-main hover:bg-bg-hover rounded transition-colors"><XCircle className="w-5 h-5"/></button>
+                            <h2 className="font-bold text-sm flex items-center gap-2"><Clock className="w-4 h-4 text-purple-400"/> {editingScheduleId ? 'Edit Scheduled Job' : 'Create Scheduled Jobs'}</h2>
+                            <button onClick={() => { setIsFormOpen(false); setEditingScheduleId(null); setTableMappings([]); }} className="p-1 text-text-muted hover:text-text-main hover:bg-bg-hover rounded transition-colors"><XCircle className="w-5 h-5"/></button>
                         </div>
 
                         {/* Multi-step indicator */}
@@ -427,7 +467,7 @@ export const ScheduleManagerView: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex justify-end gap-2 mt-2">
-                                        <button onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-xs font-semibold border border-orange-500/30 bg-orange-500/15 text-orange-500 hover:bg-orange-500/25 hover:text-orange-400 rounded-lg transition-colors">Cancel</button>
+                                        <button onClick={() => { setIsFormOpen(false); setEditingScheduleId(null); }} className="px-4 py-2 text-xs font-semibold border border-orange-500/30 bg-orange-500/15 text-orange-500 hover:bg-orange-500/25 hover:text-orange-400 rounded-lg transition-colors">Cancel</button>
                                         <button onClick={() => setCurrentStep(1)} disabled={!jobPrefix || !sourceConnectionId || !targetConnectionId} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
                                             Next: Mappings <span className="text-lg leading-none">→</span>
                                         </button>
@@ -576,9 +616,11 @@ export const ScheduleManagerView: React.FC = () => {
                                         <button onClick={() => setCurrentStep(1)} className="px-4 py-2 text-xs font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors flex items-center gap-1">
                                             <span className="text-lg leading-none">←</span> Back
                                         </button>
-                                        <button onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-xs font-semibold border border-orange-500/30 bg-orange-500/15 text-orange-500 hover:bg-orange-500/25 hover:text-orange-400 rounded-lg transition-colors">Cancel</button>
+                                        <button onClick={() => { setIsFormOpen(false); setEditingScheduleId(null); setTableMappings([]); }} className="px-5 py-2 text-xs font-bold text-text-muted hover:text-text-main">
+                                            Cancel
+                                        </button>
                                         <button onClick={handleSubmit} disabled={selectedMappingIds.length === 0} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
-                                            <Clock className="w-4 h-4" /> Save {selectedMappingIds.length} Job(s)
+                                            <Save className="w-4 h-4" /> {editingScheduleId ? 'Update Job' : 'Save Job'}
                                         </button>
                                     </div>
                                 </div>

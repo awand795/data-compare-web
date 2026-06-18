@@ -10,6 +10,7 @@ type TabType = 'general' | 'ssl' | 'ssh' | 'advanced';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  editingConnection?: Connection | null;
 }
 
 const DRIVERS = [
@@ -19,8 +20,8 @@ const DRIVERS = [
   { id: 'sqlserver', name: 'SQL Server', defaultPort: 1433, color: 'text-red-400', border: 'border-red-500/30', bgHover: 'hover:bg-red-500/10' },
 ];
 
-export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { addConnection, addToast } = useAppStore();
+export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConnection }) => {
+  const { addConnection, updateConnection, addToast } = useAppStore();
   const [step, setStep] = useState<1 | 2>(1);
   const [activeTab, setActiveTab] = useState<TabType>('general');
   const [showPassword, setShowPassword] = useState(false);
@@ -44,24 +45,28 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
   useEffect(() => {
     if (isOpen) {
-      setStep(1);
+      setStep(editingConnection ? 2 : 1);
       setTestStatus('idle');
       setTestDetails(null);
       setActiveTab('general');
-      setFormData({
-        type: 'postgresql',
-        port: 5432,
-        sslMode: 'disable',
-        useSsh: false,
-        sshAuthMode: 'password',
-        sshPort: 22,
-        connectionTimeout: 30,
-        socketTimeout: 0,
-        fetchSize: 1000,
-        readOnly: false
-      });
+      if (editingConnection) {
+        setFormData(editingConnection);
+      } else {
+        setFormData({
+          type: 'postgresql',
+          port: 5432,
+          sslMode: 'disable',
+          useSsh: false,
+          sshAuthMode: 'password',
+          sshPort: 22,
+          connectionTimeout: 30,
+          socketTimeout: 0,
+          fetchSize: 1000,
+          readOnly: false
+        });
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, editingConnection]);
 
   if (!isOpen) return null;
 
@@ -130,12 +135,19 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     if (secureData.sshPassphrase) secureData.sshPassphrase = btoa(secureData.sshPassphrase);
     if (secureData.sshKeyFile) secureData.sshKeyFile = btoa(secureData.sshKeyFile);
 
-    const encodedConn = { ...secureData, id: Date.now().toString() } as Connection;
+    const encodedConn = { ...secureData } as Connection;
+    if (!encodedConn.id) encodedConn.id = Date.now().toString();
+
     try {
-      await axios.post('/api/connections', encodedConn);
-      // Store plain-text version in Zustand (not base64-encoded) so it can be sent directly to backend
-      addConnection({ ...formData, id: encodedConn.id } as Connection);
-      addToast({ type: 'success', title: 'Connection Saved', message: `Connection "${encodedConn.name}" saved successfully.` });
+      if (editingConnection) {
+        await axios.put(`/api/connections/${encodedConn.id}`, encodedConn);
+        updateConnection(encodedConn.id, { ...formData } as Connection);
+        addToast({ type: 'success', title: 'Connection Updated', message: `Connection "${encodedConn.name}" updated successfully.` });
+      } else {
+        await axios.post('/api/connections', encodedConn);
+        addConnection({ ...formData, id: encodedConn.id } as Connection);
+        addToast({ type: 'success', title: 'Connection Saved', message: `Connection "${encodedConn.name}" saved successfully.` });
+      }
       onClose();
     } catch (err) {
       console.error('Failed to save connection:', err);
@@ -157,7 +169,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             ) : (
               <Plug className="w-4 h-4 text-blue-500" />
             )}
-            <span>{step === 1 ? 'Select Database Driver' : 'Connection Settings'}</span>
+            <span>{step === 1 ? 'Select Database Driver' : (editingConnection ? 'Edit Connection' : 'Connection Settings')}</span>
           </div>
           <button onClick={onClose} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors">
             <X className="w-5 h-5" />
