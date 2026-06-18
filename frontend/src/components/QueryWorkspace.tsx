@@ -575,18 +575,6 @@ export const QueryWorkspace: React.FC = () => {
             </label>
           </div>
 
-          {!focusedMappingId && (
-            <div className="flex items-center gap-1.5 mr-1 bg-bg-input px-2 py-1 rounded-md border border-border-input flex-1 sm:flex-none justify-center w-full sm:w-auto">
-              <input
-                type="text"
-                placeholder="Primary Keys (Optional)... e.g. id, code"
-                value={manualPrimaryKeys}
-                onChange={e => setManualPrimaryKeys(e.target.value)}
-                className="bg-transparent border-none outline-none text-[11px] font-mono text-text-main placeholder-text-muted/50 w-full sm:w-48"
-              />
-            </div>
-          )}
-
           <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-none">
             <button
               onClick={handleCompare}
@@ -607,8 +595,21 @@ export const QueryWorkspace: React.FC = () => {
           </div>
           </div>
 
-          <div className="flex items-center justify-end w-full">
-            <TemplateManager appMode="query" />
+          <div className="flex items-center justify-between w-full mt-2">
+            <div className="flex items-center gap-2">
+              <TemplateManager appMode="query" />
+              {!focusedMappingId && (
+                <div className="flex items-center gap-1.5 bg-bg-input px-2 py-1.5 rounded-md border border-border-input h-[34px]">
+                  <input
+                    type="text"
+                    placeholder="Primary Keys (Optional)... e.g. id, code"
+                    value={manualPrimaryKeys}
+                    onChange={e => setManualPrimaryKeys(e.target.value)}
+                    className="bg-transparent border-none outline-none text-[12px] font-mono text-text-main placeholder-text-muted/50 w-[200px] sm:w-[300px]"
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
