@@ -120,6 +120,7 @@ export type Template = {
   tableMappings?: TableMapping[];
   customQuerySource?: string;
   customQueryTarget?: string;
+  queryPrimaryKeys?: string;
 };
 
 export type ScheduleConfig = {
@@ -251,6 +252,10 @@ type AppState = {
   setCustomQuerySource: (q: string) => void;
   customQueryTarget: string;
   setCustomQueryTarget: (q: string) => void;
+
+  queryPrimaryKeys: string;
+  setQueryPrimaryKeys: (keys: string) => void;
+
   queryResult: DiffResult | null;
   setQueryResult: (r: DiffResult | null) => void;
 
@@ -513,6 +518,9 @@ export const useAppStore = create<AppState>()(
       customQueryTarget: tq,
     };
   }),
+
+  queryPrimaryKeys: '',
+  setQueryPrimaryKeys: (keys) => set({ queryPrimaryKeys: keys }),
 
   customQuerySource: '',
   setCustomQuerySource: (q) => set((state) => {

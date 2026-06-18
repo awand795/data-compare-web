@@ -11,8 +11,8 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
     templates, addTemplate, updateTemplate, removeTemplate,
     activeTemplateId, setActiveTemplateId,
     sourceConnectionId, targetConnectionId, tableMappings,
-    customQuerySource, customQueryTarget, setSourceConnectionId, setTargetConnectionId,
-    clearTableMappings, setCustomQuerySource, setCustomQueryTarget
+    customQuerySource, customQueryTarget, queryPrimaryKeys, setSourceConnectionId, setTargetConnectionId,
+    clearTableMappings, setCustomQuerySource, setCustomQueryTarget, setQueryPrimaryKeys
   } = useAppStore();
 
   const [showLoadModal, setShowLoadModal] = useState(false);
@@ -43,6 +43,7 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
     } else if (appMode === 'query') {
       setCustomQuerySource(t.customQuerySource || '');
       setCustomQueryTarget(t.customQueryTarget || '');
+      setQueryPrimaryKeys(t.queryPrimaryKeys || '');
     }
     setShowLoadModal(false);
     useAppStore.getState().addToast({ type: 'success', title: 'Template Loaded', message: `Loaded template: ${t.name}` });
@@ -58,6 +59,7 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
     if (appMode === 'query') {
       updates.customQuerySource = customQuerySource;
       updates.customQueryTarget = customQueryTarget;
+      updates.queryPrimaryKeys = queryPrimaryKeys;
     }
     updateTemplate(activeTemplateId, updates);
     useAppStore.getState().addToast({ type: 'success', title: 'Template Saved', message: 'Current settings have been saved to the template.' });
@@ -74,6 +76,7 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
       tableMappings: appMode === 'data' ? tableMappings : undefined,
       customQuerySource: appMode === 'query' ? customQuerySource : undefined,
       customQueryTarget: appMode === 'query' ? customQueryTarget : undefined,
+      queryPrimaryKeys: appMode === 'query' ? queryPrimaryKeys : undefined,
     };
     const tempId = 'tpl_' + Date.now();
     newTemplate.id = tempId;

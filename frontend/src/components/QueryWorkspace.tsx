@@ -23,6 +23,7 @@ export const QueryWorkspace: React.FC = () => {
     focusedMappingId,
     tableMappings,
     defaultRowLimit,
+    queryPrimaryKeys, setQueryPrimaryKeys,
     showAlert, addToast,
   } = useAppStore();
 
@@ -45,7 +46,6 @@ export const QueryWorkspace: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenPanel, setFullscreenPanel] = useState<'source' | 'target' | 'diff' | null>(null);
   const [returnMatchedRows, setReturnMatchedRows] = useState(true);
-  const [manualPrimaryKeys, setManualPrimaryKeys] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const sourceConn = connections.find(c => c.id === sourceConnectionId);
@@ -236,8 +236,8 @@ export const QueryWorkspace: React.FC = () => {
       excl = m.excludeColumns;
     }
 
-    if (!pks && manualPrimaryKeys.trim()) {
-      pks = manualPrimaryKeys.split(',').map(s => s.trim()).filter(Boolean);
+    if (!pks && queryPrimaryKeys.trim()) {
+      pks = queryPrimaryKeys.split(',').map(s => s.trim()).filter(Boolean);
     }
 
     const store = useAppStore.getState();
@@ -499,7 +499,8 @@ export const QueryWorkspace: React.FC = () => {
   return (
     <div className={clsx("flex flex-col bg-bg-main text-text-main", isFullscreen ? "fixed inset-0 z-[100]" : "h-full min-h-0")}>
       <div className="bg-bg-header border-b border-border-main px-2 sm:px-4 py-2.5 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 shrink-0">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full xl:w-auto">
+        <div className="flex flex-col gap-3 w-full xl:w-auto">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full xl:w-auto">
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
             <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
@@ -534,6 +535,20 @@ export const QueryWorkspace: React.FC = () => {
                 {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
               </select>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <TemplateManager appMode="query" />
+            {!focusedMappingId && (
+              <div className="flex items-center gap-1.5 bg-bg-input px-2 py-1.5 rounded-md border border-border-input h-[34px]">
+                <input
+                  type="text"
+                  placeholder="Primary Keys (Optional)... e.g. id, code"
+                  value={queryPrimaryKeys}
+                  onChange={e => setQueryPrimaryKeys(e.target.value)}
+                  className="bg-transparent border-none outline-none text-[12px] font-mono text-text-main placeholder-text-muted/50 w-[200px] sm:w-[250px]"
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -592,24 +607,6 @@ export const QueryWorkspace: React.FC = () => {
               <Play className="w-3.5 h-3.5 fill-current" />
               Execute Both
             </button>
-          </div>
-          </div>
-
-          <div className="flex items-center justify-between w-full mt-2">
-            <div className="flex items-center gap-2">
-              <TemplateManager appMode="query" />
-              {!focusedMappingId && (
-                <div className="flex items-center gap-1.5 bg-bg-input px-2 py-1.5 rounded-md border border-border-input h-[34px]">
-                  <input
-                    type="text"
-                    placeholder="Primary Keys (Optional)... e.g. id, code"
-                    value={manualPrimaryKeys}
-                    onChange={e => setManualPrimaryKeys(e.target.value)}
-                    className="bg-transparent border-none outline-none text-[12px] font-mono text-text-main placeholder-text-muted/50 w-[200px] sm:w-[300px]"
-                  />
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>
