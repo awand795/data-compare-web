@@ -40,11 +40,13 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
       if (t.tableMappings) {
         useAppStore.setState({ 
           tableMappings: t.tableMappings, 
-          focusedMappingId: t.tableMappings.length > 0 ? t.tableMappings[0].id : null, 
           selectedMappingIds: t.tableMappings.map(m => m.id)
         });
+        const firstMappingId = t.tableMappings.length > 0 ? t.tableMappings[0].id : null;
+        useAppStore.getState().setFocusedMappingId(firstMappingId);
       }
     } else if (appMode === 'query') {
+      useAppStore.setState({ focusedMappingId: null });
       setCustomQuerySource(t.customQuerySource || '');
       setCustomQueryTarget(t.customQueryTarget || '');
       let pks = t.queryPrimaryKeys || '';
