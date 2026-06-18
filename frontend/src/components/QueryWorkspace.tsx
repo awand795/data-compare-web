@@ -242,6 +242,33 @@ export const QueryWorkspace: React.FC = () => {
       pks = queryPrimaryKeys.split(',').map(s => s.trim()).filter(Boolean);
     }
 
+    if ((!pks || pks.length === 0) && sqFinal) {
+      const upperQuery = sqFinal.toUpperCase();
+      const orderByIndex = upperQuery.lastIndexOf('ORDER BY');
+      if (orderByIndex !== -1) {
+        let orderClause = sqFinal.substring(orderByIndex + 8).trim();
+        const limitIndex = orderClause.toUpperCase().indexOf('LIMIT');
+        if (limitIndex !== -1) {
+          orderClause = orderClause.substring(0, limitIndex).trim();
+        }
+        if (orderClause.endsWith(';')) {
+          orderClause = orderClause.substring(0, orderClause.length - 1).trim();
+        }
+        
+        const extracted = orderClause.split(',').map(part => {
+           let col = part.trim().split(/\s+/)[0]; 
+           if (col.includes('.')) col = col.split('.').pop() || col; 
+           return col.replace(/['"`\[\]]/g, ''); 
+        }).filter(Boolean);
+
+        if (extracted.length > 0) {
+          pks = extracted;
+          console.log("Auto-detected Primary Keys from ORDER BY:", pks);
+          addToast(`Auto-detected Primary Keys: ${pks.join(', ')}`, 'info');
+        }
+      }
+    }
+
     const store = useAppStore.getState();
     const payload = {
       sourceConnection: { ...sourceConn, fetchSize: sourceConn.fetchSize || store.defaultFetchSize || 10000 },
