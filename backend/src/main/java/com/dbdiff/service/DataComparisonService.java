@@ -396,6 +396,9 @@ public class DataComparisonService {
                     boolean hasSource = rsSource.next();
                     boolean hasTarget = rsTarget.next();
 
+                    Map<String, DiffRow> sourceOnlyMap = new LinkedHashMap<>();
+                    Map<String, DiffRow> targetOnlyMap = new LinkedHashMap<>();
+
                     while (hasSource || hasTarget) {
                         if (hasSource && hasTarget) {
                             int cmp = compareKeys(rsSource, rsTarget, sPkIdx, tPkIdx);
@@ -426,9 +429,12 @@ public class DataComparisonService {
                                 Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
                                 DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
                                 sRow = null; // allow GC
-                                differences[0]++;
-                                consumer.onRow(diffRow);
-                                diffRow = null; // allow GC setelah dikirim
+                                if (targetOnlyMap.containsKey(sKey)) {
+                                    DiffRow targetOnly = targetOnlyMap.remove(sKey);
+                                    reconcile(sKey, diffRow, targetOnly, columns, request, consumer, differences);
+                                } else {
+                                    sourceOnlyMap.put(sKey, diffRow);
+                                }
                                 totalSourceRows[0]++;
                                 hasSource = rsSource.next();
                             } else {
@@ -436,9 +442,12 @@ public class DataComparisonService {
                                 Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
                                 DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
                                 tRow = null; // allow GC
-                                differences[0]++;
-                                consumer.onRow(diffRow);
-                                diffRow = null; // allow GC setelah dikirim
+                                if (sourceOnlyMap.containsKey(tKey)) {
+                                    DiffRow sourceOnly = sourceOnlyMap.remove(tKey);
+                                    reconcile(tKey, sourceOnly, diffRow, columns, request, consumer, differences);
+                                } else {
+                                    targetOnlyMap.put(tKey, diffRow);
+                                }
                                 totalTargetRows[0]++;
                                 hasTarget = rsTarget.next();
                             }
@@ -447,9 +456,12 @@ public class DataComparisonService {
                             Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
                             DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
                             sRow = null; // allow GC
-                            differences[0]++;
-                            consumer.onRow(diffRow);
-                            diffRow = null; // allow GC setelah dikirim
+                            if (targetOnlyMap.containsKey(sKey)) {
+                                DiffRow targetOnly = targetOnlyMap.remove(sKey);
+                                reconcile(sKey, diffRow, targetOnly, columns, request, consumer, differences);
+                            } else {
+                                sourceOnlyMap.put(sKey, diffRow);
+                            }
                             totalSourceRows[0]++;
                             hasSource = rsSource.next();
                         } else {
@@ -457,12 +469,24 @@ public class DataComparisonService {
                             Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
                             DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
                             tRow = null; // allow GC
-                            differences[0]++;
-                            consumer.onRow(diffRow);
-                            diffRow = null; // allow GC setelah dikirim
+                            if (sourceOnlyMap.containsKey(tKey)) {
+                                DiffRow sourceOnly = sourceOnlyMap.remove(tKey);
+                                reconcile(tKey, sourceOnly, diffRow, columns, request, consumer, differences);
+                            } else {
+                                targetOnlyMap.put(tKey, diffRow);
+                            }
                             totalTargetRows[0]++;
                             hasTarget = rsTarget.next();
                         }
+                    }
+
+                    for (DiffRow sourceOnly : sourceOnlyMap.values()) {
+                        differences[0]++;
+                        consumer.onRow(sourceOnly);
+                    }
+                    for (DiffRow targetOnly : targetOnlyMap.values()) {
+                        differences[0]++;
+                        consumer.onRow(targetOnly);
                     }
                 }
             }
@@ -973,9 +997,21 @@ public class DataComparisonService {
             }).collect(java.util.stream.Collectors.joining(", '|', "));
             orderByClause = "MD5(CONCAT_WS('|', " + concatCols + "))";
         } else if (sortColumns != null && !sortColumns.isEmpty()) {
-            orderByClause = sortColumns.stream().map(c -> c + " NULLS FIRST").collect(java.util.stream.Collectors.joining(", "));
+            orderByClause = sortColumns.stream().map(c -> {
+                if ("postgresql".equals(dbType)) {
+                    return "COALESCE(" + c + "::text, '') ASC";
+                } else {
+                    return "COALESCE(" + c + ", '') ASC";
+                }
+            }).collect(java.util.stream.Collectors.joining(", "));
         } else if (pks != null && !pks.isEmpty()) {
-            orderByClause = pks.stream().map(c -> c + " NULLS FIRST").collect(java.util.stream.Collectors.joining(", "));
+            orderByClause = pks.stream().map(c -> {
+                if ("postgresql".equals(dbType)) {
+                    return "COALESCE(" + c + "::text, '') ASC";
+                } else {
+                    return "COALESCE(" + c + ", '') ASC";
+                }
+            }).collect(java.util.stream.Collectors.joining(", "));
         }
 
         boolean hasOrderBy = !orderByClause.isEmpty();
@@ -1120,5 +1156,39 @@ public class DataComparisonService {
             } catch (Exception ignored) {}
         }
         return Long.MIN_VALUE;
+    }
+
+    private void reconcile(String key, DiffRow sourceOnly, DiffRow targetOnly, List<String> columns, DiffRequest request, DiffRowConsumer consumer, int[] differences) throws Exception {
+        boolean allEqual = true;
+        for (String col : columns) {
+            Object sVal = sourceOnly.getCells().get(col).getSourceValue();
+            Object tVal = targetOnly.getCells().get(col).getTargetValue();
+            if (!normalizedEquals(sVal, tVal)) {
+                allEqual = false;
+                break;
+            }
+        }
+        if (allEqual) {
+            if (request.isReturnMatchedRows()) {
+                Object[] values = new Object[columns.size()];
+                for (int i = 0; i < columns.size(); i++) {
+                    values[i] = sourceOnly.getCells().get(columns.get(i)).getSourceValue();
+                }
+                consumer.onMatchRow(key, values, columns);
+            }
+        } else {
+            DiffRow diffRow = new DiffRow();
+            diffRow.setRowKey(key);
+            Map<String, DiffCell> cells = new LinkedHashMap<>(columns.size());
+            for (String col : columns) {
+                Object sVal = sourceOnly.getCells().get(col).getSourceValue();
+                Object tVal = targetOnly.getCells().get(col).getTargetValue();
+                cells.put(col, new DiffCell(sVal, tVal, !normalizedEquals(sVal, tVal)));
+            }
+            diffRow.setStatus(DiffRow.Status.DIFFERENT);
+            diffRow.setCells(cells);
+            differences[0]++;
+            consumer.onRow(diffRow);
+        }
     }
 }

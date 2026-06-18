@@ -68,9 +68,15 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
           displayData = '—';
           themeOverride = { textDark: '#94a3b8' };
         } else if (cell.isDifferent) {
-          const src = String(cell.sourceValue ?? 'NULL');
-          const tgt = String(cell.targetValue ?? 'NULL');
-          displayData = `SRC: ${src} \nTGT: ${tgt}`;
+          const src = cell.sourceValue;
+          const tgt = cell.targetValue;
+          if (src === null || src === undefined) {
+            displayData = `TGT: ${String(tgt)}`;
+          } else if (tgt === null || tgt === undefined) {
+            displayData = `SRC: ${String(src)}`;
+          } else {
+            displayData = `SRC: ${String(src)}\nTGT: ${String(tgt)}`;
+          }
           themeOverride = { textDark: '#f59e0b', bgCell: 'rgba(245, 158, 11, 0.05)', baseFontStyle: '11px monospace' };
         } else {
           displayData = String(cell.sourceValue ?? 'NULL');
