@@ -536,7 +536,8 @@ export const QueryWorkspace: React.FC = () => {
               </select>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 mt-2">
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mt-2">
             <TemplateManager appMode="query" />
             {!focusedMappingId && (
               <div className="flex items-center gap-1.5 bg-bg-input px-2 py-1.5 rounded-md border border-border-input h-[34px]">
@@ -608,8 +609,8 @@ export const QueryWorkspace: React.FC = () => {
               Execute Both
             </button>
           </div>
-          </div>
         </div>
+      </div>
       </div>
 
       <div className="flex-1 min-h-0 relative">
