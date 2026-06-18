@@ -238,7 +238,7 @@ export const SchemaCompareView: React.FC = () => {
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 w-full xl:w-auto">
             {[
               { id: 'ALL', label: 'All', count: schemaResults.length },
-              { id: 'IDENTICAL', label: 'Match semua', count: statusCounts.IDENTICAL, color: 'text-emerald-600 dark:text-emerald-400' },
+              { id: 'IDENTICAL', label: 'Match', count: statusCounts.IDENTICAL, color: 'text-emerald-600 dark:text-emerald-400' },
               { id: 'DIFFERENT', label: 'Different', count: statusCounts.DIFFERENT, color: 'text-amber-500 dark:text-amber-400' },
               { id: 'SOURCE_ONLY', label: 'Source Only', count: statusCounts.SOURCE_ONLY, color: 'text-red-500 dark:text-red-400' },
               { id: 'TARGET_ONLY', label: 'Target Only', count: statusCounts.TARGET_ONLY, color: 'text-cyan-500 dark:text-cyan-400' },

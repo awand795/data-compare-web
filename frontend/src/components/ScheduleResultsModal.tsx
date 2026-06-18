@@ -74,7 +74,7 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                   <tr>
                     <th className="py-3 px-4 font-bold border-b border-border-main w-8"></th>
                     <th className="py-3 px-4 font-bold border-b border-border-main">Run Time</th>
-                    <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Match semua</th>
+                    <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Match</th>
                     <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Different</th>
                     <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Source Only</th>
                     <th className="py-3 px-4 font-bold border-b border-border-main text-center">Total Target Only</th>
@@ -148,7 +148,7 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                                   <thead>
                                     <tr className="text-text-muted border-b border-border-item bg-bg-panel/50">
                                       <th className="py-2 px-3 font-bold">Table Name</th>
-                                      <th className="py-2 px-3 font-bold text-center">Match semua</th>
+                                      <th className="py-2 px-3 font-bold text-center">Match</th>
                                       <th className="py-2 px-3 font-bold text-center">Different</th>
                                       <th className="py-2 px-3 font-bold text-center">Source Only</th>
                                       <th className="py-2 px-3 font-bold text-center">Target Only</th>
@@ -180,7 +180,7 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                                             <span className="text-red-400 italic text-[10px]">{td.error}</span>
                                           ) : (td.different === 0 && td.sourceOnly === 0 && td.targetOnly === 0) ? (
                                             <span className="flex items-center gap-1 mx-auto justify-center text-emerald-500 font-bold text-[10px]">
-                                              <CheckCircle className="w-3 h-3" /> Match semua
+                                              <CheckCircle className="w-3 h-3" /> Match
                                             </span>
                                           ) : (
                                             <button 

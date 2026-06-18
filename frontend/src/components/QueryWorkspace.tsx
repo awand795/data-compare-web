@@ -671,7 +671,7 @@ export const QueryWorkspace: React.FC = () => {
                       { id: 'DIFFERENT', label: 'Different', count: workspaceDiffResult?.counters?.different || 0, color: 'text-amber-500 dark:text-amber-400' },
                       { id: 'SOURCE_ONLY', label: 'Source Only', count: workspaceDiffResult?.counters?.sourceOnly || 0, color: 'text-red-500 dark:text-red-400' },
                       { id: 'TARGET_ONLY', label: 'Target Only', count: workspaceDiffResult?.counters?.targetOnly || 0, color: 'text-emerald-600 dark:text-emerald-400' },
-                      { id: 'IDENTICAL', label: 'Match semua', count: workspaceDiffResult?.counters?.match || 0 },
+                      { id: 'IDENTICAL', label: 'Match', count: workspaceDiffResult?.counters?.match || 0 },
                     ].map(tab => (
                       <button
                         key={tab.id}

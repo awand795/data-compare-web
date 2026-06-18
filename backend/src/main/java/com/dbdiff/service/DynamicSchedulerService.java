@@ -370,7 +370,7 @@ public class DynamicSchedulerService {
                     "<b>Run Time:</b> %s\n" +
                     "<b>Status:</b> %s\n\n" +
                     "<b>📊 Total Summary:</b>\n" +
-                    "  ✅ Match semua: %d\n" +
+                    "  ✅ Match: %d\n" +
                     "  🔴 Different: %d\n" +
                     "  🔵 Source Only: %d\n" +
                     "  🟡 Target Only: %d\n" +
@@ -390,7 +390,7 @@ public class DynamicSchedulerService {
                     "**Run Time:** %s\n" +
                     "**Status:** %s\n\n" +
                     "**📊 Total Summary:**\n" +
-                    "  ✅ Match semua: %d\n" +
+                    "  ✅ Match: %d\n" +
                     "  🔴 Different: %d\n" +
                     "  🔵 Source Only: %d\n" +
                     "  🟡 Target Only: %d\n" +
