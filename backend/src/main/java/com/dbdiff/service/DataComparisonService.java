@@ -69,16 +69,31 @@ public class DataComparisonService {
                 String baseQuery = (request.getCustomQuerySource() != null && !request.getCustomQuerySource().isEmpty()) 
                     ? request.getCustomQuerySource() 
                     : "SELECT * FROM " + request.getTableName();
-                logger.info("COMPARE: Fetching columns via LIMIT 0 dry-run query...");
+                logger.info("COMPARE: Fetching columns via JDBC PreparedStatement getMetaData...");
                 try (Connection conn = sourceDs.getConnection();
-                     java.sql.Statement stmt = conn.createStatement();
-                     ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
-                    java.sql.ResultSetMetaData meta = rs.getMetaData();
-                    for (int i = 1; i <= meta.getColumnCount(); i++) {
-                        allCols.add(meta.getColumnLabel(i));
+                     PreparedStatement ps = conn.prepareStatement(baseQuery)) {
+                    java.sql.ResultSetMetaData meta = ps.getMetaData();
+                    if (meta != null) {
+                        for (int i = 1; i <= meta.getColumnCount(); i++) {
+                            allCols.add(meta.getColumnLabel(i));
+                        }
                     }
                 } catch (Exception e) {
-                    logger.warn("COMPARE: Failed dry-run column extraction: {}", e.getMessage());
+                    logger.warn("COMPARE: Failed getMetaData column extraction: {}", e.getMessage());
+                }
+                
+                if (allCols == null || allCols.isEmpty()) {
+                    logger.info("COMPARE: Fallback to LIMIT 0 dry-run query...");
+                    try (Connection conn = sourceDs.getConnection();
+                         java.sql.Statement stmt = conn.createStatement();
+                         ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
+                        java.sql.ResultSetMetaData meta = rs.getMetaData();
+                        for (int i = 1; i <= meta.getColumnCount(); i++) {
+                            allCols.add(meta.getColumnLabel(i));
+                        }
+                    } catch (Exception e) {
+                        logger.warn("COMPARE: Failed dry-run query LIMIT 0: {}", e.getMessage());
+                    }
                 }
             }
             if (allCols != null && !allCols.isEmpty()) {
@@ -348,21 +363,36 @@ public class DataComparisonService {
                 allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
             }
 
-            // 2. Fallback: Dry-run query LIMIT 0 to get ResultSetMetaData (works for Custom Queries / Views)
+            // 2. Fallback: Dry-run query to get ResultSetMetaData (works for Custom Queries / Views)
             if (allCols == null || allCols.isEmpty()) {
                 String baseQuery = (request.getCustomQuerySource() != null && !request.getCustomQuerySource().isEmpty()) 
                     ? request.getCustomQuerySource() 
                     : "SELECT * FROM " + request.getTableName();
-                logger.info("STREAM COMPARE: Fetching columns via LIMIT 0 dry-run query...");
+                logger.info("STREAM COMPARE: Fetching columns via JDBC PreparedStatement getMetaData...");
                 try (Connection conn = sourceDs.getConnection();
-                     java.sql.Statement stmt = conn.createStatement();
-                     ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
-                    java.sql.ResultSetMetaData meta = rs.getMetaData();
-                    for (int i = 1; i <= meta.getColumnCount(); i++) {
-                        allCols.add(meta.getColumnLabel(i));
+                     PreparedStatement ps = conn.prepareStatement(baseQuery)) {
+                    java.sql.ResultSetMetaData meta = ps.getMetaData();
+                    if (meta != null) {
+                        for (int i = 1; i <= meta.getColumnCount(); i++) {
+                            allCols.add(meta.getColumnLabel(i));
+                        }
                     }
                 } catch (Exception e) {
-                    logger.warn("STREAM COMPARE: Failed dry-run column extraction: {}", e.getMessage());
+                    logger.warn("STREAM COMPARE: Failed getMetaData column extraction: {}", e.getMessage());
+                }
+
+                if (allCols == null || allCols.isEmpty()) {
+                    logger.info("STREAM COMPARE: Fallback to LIMIT 0 dry-run query...");
+                    try (Connection conn = sourceDs.getConnection();
+                         java.sql.Statement stmt = conn.createStatement();
+                         ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
+                        java.sql.ResultSetMetaData meta = rs.getMetaData();
+                        for (int i = 1; i <= meta.getColumnCount(); i++) {
+                            allCols.add(meta.getColumnLabel(i));
+                        }
+                    } catch (Exception e) {
+                        logger.warn("STREAM COMPARE: Failed dry-run query LIMIT 0: {}", e.getMessage());
+                    }
                 }
             }
 
@@ -576,16 +606,31 @@ public class DataComparisonService {
                 String baseQuery = (request.getCustomQuerySource() != null && !request.getCustomQuerySource().isEmpty()) 
                     ? request.getCustomQuerySource() 
                     : "SELECT * FROM " + request.getTableName();
-                logger.info("BATCH COMPARE: Fetching columns via LIMIT 0 dry-run query...");
+                logger.info("BATCH COMPARE: Fetching columns via JDBC PreparedStatement getMetaData...");
                 try (Connection conn = sourceDs.getConnection();
-                     java.sql.Statement stmt = conn.createStatement();
-                     ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
-                    java.sql.ResultSetMetaData meta = rs.getMetaData();
-                    for (int i = 1; i <= meta.getColumnCount(); i++) {
-                        allCols.add(meta.getColumnLabel(i));
+                     PreparedStatement ps = conn.prepareStatement(baseQuery)) {
+                    java.sql.ResultSetMetaData meta = ps.getMetaData();
+                    if (meta != null) {
+                        for (int i = 1; i <= meta.getColumnCount(); i++) {
+                            allCols.add(meta.getColumnLabel(i));
+                        }
                     }
                 } catch (Exception e) {
-                    logger.warn("BATCH COMPARE: Failed dry-run column extraction: {}", e.getMessage());
+                    logger.warn("BATCH COMPARE: Failed getMetaData column extraction: {}", e.getMessage());
+                }
+
+                if (allCols == null || allCols.isEmpty()) {
+                    logger.info("BATCH COMPARE: Fallback to LIMIT 0 dry-run query...");
+                    try (Connection conn = sourceDs.getConnection();
+                         java.sql.Statement stmt = conn.createStatement();
+                         ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
+                        java.sql.ResultSetMetaData meta = rs.getMetaData();
+                        for (int i = 1; i <= meta.getColumnCount(); i++) {
+                            allCols.add(meta.getColumnLabel(i));
+                        }
+                    } catch (Exception e) {
+                        logger.warn("BATCH COMPARE: Failed dry-run query LIMIT 0: {}", e.getMessage());
+                    }
                 }
             }
             if (allCols != null && !allCols.isEmpty()) {

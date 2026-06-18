@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore, type Template } from '../store/useAppStore';
 import { Save, Copy, FolderOpen, X, Trash2, Search, Edit2, Check } from 'lucide-react';
+import { detectPrimaryKeysFromQuery } from '../utils/queryHelpers';
 
 interface Props {
   appMode: 'data' | 'query';
@@ -46,7 +47,14 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
     } else if (appMode === 'query') {
       setCustomQuerySource(t.customQuerySource || '');
       setCustomQueryTarget(t.customQueryTarget || '');
-      setQueryPrimaryKeys(t.queryPrimaryKeys || '');
+      let pks = t.queryPrimaryKeys || '';
+      if (!pks && t.customQuerySource) {
+        const autoPks = detectPrimaryKeysFromQuery(t.customQuerySource);
+        if (autoPks && autoPks.length > 0) {
+          pks = autoPks.join(', ');
+        }
+      }
+      setQueryPrimaryKeys(pks);
     }
     setShowLoadModal(false);
     useAppStore.getState().addToast({ type: 'success', title: 'Template Loaded', message: `Loaded template: ${t.name}` });

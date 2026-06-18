@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import axios from 'axios';
+import { detectPrimaryKeysFromQuery } from '../utils/queryHelpers';
 
 export type Connection = {
   id: string;
@@ -512,7 +513,13 @@ export const useAppStore = create<AppState>()(
     const tTable = getTable(tc, m.targetTable);
     const sq = m.customQuerySource ?? (sTable ? `SELECT * FROM ${sTable}` : '');
     const tq = m.customQueryTarget ?? (tTable ? `SELECT * FROM ${tTable}` : '');
-    const pks = m.primaryKeys ? m.primaryKeys.join(', ') : '';
+    let pks = m.primaryKeys ? m.primaryKeys.join(', ') : '';
+    if (!pks && sq) {
+      const autoPks = detectPrimaryKeysFromQuery(sq);
+      if (autoPks && autoPks.length > 0) {
+        pks = autoPks.join(', ');
+      }
+    }
     return {
       focusedMappingId: id,
       customQuerySource: sq,

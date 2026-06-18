@@ -44,3 +44,27 @@ export const buildEffectiveQuery = (
     return `${baseQuery}${whereClause}${limitClause}`;
   }
 };
+
+export const detectPrimaryKeysFromQuery = (query: string): string[] => {
+  if (!query) return [];
+  const upperQuery = query.toUpperCase();
+  const orderByIndex = upperQuery.lastIndexOf('ORDER BY');
+  if (orderByIndex !== -1) {
+    let orderClause = query.substring(orderByIndex + 8).trim();
+    const limitIndex = orderClause.toUpperCase().indexOf('LIMIT');
+    if (limitIndex !== -1) {
+      orderClause = orderClause.substring(0, limitIndex).trim();
+    }
+    if (orderClause.endsWith(';')) {
+      orderClause = orderClause.substring(0, orderClause.length - 1).trim();
+    }
+    
+    const extracted = orderClause.split(',').map(part => {
+       let col = part.trim().split(/\s+/)[0]; 
+       if (col.includes('.')) col = col.split('.').pop() || col; 
+       return col.replace(/['"`\[\]]/g, ''); 
+    }).filter(Boolean);
+    return extracted;
+  }
+  return [];
+};
