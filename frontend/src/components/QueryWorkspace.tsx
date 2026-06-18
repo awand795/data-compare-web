@@ -45,6 +45,7 @@ export const QueryWorkspace: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenPanel, setFullscreenPanel] = useState<'source' | 'target' | 'diff' | null>(null);
   const [returnMatchedRows, setReturnMatchedRows] = useState(true);
+  const [manualPrimaryKeys, setManualPrimaryKeys] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const sourceConn = connections.find(c => c.id === sourceConnectionId);
@@ -233,6 +234,10 @@ export const QueryWorkspace: React.FC = () => {
       tqFinal = buildEffectiveQuery(m.targetTable, m, 'target') || tqFinal;
       pks = m.primaryKeys;
       excl = m.excludeColumns;
+    }
+
+    if (!pks && manualPrimaryKeys.trim()) {
+      pks = manualPrimaryKeys.split(',').map(s => s.trim()).filter(Boolean);
     }
 
     const store = useAppStore.getState();
@@ -569,6 +574,18 @@ export const QueryWorkspace: React.FC = () => {
               Only Diff
             </label>
           </div>
+
+          {!focusedMappingId && (
+            <div className="flex items-center gap-1.5 mr-1 bg-bg-input px-2 py-1 rounded-md border border-border-input flex-1 sm:flex-none justify-center w-full sm:w-auto">
+              <input
+                type="text"
+                placeholder="Primary Keys (Optional)... e.g. id, code"
+                value={manualPrimaryKeys}
+                onChange={e => setManualPrimaryKeys(e.target.value)}
+                className="bg-transparent border-none outline-none text-[11px] font-mono text-text-main placeholder-text-muted/50 w-full sm:w-48"
+              />
+            </div>
+          )}
 
           <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-none">
             <button
