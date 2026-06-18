@@ -608,6 +608,7 @@ export const QueryWorkspace: React.FC = () => {
               Execute Both
             </button>
           </div>
+          </div>
         </div>
       </div>
 
