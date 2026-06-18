@@ -38,6 +38,7 @@ public class DataComparisonService {
     // compare() — non-streaming, untuk sync dan operasi kecil
     // ─────────────────────────────────────────────────────────────────────────
     public DiffResult compare(DiffRequest request) {
+        sanitizeCustomQueries(request);
         DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
         DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
 
@@ -56,9 +57,43 @@ public class DataComparisonService {
             pksForOrder = request.getSortColumns();
             useSurrogateKey = false;
         }
+
+        List<String> effectiveSortColumns = request.getSortColumns();
+        if (useSurrogateKey && (effectiveSortColumns == null || effectiveSortColumns.isEmpty())) {
+            List<String> allCols = new ArrayList<>();
+            if (request.getTableName() != null && !request.getTableName().isEmpty()) {
+                logger.info("COMPARE: Attempting to fetch columns for table='{}', schema='{}'", request.getTableName(), request.getSourceConnection().getSchema());
+                allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
+            }
+            if (allCols == null || allCols.isEmpty()) {
+                String baseQuery = (request.getCustomQuerySource() != null && !request.getCustomQuerySource().isEmpty()) 
+                    ? request.getCustomQuerySource() 
+                    : "SELECT * FROM " + request.getTableName();
+                logger.info("COMPARE: Fetching columns via LIMIT 0 dry-run query...");
+                try (Connection conn = sourceDs.getConnection();
+                     java.sql.Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
+                    java.sql.ResultSetMetaData meta = rs.getMetaData();
+                    for (int i = 1; i <= meta.getColumnCount(); i++) {
+                        allCols.add(meta.getColumnLabel(i));
+                    }
+                } catch (Exception e) {
+                    logger.warn("COMPARE: Failed dry-run column extraction: {}", e.getMessage());
+                }
+            }
+            if (allCols != null && !allCols.isEmpty()) {
+                pksForOrder = new ArrayList<>(allCols);
+                effectiveSortColumns = new ArrayList<>(allCols);
+                useSurrogateKey = false;
+                logger.info("COMPARE: ✅ Composite key mode — {} columns: {}", allCols.size(), allCols);
+            } else {
+                logger.warn("COMPARE: ⚠️ getColumns returned EMPTY — falling back to ROW_NUMBER (non-deterministic!)");
+            }
+        }
+
         String dbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), pksForOrder, request.getSortColumns(), useSurrogateKey, false, dbType);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), pksForOrder, request.getSortColumns(), useSurrogateKey, false, dbType);
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), pksForOrder, effectiveSortColumns, useSurrogateKey, false, dbType);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), pksForOrder, effectiveSortColumns, useSurrogateKey, false, dbType);
 
         if (useSurrogateKey) {
             pksForOrder = Collections.singletonList("__rn__");
@@ -271,6 +306,7 @@ public class DataComparisonService {
     //   - Jika beda DB: buka koneksi terpisah dari masing-masing pool (aman).
     // ─────────────────────────────────────────────────────────────────────────
     public void processStream(DiffRequest request, DiffRowConsumer consumer) throws Exception {
+        sanitizeCustomQueries(request);
         long startTime = System.currentTimeMillis();
 
         DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
@@ -510,6 +546,7 @@ public class DataComparisonService {
     // compareBatch() — paginated comparison dengan LIMIT/OFFSET
     // ─────────────────────────────────────────────────────────────────────────
     public Map<String, Object> compareBatch(DiffRequest request, int batchSize, int offset) {
+        sanitizeCustomQueries(request);
         long startTime = System.currentTimeMillis();
         DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
         DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
@@ -529,13 +566,35 @@ public class DataComparisonService {
 
         // Same deterministic ordering fix as processStream
         List<String> effectiveSortColumns = request.getSortColumns();
-        if (useSurrogateKey && (effectiveSortColumns == null || effectiveSortColumns.isEmpty()) && request.getTableName() != null) {
-            List<String> allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
+        if (useSurrogateKey && (effectiveSortColumns == null || effectiveSortColumns.isEmpty())) {
+            List<String> allCols = new ArrayList<>();
+            if (request.getTableName() != null && !request.getTableName().isEmpty()) {
+                logger.info("BATCH COMPARE: Attempting to fetch columns for table='{}', schema='{}'", request.getTableName(), request.getSourceConnection().getSchema());
+                allCols = metaDataService.getColumns(sourceDs, request.getTableName(), request.getSourceConnection().getSchema());
+            }
+            if (allCols == null || allCols.isEmpty()) {
+                String baseQuery = (request.getCustomQuerySource() != null && !request.getCustomQuerySource().isEmpty()) 
+                    ? request.getCustomQuerySource() 
+                    : "SELECT * FROM " + request.getTableName();
+                logger.info("BATCH COMPARE: Fetching columns via LIMIT 0 dry-run query...");
+                try (Connection conn = sourceDs.getConnection();
+                     java.sql.Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
+                    java.sql.ResultSetMetaData meta = rs.getMetaData();
+                    for (int i = 1; i <= meta.getColumnCount(); i++) {
+                        allCols.add(meta.getColumnLabel(i));
+                    }
+                } catch (Exception e) {
+                    logger.warn("BATCH COMPARE: Failed dry-run column extraction: {}", e.getMessage());
+                }
+            }
             if (allCols != null && !allCols.isEmpty()) {
-                exactPks = allCols;
-                effectiveSortColumns = allCols;
+                exactPks = new ArrayList<>(allCols);
+                effectiveSortColumns = new ArrayList<>(allCols);
                 useSurrogateKey = false;
-                logger.info("BATCH COMPARE: No keys provided — using ALL {} columns as composite key for accurate diff", allCols.size());
+                logger.info("BATCH COMPARE: ✅ Composite key mode — {} columns: {}", allCols.size(), allCols);
+            } else {
+                logger.warn("BATCH COMPARE: ⚠️ getColumns returned EMPTY — falling back to ROW_NUMBER (non-deterministic!)");
             }
         }
 
@@ -625,6 +684,7 @@ public class DataComparisonService {
     // countRows() — count rows in source & target (for batch progress)
     // ─────────────────────────────────────────────────────────────────────────
     public Map<String, Object> countRows(DiffRequest request) {
+        sanitizeCustomQueries(request);
         DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
         DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
         JdbcTemplate sourceJdbc = new JdbcTemplate(sourceDs);
@@ -1018,6 +1078,9 @@ public class DataComparisonService {
 
         if (customQuery != null && !customQuery.trim().isEmpty()) {
             String q = customQuery.trim();
+            while (q.endsWith(";")) {
+                q = q.substring(0, q.length() - 1).trim();
+            }
             if (useSurrogateKey) {
                 String window = hasOrderBy ? " ORDER BY " + orderByClause : "";
                 q = "SELECT ROW_NUMBER() OVER (" + window + ") as __rn__, tmp.* FROM (" + q + ") as tmp ORDER BY __rn__";
@@ -1189,6 +1252,24 @@ public class DataComparisonService {
             diffRow.setCells(cells);
             differences[0]++;
             consumer.onRow(diffRow);
+        }
+    }
+
+    private void sanitizeCustomQueries(DiffRequest request) {
+        if (request == null) return;
+        if (request.getCustomQuerySource() != null) {
+            String q = request.getCustomQuerySource().trim();
+            while (q.endsWith(";")) {
+                q = q.substring(0, q.length() - 1).trim();
+            }
+            request.setCustomQuerySource(q);
+        }
+        if (request.getCustomQueryTarget() != null) {
+            String q = request.getCustomQueryTarget().trim();
+            while (q.endsWith(";")) {
+                q = q.substring(0, q.length() - 1).trim();
+            }
+            request.setCustomQueryTarget(q);
         }
     }
 }
