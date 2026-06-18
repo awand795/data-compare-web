@@ -512,15 +512,32 @@ export const useAppStore = create<AppState>()(
     const tTable = getTable(tc, m.targetTable);
     const sq = m.customQuerySource ?? (sTable ? `SELECT * FROM ${sTable}` : '');
     const tq = m.customQueryTarget ?? (tTable ? `SELECT * FROM ${tTable}` : '');
+    const pks = m.primaryKeys ? m.primaryKeys.join(', ') : '';
     return {
       focusedMappingId: id,
       customQuerySource: sq,
       customQueryTarget: tq,
+      queryPrimaryKeys: pks,
     };
   }),
 
   queryPrimaryKeys: '',
-  setQueryPrimaryKeys: (keys) => set({ queryPrimaryKeys: keys }),
+  setQueryPrimaryKeys: (keys) => set((state) => {
+    const updates: any = { queryPrimaryKeys: keys };
+    if (state.focusedMappingId) {
+      const pks = keys.split(',').map(s => s.trim()).filter(Boolean);
+      if (state.tableMappings.some(m => m.id === state.focusedMappingId)) {
+        updates.tableMappings = state.tableMappings.map(m =>
+          m.id === state.focusedMappingId ? { ...m, primaryKeys: pks } : m
+        );
+      } else {
+        updates.excelMappings = state.excelMappings.map(m =>
+          m.id === state.focusedMappingId ? { ...m, primaryKeys: pks } : m
+        );
+      }
+    }
+    return updates;
+  }),
 
   customQuerySource: '',
   setCustomQuerySource: (q) => set((state) => {
