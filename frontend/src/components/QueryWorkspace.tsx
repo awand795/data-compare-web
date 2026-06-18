@@ -541,6 +541,62 @@ export const QueryWorkspace: React.FC = () => {
 
         <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end mt-1 xl:mt-0">
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-start xl:justify-end">
+            <div className="flex rounded-md overflow-hidden border border-border-input text-xs mr-0 sm:mr-2 w-full sm:w-auto order-last sm:order-none mt-2 sm:mt-0">
+              <button
+                onClick={() => setViewMode('results')}
+                className={clsx("flex-1 sm:flex-none px-3 py-2 sm:py-1.5 font-medium transition-colors whitespace-nowrap", viewMode === 'results' ? "bg-blue-500/20 text-blue-500" : "text-text-muted hover:bg-bg-hover")}
+              >
+                Side-by-Side
+              </button>
+              <button
+                onClick={() => setViewMode('diff')}
+                className={clsx("flex-1 sm:flex-none px-3 py-2 sm:py-1.5 font-medium transition-colors whitespace-nowrap", viewMode === 'diff' ? "bg-amber-500/20 text-amber-500 dark:text-amber-400" : "text-text-muted hover:bg-bg-hover")}
+              >
+                Compare Diff
+              </button>
+            </div>
+          
+            <button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="px-2 py-1.5 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main flex items-center justify-center transition-colors hidden sm:flex shrink-0"
+              title={isFullscreen ? "Exit Full View" : "Full View"}
+            >
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+            </button>
+
+            <div className="flex items-center gap-1.5 mr-1 bg-bg-input px-2 py-1 rounded-md border border-border-input flex-1 sm:flex-none justify-center">
+              <input
+                type="checkbox"
+                id="returnMatchedRowsQw"
+                checked={!returnMatchedRows}
+                onChange={e => setReturnMatchedRows(!e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-border-item bg-bg-panel text-amber-500 focus:ring-amber-500 focus:ring-offset-bg-main"
+              />
+              <label htmlFor="returnMatchedRowsQw" className="text-[11px] font-medium text-text-muted cursor-pointer hover:text-text-main select-none whitespace-nowrap">
+                Only Diff
+              </label>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-none">
+              <button
+                onClick={handleCompare}
+                disabled={(!comparing && (!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim())) || (loadingSource || loadingTarget)}
+                className="flex-1 sm:flex-none px-4 py-2 sm:py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap"
+              >
+                {comparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                {comparing ? 'Stop' : 'Compare'}
+              </button>
+              <button
+                onClick={executeBoth}
+                disabled={(!sourceConn || !sourceQuery.trim()) && (!targetConn || !targetQuery.trim())}
+                className="flex-1 sm:flex-none px-4 py-2 sm:py-1.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-md flex items-center justify-center gap-2 text-xs font-bold disabled:opacity-40 shadow-lg shadow-amber-500/20 transition-all whitespace-nowrap"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                Execute Both
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-start xl:justify-end">
             <TemplateManager appMode="query" />
             {!focusedMappingId && (
               <div className="flex items-center gap-1.5 bg-bg-input px-2 py-1.5 rounded-md border border-border-input h-[34px]">
@@ -553,62 +609,6 @@ export const QueryWorkspace: React.FC = () => {
                 />
               </div>
             )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-start xl:justify-end">
-          <div className="flex rounded-md overflow-hidden border border-border-input text-xs mr-0 sm:mr-2 w-full sm:w-auto order-last sm:order-none mt-2 sm:mt-0">
-            <button
-              onClick={() => setViewMode('results')}
-              className={clsx("flex-1 sm:flex-none px-3 py-2 sm:py-1.5 font-medium transition-colors whitespace-nowrap", viewMode === 'results' ? "bg-blue-500/20 text-blue-500" : "text-text-muted hover:bg-bg-hover")}
-            >
-              Side-by-Side
-            </button>
-            <button
-              onClick={() => setViewMode('diff')}
-              className={clsx("flex-1 sm:flex-none px-3 py-2 sm:py-1.5 font-medium transition-colors whitespace-nowrap", viewMode === 'diff' ? "bg-amber-500/20 text-amber-500 dark:text-amber-400" : "text-text-muted hover:bg-bg-hover")}
-            >
-              Compare Diff
-            </button>
-          </div>
-        
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="px-2 py-1.5 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main flex items-center justify-center transition-colors hidden sm:flex shrink-0"
-            title={isFullscreen ? "Exit Full View" : "Full View"}
-          >
-            {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-          </button>
-
-          <div className="flex items-center gap-1.5 mr-1 bg-bg-input px-2 py-1 rounded-md border border-border-input flex-1 sm:flex-none justify-center">
-            <input
-              type="checkbox"
-              id="returnMatchedRowsQw"
-              checked={!returnMatchedRows}
-              onChange={e => setReturnMatchedRows(!e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-border-item bg-bg-panel text-amber-500 focus:ring-amber-500 focus:ring-offset-bg-main"
-            />
-            <label htmlFor="returnMatchedRowsQw" className="text-[11px] font-medium text-text-muted cursor-pointer hover:text-text-main select-none whitespace-nowrap">
-              Only Diff
-            </label>
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-none">
-            <button
-              onClick={handleCompare}
-              disabled={(!comparing && (!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim())) || (loadingSource || loadingTarget)}
-              className="flex-1 sm:flex-none px-4 py-2 sm:py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap"
-            >
-              {comparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-              {comparing ? 'Stop' : 'Compare'}
-            </button>
-            <button
-              onClick={executeBoth}
-              disabled={(!sourceConn || !sourceQuery.trim()) && (!targetConn || !targetQuery.trim())}
-              className="flex-1 sm:flex-none px-4 py-2 sm:py-1.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-md flex items-center justify-center gap-2 text-xs font-bold disabled:opacity-40 shadow-lg shadow-amber-500/20 transition-all whitespace-nowrap"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              Execute Both
-            </button>
-          </div>
           </div>
         </div>
       </div>
