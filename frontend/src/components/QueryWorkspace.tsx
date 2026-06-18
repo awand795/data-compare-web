@@ -537,7 +537,10 @@ export const QueryWorkspace: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 mt-2">
+        </div>
+
+        <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end mt-1 xl:mt-0">
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-start xl:justify-end">
             <TemplateManager appMode="query" />
             {!focusedMappingId && (
               <div className="flex items-center gap-1.5 bg-bg-input px-2 py-1.5 rounded-md border border-border-input h-[34px]">
@@ -551,9 +554,6 @@ export const QueryWorkspace: React.FC = () => {
               </div>
             )}
           </div>
-        </div>
-
-        <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end mt-1 xl:mt-0">
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-start xl:justify-end">
           <div className="flex rounded-md overflow-hidden border border-border-input text-xs mr-0 sm:mr-2 w-full sm:w-auto order-last sm:order-none mt-2 sm:mt-0">
             <button
@@ -609,9 +609,10 @@ export const QueryWorkspace: React.FC = () => {
               Execute Both
             </button>
           </div>
+          </div>
         </div>
       </div>
-      </div>
+      
 
       <div className="flex-1 min-h-0 relative">
         {viewMode === 'results' ? (
