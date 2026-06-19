@@ -252,160 +252,164 @@ public class ReportExportService {
         PdfWriter writer = PdfWriter.getInstance(document, out);
         document.open();
 
-        // ── Header Section ──
-        Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18, new Color(30, 64, 175)); // dark blue
-        Paragraph titlePara = new Paragraph("Data Comparison Report", titleFont);
-        titlePara.setAlignment(Element.ALIGN_LEFT);
-        document.add(titlePara);
+        try {
+            // ── Header Section ──
+            Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18, new Color(30, 64, 175)); // dark blue
+            Paragraph titlePara = new Paragraph("Data Comparison Report", titleFont);
+            titlePara.setAlignment(Element.ALIGN_LEFT);
+            document.add(titlePara);
 
-        Font metaFont = FontFactory.getFont(FontFactory.HELVETICA, 10, new Color(100, 116, 139));
-        Paragraph metaPara = new Paragraph();
-        metaPara.add(new Chunk("Generated: ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
-        metaPara.add(new Chunk(java.time.LocalDateTime.now().toString().replace("T", " "), metaFont));
-        metaPara.add(new Chunk("   |   Filter: ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
-        metaPara.add(new Chunk(filterStatus != null ? filterStatus : "ALL", metaFont));
-        metaPara.add(new Chunk("   |   ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
-        String tableInfo = request.getTableName() != null ? request.getTableName() : "Custom Query";
-        metaPara.add(new Chunk("Table: ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
-        metaPara.add(new Chunk(tableInfo, metaFont));
-        document.add(metaPara);
+            Font metaFont = FontFactory.getFont(FontFactory.HELVETICA, 10, new Color(100, 116, 139));
+            Paragraph metaPara = new Paragraph();
+            metaPara.add(new Chunk("Generated: ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
+            metaPara.add(new Chunk(java.time.LocalDateTime.now().toString().replace("T", " "), metaFont));
+            metaPara.add(new Chunk("   |   Filter: ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
+            metaPara.add(new Chunk(filterStatus != null ? filterStatus : "ALL", metaFont));
+            metaPara.add(new Chunk("   |   ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
+            String tableInfo = request.getTableName() != null ? request.getTableName() : "Custom Query";
+            metaPara.add(new Chunk("Table: ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
+            metaPara.add(new Chunk(tableInfo, metaFont));
+            document.add(metaPara);
 
-        // Separator line
-        Paragraph sep = new Paragraph();
-        sep.add(new Chunk("_".repeat(120), FontFactory.getFont(FontFactory.HELVETICA, 6, new Color(200, 200, 200))));
-        document.add(sep);
-        document.add(new Paragraph(" "));
+            // Separator line
+            Paragraph sep = new Paragraph();
+            sep.add(new Chunk("_".repeat(120), FontFactory.getFont(FontFactory.HELVETICA, 6, new Color(200, 200, 200))));
+            document.add(sep);
+            document.add(new Paragraph(" "));
 
-        Font headerFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Color.WHITE);
-        Font cellFont = FontFactory.getFont(FontFactory.HELVETICA, 8);
-        Font cellAltFont = FontFactory.getFont(FontFactory.HELVETICA, 7);
-        Font redFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7, Color.RED);
-        Font greenFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7, new Color(0, 150, 0));
+            Font headerFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Color.WHITE);
+            Font cellFont = FontFactory.getFont(FontFactory.HELVETICA, 8);
+            Font cellAltFont = FontFactory.getFont(FontFactory.HELVETICA, 7);
+            Font redFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7, Color.RED);
+            Font greenFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7, new Color(0, 150, 0));
 
-        comparisonService.processStream(request, new DiffRowConsumer() {
-            private PdfPTable table;
-            private List<String> columns;
-            private int printedRows = 0;
-            private int rowNum = 0;
+            comparisonService.processStream(request, new DiffRowConsumer() {
+                private PdfPTable table;
+                private List<String> columns;
+                private int printedRows = 0;
+                private int rowNum = 0;
 
-            @Override
-            public void onColumns(List<String> cols) throws Exception {
-                this.columns = cols;
-                table = new PdfPTable(cols.size() + 2); // Status + Key + cols
-                table.setWidthPercentage(100);
-                
-                addHeader("Status", headerFont);
-                addHeader("RowKey", headerFont);
-                for (String c : cols) addHeader(c, headerFont);
-            }
-
-            private void addHeader(String text, Font f) {
-                PdfPCell cell = new PdfPCell(new Phrase(text, f));
-                cell.setBackgroundColor(new Color(59, 130, 246)); // Blue-500
-                cell.setPadding(5);
-                cell.setBorderWidthBottom(2f);
-                table.addCell(cell);
-            }
-
-            @Override
-            public void onRow(DiffRow row) throws Exception {
-                boolean shouldPrint = "ALL".equalsIgnoreCase(filterStatus) || row.getStatus().name().equalsIgnoreCase(filterStatus);
-                if (!shouldPrint) return;
-
-                printedRows++;
-                rowNum++;
-
-                Color bgColor;
-                if (row.getStatus() == DiffRow.Status.MATCH) {
-                    bgColor = rowNum % 2 == 0 ? Color.WHITE : new Color(248, 250, 252); // subtle alt rows
-                } else if (row.getStatus() == DiffRow.Status.DIFFERENT) {
-                    bgColor = new Color(254, 252, 232); // yellow
-                } else if (row.getStatus() == DiffRow.Status.SOURCE_ONLY) {
-                    bgColor = new Color(254, 242, 242); // red
-                } else {
-                    bgColor = new Color(236, 253, 245); // green
-                }
-
-                Font currentFont = rowNum % 2 == 0 ? cellFont : cellAltFont;
-
-                PdfPCell statusCell = new PdfPCell(new Phrase(row.getStatus().name(), currentFont));
-                statusCell.setBackgroundColor(bgColor);
-                statusCell.setPadding(3);
-                table.addCell(statusCell);
-
-                PdfPCell keyCell = new PdfPCell(new Phrase(row.getRowKey(), currentFont));
-                keyCell.setBackgroundColor(bgColor);
-                keyCell.setPadding(3);
-                table.addCell(keyCell);
-
-                for (String col : columns) {
-                    DiffCell dc = row.getCells().get(col);
-                    PdfPCell c = new PdfPCell();
-                    c.setBackgroundColor(bgColor);
-                    c.setPadding(3);
-                    if (dc == null) {
-                        c.addElement(new Phrase("", currentFont));
-                    } else if (dc.isDifferent()) {
-                        Paragraph p = new Paragraph();
-                        p.setLeading(8f);
-                        p.add(new Chunk("[SRC] " + (dc.getSourceValue() != null ? dc.getSourceValue() : "NULL") + "\n", redFont));
-                        p.add(new Chunk("[TGT] " + (dc.getTargetValue() != null ? dc.getTargetValue() : "NULL"), greenFont));
-                        c.addElement(p);
-                    } else {
-                        c.addElement(new Phrase(String.valueOf(dc.getSourceValue()), currentFont));
-                    }
-                    table.addCell(c);
-                }
-
-                // Batch flush to document to prevent OutOfMemoryError on large datasets
-                if (printedRows % 100 == 0) {
-                    document.add(table);
-                    table = null; // hint GC sebelum alokasi PdfPTable baru
-                    System.gc();  // soft hint — opsional tapi berguna di lingkungan heap kecil
-                    table = new PdfPTable(columns.size() + 2);
+                @Override
+                public void onColumns(List<String> cols) throws Exception {
+                    this.columns = cols;
+                    table = new PdfPTable(cols.size() + 2); // Status + Key + cols
                     table.setWidthPercentage(100);
-                    // Add headers for the new table batch
+                    
                     addHeader("Status", headerFont);
                     addHeader("RowKey", headerFont);
-                    for (String c : columns) addHeader(c, headerFont);
+                    for (String c : cols) addHeader(c, headerFont);
                 }
+
+                private void addHeader(String text, Font f) {
+                    PdfPCell cell = new PdfPCell(new Phrase(text, f));
+                    cell.setBackgroundColor(new Color(59, 130, 246)); // Blue-500
+                    cell.setPadding(5);
+                    cell.setBorderWidthBottom(2f);
+                    table.addCell(cell);
+                }
+
+                @Override
+                public void onRow(DiffRow row) throws Exception {
+                    boolean shouldPrint = "ALL".equalsIgnoreCase(filterStatus) || row.getStatus().name().equalsIgnoreCase(filterStatus);
+                    if (!shouldPrint) return;
+
+                    printedRows++;
+                    rowNum++;
+
+                    Color bgColor;
+                    if (row.getStatus() == DiffRow.Status.MATCH) {
+                        bgColor = rowNum % 2 == 0 ? Color.WHITE : new Color(248, 250, 252); // subtle alt rows
+                    } else if (row.getStatus() == DiffRow.Status.DIFFERENT) {
+                        bgColor = new Color(254, 252, 232); // yellow
+                    } else if (row.getStatus() == DiffRow.Status.SOURCE_ONLY) {
+                        bgColor = new Color(254, 242, 242); // red
+                    } else {
+                        bgColor = new Color(236, 253, 245); // green
+                    }
+
+                    Font currentFont = rowNum % 2 == 0 ? cellFont : cellAltFont;
+
+                    PdfPCell statusCell = new PdfPCell(new Phrase(row.getStatus().name(), currentFont));
+                    statusCell.setBackgroundColor(bgColor);
+                    statusCell.setPadding(3);
+                    table.addCell(statusCell);
+
+                    PdfPCell keyCell = new PdfPCell(new Phrase(row.getRowKey(), currentFont));
+                    keyCell.setBackgroundColor(bgColor);
+                    keyCell.setPadding(3);
+                    table.addCell(keyCell);
+
+                    for (String col : columns) {
+                        DiffCell dc = row.getCells().get(col);
+                        PdfPCell c = new PdfPCell();
+                        c.setBackgroundColor(bgColor);
+                        c.setPadding(3);
+                        if (dc == null) {
+                            c.addElement(new Phrase("", currentFont));
+                        } else if (dc.isDifferent()) {
+                            Paragraph p = new Paragraph();
+                            p.setLeading(8f);
+                            p.add(new Chunk("[SRC] " + (dc.getSourceValue() != null ? dc.getSourceValue() : "NULL") + "\n", redFont));
+                            p.add(new Chunk("[TGT] " + (dc.getTargetValue() != null ? dc.getTargetValue() : "NULL"), greenFont));
+                            c.addElement(p);
+                        } else {
+                            c.addElement(new Phrase(String.valueOf(dc.getSourceValue()), currentFont));
+                        }
+                        table.addCell(c);
+                    }
+
+                    // Batch flush to document to prevent OutOfMemoryError on large datasets
+                    if (printedRows % 100 == 0) {
+                        document.add(table);
+                        table = null; // hint GC sebelum alokasi PdfPTable baru
+                        System.gc();  // soft hint — opsional tapi berguna di lingkungan heap kecil
+                        table = new PdfPTable(columns.size() + 2);
+                        table.setWidthPercentage(100);
+                        // Add headers for the new table batch
+                        addHeader("Status", headerFont);
+                        addHeader("RowKey", headerFont);
+                        for (String c : columns) addHeader(c, headerFont);
+                    }
+                }
+
+                @Override
+                public void onTotals(int totalSource, int totalTarget, int totalDiffs) throws Exception {
+                    document.add(new Paragraph(" "));
+                    
+                    // Summary box
+                    PdfPTable summaryTable = new PdfPTable(2);
+                    summaryTable.setWidthPercentage(60);
+                    summaryTable.setHorizontalAlignment(Element.ALIGN_LEFT);
+
+                    Font summaryLabelFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, new Color(55, 65, 81));
+                    Font summaryValueFont = FontFactory.getFont(FontFactory.HELVETICA, 10);
+
+                    addSummaryRow(summaryTable, "Total Source Rows", String.valueOf(totalSource), summaryLabelFont, summaryValueFont);
+                    addSummaryRow(summaryTable, "Total Target Rows", String.valueOf(totalTarget), summaryLabelFont, summaryValueFont);
+                    addSummaryRow(summaryTable, "Total Differences", String.valueOf(totalDiffs), summaryLabelFont, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, new Color(220, 38, 38)));
+                    addSummaryRow(summaryTable, "Rows in Report", String.valueOf(printedRows), summaryLabelFont, summaryValueFont);
+
+                    document.add(summaryTable);
+                    document.add(new Paragraph(" "));
+                    document.add(table);
+                }
+
+                private void addSummaryRow(PdfPTable t, String label, String value, Font lblF, Font valF) {
+                    PdfPCell lc = new PdfPCell(new Phrase(label, lblF));
+                    lc.setBorder(Rectangle.NO_BORDER);
+                    lc.setPadding(4);
+                    PdfPCell vc = new PdfPCell(new Phrase(value, valF));
+                    vc.setBorder(Rectangle.NO_BORDER);
+                    vc.setPadding(4);
+                    vc.setHorizontalAlignment(Element.ALIGN_RIGHT);
+                    t.addCell(lc);
+                    t.addCell(vc);
+                }
+            });
+        } finally {
+            if (document != null && document.isOpen()) {
+                document.close();
             }
-
-            @Override
-            public void onTotals(int totalSource, int totalTarget, int totalDiffs) throws Exception {
-                document.add(new Paragraph(" "));
-                
-                // Summary box
-                PdfPTable summaryTable = new PdfPTable(2);
-                summaryTable.setWidthPercentage(60);
-                summaryTable.setHorizontalAlignment(Element.ALIGN_LEFT);
-
-                Font summaryLabelFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, new Color(55, 65, 81));
-                Font summaryValueFont = FontFactory.getFont(FontFactory.HELVETICA, 10);
-
-                addSummaryRow(summaryTable, "Total Source Rows", String.valueOf(totalSource), summaryLabelFont, summaryValueFont);
-                addSummaryRow(summaryTable, "Total Target Rows", String.valueOf(totalTarget), summaryLabelFont, summaryValueFont);
-                addSummaryRow(summaryTable, "Total Differences", String.valueOf(totalDiffs), summaryLabelFont, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, new Color(220, 38, 38)));
-                addSummaryRow(summaryTable, "Rows in Report", String.valueOf(printedRows), summaryLabelFont, summaryValueFont);
-
-                document.add(summaryTable);
-                document.add(new Paragraph(" "));
-                document.add(table);
-            }
-
-            private void addSummaryRow(PdfPTable t, String label, String value, Font lblF, Font valF) {
-                PdfPCell lc = new PdfPCell(new Phrase(label, lblF));
-                lc.setBorder(Rectangle.NO_BORDER);
-                lc.setPadding(4);
-                PdfPCell vc = new PdfPCell(new Phrase(value, valF));
-                vc.setBorder(Rectangle.NO_BORDER);
-                vc.setPadding(4);
-                vc.setHorizontalAlignment(Element.ALIGN_RIGHT);
-                t.addCell(lc);
-                t.addCell(vc);
-            }
-        });
-
-        document.close();
+        }
     }
 }

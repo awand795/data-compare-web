@@ -103,26 +103,44 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
   /* ── Export handlers ─────────────────────────────────────────── */
 
   const buildExportPayload = useCallback(() => {
-    if (!mappingId) return null;
     const store = useAppStore.getState();
-    const mapping = store.tableMappings.find(m => m.id === mappingId);
     const sourceConn = store.connections.find(c => c.id === store.sourceConnectionId);
     const targetConn = store.connections.find(c => c.id === store.targetConnectionId);
     
-    if (!mapping || !sourceConn || !targetConn) return null;
-    
-    const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
-    const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
+    if (!sourceConn || !targetConn) return null;
 
-    return {
-      sourceConnection: sourceConn,
-      targetConnection: targetConn,
-      tableName: null,
-      customQuerySource: sqFinal,
-      customQueryTarget: tqFinal,
-      primaryKeys: mapping.primaryKeys || null,
-      excludeColumns: mapping.excludeColumns || null,
-    };
+    if (mappingId) {
+      const mapping = store.tableMappings.find(m => m.id === mappingId);
+      if (!mapping) return null;
+      
+      const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
+      const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
+
+      return {
+        sourceConnection: sourceConn,
+        targetConnection: targetConn,
+        tableName: null,
+        customQuerySource: sqFinal,
+        customQueryTarget: tqFinal,
+        primaryKeys: mapping.primaryKeys || null,
+        excludeColumns: mapping.excludeColumns || null,
+      };
+    } else {
+      // Custom Query comparison from Query Workspace
+      const pks = store.queryPrimaryKeys 
+        ? store.queryPrimaryKeys.split(',').map(s => s.trim()).filter(Boolean) 
+        : null;
+
+      return {
+        sourceConnection: sourceConn,
+        targetConnection: targetConn,
+        tableName: null,
+        customQuerySource: store.customQuerySource,
+        customQueryTarget: store.customQueryTarget,
+        primaryKeys: pks && pks.length > 0 ? pks : null,
+        excludeColumns: null,
+      };
+    }
   }, [mappingId]);
 
   const triggerDownload = async (url: string, filename: string) => {
