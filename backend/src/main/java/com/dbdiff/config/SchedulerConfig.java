@@ -15,6 +15,8 @@ public class SchedulerConfig {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(2); // Reduced from 5 to limit concurrent scheduled jobs
         scheduler.setThreadNamePrefix("ScheduledTask-");
+        scheduler.setWaitForTasksToCompleteOnShutdown(true);
+        scheduler.setAwaitTerminationSeconds(15);
         scheduler.initialize();
         return scheduler;
     }

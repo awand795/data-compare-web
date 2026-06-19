@@ -132,6 +132,7 @@ public class DynamicSchedulerService {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private void executeCompareJobInternal(String scheduleId) {
         logger.info("Executing scheduled compare job for schedule: {}", scheduleId);
         ScheduleConfig schedule = scheduleManagerService.getSchedule(scheduleId);
@@ -316,55 +317,17 @@ public class DynamicSchedulerService {
             logger.info("Checking notification channels for job {}...", schedule.getName());
             logger.debug("Telegram Channel ID: {}", schedule.getTelegramChannelId());
             logger.debug("Discord Channel ID: {}", schedule.getDiscordChannelId());
-
+            
             // Build per-table breakdown
             StringBuilder tableDetailsHtml = new StringBuilder();
             StringBuilder tableDetailsDiscord = new StringBuilder();
-            tableDetailsHtml.append("\n<b>📋 Per-Table Breakdown:</b>\n");
-            tableDetailsDiscord.append("\n**📋 Per-Table Breakdown:**\n");
-            int shownTables = 0;
-            int maxTablesToShow = 20;
-            for (Map<String, Object> td : executionDetails) {
-                if (shownTables >= maxTablesToShow) {
-                    int remaining = executionDetails.size() - maxTablesToShow;
-                    tableDetailsHtml.append(String.format("  ... and %d more tables (see dashboard)\n", remaining));
-                    tableDetailsDiscord.append(String.format("  ... and %d more tables (see dashboard)\n", remaining));
-                    break;
-                }
-                shownTables++;
-                if (td.containsKey("error")) {                        String errTable = (String) td.getOrDefault("tableName", "unknown");
-                    tableDetailsHtml.append(String.format(
-                            "  ❌ <i>%s</i>: ERROR - %s\n", errTable, td.get("error")));
-                    tableDetailsDiscord.append(String.format(
-                            "  ❌ *%s*: ERROR - %s\n", errTable, td.get("error")));
-                    continue;
-                }
-                String tn = (String) td.getOrDefault("tableName", "unknown");
-                int match = ((Number) td.getOrDefault("match", 0)).intValue();
-                int diff = ((Number) td.getOrDefault("different", 0)).intValue();
-                int srcOnly = ((Number) td.getOrDefault("sourceOnly", 0)).intValue();
-                int tgtOnly = ((Number) td.getOrDefault("targetOnly", 0)).intValue();
-                int perTableDiff = diff + srcOnly + tgtOnly;
-
-                if (perTableDiff > 0) {
-                    tableDetailsHtml.append(String.format(
-                            "  🔴 <i>%s</i> — %d different, %d source-only, %d target-only (match: %d)\n",
-                            tn, diff, srcOnly, tgtOnly, match));
-                    tableDetailsDiscord.append(String.format(
-                            "  🔴 *%s* — %d different, %d source-only, %d target-only (match: %d)\n",
-                            tn, diff, srcOnly, tgtOnly, match));
-                } else {
-                    tableDetailsHtml.append(String.format("  ✅ <i>%s</i> — %d rows match, no differences\n", tn, match));
-                    tableDetailsDiscord.append(String.format("  ✅ *%s* — %d rows match, no differences\n", tn, match));
-                }
-            }
-
+            
             String titleHtml = hasDiffs ? "<b>🚨 Data Mismatch Detected!</b>" : "<b>✅ All Data Match!</b>";
             String titleDiscord = hasDiffs ? "🚨 **Data Mismatch Detected!**" : "✅ **All Data Match!**";
             String statusHtml = hasDiffs ? String.format("⚠️ %d differences found", diffs) : "✅ No differences found";
             String statusDiscord = hasDiffs ? String.format("⚠️ %d differences found", diffs) : "✅ No differences found";
 
-            String message = String.format(
+            String telegramTemplate = String.format(
                     "%s\n\n" +
                     "<b>Job:</b> <i>%s</i>\n" +
                     "<b>Run Time:</b> %s\n" +
@@ -373,18 +336,19 @@ public class DynamicSchedulerService {
                     "  ✅ Match: %d\n" +
                     "  🔴 Different: %d\n" +
                     "  🔵 Source Only: %d\n" +
-                    "  🟡 Target Only: %d\n" +
-                    "%s\n" +
+                    "  🟡 Target Only: %d\n\n" +
+                    "<b>📋 Per-Table Breakdown:</b>\n" +
+                    "%%s" +
                     "━━━━━━━━━━━━━━━━━━━\n" +
                     "<i>Check the Dashboard for full details.</i>",
                     titleHtml,
                     schedule.getName(),
                     result.getRunTime().toString().replace("T", " "),
                     statusHtml,
-                    result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount(),
-                    tableDetailsHtml.toString());
+                    result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount()
+            );
 
-            String discordMessage = String.format(
+            String discordTemplate = String.format(
                     "%s\n\n" +
                     "**Job:** *%s*\n" +
                     "**Run Time:** %s\n" +
@@ -393,16 +357,86 @@ public class DynamicSchedulerService {
                     "  ✅ Match: %d\n" +
                     "  🔴 Different: %d\n" +
                     "  🔵 Source Only: %d\n" +
-                    "  🟡 Target Only: %d\n" +
-                    "%s\n" +
+                    "  🟡 Target Only: %d\n\n" +
+                    "**📋 Per-Table Breakdown:**\n" +
+                    "%%s" +
                     "━━━━━━━━━━━━━━━━━━━\n" +
                     "*Check the Dashboard for full details.*",
                     titleDiscord,
                     schedule.getName(),
                     result.getRunTime().toString().replace("T", " "),
                     statusDiscord,
-                    result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount(),
-                    tableDetailsDiscord.toString());
+                    result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount()
+            );
+
+            int shownTables = 0;
+            int maxTablesToShow = 20;
+            boolean telegramTruncated = false;
+            boolean discordTruncated = false;
+
+            for (Map<String, Object> td : executionDetails) {
+                if (shownTables >= maxTablesToShow) {
+                    int remaining = executionDetails.size() - maxTablesToShow;
+                    if (!telegramTruncated) {
+                        tableDetailsHtml.append(String.format("  ... and %d more tables (see dashboard)\n", remaining));
+                        telegramTruncated = true;
+                    }
+                    if (!discordTruncated) {
+                        tableDetailsDiscord.append(String.format("  ... and %d more tables (see dashboard)\n", remaining));
+                        discordTruncated = true;
+                    }
+                    break;
+                }
+                shownTables++;
+
+                String nextHtmlLine = "";
+                String nextDiscordLine = "";
+
+                if (td.containsKey("error")) {
+                    String errTable = (String) td.getOrDefault("tableName", "unknown");
+                    nextHtmlLine = String.format("  ❌ <i>%s</i>: ERROR - %s\n", errTable, td.get("error"));
+                    nextDiscordLine = String.format("  ❌ *%s*: ERROR - %s\n", errTable, td.get("error"));
+                } else {
+                    String tn = (String) td.getOrDefault("tableName", "unknown");
+                    int match = ((Number) td.getOrDefault("match", 0)).intValue();
+                    int diff = ((Number) td.getOrDefault("different", 0)).intValue();
+                    int srcOnly = ((Number) td.getOrDefault("sourceOnly", 0)).intValue();
+                    int tgtOnly = ((Number) td.getOrDefault("targetOnly", 0)).intValue();
+                    int perTableDiff = diff + srcOnly + tgtOnly;
+
+                    if (perTableDiff > 0) {
+                        nextHtmlLine = String.format("  🔴 <i>%s</i> — %d different, %d source-only, %d target-only (match: %d)\n",
+                                tn, diff, srcOnly, tgtOnly, match);
+                        nextDiscordLine = String.format("  🔴 *%s* — %d different, %d source-only, %d target-only (match: %d)\n",
+                                tn, diff, srcOnly, tgtOnly, match);
+                    } else {
+                        nextHtmlLine = String.format("  ✅ <i>%s</i> — %d rows match, no differences\n", tn, match);
+                        nextDiscordLine = String.format("  ✅ *%s* — %d rows match, no differences\n", tn, match);
+                    }
+                }
+
+                // Check length limits before appending
+                if (!telegramTruncated) {
+                    if (String.format(telegramTemplate, tableDetailsHtml.toString() + nextHtmlLine).length() > 3900) {
+                        tableDetailsHtml.append("  ... (breakdown truncated, view dashboard for full details)\n");
+                        telegramTruncated = true;
+                    } else {
+                        tableDetailsHtml.append(nextHtmlLine);
+                    }
+                }
+
+                if (!discordTruncated) {
+                    if (String.format(discordTemplate, tableDetailsDiscord.toString() + nextDiscordLine).length() > 1850) {
+                        tableDetailsDiscord.append("  ... (breakdown truncated, view dashboard for full details)\n");
+                        discordTruncated = true;
+                    } else {
+                        tableDetailsDiscord.append(nextDiscordLine);
+                    }
+                }
+            }
+
+            String message = String.format(telegramTemplate, tableDetailsHtml.toString());
+            String discordMessage = String.format(discordTemplate, tableDetailsDiscord.toString());
 
             if (schedule.getTelegramChannelId() != null && !schedule.getTelegramChannelId().isEmpty()) {
                 logger.info("Sending to Telegram channel: {}", schedule.getTelegramChannelId());
@@ -417,8 +451,9 @@ public class DynamicSchedulerService {
             result.setErrorMessage(e.getMessage());
             try {
                 scheduleManagerService.updateResult(result);
+                scheduleManagerService.deleteResultRows(result.getId()); // Clean up orphan result rows on failure
             } catch (Exception saveErr) {
-                logger.error("Failed to save error result: {}", saveErr.getMessage());
+                logger.error("Failed to save error result or cleanup result rows: {}", saveErr.getMessage());
             }
         }
     }

@@ -121,6 +121,10 @@ public class ScheduleManagerService {
         jdbcTemplate.update(sql, result.getMatchCount(), result.getDifferentCount(), result.getSourceOnlyCount(), result.getTargetOnlyCount(),
                 result.getErrorMessage(), result.getDetails(), result.getId());
     }
+
+    public void deleteResultRows(String resultId) {
+        jdbcTemplate.update("DELETE FROM schedule_result_rows WHERE result_id = ?", resultId);
+    }
     
     public void saveResultRow(ScheduleResultRow row) {
         String sql = "INSERT INTO schedule_result_rows (result_id, row_key, status, data_json, table_name) VALUES (?, ?, ?, ?, ?)";
