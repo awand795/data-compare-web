@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import javax.sql.DataSource;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -22,14 +23,17 @@ public class ConnectionManagerService {
 
     private final int MAX_POOL_CACHE = 3;
     private final ReentrantLock cacheLock = new ReentrantLock();
-    private final Map<String, DataSource> dataSourceCache = new LinkedHashMap<String, DataSource>(MAX_POOL_CACHE, 0.75f, true) {
+    private final java.util.concurrent.ConcurrentLinkedQueue<Map.Entry<String, Object>> evictedEntries =
+        new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+    private final Map<String, Object> dataSourceCache = new LinkedHashMap<String, Object>(MAX_POOL_CACHE, 0.75f, true) {
         @Override
-        protected boolean removeEldestEntry(Map.Entry<String, DataSource> eldest) {
-          if (size() > MAX_POOL_CACHE) {
-            closeQuietly(eldest.getKey(), eldest.getValue());
-            return true;
-          }
-          return false;
+        protected boolean removeEldestEntry(Map.Entry<String, Object> eldest) {
+            if (size() > MAX_POOL_CACHE) {
+                evictedEntries.add(eldest);
+                return true;
+            }
+            return false;
         }
     };
     private final Map<String, java.util.concurrent.Semaphore> poolSemaphores = new java.util.concurrent.ConcurrentHashMap<>();
@@ -38,24 +42,40 @@ public class ConnectionManagerService {
         return poolSemaphores.computeIfAbsent(connId, k -> new java.util.concurrent.Semaphore(1));
     }
 
-    private void closeQuietly(String key, DataSource ds) {
-      try {
-        if (ds instanceof com.zaxxer.hikari.HikariDataSource hds) {
-          hds.close();
-          logger.info("Closed evicted HikariCP pool: {}", hds.getPoolName());
+    private void drainEvictedEntries() {
+        Map.Entry<String, Object> entry;
+        while ((entry = evictedEntries.poll()) != null) {
+            final String key = entry.getKey();
+            final Object dsObj = entry.getValue();
+            try {
+                if (dsObj instanceof HikariDataSource hds) {
+                    hds.close();
+                    logger.info("Closed evicted HikariCP pool: {}", hds.getPoolName());
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to close evicted HikariCP pool: {}", e.getMessage());
+            }
+            if (key != null && key.contains("|")) {
+                String connId = key.substring(0, key.indexOf('|'));
+                boolean stillInUse;
+                cacheLock.lock();
+                try {
+                    stillInUse = dataSourceCache.keySet().stream()
+                        .anyMatch(k -> k.startsWith(connId + "|"));
+                } finally {
+                    cacheLock.unlock();
+                }
+                if (!stillInUse) {
+                    sshTunnelService.closeTunnel(connId);
+                    logger.info("Closed evicted SSH tunnel for: {}", connId);
+                }
+            }
         }
-        if (key != null && key.contains("|")) {
-          String connId = key.substring(0, key.indexOf('|'));
-          sshTunnelService.closeTunnel(connId);
-          logger.info("Closed evicted SSH tunnel for connection: {}", connId);
-        }
-      } catch (Exception e) {
-        logger.warn("Failed to close evicted DataSource: {}", e.getMessage());
-      }
     }
 
     public void evictConnection(String connectionId) {
         if (connectionId == null || connectionId.isBlank()) return;
+        List<Object> toClose = new java.util.ArrayList<>();
         cacheLock.lock();
         try {
             java.util.List<String> keysToRemove = new java.util.ArrayList<>();
@@ -65,11 +85,22 @@ public class ConnectionManagerService {
                 }
             }
             for (String key : keysToRemove) {
-                DataSource ds = dataSourceCache.remove(key);
-                closeQuietly(key, ds);
+                Object ds = dataSourceCache.remove(key);
+                if (ds != null) toClose.add(ds);
             }
         } finally {
             cacheLock.unlock();
+        }
+        // Tutup DataSource DI LUAR lock untuk menghindari deadlock
+        for (Object ds : toClose) {
+            try {
+                if (ds instanceof HikariDataSource hds) {
+                    hds.close();
+                    logger.info("Closed evicted HikariCP pool from evictConnection: {}", hds.getPoolName());
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to close DataSource during eviction: {}", e.getMessage());
+            }
         }
         poolSemaphores.remove(connectionId);
         sshTunnelService.closeTunnel(connectionId);
@@ -85,24 +116,61 @@ public class ConnectionManagerService {
         String safeUsername = details.getUsername() != null ? details.getUsername() : "";
         String connId = details.getStableIdentifier();
         String cacheKey = connId + "|" + safeUsername;
-        DataSource ds;
+        
+        java.util.concurrent.CompletableFuture<DataSource> future = null;
+        boolean isCreator = false;
+        
         cacheLock.lock();
         try {
-            DataSource existing = dataSourceCache.get(cacheKey);
-            if (existing != null) return existing;
-            try {
-                ds = createDataSource(details, connId);
-                dataSourceCache.put(cacheKey, ds);
-            } catch (Exception e) {
-                Throwable cause = e;
-                while (cause.getCause() != null && cause.getCause() != cause) {
-                    cause = cause.getCause();
-                }
-                String msg = cause.getMessage() != null ? cause.getMessage() : e.getMessage();
-                throw new RuntimeException("Failed to create data source: " + msg, e);
+            Object existing = dataSourceCache.get(cacheKey);
+            if (existing instanceof DataSource) {
+                return (DataSource) existing;
+            } else if (existing instanceof java.util.concurrent.CompletableFuture) {
+                future = (java.util.concurrent.CompletableFuture<DataSource>) existing;
+            } else {
+                future = new java.util.concurrent.CompletableFuture<>();
+                dataSourceCache.put(cacheKey, future);
+                isCreator = true;
             }
         } finally {
             cacheLock.unlock();
+            drainEvictedEntries();
+        }
+
+        if (!isCreator) {
+            try {
+                return future.get();
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to await data source creation: " + e.getMessage(), e);
+            }
+        }
+
+        DataSource ds;
+        try {
+            ds = createDataSource(details, connId);
+            future.complete(ds);
+            
+            cacheLock.lock();
+            try {
+                dataSourceCache.put(cacheKey, ds);
+            } finally {
+                cacheLock.unlock();
+                drainEvictedEntries();
+            }
+        } catch (Exception e) {
+            future.completeExceptionally(e);
+            cacheLock.lock();
+            try {
+                dataSourceCache.remove(cacheKey);
+            } finally {
+                cacheLock.unlock();
+            }
+            Throwable cause = e;
+            while (cause.getCause() != null && cause.getCause() != cause) {
+                cause = cause.getCause();
+            }
+            String msg = cause.getMessage() != null ? cause.getMessage() : e.getMessage();
+            throw new RuntimeException("Failed to create data source: " + msg, e);
         }
 
         // Warm up: buka koneksi awal — synchronous untuk SSH agar pool langsung siap pakai

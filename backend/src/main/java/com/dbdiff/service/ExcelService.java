@@ -39,6 +39,9 @@ public class ExcelService {
         JdbcTemplate jdbc = new JdbcTemplate(ds);
         
         String tableName = "excel_import_" + UUID.randomUUID().toString().replace("-", "");
+        if (!tableName.matches("^excel_import_[a-z0-9]+$")) {
+            throw new IllegalArgumentException("Generated table name contains invalid characters: " + tableName);
+        }
         
         try (InputStream is = file.getInputStream();
              Workbook workbook = WorkbookFactory.create(is)) {
@@ -65,7 +68,7 @@ public class ExcelService {
             
             // Create Table
             StringBuilder createSql = new StringBuilder("CREATE TABLE ");
-            createSql.append(tableName).append(" (");
+            createSql.append("\"").append(tableName).append("\" (");
             for (int i = 0; i < columns.size(); i++) {
                 createSql.append("\"").append(columns.get(i)).append("\" TEXT");
                 if (i < columns.size() - 1) createSql.append(", ");
@@ -80,7 +83,12 @@ public class ExcelService {
                 List<Object[]> batchArgs = new ArrayList<>();
                 DataFormatter dataFormatter = new DataFormatter();
                 
+                int rowCount = 0;
+                final int MAX_IMPORT_ROWS = 50_000;
                 while (rowIterator.hasNext()) {
+                    if (++rowCount > MAX_IMPORT_ROWS) {
+                        throw new Exception("Excel file terlalu banyak baris (max " + MAX_IMPORT_ROWS + " baris).");
+                    }
                     Row row = rowIterator.next();
                     Object[] args = new Object[columns.size()];
                     for (int i = 0; i < columns.size(); i++) {
@@ -116,7 +124,7 @@ public class ExcelService {
             } catch (Exception e) {
                 try {
                     if (tableName != null && tableName.startsWith("excel_import_")) {
-                        jdbc.execute("DROP TABLE IF EXISTS " + tableName);
+                        jdbc.execute("DROP TABLE IF EXISTS \"" + tableName + "\"");
                     }
                     logger.info("Cleaned up orphan excel table {} after import failure: {}", tableName, e.getMessage());
                 } catch (Exception dropEx) {
@@ -136,10 +144,14 @@ public class ExcelService {
             logger.warn("Refused to drop table '{}' — name does not start with excel_import_ prefix", tableName);
             return;
         }
+        if (!tableName.matches("^excel_import_[a-z0-9]+$")) {
+            logger.warn("Refused to drop table '{}' — invalid character in name", tableName);
+            return;
+        }
         try {
             DataSource ds = connectionManagerService.getDataSource(dbConnection);
             JdbcTemplate jdbc = new JdbcTemplate(ds);
-            jdbc.execute("DROP TABLE IF EXISTS " + tableName);
+            jdbc.execute("DROP TABLE IF EXISTS \"" + tableName + "\"");
         } catch (Exception e) {
             logger.error("Failed to drop temporary excel table {}: {}", tableName, e.getMessage());
         }
@@ -147,7 +159,7 @@ public class ExcelService {
 
     private String buildInsertSql(String tableName, List<String> columns) {
         StringBuilder sql = new StringBuilder("INSERT INTO ");
-        sql.append(tableName).append(" (");
+        sql.append("\"").append(tableName).append("\" (");
         for (int i = 0; i < columns.size(); i++) {
             sql.append("\"").append(columns.get(i)).append("\"");
             if (i < columns.size() - 1) sql.append(", ");

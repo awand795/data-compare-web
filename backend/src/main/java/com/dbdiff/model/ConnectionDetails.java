@@ -26,6 +26,7 @@ public class ConnectionDetails {
     private String sshPassword;
     private String sshKeyFile;
     private String sshPassphrase;
+    private boolean sshStrictHostKeyChecking = true; // default true untuk keamanan
     private Integer sshLocalPort;
 
     // Advanced Settings
@@ -125,6 +126,7 @@ public class ConnectionDetails {
     public void setUsername(String username) {
         this.username = username;
     }
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     public String getPassword() {
         return this.password;
     }
@@ -191,6 +193,7 @@ public class ConnectionDetails {
     public void setSshAuthMode(String sshAuthMode) {
         this.sshAuthMode = sshAuthMode;
     }
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     public String getSshPassword() {
         return this.sshPassword;
     }
@@ -203,11 +206,18 @@ public class ConnectionDetails {
     public void setSshKeyFile(String sshKeyFile) {
         this.sshKeyFile = sshKeyFile;
     }
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     public String getSshPassphrase() {
         return this.sshPassphrase;
     }
     public void setSshPassphrase(String sshPassphrase) {
         this.sshPassphrase = sshPassphrase;
+    }
+    public boolean isSshStrictHostKeyChecking() {
+        return this.sshStrictHostKeyChecking;
+    }
+    public void setSshStrictHostKeyChecking(boolean sshStrictHostKeyChecking) {
+        this.sshStrictHostKeyChecking = sshStrictHostKeyChecking;
     }
     public Integer getSshLocalPort() {
         return this.sshLocalPort;

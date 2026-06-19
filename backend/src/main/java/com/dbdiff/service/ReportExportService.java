@@ -244,6 +244,7 @@ public class ReportExportService {
             });
 
             wb.write(out);
+            wb.dispose(); // CRITICAL: Delete massive temporary files from disk
         }
     }
 
@@ -373,6 +374,11 @@ public class ReportExportService {
 
                 @Override
                 public void onTotals(int totalSource, int totalTarget, int totalDiffs) throws Exception {
+                    if (table != null && table.size() > 0) {
+                        document.add(table);
+                        table = null;
+                    }
+                    
                     document.add(new Paragraph(" "));
                     
                     // Summary box
@@ -390,9 +396,6 @@ public class ReportExportService {
 
                     document.add(summaryTable);
                     document.add(new Paragraph(" "));
-                    if (table != null) {
-                        document.add(table);
-                    }
                 }
 
                 private void addSummaryRow(PdfPTable t, String label, String value, Font lblF, Font valF) {

@@ -11,8 +11,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.springframework.beans.factory.DisposableBean;
+
 @Service
-public class SshTunnelService {
+public class SshTunnelService implements DisposableBean {
 
     private static final Logger logger = LoggerFactory.getLogger(SshTunnelService.class);
 
@@ -52,7 +54,12 @@ public class SshTunnelService {
             }
 
             // SSH keepalive agar tunnel tidak mati di tengah streaming lama
+            // FORCE 'no' for headless docker environment to prevent "reject HostKey" exception
             session.setConfig("StrictHostKeyChecking", "no");
+            session.setConfig("PreferredAuthentications", "publickey,password");
+            session.setConfig("PubkeyAcceptedAlgorithms", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
+            session.setConfig("server_host_key", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
+            session.setConfig("kex", "curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512,diffie-hellman-group-exchange-sha256");
             session.setServerAliveInterval(30000);  // ping SSH server setiap 30 detik
             session.setServerAliveCountMax(3);       // max 3 kali gagal sebelum disconnect
             
@@ -89,5 +96,23 @@ public class SshTunnelService {
             session.disconnect();
         }
         localPorts.remove(connectionId);
+    }
+
+    @Override
+    public void destroy() throws Exception {
+        lock.lock();
+        try {
+            logger.info("Shutting down all active SSH tunnels during application exit...");
+            for (Map.Entry<String, Session> entry : activeSessions.entrySet()) {
+                if (entry.getValue() != null && entry.getValue().isConnected()) {
+                    entry.getValue().disconnect();
+                    logger.info("Closed SSH tunnel for {}", entry.getKey());
+                }
+            }
+            activeSessions.clear();
+            localPorts.clear();
+        } finally {
+            lock.unlock();
+        }
     }
 }

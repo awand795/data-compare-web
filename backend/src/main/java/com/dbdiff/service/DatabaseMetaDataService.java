@@ -23,8 +23,8 @@ public class DatabaseMetaDataService {
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
             String schemaPattern = (expectedSchema != null && !expectedSchema.trim().isEmpty()) ? expectedSchema.trim() : null;
-            
-            try (ResultSet rs = metaData.getTables(null, schemaPattern, "%", new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"})) {
+            String catalog = conn.getCatalog();
+            try (ResultSet rs = metaData.getTables(catalog, schemaPattern, "%", new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"})) {
                 while (rs.next()) {
                     String s = rs.getString("TABLE_SCHEM");
                     String tName = rs.getString("TABLE_NAME");
@@ -59,7 +59,8 @@ public class DatabaseMetaDataService {
                 actualTable = parts[1];
             }
 
-            try (ResultSet rs = metaData.getPrimaryKeys(null, schemaPattern, actualTable)) {
+            String catalog = conn.getCatalog();
+            try (ResultSet rs = metaData.getPrimaryKeys(catalog, schemaPattern, actualTable)) {
                 while (rs.next()) {
                     pks.add(rs.getString("COLUMN_NAME"));
                 }
@@ -84,7 +85,8 @@ public class DatabaseMetaDataService {
                 actualTable = parts[1];
             }
 
-            try (ResultSet rs = metaData.getColumns(null, schemaPattern, actualTable, "%")) {
+            String catalog = conn.getCatalog();
+            try (ResultSet rs = metaData.getColumns(catalog, schemaPattern, actualTable, "%")) {
                 while (rs.next()) {
                     columns.add(rs.getString("COLUMN_NAME"));
                 }
@@ -112,16 +114,16 @@ public class DatabaseMetaDataService {
                 actualTable = parts[1];
             }
 
-            // Collect primary keys first
             Set<String> pkColumns = new HashSet<>();
-            try (ResultSet pkRs = metaData.getPrimaryKeys(null, schemaPattern, actualTable)) {
+            String catalog = conn.getCatalog();
+            try (ResultSet pkRs = metaData.getPrimaryKeys(catalog, schemaPattern, actualTable)) {
                 while (pkRs.next()) {
                     pkColumns.add(pkRs.getString("COLUMN_NAME"));
                 }
             }
 
             // Collect column details
-            try (ResultSet rs = metaData.getColumns(null, schemaPattern, actualTable, "%")) {
+            try (ResultSet rs = metaData.getColumns(catalog, schemaPattern, actualTable, "%")) {
                 while (rs.next()) {
                     ColumnDiff col = new ColumnDiff();
                     col.setColumnName(rs.getString("COLUMN_NAME"));

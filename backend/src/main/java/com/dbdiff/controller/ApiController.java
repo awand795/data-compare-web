@@ -68,6 +68,12 @@ public class ApiController {
     @PutMapping("/connections/{id}")
     public ResponseEntity<?> updateConnection(@PathVariable String id, @RequestBody ConnectionDetails details) {
         details.setId(id);
+        ConnectionDetails existing = connectionRepository.findById(id);
+        if (existing != null) {
+            if (details.getPassword() == null) details.setPassword(existing.getPassword());
+            if (details.getSshPassword() == null) details.setSshPassword(existing.getSshPassword());
+            if (details.getSshPassphrase() == null) details.setSshPassphrase(existing.getSshPassphrase());
+        }
         connectionManagerService.evictConnection(id);
         connectionRepository.save(details);
         return ResponseEntity.ok(Map.of("success", true, "connection", details));
@@ -276,10 +282,11 @@ public class ApiController {
                      PreparedStatement ps = conn.prepareStatement(request.getQuery(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
 
                     boolean isPostgres = conn.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres");
+                    boolean isMysql = conn.getMetaData().getDatabaseProductName().toLowerCase().contains("mysql");
                     if (isPostgres) {
                         conn.setAutoCommit(false);
-                        ps.setFetchSize(1000);
                     }
+                    ps.setFetchSize(isMysql ? Integer.MIN_VALUE : 1000);
 
                     try (ResultSet rs = ps.executeQuery()) {
                         ResultSetMetaData meta = rs.getMetaData();
@@ -298,13 +305,15 @@ public class ApiController {
                         gen.writeRaw('\n');
                         gen.flush();
 
+                        gen.flush();
+
                         int rowCount = 0;
                         while (rs.next()) {
                             gen.writeStartObject();
                             gen.writeStringField("type", "row");
                             gen.writeObjectFieldStart("data");
                             for (int i = 1; i <= colCount; i++) {
-                                gen.writeObjectField(cols[i - 1], rs.getObject(i));
+                                gen.writeObjectField(cols[i - 1], getSafeObject(rs, i));
                             }
                             gen.writeEndObject();
                             gen.writeEndObject();
@@ -511,6 +520,21 @@ public class ApiController {
         }
     }
 
+    private Object getSafeObject(java.sql.ResultSet rs, int colIdx) throws java.sql.SQLException {
+        Object val = rs.getObject(colIdx);
+        if (val == null) return null;
+        if (val instanceof java.sql.Blob) {
+            java.sql.Blob b = (java.sql.Blob) val;
+            return "[BLOB Data: " + b.length() + " bytes]";
+        } else if (val instanceof java.sql.Clob) {
+            java.sql.Clob c = (java.sql.Clob) val;
+            return "[CLOB Data: " + c.length() + " chars]";
+        } else if (val instanceof byte[]) {
+            return "[BINARY Data: " + ((byte[]) val).length + " bytes]";
+        }
+        return val;
+    }
+
     @Autowired
     private com.dbdiff.service.DatabaseExplorerService explorerService;
 
@@ -672,6 +696,33 @@ public class ApiController {
                 if (map.containsKey("schema") && map.get("schema") != null) {
                     dbDetails.setSchema((String) map.get("schema"));
                 }
+                // Merge SSH fields dari payload agar endpoint columns/keys bisa pakai SSH yang benar
+                if (map.containsKey("useSsh")) {
+                    dbDetails.setUseSsh(Boolean.TRUE.equals(map.get("useSsh")));
+                }
+                if (map.containsKey("sshHost") && map.get("sshHost") != null) {
+                    dbDetails.setSshHost((String) map.get("sshHost"));
+                }
+                if (map.get("sshPort") != null) {
+                    dbDetails.setSshPort(map.get("sshPort") instanceof Integer
+                        ? (Integer) map.get("sshPort")
+                        : Integer.parseInt(map.get("sshPort").toString()));
+                }
+                if (map.containsKey("sshUsername") && map.get("sshUsername") != null) {
+                    dbDetails.setSshUsername((String) map.get("sshUsername"));
+                }
+                if (map.containsKey("sshAuthMode") && map.get("sshAuthMode") != null) {
+                    dbDetails.setSshAuthMode((String) map.get("sshAuthMode"));
+                }
+                if (map.containsKey("sshPassword") && map.get("sshPassword") != null) {
+                    dbDetails.setSshPassword((String) map.get("sshPassword"));
+                }
+                if (map.containsKey("sshKeyFile") && map.get("sshKeyFile") != null) {
+                    dbDetails.setSshKeyFile((String) map.get("sshKeyFile"));
+                }
+                if (map.containsKey("sshPassphrase") && map.get("sshPassphrase") != null) {
+                    dbDetails.setSshPassphrase((String) map.get("sshPassphrase"));
+                }
                 return dbDetails;
             }
         }
@@ -705,6 +756,7 @@ public class ApiController {
         details.setSshPassword((String) map.get("sshPassword"));
         details.setSshKeyFile((String) map.get("sshKeyFile"));
         details.setSshPassphrase((String) map.get("sshPassphrase"));
+        details.setSshStrictHostKeyChecking(!map.containsKey("sshStrictHostKeyChecking") || Boolean.TRUE.equals(map.get("sshStrictHostKeyChecking")));
 
         if (map.get("connectionTimeout") != null) {
             details.setConnectionTimeout(map.get("connectionTimeout") instanceof Integer ? (Integer) map.get("connectionTimeout") : Integer.parseInt(map.get("connectionTimeout").toString()));

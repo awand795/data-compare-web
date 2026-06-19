@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore, type TableMapping } from '../store/useAppStore';
 import {
   Database, ArrowRight, Play, LayoutList, CheckSquare, Square,
@@ -43,6 +43,16 @@ export const ExcelCompareView: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFullscreenGrid, setIsFullscreenGrid] = useState(false);
   const focusedMapping = focusedMappingId || '';
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Prevent memory leaks / phantom streams if component is unmounted during comparison
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   const sourceConn = connections.find(c => c.id === sourceConnectionId);
   const targetConn = connections.find(c => c.id === targetConnectionId);
@@ -101,7 +111,7 @@ export const ExcelCompareView: React.FC = () => {
     }
   }, [sourceTables, targetTables, excelMappings, addExcelMapping]);
 
-  const streamOneMapping = async (mapping: TableMapping) => {
+  const streamOneMapping = async (mapping: TableMapping, signal: AbortSignal) => {
     const sqFinal = buildEffectiveQuery(mapping.sourceTable, mapping, 'source');
     const tqFinal = buildEffectiveQuery(mapping.targetTable, mapping, 'target');
 
@@ -124,7 +134,8 @@ export const ExcelCompareView: React.FC = () => {
     const response = await fetch('/api/compare', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal
     });
 
     if (!response.ok) {
@@ -155,13 +166,14 @@ export const ExcelCompareView: React.FC = () => {
       }
     };
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        if (batchTimer) clearTimeout(batchTimer);
-        flushRows();
-        break;
-      }
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          if (batchTimer) clearTimeout(batchTimer);
+          flushRows();
+          break;
+        }
 
       buffer += decoder.decode(value, { stream: true });
       let boundary = buffer.indexOf('\n');
@@ -214,12 +226,25 @@ export const ExcelCompareView: React.FC = () => {
         boundary = buffer.indexOf('\n');
       }
     }
+  } finally {
+    if (reader) {
+        try { reader.cancel(); } catch (_) {}
+        try { reader.releaseLock(); } catch (_) {}
+      }
+    }
   };
 
   const handleCompare = async () => {
+    if (loading) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      return;
+    }
     const activeConn = excelIsTarget ? sourceConn : targetConn;
     if (!activeConn || selectedMappings.size === 0) return;
     setLoading(true);
+    abortControllerRef.current = new AbortController();
     const mappingsToCompare = excelMappings.filter(
       m => selectedMappings.has(m.id) && (m.sourceTable || m.customQuerySource) && (m.targetTable || m.customQueryTarget)
     );
@@ -234,7 +259,7 @@ export const ExcelCompareView: React.FC = () => {
       const promises: Promise<void>[] = [];
 
       for (const mapping of mappingsToCompare) {
-        const p = streamOneMapping(mapping).then(() => {
+        const p = streamOneMapping(mapping, abortControllerRef.current!.signal).then(() => {
           setProgress(prev => ({ current: prev.current + 1, total: prev.total }));
         }).catch(err => {
           console.error("Mapping failed", mapping.id, err);

@@ -47,6 +47,15 @@ export const DataCompareView: React.FC = () => {
   const creatingMappingsRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Prevent memory leaks / phantom streams if component is unmounted during comparison
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
   // Detect mappings that just finished comparing → trigger fade-out animation
   useEffect(() => {
     const currentComparing = new Set(
@@ -128,7 +137,8 @@ export const DataCompareView: React.FC = () => {
   // Auto-create 1:1 mappings when tables load and no mappings exist
   useEffect(() => {
     if (sourceTables.length > 0 && targetTables.length > 0 && tableMappings.length === 0 && sourceConn?.id && !loadingTables && !creatingMappingsRef.current) {
-      creatingMappingsRef.current = true;
+      creatingMappingsRef.current = true; // Set SEBELUM async, bukan di dalam
+      let cancelled = false;
       
       const commonTables = sourceTables.filter(t => targetTables.includes(t));
       
@@ -168,6 +178,7 @@ export const DataCompareView: React.FC = () => {
           });
           
           // Verify connection hasn't changed while we were loading
+          if (cancelled) return;
           const currentState = useAppStore.getState();
           if (currentState.sourceConnectionId !== sourceConn?.id ||
               currentState.targetConnectionId !== targetConn?.id) {
@@ -186,6 +197,11 @@ export const DataCompareView: React.FC = () => {
       };
 
       createMappings();
+      
+      return () => {
+        cancelled = true;
+        creatingMappingsRef.current = false; // Reset saat unmount/connection change
+      };
     }
   }, [sourceTables, targetTables, sourceConn?.id, loadingTables]);
 
@@ -246,24 +262,29 @@ export const DataCompareView: React.FC = () => {
     }
 
     // Step 3: Read the NDJSON stream
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let rowBatch: any[] = [];
-    let rowCount = 0;
-    let columnsSet = false;
-    let streamColumns: string[] = [];
-    let summaryData: any = null;
-    let lastFlushTime = Date.now();
-
-    const flushRowBatch = () => {
-      if (rowBatch.length > 0) {
-        store.appendDiffRows(mapping.id, rowBatch);
-        rowBatch = [];
-      }
-    };
-
+    let reader: any = null;
     try {
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let rowBatch: any[] = [];
+      let rowCount = 0;
+      let columnsSet = false;
+      let streamColumns: string[] = [];
+      let summaryData: any = null;
+      let lastFlushTime = Date.now();
+
+      const flushRowBatch = () => {
+        if (rowBatch.length > 0) {
+          try {
+            store.appendDiffRows(mapping.id, rowBatch);
+          } catch (storeErr) {
+            console.error('Store flush failed, continuing stream:', storeErr);
+          }
+          rowBatch = [];
+        }
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -326,25 +347,28 @@ export const DataCompareView: React.FC = () => {
           }
         }
       }
+      
+      // Flush remaining rows
+      flushRowBatch();
+      
+      // Final progress update
+      if (totalRows > 0) {
+        store.setBatchProgress(mapping.id, totalRows, totalRows);
+      }
+      
+      // Finalize: set summary
+      if (summaryData) {
+        store.setDiffSummary(mapping.id, {
+          totalSourceRows: summaryData.totalSourceRows || 0,
+          totalTargetRows: summaryData.totalTargetRows || 0,
+          totalDifferences: summaryData.totalDifferences || 0,
+        });
+      }
     } finally {
-      reader.releaseLock();
-    }
-    
-    // Flush remaining rows
-    flushRowBatch();
-    
-    // Final progress update
-    if (totalRows > 0) {
-      store.setBatchProgress(mapping.id, totalRows, totalRows);
-    }
-    
-    // Finalize: set summary
-    if (summaryData) {
-      store.setDiffSummary(mapping.id, {
-        totalSourceRows: summaryData.totalSourceRows || 0,
-        totalTargetRows: summaryData.totalTargetRows || 0,
-        totalDifferences: summaryData.totalDifferences || 0,
-      });
+      if (reader) {
+        try { reader.cancel(); } catch (_) {}
+        try { reader.releaseLock(); } catch (_) {}
+      }
     }
   };
 
@@ -942,19 +966,28 @@ export const DataCompareView: React.FC = () => {
                     <span className="text-[10px] uppercase font-bold text-blue-500 tracking-wider">Date Filter</span>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[11px] text-text-muted">Column:</span>
-                      <input
-                        type="text"
-                        placeholder="e.g. created_at"
-                        value={focusedMappingObj.dateColumn || ''}
-                        onChange={e => updateMappingWithDateFilter(focusedMappingObj.id, { dateColumn: e.target.value })}
-                        className={clsx(
-                          "px-2 py-1 text-xs bg-bg-input border rounded w-28 outline-none focus:border-blue-500",
-                          !focusedMappingObj.dateColumn && (focusedMappingObj.startDate || focusedMappingObj.endDate)
-                            ? "border-red-500 bg-red-500/10"
-                            : "border-border-input"
-                        )}
-                        title={!focusedMappingObj.dateColumn && (focusedMappingObj.startDate || focusedMappingObj.endDate) ? "Column name is required to apply date filter!" : ""}
-                      />
+                      {(() => {
+                        const val = focusedMappingObj.dateColumn || '';
+                        const isInvalidFormat = val ? !/^[a-zA-Z_][a-zA-Z0-9_."]*$/.test(val) : false;
+                        const isMissing = !val && (focusedMappingObj.startDate || focusedMappingObj.endDate);
+                        const hasError = isInvalidFormat || isMissing;
+                        let title = "";
+                        if (isMissing) title = "Column name is required to apply date filter!";
+                        if (isInvalidFormat) title = "Invalid column name format! Only alphanumeric, _, ., and \" are allowed.";
+                        return (
+                          <input
+                            type="text"
+                            placeholder="e.g. created_at"
+                            value={val}
+                            onChange={e => updateMappingWithDateFilter(focusedMappingObj.id, { dateColumn: e.target.value })}
+                            className={clsx(
+                              "px-2 py-1 text-xs bg-bg-input border rounded w-28 outline-none focus:border-blue-500",
+                              hasError ? "border-red-500 bg-red-500/10" : "border-border-input"
+                            )}
+                            title={title}
+                          />
+                        );
+                      })()}
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-[11px] text-text-muted">From:</span>

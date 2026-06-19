@@ -34,7 +34,7 @@ public class DataComparisonService {
     @Autowired
     private DatabaseMetaDataService metaDataService;
 
-    private static final int MAX_UNMATCHED_BUFFER = 500_000;
+    private static final int MAX_UNMATCHED_BUFFER = 10_000;
 
     private String buildDryRunQuery(String baseQuery, String type) {
         String dbType = type != null ? type.toLowerCase() : "postgresql";
@@ -178,23 +178,26 @@ public class DataComparisonService {
 
     private List<Map<String, Object>> fetchWithCursor(DataSource ds, String sql) {
         List<Map<String, Object>> results = new ArrayList<>(Math.min(5_000, MAX_SYNC_ROWS));
-        try (Connection conn = ds.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql,
-                 ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+        try (Connection conn = ds.getConnection()) {
             conn.setAutoCommit(false);
-            ps.setQueryTimeout(3600); // 1 hour safety timeout
-            ps.setFetchSize(1000);
-            try (ResultSet rs = ps.executeQuery()) {
-                ResultSetMetaData meta = rs.getMetaData();
-                int colCount = meta.getColumnCount();
-                String[] cols = new String[colCount];
-                for (int i = 1; i <= colCount; i++) cols[i - 1] = meta.getColumnLabel(i);
-                int rowNum = 0;
-                while (rs.next() && rowNum < MAX_SYNC_ROWS) {
-                    Map<String, Object> row = new LinkedHashMap<>(colCount);
-                    for (int i = 0; i < colCount; i++) row.put(cols[i], rs.getObject(i + 1));
-                    results.add(row);
-                    rowNum++;
+            try {
+                try (PreparedStatement ps = conn.prepareStatement(sql,
+                        ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                    ps.setQueryTimeout(3600);
+                    ps.setFetchSize(1000);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        ResultSetMetaData meta = rs.getMetaData();
+                        int colCount = meta.getColumnCount();
+                        String[] cols = new String[colCount];
+                        for (int i = 1; i <= colCount; i++) cols[i - 1] = meta.getColumnLabel(i);
+                        int rowNum = 0;
+                        while (rs.next() && rowNum < MAX_SYNC_ROWS) {
+                            Map<String, Object> row = new LinkedHashMap<>(colCount);
+                            for (int i = 0; i < colCount; i++) row.put(cols[i], rs.getObject(i + 1));
+                            results.add(row);
+                            rowNum++;
+                        }
+                    }
                 }
             } finally {
                 try { conn.rollback(); } catch (Exception ignored) {}
@@ -214,8 +217,13 @@ public class DataComparisonService {
         try (JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
             gen.disable(JsonGenerator.Feature.FLUSH_PASSED_TO_STREAM);
             int[] rowCount = {0};
+            final boolean[] totalsSent = {false};
+            final long[] sCount = {0};
+            final long[] tCount = {0};
+            final long[] diffCount = {0};
 
-            processStream(request, new DiffRowConsumer() {
+            try {
+                processStream(request, new DiffRowConsumer() {
                 @Override
                 public void onColumns(List<String> columns) throws Exception {
                     gen.writeStartObject();
@@ -230,6 +238,8 @@ public class DataComparisonService {
 
                 @Override
                 public void onMatchRow(String key, Object[] values, List<String> columns) throws Exception {
+                    sCount[0]++;
+                    tCount[0]++;
                     // Ultra-fast compact JSON for MATCH rows without allocating DiffRow/DiffCell
                     gen.writeStartObject();
                     gen.writeStringField("type", "m");
@@ -252,10 +262,33 @@ public class DataComparisonService {
                 @Override
                 public void onRow(DiffRow row) throws Exception {
                     if (row.getStatus() == DiffRow.Status.MATCH) {
-                        onMatchRow(row.getRowKey(), row.getCells().values().stream().map(c -> c.getSourceValue()).toArray(), null);
+                        sCount[0]++;
+                        tCount[0]++;
+                        gen.writeStartObject();
+                        gen.writeStringField("type", "m");
+                        gen.writeStringField("k", row.getRowKey());
+                        gen.writeArrayFieldStart("v");
+                        for (DiffCell cell : row.getCells().values()) gen.writeObject(cell.getSourceValue());
+                        gen.writeEndArray();
+                        gen.writeEndObject();
+                        gen.writeRaw('\n');
+                        rowCount[0]++;
+                        if (rowCount[0] % 10000 == 0) gen.flush();
                         return;
                     }
                     
+                    if (row.getStatus() == DiffRow.Status.DIFFERENT) {
+                        sCount[0]++;
+                        tCount[0]++;
+                        diffCount[0]++;
+                    } else if (row.getStatus() == DiffRow.Status.SOURCE_ONLY) {
+                        sCount[0]++;
+                        diffCount[0]++;
+                    } else if (row.getStatus() == DiffRow.Status.TARGET_ONLY) {
+                        tCount[0]++;
+                        diffCount[0]++;
+                    }
+
                     // Full format for DIFF/SOURCE_ONLY/TARGET_ONLY
                         gen.writeStartObject();
                         gen.writeStringField("type", "row");
@@ -284,6 +317,7 @@ public class DataComparisonService {
 
                 @Override
                 public void onTotals(int totalSource, int totalTarget, int totalDiffs) throws Exception {
+                    totalsSent[0] = true;
                     gen.flush();
                     gen.writeStartObject();
                     gen.writeStringField("type", "summary");
@@ -297,9 +331,25 @@ public class DataComparisonService {
                     gen.flush();
                 }
             });
-        } catch (StreamLimitReachedException e) {
-            // Gracefully handle stream limit — not a real error
-            logger.info("Stream compare reached safety limit: {} rows", e.getLimit());
+            } finally {
+                if (!totalsSent[0]) {
+                    try {
+                        gen.flush();
+                        gen.writeStartObject();
+                        gen.writeStringField("type", "summary");
+                        gen.writeObjectFieldStart("data");
+                        gen.writeNumberField("totalSourceRows", sCount[0]);
+                        gen.writeNumberField("totalTargetRows", tCount[0]);
+                        gen.writeNumberField("totalDifferences", diffCount[0]);
+                        gen.writeEndObject();
+                        gen.writeEndObject();
+                        gen.writeRaw('\n');
+                        gen.flush();
+                    } catch (Exception ex) {
+                        logger.warn("Failed to write partial summary: {}", ex.getMessage());
+                    }
+                }
+            }
         } catch (Exception e) {
             throw new IOException("Failed to stream JSON", e);
         }
@@ -477,9 +527,10 @@ public class DataComparisonService {
                     try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
                          PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                         
-                        int fetchSize = 10000;
-                        psSource.setFetchSize(fetchSize);
-                        psTarget.setFetchSize(fetchSize);
+                        String sName = sConn.getMetaData().getDatabaseProductName().toLowerCase();
+                        String tName = tConn.getMetaData().getDatabaseProductName().toLowerCase();
+                        psSource.setFetchSize(sName.contains("mysql") ? Integer.MIN_VALUE : 10000);
+                        psTarget.setFetchSize(tName.contains("mysql") ? Integer.MIN_VALUE : 10000);
                         psSource.setQueryTimeout(3600); // 1 hour safety timeout
                         psTarget.setQueryTimeout(3600); // 1 hour safety timeout
 
@@ -635,8 +686,7 @@ public class DataComparisonService {
             throw new RuntimeException("Comparison interrupted while waiting for database semaphore", e);
         } catch (StreamLimitReachedException e) {
             logger.warn("STREAM COMPARE: Hit row limit {}. Sending partial totals.", e.getLimit());
-            try { consumer.onTotals(totalSourceRows[0], totalTargetRows[0], differences[0]); } catch (Exception ignored) {}
-            throw e;
+            // Jangan re-throw — biarkan finally block release semaphore, lalu panggil onTotals di bawah
         } finally {
             if (sem2 != null && acq2) {
                 sem2.release(permits2);
@@ -670,6 +720,10 @@ public class DataComparisonService {
         if (useSurrogateKey && request.getSortColumns() != null && !request.getSortColumns().isEmpty()) {
             exactPks = request.getSortColumns();
             useSurrogateKey = false;
+        }
+
+        if (useSurrogateKey) {
+            throw new IllegalArgumentException("Batch mode requires primary key or sort columns for accuracy. Please configure them before comparing.");
         }
 
         // Same deterministic ordering fix as processStream
@@ -797,6 +851,11 @@ public class DataComparisonService {
         result.put("targetBatchRows", targetSize);
         result.put("elapsedMs", System.currentTimeMillis() - startTime);
 
+        boolean isDifferentDB = !request.getSourceConnection().getStableIdentifier().equals(request.getTargetConnection().getStableIdentifier());
+        if (isDifferentDB) {
+            result.put("warning", "CompareBatch relies on LIMIT/OFFSET which may cause misalignment if data is actively mutating or if DB specific sort stability varies. Please ensure stable ordering or consider this a static snapshot.");
+        }
+
         logger.info("BATCH COMPARE: SELESAI offset={} rows={} diff={} hasMore={} elapsed={}ms",
                 offset, rows.size(), differentCount + sourceOnlyCount + targetOnlyCount, hasMore, result.get("elapsedMs"));
 
@@ -890,48 +949,69 @@ public class DataComparisonService {
 
         DiffResult diff = compare(request);
         DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
-        JdbcTemplate targetJdbc = new JdbcTemplate(targetDs);
+        try (java.sql.Connection targetConn = targetDs.getConnection()) {
+            targetConn.setAutoCommit(false);
+            try {
+                JdbcTemplate targetJdbc = new JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(targetConn, true));
 
-        List<String> pks = request.getPrimaryKeys();
-        if (pks == null || pks.isEmpty()) throw new IllegalArgumentException("Primary keys required for sync.");
+                List<String> pks = request.getPrimaryKeys();
+                if (pks == null || pks.isEmpty()) throw new IllegalArgumentException("Primary keys required for sync.");
 
-        String tableName = request.getTableName();
-        List<String> columns = diff.getColumns();
-        int inserted = 0, updated = 0, deleted = 0;
+                String tableName = request.getTableName();
+                List<String> columns = diff.getColumns();
+                int inserted = 0, updated = 0, deleted = 0;
 
-        for (DiffRow row : diff.getRows()) {
-            if (row.getStatus() == DiffRow.Status.SOURCE_ONLY) {
-                String sql = "INSERT INTO " + tableName + " (" + String.join(", ", columns) + ") VALUES (" +
-                        columns.stream().map(c -> "?").collect(Collectors.joining(", ")) + ")";
-                targetJdbc.update(sql, columns.stream().map(c -> row.getCells().get(c).getSourceValue()).toArray());
-                inserted++;
-            } else if (row.getStatus() == DiffRow.Status.DIFFERENT) {
-                List<String> updCols = columns.stream().filter(c -> !pks.contains(c)).collect(Collectors.toList());
-                String sql = "UPDATE " + tableName + " SET " +
-                        updCols.stream().map(c -> c + " = ?").collect(Collectors.joining(", ")) +
-                        " WHERE " + pks.stream().map(pk -> pk + " = ?").collect(Collectors.joining(" AND "));
-                List<Object> args = new ArrayList<>();
-                updCols.forEach(c -> args.add(row.getCells().get(c).getSourceValue()));
-                pks.forEach(pk -> args.add(row.getCells().get(pk).getSourceValue()));
-                targetJdbc.update(sql, args.toArray());
-                updated++;
-            } else if (row.getStatus() == DiffRow.Status.TARGET_ONLY) {
-                String sql = "DELETE FROM " + tableName + " WHERE " +
-                        pks.stream().map(pk -> pk + " = ?").collect(Collectors.joining(" AND "));
-                targetJdbc.update(sql, pks.stream().map(pk -> row.getCells().get(pk).getTargetValue()).toArray());
-                deleted++;
+                String dbType = request.getTargetConnection().getType().toLowerCase();
+                String safeTable = formatTableName(tableName);
+                String colsSql = columns.stream()
+                        .map(c -> quoteIdentifier(c, dbType))
+                        .collect(Collectors.joining(", "));
+
+                for (DiffRow row : diff.getRows()) {
+                    if (row.getStatus() == DiffRow.Status.SOURCE_ONLY) {
+                        String sql = "INSERT INTO " + safeTable + " (" + colsSql + ") VALUES (" +
+                                columns.stream().map(c -> "?").collect(Collectors.joining(", ")) + ")";
+                        targetJdbc.update(sql, columns.stream().map(c -> row.getCells().get(c).getSourceValue()).toArray());
+                        inserted++;
+                    } else if (row.getStatus() == DiffRow.Status.DIFFERENT) {
+                        List<String> updCols = columns.stream().filter(c -> !pks.contains(c)).collect(Collectors.toList());
+                        String sql = "UPDATE " + safeTable + " SET " +
+                                updCols.stream().map(c -> quoteIdentifier(c, dbType) + " = ?").collect(Collectors.joining(", ")) +
+                                " WHERE " + pks.stream().map(pk -> quoteIdentifier(pk, dbType) + " = ?").collect(Collectors.joining(" AND "));
+                        List<Object> args = new ArrayList<>();
+                        updCols.forEach(c -> args.add(row.getCells().get(c).getSourceValue()));
+                        pks.forEach(pk -> args.add(row.getCells().get(pk).getSourceValue()));
+                        targetJdbc.update(sql, args.toArray());
+                        updated++;
+                    } else if (row.getStatus() == DiffRow.Status.TARGET_ONLY) {
+                        String sql = "DELETE FROM " + safeTable + " WHERE " +
+                                pks.stream().map(pk -> quoteIdentifier(pk, dbType) + " = ?").collect(Collectors.joining(" AND "));
+                        targetJdbc.update(sql, pks.stream().map(pk -> row.getCells().get(pk).getTargetValue()).toArray());
+                        deleted++;
+                    }
+                }
+
+                targetConn.commit();
+
+                // Release diff data immediately
+                diff = null;
+
+                Map<String, Object> result = new HashMap<>();
+                result.put("success", true);
+                result.put("inserted", inserted);
+                result.put("updated", updated);
+                result.put("deleted", deleted);
+                return result;
+            } catch (Exception e) {
+                targetConn.rollback();
+                throw e;
+            } finally {
+                try { targetConn.setAutoCommit(true); } catch (Exception ignored) {}
             }
+        } catch (Exception e) {
+            if (e instanceof RuntimeException) throw (RuntimeException) e;
+            throw new RuntimeException("Sync failed: " + e.getMessage(), e);
         }
-
-        // Release diff data immediately
-        diff = null;
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("success", true);
-        result.put("inserted", inserted);
-        result.put("updated", updated);
-        result.put("deleted", deleted);
-        return result;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -984,18 +1064,11 @@ public class DataComparisonService {
         return idx;
     }
 
-    private static final ThreadLocal<StringBuilder> KEY_SB = ThreadLocal.withInitial(() -> new StringBuilder(128));
-
     private String buildKeyFromRs(ResultSet rs, int[] exactPkIdx) throws Exception {
-        StringBuilder sb = KEY_SB.get();
-        sb.setLength(0);
+        StringBuilder sb = new StringBuilder(exactPkIdx.length * 16);
         for (int i = 0; i < exactPkIdx.length; i++) {
             if (i > 0) sb.append('|');
-            if (exactPkIdx[i] > 0) {
-                sb.append(rs.getString(exactPkIdx[i]));
-            } else {
-                sb.append("null");
-            }
+            sb.append(exactPkIdx[i] > 0 ? rs.getString(exactPkIdx[i]) : "null");
         }
         return sb.toString();
     }
@@ -1018,7 +1091,7 @@ public class DataComparisonService {
     private boolean fastRowEquals(ResultSet rs1, ResultSet rs2, int[] idx1, int[] idx2, int size) throws Exception {
         for (int i = 0; i < size; i++) {
             if (idx1[i] > 0 && idx2[i] > 0) {
-                if (!normalizedEquals(rs1.getObject(idx1[i]), rs2.getObject(idx2[i]))) return false;
+                if (!normalizedEquals(getSafeObject(rs1, idx1[i]), getSafeObject(rs2, idx2[i]))) return false;
             } else if (idx1[i] > 0 || idx2[i] > 0) {
                 return false; // one has the column, other doesn't
             }
@@ -1103,15 +1176,29 @@ public class DataComparisonService {
         java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
     };
 
+    /**
+     * Membandingkan dua nilai dari database dengan normalisasi tipe.
+     * NULL tidak sama dengan empty string — keduanya dianggap berbeda.
+     * Number dari tipe berbeda (Integer vs Long) dibandingkan secara numerik.
+     * Date string dengan format berbeda dibandingkan secara epoch.
+     */
     private boolean normalizedEquals(Object a, Object b) {
         if (a == b) return true; // same reference or both null
-        if (a == null) return b.toString().trim().isEmpty();
-        if (b == null) return a.toString().trim().isEmpty();
+        if (a == null || b == null) return false; // NULL != "" — perbedaan semantik yang valid
         if (a.equals(b)) return true;
         
         // Same class fast path — most common case in DB comparisons
         if (a.getClass() == b.getClass()) {
-            if (a instanceof Number) return ((Number) a).doubleValue() == ((Number) b).doubleValue();
+            if (a instanceof Number) {
+                double da = ((Number) a).doubleValue();
+                double db = ((Number) b).doubleValue();
+                if (Double.isNaN(da) && Double.isNaN(db)) return true;
+                if (Double.isInfinite(da) && Double.isInfinite(db) && Math.signum(da) == Math.signum(db)) return true;
+                if (Math.abs(da - db) < 1e-9) return true;
+                try {
+                    return new java.math.BigDecimal(a.toString()).compareTo(new java.math.BigDecimal(b.toString())) == 0;
+                } catch (Exception e) { return false; }
+            }
             return a.toString().trim().equalsIgnoreCase(b.toString().trim());
         }
         
@@ -1119,7 +1206,9 @@ public class DataComparisonService {
         if (a instanceof Number && b instanceof Number) {
             double da = ((Number) a).doubleValue();
             double db = ((Number) b).doubleValue();
-            if (da == db) return true;
+            if (Double.isNaN(da) && Double.isNaN(db)) return true;
+            if (Double.isInfinite(da) && Double.isInfinite(db) && Math.signum(da) == Math.signum(db)) return true;
+            if (Math.abs(da - db) < 1e-9) return true;
             // Fall through to BigDecimal for precision
             try {
                 return new java.math.BigDecimal(a.toString()).compareTo(new java.math.BigDecimal(b.toString())) == 0;
@@ -1179,30 +1268,38 @@ public class DataComparisonService {
         return (c >= '0' && c <= '9') || c == '-' || c == '.';
     }
 
-        private String buildQuery(String tableName, String customQuery, List<String> pks, List<String> sortColumns, boolean useSurrogateKey, boolean useMd5Fallback, String dbType) {
+    private String quoteIdentifier(String col, String dbType) {
+        if ("sqlserver".equals(dbType)) return "[" + col.replace("]", "]]") + "]";
+        return "\"" + col.replace("\"", "\"\"") + "\"";
+    }
+
+    private String buildQuery(String tableName, String customQuery, List<String> pks, List<String> sortColumns, boolean useSurrogateKey, boolean useMd5Fallback, String dbType) {
         String orderByClause = "";
         
         if (useMd5Fallback) {
             List<String> colsToHash = (sortColumns != null && !sortColumns.isEmpty()) ? sortColumns : pks;
             String concatCols = colsToHash.stream().map(c -> {
-                if ("postgresql".equals(dbType)) return "COALESCE(" + c + "::text, '')";
-                else return "IFNULL(" + c + ", '')";
+                String q = quoteIdentifier(c, dbType);
+                if ("postgresql".equals(dbType)) return "COALESCE(" + q + "::text, '')";
+                else return "IFNULL(" + q + ", '')";
             }).collect(java.util.stream.Collectors.joining(", '|', "));
             orderByClause = "MD5(CONCAT_WS('|', " + concatCols + "))";
         } else if (sortColumns != null && !sortColumns.isEmpty()) {
             orderByClause = sortColumns.stream().map(c -> {
+                String q = quoteIdentifier(c, dbType);
                 if ("postgresql".equals(dbType)) {
-                    return "COALESCE(" + c + "::text, '') ASC";
+                    return "COALESCE(" + q + "::text, '') ASC";
                 } else {
-                    return "COALESCE(" + c + ", '') ASC";
+                    return "COALESCE(" + q + ", '') ASC";
                 }
             }).collect(java.util.stream.Collectors.joining(", "));
         } else if (pks != null && !pks.isEmpty()) {
             orderByClause = pks.stream().map(c -> {
+                String q = quoteIdentifier(c, dbType);
                 if ("postgresql".equals(dbType)) {
-                    return "COALESCE(" + c + "::text, '') ASC";
+                    return "COALESCE(" + q + "::text, '') ASC";
                 } else {
-                    return "COALESCE(" + c + ", '') ASC";
+                    return "COALESCE(" + q + ", '') ASC";
                 }
             }).collect(java.util.stream.Collectors.joining(", "));
         }
@@ -1269,11 +1366,26 @@ public class DataComparisonService {
         return sb.toString();
     }
 
+    private Object getSafeObject(ResultSet rs, int colIdx) throws Exception {
+        Object val = rs.getObject(colIdx);
+        if (val == null) return null;
+        if (val instanceof java.sql.Blob) {
+            java.sql.Blob b = (java.sql.Blob) val;
+            return "[BLOB Data: " + b.length() + " bytes]";
+        } else if (val instanceof java.sql.Clob) {
+            java.sql.Clob c = (java.sql.Clob) val;
+            return "[CLOB Data: " + c.length() + " chars]";
+        } else if (val instanceof byte[]) {
+            return "[BINARY Data: " + ((byte[]) val).length + " bytes]";
+        }
+        return val;
+    }
+
     private Object[] getRow(ResultSet rs, int size, int[] colIdx) throws Exception {
         Object[] row = new Object[size];
         for (int i = 0; i < size; i++) {
             if (colIdx[i] > 0) {
-                try { row[i] = rs.getObject(colIdx[i]); } catch (Exception e) {}
+                try { row[i] = getSafeObject(rs, colIdx[i]); } catch (Exception e) {}
             } else {
                 row[i] = null;
             }
@@ -1284,8 +1396,8 @@ public class DataComparisonService {
     @SuppressWarnings("unchecked")
     private int compareKeys(ResultSet rsS, ResultSet rsT, int[] sPkIdx, int[] tPkIdx) throws Exception {
         for (int i = 0; i < sPkIdx.length; i++) {
-            Object sObj = sPkIdx[i] > 0 ? rsS.getObject(sPkIdx[i]) : null;
-            Object tObj = tPkIdx[i] > 0 ? rsT.getObject(tPkIdx[i]) : null;
+            Object sObj = sPkIdx[i] > 0 ? getSafeObject(rsS, sPkIdx[i]) : null;
+            Object tObj = tPkIdx[i] > 0 ? getSafeObject(rsT, tPkIdx[i]) : null;
             
             // NULL handling — matches SQL "NULLS FIRST" ordering
             if (sObj == null && tObj == null) continue;

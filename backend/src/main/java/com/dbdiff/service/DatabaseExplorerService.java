@@ -138,7 +138,18 @@ public class DatabaseExplorerService {
             String fullTableName = (schema != null && !schema.isEmpty() ? schema + "." : "") + table;
             
             if ("mysql".equalsIgnoreCase(dbType) || "mariadb".equalsIgnoreCase(dbType)) {
-                List<Map<String, Object>> res = jdbc.queryForList("SHOW CREATE TABLE " + fullTableName);
+                // Validasi table dan schema name sebelum digunakan dalam query
+                if (table != null && !table.matches("^[a-zA-Z0-9_$]+$")) {
+                    return "-- Invalid table name format";
+                }
+                if (schema != null && !schema.isEmpty() && !schema.matches("^[a-zA-Z0-9_$]+$")) {
+                    return "-- Invalid schema name format";
+                }
+                // Lalu quote nama table dan schema:
+                String quotedTable = "`" + table + "`";
+                String quotedFull = (schema != null && !schema.isEmpty()) ? "`" + schema + "`." + quotedTable : quotedTable;
+                
+                List<Map<String, Object>> res = jdbc.queryForList("SHOW CREATE TABLE " + quotedFull);
                 if (!res.isEmpty()) {
                     return (String) res.get(0).get("Create Table");
                 }
@@ -299,11 +310,44 @@ public class DatabaseExplorerService {
     }
 
     public List<Map<String, Object>> previewData(DataSource dataSource, String schema, String table) throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-        String q = "\"";
-        String fullTableName = (schema != null && !schema.isEmpty() ? q + schema + q + "." : "") + q + table + q;
-        String sql = "SELECT * FROM " + fullTableName;
-        jdbc.setMaxRows(200);
-        return jdbc.queryForList(sql);
+        List<Map<String, Object>> results = new java.util.ArrayList<>();
+        try (java.sql.Connection conn = dataSource.getConnection()) {
+            String dbType = conn.getMetaData().getDatabaseProductName().toLowerCase();
+            String q = dbType.contains("mysql") || dbType.contains("mariadb") ? "`" : "\"";
+            String fullTableName = (schema != null && !schema.isEmpty() ? q + schema + q + "." : "") + q + table + q;
+            String sql = "SELECT * FROM " + fullTableName;
+            
+            try (java.sql.PreparedStatement ps = conn.prepareStatement(sql, java.sql.ResultSet.TYPE_FORWARD_ONLY, java.sql.ResultSet.CONCUR_READ_ONLY)) {
+                ps.setMaxRows(200);
+            ps.setQueryTimeout(30);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                java.sql.ResultSetMetaData md = rs.getMetaData();
+                int cols = md.getColumnCount();
+                while (rs.next()) {
+                    Map<String, Object> row = new java.util.LinkedHashMap<>();
+                    for (int i = 1; i <= cols; i++) {
+                        row.put(md.getColumnLabel(i), getSafeObject(rs, i));
+                    }
+                    results.add(row);
+                }
+            }
+            }
+        }
+        return results;
+    }
+
+    private Object getSafeObject(java.sql.ResultSet rs, int colIdx) throws java.sql.SQLException {
+        Object val = rs.getObject(colIdx);
+        if (val == null) return null;
+        if (val instanceof java.sql.Blob) {
+            java.sql.Blob b = (java.sql.Blob) val;
+            return "[BLOB Data: " + b.length() + " bytes]";
+        } else if (val instanceof java.sql.Clob) {
+            java.sql.Clob c = (java.sql.Clob) val;
+            return "[CLOB Data: " + c.length() + " chars]";
+        } else if (val instanceof byte[]) {
+            return "[BINARY Data: " + ((byte[]) val).length + " bytes]";
+        }
+        return val;
     }
 }

@@ -122,3 +122,4 @@ ALTER TABLE templates ADD COLUMN IF NOT EXISTS query_primary_keys TEXT;
 
 ALTER TABLE schedules ALTER COLUMN source_table DROP NOT NULL;
 ALTER TABLE schedules ALTER COLUMN target_table DROP NOT NULL;
+ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_strict_host_key_checking BOOLEAN DEFAULT TRUE;

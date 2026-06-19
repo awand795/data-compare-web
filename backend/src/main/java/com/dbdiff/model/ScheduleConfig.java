@@ -150,6 +150,7 @@ public class ScheduleConfig {
     public boolean isActive() {
         return this.active;
     }
+    @JsonProperty("isActive")
     public void setActive(boolean active) {
         this.active = active;
     }

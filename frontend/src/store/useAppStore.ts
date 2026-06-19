@@ -30,6 +30,7 @@ export type Connection = {
   sshPassword?: string;
   sshKeyFile?: string;
   sshPassphrase?: string;
+  sshStrictHostKeyChecking?: boolean;
   sshLocalPort?: number | string;
   
   // Advanced Settings
@@ -63,7 +64,6 @@ export type DiffResult = {
   sourceOnlyCount: number;
   targetOnlyCount: number;
   status?: 'comparing' | 'done' | 'error';
-  _rowVersion?: number;
 };
 
 export type ColumnDiff = {
@@ -379,7 +379,9 @@ export const useAppStore = create<AppState>()(
     const existing = state.diffResults[mappingId];
     if (!existing) return state;
 
+    let combinedRows = [...existing.rows, ...newRows];
     let { matchCount, differentCount, sourceOnlyCount, targetOnlyCount } = existing;
+
     for (const r of newRows) {
       if (r.status === 'MATCH') matchCount++;
       else if (r.status === 'DIFFERENT') differentCount++;
@@ -388,29 +390,15 @@ export const useAppStore = create<AppState>()(
     }
 
     const maxRows = state.maxRowsInMemory || 100000;
-    // Mutate in-place for performance — avoid copying large arrays
-    existing.rows.push(...newRows);
-    
-    // Trim if over memory limit, prioritizing removal of MATCH rows first
-    if (existing.rows.length > maxRows) {
-      const excess = existing.rows.length - maxRows;
+    if (combinedRows.length > maxRows) {
       let dropped = 0;
-      const filtered = [];
-      
-      for (const row of existing.rows) {
-        if (row.status === 'MATCH' && dropped < excess) {
-          dropped++;
-        } else {
-          filtered.push(row);
-        }
+      const excess = combinedRows.length - maxRows;
+      combinedRows = combinedRows.filter(row =>
+        !(row.status === 'MATCH' && dropped++ < excess)
+      );
+      if (combinedRows.length > maxRows) {
+        combinedRows = combinedRows.slice(combinedRows.length - maxRows);
       }
-      
-      // If we still exceed the limit (e.g., too many DIFFERENT rows), drop the oldest ones
-      if (filtered.length > maxRows) {
-        filtered.splice(0, filtered.length - maxRows);
-      }
-      
-      existing.rows = filtered;
     }
 
     return {
@@ -418,12 +406,8 @@ export const useAppStore = create<AppState>()(
         ...state.diffResults,
         [mappingId]: {
           ...existing,
-          rows: existing.rows,
-          matchCount,
-          differentCount,
-          sourceOnlyCount,
-          targetOnlyCount,
-          _rowVersion: (existing._rowVersion || 0) + 1  // trigger React re-render without array copy
+          rows: combinedRows,
+          matchCount, differentCount, sourceOnlyCount, targetOnlyCount,
         }
       }
     };

@@ -411,6 +411,20 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                           <label className="text-xs text-text-muted">Local Port Binding (Leave 0 for auto-assign)</label>
                           <input name="sshLocalPort" type="number" value={formData.sshLocalPort || 0} onChange={handleChange} className="w-full max-w-[200px] px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" />
                       </div>
+                      
+                      <div className="flex flex-col gap-1 mt-2 border-t border-border-item pt-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            name="sshStrictHostKeyChecking"
+                            checked={formData.sshStrictHostKeyChecking !== false}
+                            onChange={handleChange}
+                            className="w-4 h-4 rounded border-border-input bg-bg-input text-blue-500 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-text-main">Strict Host Key Checking</span>
+                        </label>
+                        <p className="text-[11px] text-text-muted ml-6">Aktifkan untuk verifikasi host SSH (direkomendasikan). Matikan hanya jika server SSH tidak memiliki known hosts.</p>
+                      </div>
                     </div>
                   )}
                 </div>

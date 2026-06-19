@@ -38,9 +38,12 @@ public class DynamicSchedulerService {
 
     private final Map<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
     
-    // Limit concurrent scheduled compare jobs to prevent OOM
-    // Only 1 job runs at a time; others queue up
-    private final Semaphore jobSemaphore = new Semaphore(1);
+    // Limit concurrent scheduled compare jobs per-schedule
+    private final Map<String, Semaphore> scheduleSemaphores = new ConcurrentHashMap<>();
+
+    private Semaphore getScheduleSemaphore(String scheduleId) {
+        return scheduleSemaphores.computeIfAbsent(scheduleId, k -> new Semaphore(1));
+    }
 
     @Autowired
     private org.springframework.core.task.TaskExecutor taskExecutor;
@@ -96,6 +99,7 @@ public class DynamicSchedulerService {
         if (future != null) {
             future.cancel(false);
         }
+        scheduleSemaphores.remove(scheduleId);
     }
 
     private void scheduleTask(ScheduleConfig schedule) {
@@ -111,24 +115,24 @@ public class DynamicSchedulerService {
     }
 
     public void executeCompareJob(String scheduleId) {
-        // Acquire semaphore to limit concurrent jobs — prevents OOM from multiple large comparisons
+        Semaphore sem = getScheduleSemaphore(scheduleId);
         boolean acquired = false;
         try {
-            acquired = jobSemaphore.tryAcquire(5, java.util.concurrent.TimeUnit.MINUTES);
+            acquired = sem.tryAcquire(1, java.util.concurrent.TimeUnit.MINUTES);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             logger.warn("Job {} interrupted while waiting for semaphore", scheduleId);
             return;
         }
         if (!acquired) {
-            logger.warn("Job {} skipped — another job is still running after 5min wait", scheduleId);
+            logger.warn("Job {} skipped — previous run still in progress", scheduleId);
             return;
         }
         
         try {
             executeCompareJobInternal(scheduleId);
         } finally {
-            jobSemaphore.release();
+            sem.release();
         }
     }
 
@@ -221,7 +225,7 @@ public class DynamicSchedulerService {
                         request.setSortColumns(objectMapper.readValue((String) sorts, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){}));
                     }
 
-                    request.setReturnMatchedRows(false);
+                    request.setReturnMatchedRows(true);
                     int[] mArr = {0}, dArr = {0}, sArr = {0}, tArr = {0};
                     int[] totalsArr = {0}; // totalSource from onTotals
                     // FIX: Stream rows directly to DB instead of collecting in memory
@@ -234,6 +238,11 @@ public class DynamicSchedulerService {
 
                         @Override
                         public void onColumns(List<String> columns) throws Exception {}
+
+                        @Override
+                        public void onMatchRow(String key, Object[] values, List<String> columns) throws Exception {
+                            mArr[0]++;
+                        }
 
                         @Override
                         public void onRow(DiffRow row) throws Exception {
@@ -271,11 +280,7 @@ public class DynamicSchedulerService {
                         public void onTotals(int totalSource, int totalTarget, int totalDiffs) throws Exception {
                             // Flush remaining buffered rows before finishing
                             flushBuffer();
-                            // Calculate match count from totals:
-                            // totalSource = M + D + S  →  M = totalSource - D - S
                             totalsArr[0] = totalSource;
-                            mArr[0] = totalSource - dArr[0] - sArr[0];
-                            if (mArr[0] < 0) mArr[0] = 0; // safety guard
                         }
                     });
 

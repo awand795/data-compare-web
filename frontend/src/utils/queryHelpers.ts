@@ -20,9 +20,17 @@ export const buildEffectiveQuery = (
   const startDate  = mapping.startDate  || '';
   const endDate    = mapping.endDate    || '';
 
-  if (dateColumn) {
-    if (startDate) conditions.push(`${dateColumn} >= '${startDate}'`);
-    if (endDate)   conditions.push(`${dateColumn} <= '${endDate}'`);
+  // Validasi dateColumn: hanya izinkan identifier yang aman
+  const safeColumnRegex = /^[a-zA-Z_][a-zA-Z0-9_."]*$/;
+  const safeDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  
+  const safeColumn = dateColumn && safeColumnRegex.test(dateColumn) ? dateColumn : '';
+  const safeStart = startDate && safeDateRegex.test(startDate) ? startDate : '';
+  const safeEnd = endDate && safeDateRegex.test(endDate) ? endDate : '';
+
+  if (safeColumn) {
+    if (safeStart) conditions.push(`${safeColumn} >= '${safeStart}'`);
+    if (safeEnd)   conditions.push(`${safeColumn} <= '${safeEnd}'`);
   }
 
   const extraWhere = (side === 'source' ? mapping.extraWhereSource : mapping.extraWhereTarget)?.trim();
