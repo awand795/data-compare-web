@@ -34,6 +34,20 @@ public class ConnectionDetails {
     private Integer fetchSize;
     private boolean readOnly;
     private String extraProps;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ConnectionDetails that = (ConnectionDetails) o;
+        return id != null ? id.equals(that.id) : that.id == null;
+    }
+
+    @Override
+    public int hashCode() {
+        return id != null ? id.hashCode() : 0;
+    }
+
     public String getJdbcUrl() {
         return getJdbcUrl(this.host, this.port);
     }

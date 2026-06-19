@@ -421,76 +421,105 @@ public class DataComparisonService {
         int[] differences = {0};
 
         boolean isSameDataSource = sourceDs == targetDs;
-        Connection sConn = null;
-        Connection tConn = null;
-        try {
-            sConn = sourceDs.getConnection();
-            tConn = isSameDataSource ? sConn : targetDs.getConnection();
-            
-            sConn.setAutoCommit(false);
-            if (!isSameDataSource) {
-                tConn.setAutoCommit(false);
-            }
-            try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-                 PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+
+        // Gunakan try-with-resources untuk source connection agar auto-closed walau exception
+        // Target connection hanya di-close manual jika berbeda dengan source connection
+        try (Connection sConn = sourceDs.getConnection()) {
+            Connection tConn = isSameDataSource ? sConn : targetDs.getConnection();
+            boolean mustCloseTConn = !isSameDataSource;
+            try {
+                sConn.setAutoCommit(false);
+                if (mustCloseTConn) {
+                    tConn.setAutoCommit(false);
+                }
                 
-                int fetchSize = 10000;
-                psSource.setFetchSize(fetchSize);
-                psTarget.setFetchSize(fetchSize);
-                psSource.setQueryTimeout(3600); // 1 hour safety timeout
-                psTarget.setQueryTimeout(3600); // 1 hour safety timeout
-
-                try (ResultSet rsSource = psSource.executeQuery(); 
-                     ResultSet rsTarget = psTarget.executeQuery()) {
+                try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+                     PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                     
-                    ResultSetMetaData sMeta = rsSource.getMetaData();
-                    ResultSetMetaData tMeta = rsTarget.getMetaData();
-                    columns = extractColumnsFromMeta(sMeta, excludeSet);
-                    if (useSurrogateKey) {
-                        exactPks = Collections.singletonList("__rn__");
-                    } else {
-                        exactPks = resolveExactPks(pkInput, dbPks, columns);
-                    }
-                    consumer.onColumns(columns);
-                    logger.info("STREAM COMPARE: {} kolom, PKs={}", columns.size(), exactPks);
+                    int fetchSize = 10000;
+                    psSource.setFetchSize(fetchSize);
+                    psTarget.setFetchSize(fetchSize);
+                    psSource.setQueryTimeout(3600); // 1 hour safety timeout
+                    psTarget.setQueryTimeout(3600); // 1 hour safety timeout
 
-                    int[] sColIdx = resolveColumnIndices(sMeta, columns);
-                    int[] tColIdx = resolveColumnIndices(tMeta, columns);
-                    int[] sPkIdx = resolveColumnIndices(sMeta, exactPks);
-                    int[] tPkIdx = resolveColumnIndices(tMeta, exactPks);
-                    
-                    boolean hasSource = rsSource.next();
-                    boolean hasTarget = rsTarget.next();
+                    try (ResultSet rsSource = psSource.executeQuery(); 
+                         ResultSet rsTarget = psTarget.executeQuery()) {
+                        
+                        ResultSetMetaData sMeta = rsSource.getMetaData();
+                        ResultSetMetaData tMeta = rsTarget.getMetaData();
+                        columns = extractColumnsFromMeta(sMeta, excludeSet);
+                        if (useSurrogateKey) {
+                            exactPks = Collections.singletonList("__rn__");
+                        } else {
+                            exactPks = resolveExactPks(pkInput, dbPks, columns);
+                        }
+                        consumer.onColumns(columns);
+                        logger.info("STREAM COMPARE: {} kolom, PKs={}", columns.size(), exactPks);
 
-                    Map<String, DiffRow> sourceOnlyMap = new LinkedHashMap<>();
-                    Map<String, DiffRow> targetOnlyMap = new LinkedHashMap<>();
+                        int[] sColIdx = resolveColumnIndices(sMeta, columns);
+                        int[] tColIdx = resolveColumnIndices(tMeta, columns);
+                        int[] sPkIdx = resolveColumnIndices(sMeta, exactPks);
+                        int[] tPkIdx = resolveColumnIndices(tMeta, exactPks);
+                        
+                        boolean hasSource = rsSource.next();
+                        boolean hasTarget = rsTarget.next();
 
-                    while (hasSource || hasTarget) {
-                        if (hasSource && hasTarget) {
-                            int cmp = compareKeys(rsSource, rsTarget, sPkIdx, tPkIdx);
-                            if (cmp == 0) {
-                                // Fast check: are all cells equal?
-                                boolean allEqual = fastRowEquals(rsSource, rsTarget, sColIdx, tColIdx, columns.size());
-                                if (allEqual) {
-                                    // MATCH — skip building DiffRow and DiffCell objects
-                                    if (request.isReturnMatchedRows()) {
+                        Map<String, DiffRow> sourceOnlyMap = new LinkedHashMap<>();
+                        Map<String, DiffRow> targetOnlyMap = new LinkedHashMap<>();
+
+                        while (hasSource || hasTarget) {
+                            if (hasSource && hasTarget) {
+                                int cmp = compareKeys(rsSource, rsTarget, sPkIdx, tPkIdx);
+                                if (cmp == 0) {
+                                    // Fast check: are all cells equal?
+                                    boolean allEqual = fastRowEquals(rsSource, rsTarget, sColIdx, tColIdx, columns.size());
+                                    if (allEqual) {
+                                        // MATCH — skip building DiffRow and DiffCell objects
+                                        if (request.isReturnMatchedRows()) {
+                                            String sKey = buildKeyFromRs(rsSource, sPkIdx);
+                                            Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
+                                            consumer.onMatchRow(sKey, sRow, columns);
+                                        }
+                                    } else {
                                         String sKey = buildKeyFromRs(rsSource, sPkIdx);
                                         Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
-                                        consumer.onMatchRow(sKey, sRow, columns);
+                                        Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
+                                        differences[0]++;
+                                        DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
+                                        consumer.onRow(diffRow);
                                     }
-                                } else {
+                                    totalSourceRows[0]++;
+                                    totalTargetRows[0]++;
+                                    hasSource = rsSource.next();
+                                    hasTarget = rsTarget.next();
+                                } else if (cmp < 0) {
                                     String sKey = buildKeyFromRs(rsSource, sPkIdx);
                                     Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
+                                    DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
+                                    sRow = null; // allow GC
+                                    if (targetOnlyMap.containsKey(sKey)) {
+                                        DiffRow targetOnly = targetOnlyMap.remove(sKey);
+                                        reconcile(sKey, diffRow, targetOnly, columns, request, consumer, differences);
+                                    } else {
+                                        sourceOnlyMap.put(sKey, diffRow);
+                                    }
+                                    totalSourceRows[0]++;
+                                    hasSource = rsSource.next();
+                                } else {
+                                    String tKey = buildKeyFromRs(rsTarget, tPkIdx);
                                     Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
-                                    differences[0]++;
-                                    DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
-                                    consumer.onRow(diffRow);
+                                    DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
+                                    tRow = null; // allow GC
+                                    if (sourceOnlyMap.containsKey(tKey)) {
+                                        DiffRow sourceOnly = sourceOnlyMap.remove(tKey);
+                                        reconcile(tKey, sourceOnly, diffRow, columns, request, consumer, differences);
+                                    } else {
+                                        targetOnlyMap.put(tKey, diffRow);
+                                    }
+                                    totalTargetRows[0]++;
+                                    hasTarget = rsTarget.next();
                                 }
-                                totalSourceRows[0]++;
-                                totalTargetRows[0]++;
-                                hasSource = rsSource.next();
-                                hasTarget = rsTarget.next();
-                            } else if (cmp < 0) {
+                            } else if (hasSource) {
                                 String sKey = buildKeyFromRs(rsSource, sPkIdx);
                                 Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
                                 DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
@@ -517,56 +546,34 @@ public class DataComparisonService {
                                 totalTargetRows[0]++;
                                 hasTarget = rsTarget.next();
                             }
-                        } else if (hasSource) {
-                            String sKey = buildKeyFromRs(rsSource, sPkIdx);
-                            Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
-                            DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
-                            sRow = null; // allow GC
-                            if (targetOnlyMap.containsKey(sKey)) {
-                                DiffRow targetOnly = targetOnlyMap.remove(sKey);
-                                reconcile(sKey, diffRow, targetOnly, columns, request, consumer, differences);
-                            } else {
-                                sourceOnlyMap.put(sKey, diffRow);
-                            }
-                            totalSourceRows[0]++;
-                            hasSource = rsSource.next();
-                        } else {
-                            String tKey = buildKeyFromRs(rsTarget, tPkIdx);
-                            Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
-                            DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
-                            tRow = null; // allow GC
-                            if (sourceOnlyMap.containsKey(tKey)) {
-                                DiffRow sourceOnly = sourceOnlyMap.remove(tKey);
-                                reconcile(tKey, sourceOnly, diffRow, columns, request, consumer, differences);
-                            } else {
-                                targetOnlyMap.put(tKey, diffRow);
-                            }
-                            totalTargetRows[0]++;
-                            hasTarget = rsTarget.next();
+                        }
+
+                        for (DiffRow sourceOnly : sourceOnlyMap.values()) {
+                            differences[0]++;
+                            consumer.onRow(sourceOnly);
+                        }
+                        for (DiffRow targetOnly : targetOnlyMap.values()) {
+                            differences[0]++;
+                            consumer.onRow(targetOnly);
                         }
                     }
-
-                    for (DiffRow sourceOnly : sourceOnlyMap.values()) {
-                        differences[0]++;
-                        consumer.onRow(sourceOnly);
-                    }
-                    for (DiffRow targetOnly : targetOnlyMap.values()) {
-                        differences[0]++;
-                        consumer.onRow(targetOnly);
-                    }
+                }
+            } finally {
+                // Rollback + close target connection only if it's different from source
+                try { sConn.rollback(); } catch (Exception ignored) {}
+                if (mustCloseTConn) {
+                    try { tConn.rollback(); } catch (Exception ignored) {}
+                    try { tConn.close(); } catch (Exception ignored) {}
                 }
             }
         } catch (StreamLimitReachedException e) {
-            // Stream hit safety cap — still send partial totals before propagating
+            // Stream hit safety cap — kirim partial totals sebelum propagate
+            // sConn sudah auto-closed oleh try-with-resources di atas
             logger.warn("STREAM COMPARE: Hit row limit {}. Sending partial totals.", e.getLimit());
             try { consumer.onTotals(totalSourceRows[0], totalTargetRows[0], differences[0]); } catch (Exception ignored) {}
-            throw e; // Re-throw so caller knows it was truncated
-        } finally {
-            try { if (sConn != null) sConn.rollback(); } catch (Exception ignored) {}
-            try { if (!isSameDataSource && tConn != null) tConn.rollback(); } catch (Exception ignored) {}
-            try { if (sConn != null) sConn.close(); } catch (Exception ignored) {}
-            try { if (!isSameDataSource && tConn != null) tConn.close(); } catch (Exception ignored) {}
+            throw e;
         }
+        // sConn auto-closed oleh try-with-resources di atas
 
         logger.info("STREAM COMPARE: SELESAI. Total={}ms", (System.currentTimeMillis() - startTime));
         consumer.onTotals(totalSourceRows[0], totalTargetRows[0], differences[0]);

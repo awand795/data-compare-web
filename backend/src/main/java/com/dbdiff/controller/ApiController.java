@@ -106,10 +106,13 @@ public class ApiController {
     }
     
     @PostMapping("/columns")
-    public ResponseEntity<List<String>> getColumns(@RequestBody Map<String, Object> payload) {
+    public ResponseEntity<?> getColumns(@RequestBody Map<String, Object> payload) {
         // Simple mapping, normally use proper DTO
-        ConnectionDetails details = mapToDetails((Map<String, Object>) payload.get("connection"));
+        ConnectionDetails details = mapToDetails(safeCastMap(payload.get("connection")));
         String tableName = (String) payload.get("tableName");
+        if (details == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", true, "message", "Invalid connection data"));
+        }
         
         DataSource ds = connectionManagerService.getDataSource(details);
         List<String> columns = metaDataService.getColumns(ds, tableName, details.getSchema());
@@ -117,9 +120,12 @@ public class ApiController {
     }
     
     @PostMapping("/primary-keys")
-    public ResponseEntity<List<String>> getPrimaryKeys(@RequestBody Map<String, Object> payload) {
-        ConnectionDetails details = mapToDetails((Map<String, Object>) payload.get("connection"));
+    public ResponseEntity<?> getPrimaryKeys(@RequestBody Map<String, Object> payload) {
+        ConnectionDetails details = mapToDetails(safeCastMap(payload.get("connection")));
         String tableName = (String) payload.get("tableName");
+        if (details == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", true, "message", "Invalid connection data"));
+        }
         
         DataSource ds = connectionManagerService.getDataSource(details);
         List<String> keys = metaDataService.getPrimaryKeys(ds, tableName, details.getSchema());
@@ -151,8 +157,8 @@ public class ApiController {
             @RequestBody Map<String, Object> payload) {
         try {
             DiffRequest request = new DiffRequest();
-            Map<String, Object> srcMap = (Map<String, Object>) payload.get("sourceConnection");
-            Map<String, Object> tgtMap = (Map<String, Object>) payload.get("targetConnection");
+            Map<String, Object> srcMap = safeCastMap(payload.get("sourceConnection"));
+            Map<String, Object> tgtMap = safeCastMap(payload.get("targetConnection"));
             request.setSourceConnection(mapToDetails(srcMap));
             request.setTargetConnection(mapToDetails(tgtMap));
             request.setTableName((String) payload.get("tableName"));
@@ -160,13 +166,16 @@ public class ApiController {
             request.setCustomQueryTarget((String) payload.get("customQueryTarget"));
             
             if (payload.containsKey("primaryKeys")) {
-                request.setPrimaryKeys((List<String>) payload.get("primaryKeys"));
+                Object pks = payload.get("primaryKeys");
+                if (pks instanceof List) request.setPrimaryKeys((List<String>) pks);
             }
             if (payload.containsKey("excludeColumns")) {
-                request.setExcludeColumns((List<String>) payload.get("excludeColumns"));
+                Object exc = payload.get("excludeColumns");
+                if (exc instanceof List) request.setExcludeColumns((List<String>) exc);
             }
             if (payload.containsKey("sortColumns")) {
-                request.setSortColumns((List<String>) payload.get("sortColumns"));
+                Object sc = payload.get("sortColumns");
+                if (sc instanceof List) request.setSortColumns((List<String>) sc);
             }
             request.setReturnMatchedRows(
                 !payload.containsKey("returnMatchedRows") || Boolean.TRUE.equals(payload.get("returnMatchedRows")));
@@ -194,8 +203,8 @@ public class ApiController {
     public ResponseEntity<?> compareCount(@RequestBody Map<String, Object> payload) {
         try {
             DiffRequest request = new DiffRequest();
-            Map<String, Object> srcMap = (Map<String, Object>) payload.get("sourceConnection");
-            Map<String, Object> tgtMap = (Map<String, Object>) payload.get("targetConnection");
+            Map<String, Object> srcMap = safeCastMap(payload.get("sourceConnection"));
+            Map<String, Object> tgtMap = safeCastMap(payload.get("targetConnection"));
             request.setSourceConnection(mapToDetails(srcMap));
             request.setTargetConnection(mapToDetails(tgtMap));
             request.setTableName((String) payload.get("tableName"));
@@ -456,7 +465,10 @@ public class ApiController {
     @PostMapping("/table-info")
     public ResponseEntity<?> getTableInfo(@RequestBody Map<String, Object> payload) {
         try {
-            ConnectionDetails details = mapToDetails((Map<String, Object>) payload.get("connection"));
+            ConnectionDetails details = mapToDetails(safeCastMap(payload.get("connection")));
+            if (details == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", true, "message", "Invalid connection data"));
+            }
             String tableName = (String) payload.get("tableName");
             DataSource ds = connectionManagerService.getDataSource(details);
             List<ColumnDiff> info = metaDataService.getDetailedTableInfo(ds, tableName, details.getSchema());
@@ -638,6 +650,14 @@ public class ApiController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to drop Excel table"));
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> safeCastMap(Object obj) {
+        if (obj instanceof Map) {
+            return (Map<String, Object>) obj;
+        }
+        return null;
     }
 
     private ConnectionDetails mapToDetails(Map<String, Object> map) {
