@@ -35,7 +35,7 @@ public class ConnectionManagerService {
     private final Map<String, java.util.concurrent.Semaphore> poolSemaphores = new java.util.concurrent.ConcurrentHashMap<>();
 
     public java.util.concurrent.Semaphore getSemaphoreForPool(String connId) {
-        return poolSemaphores.computeIfAbsent(connId, k -> new java.util.concurrent.Semaphore(2));
+        return poolSemaphores.computeIfAbsent(connId, k -> new java.util.concurrent.Semaphore(1));
     }
 
     private void closeQuietly(String key, DataSource ds) {
@@ -252,7 +252,7 @@ public class ConnectionManagerService {
         config.setConnectionTimeout(timeoutMs);
         config.setIdleTimeout(120000);    // 2 menit — kasih waktu lebih sebelum evict
         config.setMaxLifetime(300000);    // 5 menit
-        config.setKeepaliveTime(60000);   // 1 menit — HARUS < idleTimeout agar efektif
+        config.setKeepaliveTime(50000);   // harus < idleTimeout=120000
         config.setLeakDetectionThreshold(120000);
 
         HikariDataSource ds = new HikariDataSource(config);

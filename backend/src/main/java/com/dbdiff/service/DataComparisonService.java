@@ -34,6 +34,16 @@ public class DataComparisonService {
     @Autowired
     private DatabaseMetaDataService metaDataService;
 
+    private static final int MAX_UNMATCHED_BUFFER = 500_000;
+
+    private String buildDryRunQuery(String baseQuery, String type) {
+        String dbType = type != null ? type.toLowerCase() : "postgresql";
+        if ("sqlserver".equals(dbType)) {
+            return "SELECT TOP 0 * FROM (" + baseQuery + ") AS tmp";
+        }
+        return "SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0";
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // compare() — non-streaming, untuk sync dan operasi kecil
     // ─────────────────────────────────────────────────────────────────────────
@@ -86,7 +96,7 @@ public class DataComparisonService {
                     logger.info("COMPARE: Fallback to LIMIT 0 dry-run query...");
                     try (Connection conn = sourceDs.getConnection();
                          java.sql.Statement stmt = conn.createStatement();
-                         ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
+                         ResultSet rs = stmt.executeQuery(buildDryRunQuery(baseQuery, request.getSourceConnection().getType()))) {
                         java.sql.ResultSetMetaData meta = rs.getMetaData();
                         for (int i = 1; i <= meta.getColumnCount(); i++) {
                             allCols.add(meta.getColumnLabel(i));
@@ -385,7 +395,7 @@ public class DataComparisonService {
                     logger.info("STREAM COMPARE: Fallback to LIMIT 0 dry-run query...");
                     try (Connection conn = sourceDs.getConnection();
                          java.sql.Statement stmt = conn.createStatement();
-                         ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
+                         ResultSet rs = stmt.executeQuery(buildDryRunQuery(baseQuery, request.getSourceConnection().getType()))) {
                         java.sql.ResultSetMetaData meta = rs.getMetaData();
                         for (int i = 1; i <= meta.getColumnCount(); i++) {
                             allCols.add(meta.getColumnLabel(i));
@@ -431,7 +441,7 @@ public class DataComparisonService {
         if (sourceId.equals(targetId)) {
             sem1 = connectionManagerService.getSemaphoreForPool(sourceId);
             sem2 = null;
-            permits1 = 2;
+            permits1 = 1;
             permits2 = 0;
         } else {
             if (sourceId.compareTo(targetId) < 0) {
@@ -532,6 +542,13 @@ public class DataComparisonService {
                                         } else {
                                             sourceOnlyMap.put(sKey, diffRow);
                                         }
+                                        if (sourceOnlyMap.size() >= MAX_UNMATCHED_BUFFER) {
+                                            for (DiffRow r : sourceOnlyMap.values()) {
+                                                differences[0]++;
+                                                consumer.onRow(r);
+                                            }
+                                            sourceOnlyMap.clear();
+                                        }
                                         totalSourceRows[0]++;
                                         hasSource = rsSource.next();
                                     } else {
@@ -544,6 +561,13 @@ public class DataComparisonService {
                                             reconcile(tKey, sourceOnly, diffRow, columns, request, consumer, differences);
                                         } else {
                                             targetOnlyMap.put(tKey, diffRow);
+                                        }
+                                        if (targetOnlyMap.size() >= MAX_UNMATCHED_BUFFER) {
+                                            for (DiffRow r : targetOnlyMap.values()) {
+                                                differences[0]++;
+                                                consumer.onRow(r);
+                                            }
+                                            targetOnlyMap.clear();
                                         }
                                         totalTargetRows[0]++;
                                         hasTarget = rsTarget.next();
@@ -559,6 +583,13 @@ public class DataComparisonService {
                                     } else {
                                         sourceOnlyMap.put(sKey, diffRow);
                                     }
+                                    if (sourceOnlyMap.size() >= MAX_UNMATCHED_BUFFER) {
+                                        for (DiffRow r : sourceOnlyMap.values()) {
+                                            differences[0]++;
+                                            consumer.onRow(r);
+                                        }
+                                        sourceOnlyMap.clear();
+                                    }
                                     totalSourceRows[0]++;
                                     hasSource = rsSource.next();
                                 } else {
@@ -571,6 +602,13 @@ public class DataComparisonService {
                                         reconcile(tKey, sourceOnly, diffRow, columns, request, consumer, differences);
                                     } else {
                                         targetOnlyMap.put(tKey, diffRow);
+                                    }
+                                    if (targetOnlyMap.size() >= MAX_UNMATCHED_BUFFER) {
+                                        for (DiffRow r : targetOnlyMap.values()) {
+                                            differences[0]++;
+                                            consumer.onRow(r);
+                                        }
+                                        targetOnlyMap.clear();
                                     }
                                     totalTargetRows[0]++;
                                     hasTarget = rsTarget.next();
@@ -663,7 +701,7 @@ public class DataComparisonService {
                     logger.info("BATCH COMPARE: Fallback to LIMIT 0 dry-run query...");
                     try (Connection conn = sourceDs.getConnection();
                          java.sql.Statement stmt = conn.createStatement();
-                         ResultSet rs = stmt.executeQuery("SELECT * FROM (" + baseQuery + ") AS tmp LIMIT 0")) {
+                         ResultSet rs = stmt.executeQuery(buildDryRunQuery(baseQuery, request.getSourceConnection().getType()))) {
                         java.sql.ResultSetMetaData meta = rs.getMetaData();
                         for (int i = 1; i <= meta.getColumnCount(); i++) {
                             allCols.add(meta.getColumnLabel(i));
@@ -781,7 +819,11 @@ public class DataComparisonService {
         } else if (request.getTableName() != null) {
             sourceQuery = "SELECT COUNT(*) FROM " + formatTableName(request.getTableName());
         } else {
-            sourceQuery = "SELECT COUNT(*) FROM (" + request.getCustomQuerySource() + ") _cnt";
+            String fallbackSrc = request.getCustomQuerySource();
+            if (fallbackSrc == null || fallbackSrc.trim().isEmpty()) {
+                throw new IllegalArgumentException("Either tableName or customQuerySource must be provided for count.");
+            }
+            sourceQuery = "SELECT COUNT(*) FROM (" + fallbackSrc.trim() + ") _cnt";
         }
 
         if (request.getCustomQueryTarget() != null && !request.getCustomQueryTarget().trim().isEmpty()) {
@@ -789,11 +831,17 @@ public class DataComparisonService {
         } else if (request.getTableName() != null) {
             targetQuery = "SELECT COUNT(*) FROM " + formatTableName(request.getTableName());
         } else {
-            targetQuery = "SELECT COUNT(*) FROM (" + request.getCustomQueryTarget() + ") _cnt";
+            String fallbackTgt = request.getCustomQueryTarget();
+            if (fallbackTgt == null || fallbackTgt.trim().isEmpty()) {
+                throw new IllegalArgumentException("Either tableName or customQueryTarget must be provided for count.");
+            }
+            targetQuery = "SELECT COUNT(*) FROM (" + fallbackTgt.trim() + ") _cnt";
         }
 
-        int sourceCount = sourceJdbc.queryForObject(sourceQuery, Integer.class);
-        int targetCount = targetJdbc.queryForObject(targetQuery, Integer.class);
+        Long sourceCountLong = sourceJdbc.queryForObject(sourceQuery, Long.class);
+        Long targetCountLong = targetJdbc.queryForObject(targetQuery, Long.class);
+        long sourceCount = sourceCountLong != null ? sourceCountLong : 0L;
+        long targetCount = targetCountLong != null ? targetCountLong : 0L;
 
         Map<String, Object> result = new HashMap<>();
         result.put("sourceCount", sourceCount);
@@ -832,8 +880,8 @@ public class DataComparisonService {
     public Map<String, Object> syncData(DiffRequest request) {
         // Safety check: count rows first to prevent OOM on large tables
         Map<String, Object> counts = countRows(request);
-        int srcCount = ((Number) counts.get("sourceCount")).intValue();
-        int tgtCount = ((Number) counts.get("targetCount")).intValue();
+        long srcCount = ((Number) counts.get("sourceCount")).longValue();
+        long tgtCount = ((Number) counts.get("targetCount")).longValue();
         if (srcCount > MAX_SYNC_ROWS || tgtCount > MAX_SYNC_ROWS) {
             throw new IllegalArgumentException(
                 String.format("Sync is limited to %d rows for memory safety. Source has %d rows, Target has %d rows. " +

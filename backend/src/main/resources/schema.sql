@@ -51,8 +51,8 @@ CREATE TABLE IF NOT EXISTS schedules (
     name VARCHAR(200) NOT NULL,
     source_connection_id VARCHAR(50) NOT NULL,
     target_connection_id VARCHAR(50) NOT NULL,
-    source_table VARCHAR(200) NOT NULL,
-    target_table VARCHAR(200) NOT NULL,
+    source_table VARCHAR(200),
+    target_table VARCHAR(200),
     cron_expression VARCHAR(100) NOT NULL,
     telegram_bot_token VARCHAR(255),
     telegram_chat_id VARCHAR(100),
@@ -119,3 +119,6 @@ CREATE TABLE IF NOT EXISTS templates (
 );
 
 ALTER TABLE templates ADD COLUMN IF NOT EXISTS query_primary_keys TEXT;
+
+ALTER TABLE schedules ALTER COLUMN source_table DROP NOT NULL;
+ALTER TABLE schedules ALTER COLUMN target_table DROP NOT NULL;

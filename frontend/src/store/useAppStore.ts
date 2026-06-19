@@ -639,10 +639,10 @@ export const useAppStore = create<AppState>()(
   runScheduleNow: async (id) => {
     try {
       await axios.post(`/api/schedules/${id}/trigger`);
-      alert("Job triggered successfully!");
+      get().addToast({ type: 'success', title: 'Success', message: 'Job triggered successfully!' });
     } catch (err) {
       console.error("Failed to trigger job", err);
-      alert("Failed to trigger job");
+      get().addToast({ type: 'error', title: 'Error', message: 'Failed to trigger job' });
     }
   },
 

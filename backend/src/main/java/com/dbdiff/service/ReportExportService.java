@@ -361,8 +361,7 @@ public class ReportExportService {
                     // Batch flush to document to prevent OutOfMemoryError on large datasets
                     if (printedRows % 100 == 0) {
                         document.add(table);
-                        table = null; // hint GC sebelum alokasi PdfPTable baru
-                        System.gc();  // soft hint — opsional tapi berguna di lingkungan heap kecil
+                        table = null; // let normal GC handle it
                         table = new PdfPTable(columns.size() + 2);
                         table.setWidthPercentage(100);
                         // Add headers for the new table batch
@@ -391,7 +390,9 @@ public class ReportExportService {
 
                     document.add(summaryTable);
                     document.add(new Paragraph(" "));
-                    document.add(table);
+                    if (table != null) {
+                        document.add(table);
+                    }
                 }
 
                 private void addSummaryRow(PdfPTable t, String label, String value, Font lblF, Font valF) {

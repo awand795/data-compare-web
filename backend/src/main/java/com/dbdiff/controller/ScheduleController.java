@@ -25,6 +25,9 @@ public class ScheduleController {
     private final DynamicSchedulerService dynamicSchedulerService;
 
     @Autowired
+    private org.springframework.core.task.TaskExecutor taskExecutor;
+
+    @Autowired
     public ScheduleController(ScheduleManagerService scheduleManagerService, DynamicSchedulerService dynamicSchedulerService) {
         this.scheduleManagerService = scheduleManagerService;
         this.dynamicSchedulerService = dynamicSchedulerService;
@@ -87,8 +90,9 @@ public class ScheduleController {
     @PostMapping("/{id}/trigger")
     public ResponseEntity<?> triggerJob(@PathVariable String id) {
         try {
-            // Run asynchronously so we don't block the HTTP response
-            new Thread(() -> dynamicSchedulerService.executeCompareJob(id)).start();
+            // Gunakan managed TaskExecutor — bukan raw Thread — agar thread dikelola oleh Spring pool
+            // dan tidak bisa dibuat tanpa batas oleh request concurrent
+            taskExecutor.execute(() -> dynamicSchedulerService.executeCompareJob(id));
             return ResponseEntity.ok(Map.of("success", true, "message", "Job triggered successfully"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));

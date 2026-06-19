@@ -30,7 +30,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "*") // Allows React frontend to connect
+@CrossOrigin(origins = "*", allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS, RequestMethod.PATCH}) // Allows React frontend to connect
 public class ApiController {
 
     @Autowired
@@ -329,10 +329,13 @@ public class ApiController {
                         gen.writeEndObject();
                         gen.writeRaw('\n');
                         gen.flush();
-                    }
-
-                    if (isPostgres) {
-                        conn.commit();
+                    } finally {
+                        // Selalu rollback untuk PostgreSQL cursor query — bersihkan transaction state
+                        // sebelum koneksi kembali ke pool, mencegah "dirty commit state" warning
+                        if (isPostgres) {
+                            try { conn.rollback(); } catch (Exception ignored) {}
+                            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
+                        }
                     }
                 } catch (Exception e) {
                     gen.writeStartObject();

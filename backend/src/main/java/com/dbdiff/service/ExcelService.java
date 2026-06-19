@@ -73,47 +73,56 @@ public class ExcelService {
             createSql.append(")");
             
             jdbc.execute(createSql.toString());
-            
-            // Insert Data in batches
-            String insertSql = buildInsertSql(tableName, columns);
-            List<Object[]> batchArgs = new ArrayList<>();
-            
-            DataFormatter dataFormatter = new DataFormatter();
-            
-            while (rowIterator.hasNext()) {
-                Row row = rowIterator.next();
-                Object[] args = new Object[columns.size()];
-                for (int i = 0; i < columns.size(); i++) {
-                    Cell cell = row.getCell(i, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
-                    String val;
-                    if (cell.getCellType() == CellType.NUMERIC) {
-                        if (DateUtil.isCellDateFormatted(cell)) {
-                            val = dataFormatter.formatCellValue(cell);
-                        } else {
-                            double d = cell.getNumericCellValue();
-                            if (d == (long) d) {
-                                val = String.valueOf((long) d);
-                            } else {
-                                val = java.math.BigDecimal.valueOf(d).toPlainString();
-                            }
-                        }
-                    } else if (cell.getCellType() == CellType.BOOLEAN) {
-                        val = String.valueOf(cell.getBooleanCellValue()).toLowerCase();
-                    } else {
-                        val = dataFormatter.formatCellValue(cell);
-                    }
-                    args[i] = val;
-                }
-                batchArgs.add(args);
+            boolean tableCreated = true;
+            try {
+                // Insert Data in batches
+                String insertSql = buildInsertSql(tableName, columns);
+                List<Object[]> batchArgs = new ArrayList<>();
+                DataFormatter dataFormatter = new DataFormatter();
                 
-                if (batchArgs.size() >= 1000) {
-                    jdbc.batchUpdate(insertSql, batchArgs);
-                    batchArgs.clear();
+                while (rowIterator.hasNext()) {
+                    Row row = rowIterator.next();
+                    Object[] args = new Object[columns.size()];
+                    for (int i = 0; i < columns.size(); i++) {
+                        Cell cell = row.getCell(i, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
+                        String val;
+                        if (cell.getCellType() == CellType.NUMERIC) {
+                            if (DateUtil.isCellDateFormatted(cell)) {
+                                val = dataFormatter.formatCellValue(cell);
+                            } else {
+                                double d = cell.getNumericCellValue();
+                                if (d == (long) d) {
+                                    val = String.valueOf((long) d);
+                                } else {
+                                    val = java.math.BigDecimal.valueOf(d).toPlainString();
+                                }
+                            }
+                        } else if (cell.getCellType() == CellType.BOOLEAN) {
+                            val = String.valueOf(cell.getBooleanCellValue()).toLowerCase();
+                        } else {
+                            val = dataFormatter.formatCellValue(cell);
+                        }
+                        args[i] = val;
+                    }
+                    batchArgs.add(args);
+                    if (batchArgs.size() >= 1000) {
+                        jdbc.batchUpdate(insertSql, batchArgs);
+                        batchArgs.clear();
+                    }
                 }
-            }
-            
-            if (!batchArgs.isEmpty()) {
-                jdbc.batchUpdate(insertSql, batchArgs);
+                if (!batchArgs.isEmpty()) {
+                    jdbc.batchUpdate(insertSql, batchArgs);
+                }
+            } catch (Exception e) {
+                try {
+                    if (tableName != null && tableName.startsWith("excel_import_")) {
+                        jdbc.execute("DROP TABLE IF EXISTS " + tableName);
+                    }
+                    logger.info("Cleaned up orphan excel table {} after import failure: {}", tableName, e.getMessage());
+                } catch (Exception dropEx) {
+                    logger.warn("Failed to cleanup orphan excel table {}: {}", tableName, dropEx.getMessage());
+                }
+                throw e;
             }
             
             return tableName;
@@ -121,6 +130,12 @@ public class ExcelService {
     }
     
     public void dropExcelTable(ConnectionDetails dbConnection, String tableName) {
+        // Safety guard: hanya izinkan drop tabel dengan prefix excel_import_
+        // Mencegah manipulasi nama tabel yang bisa menyebabkan drop tabel lain
+        if (tableName == null || !tableName.startsWith("excel_import_")) {
+            logger.warn("Refused to drop table '{}' — name does not start with excel_import_ prefix", tableName);
+            return;
+        }
         try {
             DataSource ds = connectionManagerService.getDataSource(dbConnection);
             JdbcTemplate jdbc = new JdbcTemplate(ds);
