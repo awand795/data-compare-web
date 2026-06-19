@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 public class ConnectionManagerService {
@@ -20,8 +21,8 @@ public class ConnectionManagerService {
     private static final Logger logger = LoggerFactory.getLogger(ConnectionManagerService.class);
 
     private final int MAX_POOL_CACHE = 3;
-    private final Map<String, DataSource> dataSourceCache = Collections.synchronizedMap(
-      new LinkedHashMap<String, DataSource>(MAX_POOL_CACHE, 0.75f, true) {
+    private final ReentrantLock cacheLock = new ReentrantLock();
+    private final Map<String, DataSource> dataSourceCache = new LinkedHashMap<String, DataSource>(MAX_POOL_CACHE, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<String, DataSource> eldest) {
           if (size() > MAX_POOL_CACHE) {
@@ -30,8 +31,7 @@ public class ConnectionManagerService {
           }
           return false;
         }
-      }
-    );
+    };
 
     private void closeQuietly(String key, DataSource ds) {
       try {
@@ -53,7 +53,8 @@ public class ConnectionManagerService {
 
     public void evictConnection(String connectionId) {
         if (connectionId == null || connectionId.isBlank()) return;
-        synchronized (dataSourceCache) {
+        cacheLock.lock();
+        try {
             java.util.List<String> keysToRemove = new java.util.ArrayList<>();
             for (String key : dataSourceCache.keySet()) {
                 if (key.startsWith(connectionId + "|")) {
@@ -64,6 +65,8 @@ public class ConnectionManagerService {
                 DataSource ds = dataSourceCache.remove(key);
                 closeQuietly(key, ds);
             }
+        } finally {
+            cacheLock.unlock();
         }
         sshTunnelService.closeTunnel(connectionId);
     }
@@ -80,7 +83,8 @@ public class ConnectionManagerService {
             ? details.getId() + "|" + safeUsername
             : (details.getJdbcUrl() != null ? details.getJdbcUrl().toLowerCase().trim() : "") + "|" + safeUsername.toLowerCase().trim();
         DataSource ds;
-        synchronized (dataSourceCache) {
+        cacheLock.lock();
+        try {
             DataSource existing = dataSourceCache.get(cacheKey);
             if (existing != null) return existing;
             try {
@@ -94,10 +98,12 @@ public class ConnectionManagerService {
                 String msg = cause.getMessage() != null ? cause.getMessage() : e.getMessage();
                 throw new RuntimeException("Failed to create data source: " + msg, e);
             }
+        } finally {
+            cacheLock.unlock();
         }
 
         // Warm up: buka koneksi awal — synchronous untuk SSH agar pool langsung siap pakai
-        // Dilakukan DI LUAR synchronized block agar tidak memblokir thread lain
+        // Dilakukan DI LUAR lock agar tidak memblokir thread lain
         if (details.isUseSsh() && ds instanceof HikariDataSource hds) {
             try (java.sql.Connection conn = hds.getConnection()) {
                 logger.info("Warmup connection successful for SSH pool: {}", hds.getPoolName());

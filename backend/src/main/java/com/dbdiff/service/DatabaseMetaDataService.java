@@ -113,7 +113,12 @@ public class DatabaseMetaDataService {
             }
 
             // Collect primary keys first
-            Set<String> pkColumns = new HashSet<>(getPrimaryKeys(dataSource, actualTable, schemaPattern));
+            Set<String> pkColumns = new HashSet<>();
+            try (ResultSet pkRs = metaData.getPrimaryKeys(null, schemaPattern, actualTable)) {
+                while (pkRs.next()) {
+                    pkColumns.add(pkRs.getString("COLUMN_NAME"));
+                }
+            }
 
             // Collect column details
             try (ResultSet rs = metaData.getColumns(null, schemaPattern, actualTable, "%")) {
