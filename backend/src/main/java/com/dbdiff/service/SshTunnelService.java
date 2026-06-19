@@ -20,15 +20,12 @@ public class SshTunnelService {
     private final Map<String, Integer> localPorts = new ConcurrentHashMap<>();
     private final ReentrantLock lock = new ReentrantLock();
 
-    public int getOrOpenTunnel(ConnectionDetails details) throws Exception {
+    public int getOrOpenTunnel(ConnectionDetails details, String connId) throws Exception {
         if (!details.isUseSsh()) {
             return details.getPort();
         }
         lock.lock();
         try {
-            String connId = details.getId() != null && !details.getId().isBlank() 
-                ? details.getId() 
-                : "temp_" + java.util.UUID.randomUUID().toString();
             if (activeSessions.containsKey(connId) && activeSessions.get(connId).isConnected()) {
                 int cachedPort = localPorts.get(connId);
                 logger.debug("Reusing existing SSH tunnel for {} on localhost:{}", connId, cachedPort);

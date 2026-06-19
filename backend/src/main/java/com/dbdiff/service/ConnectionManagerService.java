@@ -32,6 +32,11 @@ public class ConnectionManagerService {
           return false;
         }
     };
+    private final Map<String, java.util.concurrent.Semaphore> poolSemaphores = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public java.util.concurrent.Semaphore getSemaphoreForPool(String connId) {
+        return poolSemaphores.computeIfAbsent(connId, k -> new java.util.concurrent.Semaphore(2));
+    }
 
     private void closeQuietly(String key, DataSource ds) {
       try {
@@ -41,10 +46,8 @@ public class ConnectionManagerService {
         }
         if (key != null && key.contains("|")) {
           String connId = key.substring(0, key.indexOf('|'));
-          if (!connId.startsWith("jdbc:")) {
-            sshTunnelService.closeTunnel(connId);
-            logger.info("Closed evicted SSH tunnel for connection: {}", connId);
-          }
+          sshTunnelService.closeTunnel(connId);
+          logger.info("Closed evicted SSH tunnel for connection: {}", connId);
         }
       } catch (Exception e) {
         logger.warn("Failed to close evicted DataSource: {}", e.getMessage());
@@ -68,6 +71,7 @@ public class ConnectionManagerService {
         } finally {
             cacheLock.unlock();
         }
+        poolSemaphores.remove(connectionId);
         sshTunnelService.closeTunnel(connectionId);
     }
 
@@ -79,16 +83,15 @@ public class ConnectionManagerService {
 
     public DataSource getDataSource(ConnectionDetails details) {
         String safeUsername = details.getUsername() != null ? details.getUsername() : "";
-        String cacheKey = details.getId() != null && !details.getId().isBlank()
-            ? details.getId() + "|" + safeUsername
-            : (details.getJdbcUrl() != null ? details.getJdbcUrl().toLowerCase().trim() : "") + "|" + safeUsername.toLowerCase().trim();
+        String connId = details.getStableIdentifier();
+        String cacheKey = connId + "|" + safeUsername;
         DataSource ds;
         cacheLock.lock();
         try {
             DataSource existing = dataSourceCache.get(cacheKey);
             if (existing != null) return existing;
             try {
-                ds = createDataSource(details);
+                ds = createDataSource(details, connId);
                 dataSourceCache.put(cacheKey, ds);
             } catch (Exception e) {
                 Throwable cause = e;
@@ -123,14 +126,14 @@ public class ConnectionManagerService {
         return ds;
     }
 
-    private DataSource createDataSource(ConnectionDetails details) throws Exception {
+    private DataSource createDataSource(ConnectionDetails details, String connId) throws Exception {
         HikariConfig config = new HikariConfig();
         
         String effectiveHost = details.getHost();
         int effectivePort = details.getPort();
         
         if (details.isUseSsh()) {
-            effectivePort = sshTunnelService.getOrOpenTunnel(details);
+            effectivePort = sshTunnelService.getOrOpenTunnel(details, connId);
             effectiveHost = "127.0.0.1";
         }
         

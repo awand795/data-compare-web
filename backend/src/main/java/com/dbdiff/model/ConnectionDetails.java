@@ -48,6 +48,22 @@ public class ConnectionDetails {
         return id != null ? id.hashCode() : 0;
     }
 
+    public String getStableIdentifier() {
+        if (id != null && !id.isBlank()) {
+            return id;
+        }
+        String safeType = type != null ? type.toLowerCase() : "";
+        String safeUser = username != null ? username : "";
+        String safeHost = host != null ? host : "";
+        String safeDb = database != null ? database : "";
+        String safeSshUser = sshUsername != null ? sshUsername : "";
+        String safeSshHost = sshHost != null ? sshHost : "";
+        int safeSshPort = sshPort != null ? sshPort : 22;
+        
+        return safeType + "://" + safeUser + "@" + safeHost + ":" + port + "/" + safeDb 
+             + (useSsh ? "[ssh:" + safeSshUser + "@" + safeSshHost + ":" + safeSshPort + "]" : "");
+    }
+
     public String getJdbcUrl() {
         return getJdbcUrl(this.host, this.port);
     }
