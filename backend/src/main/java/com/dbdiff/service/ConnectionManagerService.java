@@ -79,13 +79,13 @@ public class ConnectionManagerService {
         String cacheKey = details.getId() != null && !details.getId().isBlank()
             ? details.getId() + "|" + safeUsername
             : (details.getJdbcUrl() != null ? details.getJdbcUrl().toLowerCase().trim() : "") + "|" + safeUsername.toLowerCase().trim();
+        DataSource ds;
         synchronized (dataSourceCache) {
             DataSource existing = dataSourceCache.get(cacheKey);
             if (existing != null) return existing;
             try {
-                DataSource ds = createDataSource(details);
+                ds = createDataSource(details);
                 dataSourceCache.put(cacheKey, ds);
-                return ds;
             } catch (Exception e) {
                 Throwable cause = e;
                 while (cause.getCause() != null && cause.getCause() != cause) {
@@ -95,6 +95,26 @@ public class ConnectionManagerService {
                 throw new RuntimeException("Failed to create data source: " + msg, e);
             }
         }
+
+        // Warm up: buka koneksi awal — synchronous untuk SSH agar pool langsung siap pakai
+        // Dilakukan DI LUAR synchronized block agar tidak memblokir thread lain
+        if (details.isUseSsh() && ds instanceof HikariDataSource hds) {
+            try (java.sql.Connection conn = hds.getConnection()) {
+                logger.info("Warmup connection successful for SSH pool: {}", hds.getPoolName());
+            } catch (Exception e) {
+                logger.warn("Warmup connection failed for SSH pool: {}", e.getMessage());
+            }
+        } else {
+            taskExecutor.execute(() -> {
+                try (java.sql.Connection conn = ds.getConnection()) {
+                    logger.info("Warmup connection successful for pool");
+                } catch (Exception e) {
+                    logger.warn("Warmup connection failed: {}", e.getMessage());
+                }
+            });
+        }
+
+        return ds;
     }
 
     private DataSource createDataSource(ConnectionDetails details) throws Exception {
@@ -215,28 +235,18 @@ public class ConnectionManagerService {
             }
         }
 
-        config.setMaximumPoolSize(2);
-        config.setMinimumIdle(0);
+        config.setMaximumPoolSize(4);
+        config.setMinimumIdle(1);
         // Frontend sends timeout in seconds, HikariCP expects milliseconds
-        int timeoutMs = details.getConnectionTimeout() != null ? details.getConnectionTimeout() * 1000 : 30000;
+        int timeoutMs = details.getConnectionTimeout() != null ? details.getConnectionTimeout() * 1000 : 60000;
         if (timeoutMs < 250) timeoutMs = 250;
         config.setConnectionTimeout(timeoutMs);
-        config.setIdleTimeout(60000);    // 1 menit — lepas koneksi idle lebih cepat
-        config.setMaxLifetime(180000);   // 3 menit
-        config.setKeepaliveTime(90000);  // 1.5 menit — harus > idleTimeout
-        config.setLeakDetectionThreshold(60000);
+        config.setIdleTimeout(120000);    // 2 menit — kasih waktu lebih sebelum evict
+        config.setMaxLifetime(300000);    // 5 menit
+        config.setKeepaliveTime(60000);   // 1 menit — HARUS < idleTimeout agar efektif
+        config.setLeakDetectionThreshold(120000);
 
         HikariDataSource ds = new HikariDataSource(config);
-        
-        // Warm up: buka koneksi awal ke remote DB secara asinkron di background
-        taskExecutor.execute(() -> {
-            try (java.sql.Connection conn = ds.getConnection()) {
-                logger.info("Warmup connection successful for pool");
-            } catch (Exception e) {
-                logger.warn("Warmup connection failed: {}", e.getMessage());
-            }
-        });
-        
         return ds;
     }
 
