@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.net.Socket;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -80,6 +81,35 @@ public class SshTunnelService implements DisposableBean {
         }
     }
 
+    /**
+     * Cek apakah SSH tunnel masih benar-benar hidup dengan membuka test TCP socket
+     * ke localhost:localPort. session.isConnected() saja tidak cukup — JSch bisa
+     * mengira tunnel masih aktif padahal server sudah memutus koneksi secara diam-diam.
+     */
+    public boolean isTunnelHealthy(String connId) {
+        lock.lock();
+        try {
+            Session session = activeSessions.get(connId);
+            if (session == null || !session.isConnected()) {
+                return false;
+            }
+            Integer port = localPorts.get(connId);
+            if (port == null) {
+                return false;
+            }
+            // Probe TCP ke port forwarding — ini yang paling akurat
+            try (Socket probe = new Socket()) {
+                probe.connect(new java.net.InetSocketAddress("127.0.0.1", port), 3000);
+                return true;
+            } catch (Exception e) {
+                logger.warn("SSH tunnel health-check FAILED for {} on port {}: {}", connId, port, e.getMessage());
+                return false;
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public void closeTunnel(String connectionId) {
         if (connectionId == null) return;
         lock.lock();
@@ -92,8 +122,14 @@ public class SshTunnelService implements DisposableBean {
 
     private void closeTunnelInternal(String connectionId) {
         Session session = activeSessions.remove(connectionId);
-        if (session != null && session.isConnected()) {
-            session.disconnect();
+        if (session != null) {
+            try {
+                if (session.isConnected()) {
+                    session.disconnect();
+                }
+            } catch (Exception ignored) {
+                // abaikan error saat menutup session yang sudah mati
+            }
         }
         localPorts.remove(connectionId);
     }

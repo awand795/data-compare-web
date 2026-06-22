@@ -116,15 +116,40 @@ public class ConnectionManagerService {
         String safeUsername = details.getUsername() != null ? details.getUsername() : "";
         String connId = details.getStableIdentifier();
         String cacheKey = connId + "|" + safeUsername;
-        
+
+        // SSH health-check SEBELUM masuk cacheLock untuk hindari deadlock
+        // (cacheLock → sshLock bisa deadlock jika ada thread lain pegang sshLock → cacheLock)
+        boolean sshTunnelDead = false;
+        if (details.isUseSsh()) {
+            // Cek apakah ada cache entry dulu (tanpa lock, hanya peek)
+            Object peek;
+            cacheLock.lock();
+            try { peek = dataSourceCache.get(cacheKey); } finally { cacheLock.unlock(); }
+            if (peek instanceof DataSource) {
+                sshTunnelDead = !sshTunnelService.isTunnelHealthy(connId);
+                if (sshTunnelDead) {
+                    logger.warn("SSH tunnel mati untuk {}. Akan evict pool lama dan buat ulang.", connId);
+                }
+            }
+        }
+
         java.util.concurrent.CompletableFuture<DataSource> future = null;
         boolean isCreator = false;
         
         cacheLock.lock();
         try {
             Object existing = dataSourceCache.get(cacheKey);
-            if (existing instanceof DataSource) {
-                return (DataSource) existing;
+            if (existing instanceof DataSource existingDs) {
+                if (sshTunnelDead) {
+                    // Evict pool lama; buat ulang di bawah
+                    dataSourceCache.remove(cacheKey);
+                    evictedEntries.add(Map.entry(cacheKey, existingDs));
+                    future = new java.util.concurrent.CompletableFuture<>();
+                    dataSourceCache.put(cacheKey, future);
+                    isCreator = true;
+                } else {
+                    return existingDs;
+                }
             } else if (existing instanceof java.util.concurrent.CompletableFuture) {
                 future = (java.util.concurrent.CompletableFuture<DataSource>) existing;
             } else {
