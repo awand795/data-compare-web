@@ -17,10 +17,29 @@ public class DatabaseExplorerService {
 
     public List<String> getSchemas(DataSource dataSource) throws Exception {
         List<String> schemas = new ArrayList<>();
-        try (Connection conn = dataSource.getConnection();
-             ResultSet rs = conn.getMetaData().getSchemas()) {
-            while (rs.next()) {
-                schemas.add(rs.getString("TABLE_SCHEM"));
+        try (Connection conn = dataSource.getConnection()) {
+            DatabaseMetaData metaData = conn.getMetaData();
+            String dbType = metaData.getDatabaseProductName().toLowerCase();
+            if (dbType.contains("mysql") || dbType.contains("mariadb")) {
+                String currentDb = conn.getCatalog();
+                if (currentDb != null && !currentDb.trim().isEmpty()) {
+                    schemas.add(currentDb);
+                } else {
+                    try (ResultSet rs = metaData.getCatalogs()) {
+                        while (rs.next()) {
+                            String catalog = rs.getString("TABLE_CAT");
+                            if (catalog != null) {
+                                schemas.add(catalog);
+                            }
+                        }
+                    }
+                }
+            } else {
+                try (ResultSet rs = metaData.getSchemas()) {
+                    while (rs.next()) {
+                        schemas.add(rs.getString("TABLE_SCHEM"));
+                    }
+                }
             }
         }
         return schemas;
@@ -38,7 +57,14 @@ public class DatabaseExplorerService {
         List<Map<String, Object>> objects = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
-            try (ResultSet rs = metaData.getTables(null, schema, "%", types)) {
+            String dbType = metaData.getDatabaseProductName().toLowerCase();
+            String catalog = null;
+            String schemaPattern = schema;
+            if (dbType.contains("mysql") || dbType.contains("mariadb")) {
+                catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
+                schemaPattern = null;
+            }
+            try (ResultSet rs = metaData.getTables(catalog, schemaPattern, "%", types)) {
                 while (rs.next()) {
                     String tName = rs.getString("TABLE_NAME");
                     // Exclude internal temporary excel import tables (case-insensitive)
@@ -64,20 +90,27 @@ public class DatabaseExplorerService {
         List<Map<String, Object>> columns = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
+            String dbType = metaData.getDatabaseProductName().toLowerCase();
+            String catalog = null;
+            String schemaPattern = schema;
+            if (dbType.contains("mysql") || dbType.contains("mariadb")) {
+                catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
+                schemaPattern = null;
+            }
             
             // Get PKs to flag them
             List<String> pks = new ArrayList<>();
-            try (ResultSet rs = metaData.getPrimaryKeys(null, schema, table)) {
+            try (ResultSet rs = metaData.getPrimaryKeys(catalog, schemaPattern, table)) {
                 while (rs.next()) pks.add(rs.getString("COLUMN_NAME"));
             }
 
             // Get FKs to flag them
             List<String> fks = new ArrayList<>();
-            try (ResultSet rs = metaData.getImportedKeys(null, schema, table)) {
+            try (ResultSet rs = metaData.getImportedKeys(catalog, schemaPattern, table)) {
                 while (rs.next()) fks.add(rs.getString("FKCOLUMN_NAME"));
             }
 
-            try (ResultSet rs = metaData.getColumns(null, schema, table, "%")) {
+            try (ResultSet rs = metaData.getColumns(catalog, schemaPattern, table, "%")) {
                 while (rs.next()) {
                     String colName = rs.getString("COLUMN_NAME");
                     Map<String, Object> map = new LinkedHashMap<>();
@@ -99,7 +132,14 @@ public class DatabaseExplorerService {
         List<Map<String, Object>> indexes = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
-            try (ResultSet rs = metaData.getIndexInfo(null, schema, table, false, false)) {
+            String dbType = metaData.getDatabaseProductName().toLowerCase();
+            String catalog = null;
+            String schemaPattern = schema;
+            if (dbType.contains("mysql") || dbType.contains("mariadb")) {
+                catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
+                schemaPattern = null;
+            }
+            try (ResultSet rs = metaData.getIndexInfo(catalog, schemaPattern, table, false, false)) {
                 while (rs.next()) {
                     Map<String, Object> map = new LinkedHashMap<>();
                     map.put("name", rs.getString("INDEX_NAME"));
@@ -117,7 +157,14 @@ public class DatabaseExplorerService {
         List<Map<String, Object>> fks = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
-            try (ResultSet rs = metaData.getImportedKeys(null, schema, table)) {
+            String dbType = metaData.getDatabaseProductName().toLowerCase();
+            String catalog = null;
+            String schemaPattern = schema;
+            if (dbType.contains("mysql") || dbType.contains("mariadb")) {
+                catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
+                schemaPattern = null;
+            }
+            try (ResultSet rs = metaData.getImportedKeys(catalog, schemaPattern, table)) {
                 while (rs.next()) {
                     Map<String, Object> map = new LinkedHashMap<>();
                     map.put("fkName", rs.getString("FK_NAME"));
@@ -154,9 +201,10 @@ public class DatabaseExplorerService {
                     return (String) res.get(0).get("Create Table");
                 }
             } else if ("postgresql".equalsIgnoreCase(dbType)) {
+                String pgSchema = (schema == null || schema.isEmpty() || "null".equals(schema)) ? "public" : schema;
                 // Check if it's a view or materialized view
                 String relkindQuery = "SELECT relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = ? AND c.relname = ?";
-                List<String> relkinds = jdbc.queryForList(relkindQuery, String.class, schema, table);
+                List<String> relkinds = jdbc.queryForList(relkindQuery, String.class, pgSchema, table);
                 if (!relkinds.isEmpty()) {
                     String kind = relkinds.get(0);
                     if ("v".equals(kind) || "m".equals(kind)) {
@@ -170,7 +218,7 @@ public class DatabaseExplorerService {
                 List<Map<String, Object>> cols = jdbc.queryForList(
                     "SELECT column_name, data_type, character_maximum_length, column_default, is_nullable " +
                     "FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position", 
-                    schema, table
+                    pgSchema, table
                 );
                 
                 if (cols.isEmpty()) return "-- Table not found or no columns accessible.";
