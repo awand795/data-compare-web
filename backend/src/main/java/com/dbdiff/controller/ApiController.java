@@ -60,7 +60,7 @@ public class ApiController {
 
     @PostMapping("/connections")
     public ResponseEntity<?> saveConnection(@RequestBody ConnectionDetails details) {
-        connectionManagerService.evictConnection(details.getId());
+        connectionManagerService.evictConnection(details.getStableIdentifier());
         connectionRepository.save(details);
         return ResponseEntity.ok(Map.of("success", true, "connection", details));
     }
@@ -73,15 +73,19 @@ public class ApiController {
             if (details.getPassword() == null) details.setPassword(existing.getPassword());
             if (details.getSshPassword() == null) details.setSshPassword(existing.getSshPassword());
             if (details.getSshPassphrase() == null) details.setSshPassphrase(existing.getSshPassphrase());
+            connectionManagerService.evictConnection(existing.getStableIdentifier());
         }
-        connectionManagerService.evictConnection(id);
+        connectionManagerService.evictConnection(details.getStableIdentifier());
         connectionRepository.save(details);
         return ResponseEntity.ok(Map.of("success", true, "connection", details));
     }
 
     @DeleteMapping("/connections/{id}")
     public ResponseEntity<?> deleteConnection(@PathVariable String id) {
-        connectionManagerService.evictConnection(id);
+        ConnectionDetails existing = connectionRepository.findById(id);
+        if (existing != null) {
+            connectionManagerService.evictConnection(existing.getStableIdentifier());
+        }
         connectionRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("success", true));
     }
