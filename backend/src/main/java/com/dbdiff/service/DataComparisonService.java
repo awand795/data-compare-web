@@ -1067,8 +1067,13 @@ public class DataComparisonService {
     private String buildKeyFromRs(ResultSet rs, int[] exactPkIdx) throws Exception {
         StringBuilder sb = new StringBuilder(exactPkIdx.length * 16);
         for (int i = 0; i < exactPkIdx.length; i++) {
-            if (i > 0) sb.append('|');
-            sb.append(exactPkIdx[i] > 0 ? rs.getString(exactPkIdx[i]) : "null");
+            if (i > 0) sb.append('\u0000');
+            if (exactPkIdx[i] > 0) {
+                String val = rs.getString(exactPkIdx[i]);
+                sb.append(val == null ? "\u0001NULL\u0001" : val);
+            } else {
+                sb.append("\u0001NULL\u0001");
+            }
         }
         return sb.toString();
     }
@@ -1288,18 +1293,18 @@ public class DataComparisonService {
             orderByClause = sortColumns.stream().map(c -> {
                 String q = quoteIdentifier(c, dbType);
                 if ("postgresql".equals(dbType)) {
-                    return "COALESCE(" + q + "::text, '') ASC";
+                    return q + " ASC NULLS FIRST";
                 } else {
-                    return "COALESCE(" + q + ", '') ASC";
+                    return q + " ASC";
                 }
             }).collect(java.util.stream.Collectors.joining(", "));
         } else if (pks != null && !pks.isEmpty()) {
             orderByClause = pks.stream().map(c -> {
                 String q = quoteIdentifier(c, dbType);
                 if ("postgresql".equals(dbType)) {
-                    return "COALESCE(" + q + "::text, '') ASC";
+                    return q + " ASC NULLS FIRST";
                 } else {
-                    return "COALESCE(" + q + ", '') ASC";
+                    return q + " ASC";
                 }
             }).collect(java.util.stream.Collectors.joining(", "));
         }
@@ -1366,8 +1371,9 @@ public class DataComparisonService {
     private String buildKey(Map<String, Object> row, List<String> exactPks) {
         StringBuilder sb = new StringBuilder(128);
         for (int i = 0; i < exactPks.size(); i++) {
-            if (i > 0) sb.append('|');
-            sb.append(row.get(exactPks.get(i)));
+            if (i > 0) sb.append('\u0000');
+            Object val = row.get(exactPks.get(i));
+            sb.append(val == null ? "\u0001NULL\u0001" : val.toString());
         }
         return sb.toString();
     }

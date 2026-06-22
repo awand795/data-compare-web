@@ -150,7 +150,8 @@ public class ScheduleManagerService {
             ScheduleResult r = new ScheduleResult();
             r.setId(rs.getString("id"));
             r.setScheduleId(rs.getString("schedule_id"));
-            r.setRunTime(rs.getTimestamp("run_time").toLocalDateTime());
+            java.sql.Timestamp rt = rs.getTimestamp("run_time");
+            if (rt != null) r.setRunTime(rt.toLocalDateTime());
             r.setMatchCount(rs.getInt("match_count"));
             r.setDifferentCount(rs.getInt("different_count"));
             r.setSourceOnlyCount(rs.getInt("source_only_count"));
