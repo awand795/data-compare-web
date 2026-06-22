@@ -43,6 +43,7 @@ export const QueryWorkspace: React.FC = () => {
   const [viewMode, setViewMode] = useState<'results' | 'diff'>('results');
   const [workspaceDiffResult, setWorkspaceDiffResult] = useState<any>({ columns: [], rows: [], summary: null });
   const [comparing, setComparing] = useState(false);
+  const [localBatchProgress, setLocalBatchProgress] = useState<{ processed: number, total: number } | null>(null);
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'DIFFERENT' | 'SOURCE_ONLY' | 'TARGET_ONLY' | 'IDENTICAL'>('ALL');
   const [showPrimaryKeyModal, setShowPrimaryKeyModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -221,6 +222,7 @@ export const QueryWorkspace: React.FC = () => {
     }
     if (!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim()) return;
     setComparing(true);
+    setLocalBatchProgress(null);
     abortControllerRef.current = new AbortController();
     setViewMode('diff');
     setWorkspaceDiffResult({ columns: [], rows: [], summary: null, status: 'comparing' });
@@ -272,6 +274,7 @@ export const QueryWorkspace: React.FC = () => {
         const countData = await countRes.json();
         totalRows = Math.min(countData.sourceCount || 0, countData.targetCount || 0);
         if (m) store.setBatchProgress(m.id, 0, totalRows);
+        if (totalRows > 0) setLocalBatchProgress({ processed: 0, total: totalRows });
       }
     } catch (e) {
       console.warn('Count fetch failed, continuing without progress', e);
@@ -376,6 +379,9 @@ export const QueryWorkspace: React.FC = () => {
                  if (m && totalRows > 0 && rowCount % 3000 === 0) {
                    store.setBatchProgress(m.id, rowCount, totalRows);
                  }
+                 if (totalRows > 0 && rowCount % 3000 === 0) {
+                   setLocalBatchProgress({ processed: rowCount, total: totalRows });
+                 }
             } else if (msg.type === 'row') {
                  pendingRows.push(msg.data);
                  allRows.push(msg.data);
@@ -394,6 +400,9 @@ export const QueryWorkspace: React.FC = () => {
                  }
                  if (m && totalRows > 0 && rowCount % 3000 === 0) {
                    store.setBatchProgress(m.id, rowCount, totalRows);
+                 }
+                 if (totalRows > 0 && rowCount % 3000 === 0) {
+                   setLocalBatchProgress({ processed: rowCount, total: totalRows });
                  }
             } else if (msg.type === 'summary') {
                pendingSummary = msg.data;
@@ -438,6 +447,9 @@ export const QueryWorkspace: React.FC = () => {
       
       if (m && totalRows > 0) {
         store.setBatchProgress(m.id, totalRows, totalRows);
+      }
+      if (totalRows > 0) {
+        setLocalBatchProgress({ processed: totalRows, total: totalRows });
       }
       if (m && finalSummary) {
         store.setDiffSummary(m.id, {
@@ -713,8 +725,16 @@ export const QueryWorkspace: React.FC = () => {
             fullscreenPanel === 'diff' ? "fixed inset-0 z-[120] bg-bg-main" : "h-full"
           )}>
             <div className="bg-bg-header border-b border-border-main px-3 py-1.5 flex items-center justify-between shrink-0 mb-2 rounded-t-lg">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-500 uppercase tracking-wider">
-                    <ArrowLeftRight className="w-3 h-3" /> Comparison Results
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-500 uppercase tracking-wider">
+                      <ArrowLeftRight className="w-3 h-3" /> Comparison Results
+                  </div>
+                  {comparing && localBatchProgress && localBatchProgress.total > 0 && (
+                    <div className="flex items-center gap-1.5 text-blue-500 text-[11px] font-bold">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Processed {localBatchProgress.processed.toLocaleString()} / {localBatchProgress.total.toLocaleString()} rows
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <button
