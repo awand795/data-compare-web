@@ -690,87 +690,88 @@ public class ApiController {
     private ConnectionDetails mapToDetails(Map<String, Object> map) {
         if (map == null) return null;
         String id = (String) map.get("id");
+        ConnectionDetails details = null;
+        
         if (id != null && !id.trim().isEmpty()) {
-            ConnectionDetails dbDetails = connectionRepository.findById(id);
-            if (dbDetails != null) {
-                if (map.containsKey("schema") && map.get("schema") != null) {
-                    dbDetails.setSchema((String) map.get("schema"));
-                }
-                // Merge SSH fields dari payload agar endpoint columns/keys bisa pakai SSH yang benar
-                if (map.containsKey("useSsh")) {
-                    dbDetails.setUseSsh(Boolean.TRUE.equals(map.get("useSsh")));
-                }
-                if (map.containsKey("sshHost") && map.get("sshHost") != null) {
-                    dbDetails.setSshHost((String) map.get("sshHost"));
-                }
-                if (map.get("sshPort") != null) {
-                    dbDetails.setSshPort(map.get("sshPort") instanceof Integer
-                        ? (Integer) map.get("sshPort")
-                        : Integer.parseInt(map.get("sshPort").toString()));
-                }
-                if (map.containsKey("sshUsername") && map.get("sshUsername") != null) {
-                    dbDetails.setSshUsername((String) map.get("sshUsername"));
-                }
-                if (map.containsKey("sshAuthMode") && map.get("sshAuthMode") != null) {
-                    dbDetails.setSshAuthMode((String) map.get("sshAuthMode"));
-                }
-                if (map.containsKey("sshPassword") && map.get("sshPassword") != null) {
-                    dbDetails.setSshPassword((String) map.get("sshPassword"));
-                }
-                if (map.containsKey("sshKeyFile") && map.get("sshKeyFile") != null) {
-                    dbDetails.setSshKeyFile((String) map.get("sshKeyFile"));
-                }
-                if (map.containsKey("sshPassphrase") && map.get("sshPassphrase") != null) {
-                    dbDetails.setSshPassphrase((String) map.get("sshPassphrase"));
-                }
-                return dbDetails;
-            }
+            details = connectionRepository.findById(id);
         }
-        ConnectionDetails details = new ConnectionDetails();
-        details.setId(id);
-        details.setName((String) map.get("name"));
-        details.setType((String) map.get("type"));
-        details.setHost((String) map.get("host"));
-        if (map.get("port") != null) {
+        if (details == null) {
+            details = new ConnectionDetails();
+            details.setId(id);
+        }
+
+        if (map.containsKey("name")) details.setName((String) map.get("name"));
+        if (map.containsKey("type")) details.setType((String) map.get("type"));
+        if (map.containsKey("host")) details.setHost((String) map.get("host"));
+        if (map.containsKey("port") && map.get("port") != null) {
             details.setPort(map.get("port") instanceof Integer ? (Integer) map.get("port") : Integer.parseInt(map.get("port").toString()));
         }
-        details.setDatabase((String) map.get("database"));
-        details.setUsername((String) map.get("username"));
-        details.setPassword((String) map.get("password"));
-        if (map.containsKey("schema")) {
-            details.setSchema((String) map.get("schema"));
+        if (map.containsKey("database")) details.setDatabase((String) map.get("database"));
+        if (map.containsKey("username")) details.setUsername((String) map.get("username"));
+        
+        // Decode base64 passwords from frontend (ConnectionDialog sends base64 for security)
+        if (map.containsKey("password") && map.get("password") != null) {
+            details.setPassword(decodeBase64IfNeeded((String) map.get("password")));
         }
         
-        details.setSslMode((String) map.get("sslMode"));
-        details.setSslCaFile((String) map.get("sslCaFile"));
-        details.setSslCertFile((String) map.get("sslCertFile"));
-        details.setSslKeyFile((String) map.get("sslKeyFile"));
+        if (map.containsKey("schema")) details.setSchema((String) map.get("schema"));
+        if (map.containsKey("sslMode")) details.setSslMode((String) map.get("sslMode"));
+        if (map.containsKey("sslCaFile")) details.setSslCaFile((String) map.get("sslCaFile"));
+        if (map.containsKey("sslCertFile")) details.setSslCertFile((String) map.get("sslCertFile"));
+        if (map.containsKey("sslKeyFile")) details.setSslKeyFile((String) map.get("sslKeyFile"));
 
-        details.setUseSsh(map.containsKey("useSsh") && Boolean.TRUE.equals(map.get("useSsh")));
-        details.setSshHost((String) map.get("sshHost"));
-        if (map.get("sshPort") != null) {
+        if (map.containsKey("useSsh") && map.get("useSsh") != null) {
+            details.setUseSsh(Boolean.TRUE.equals(map.get("useSsh")));
+        }
+        if (map.containsKey("sshHost")) details.setSshHost((String) map.get("sshHost"));
+        if (map.containsKey("sshPort") && map.get("sshPort") != null) {
             details.setSshPort(map.get("sshPort") instanceof Integer ? (Integer) map.get("sshPort") : Integer.parseInt(map.get("sshPort").toString()));
         }
-        details.setSshUsername((String) map.get("sshUsername"));
-        details.setSshAuthMode((String) map.get("sshAuthMode"));
-        details.setSshPassword((String) map.get("sshPassword"));
-        details.setSshKeyFile((String) map.get("sshKeyFile"));
-        details.setSshPassphrase((String) map.get("sshPassphrase"));
-        details.setSshStrictHostKeyChecking(!map.containsKey("sshStrictHostKeyChecking") || Boolean.TRUE.equals(map.get("sshStrictHostKeyChecking")));
+        if (map.containsKey("sshUsername")) details.setSshUsername((String) map.get("sshUsername"));
+        if (map.containsKey("sshAuthMode")) details.setSshAuthMode((String) map.get("sshAuthMode"));
+        
+        if (map.containsKey("sshPassword") && map.get("sshPassword") != null) {
+            details.setSshPassword(decodeBase64IfNeeded((String) map.get("sshPassword")));
+        }
+        if (map.containsKey("sshKeyFile")) details.setSshKeyFile((String) map.get("sshKeyFile"));
+        if (map.containsKey("sshPassphrase") && map.get("sshPassphrase") != null) {
+            details.setSshPassphrase(decodeBase64IfNeeded((String) map.get("sshPassphrase")));
+        }
+        if (map.containsKey("sshStrictHostKeyChecking") && map.get("sshStrictHostKeyChecking") != null) {
+            details.setSshStrictHostKeyChecking(Boolean.TRUE.equals(map.get("sshStrictHostKeyChecking")));
+        }
 
-        if (map.get("connectionTimeout") != null) {
+        if (map.containsKey("connectionTimeout") && map.get("connectionTimeout") != null) {
             details.setConnectionTimeout(map.get("connectionTimeout") instanceof Integer ? (Integer) map.get("connectionTimeout") : Integer.parseInt(map.get("connectionTimeout").toString()));
         }
-        if (map.get("socketTimeout") != null) {
+        if (map.containsKey("socketTimeout") && map.get("socketTimeout") != null) {
             details.setSocketTimeout(map.get("socketTimeout") instanceof Integer ? (Integer) map.get("socketTimeout") : Integer.parseInt(map.get("socketTimeout").toString()));
         }
-        if (map.get("fetchSize") != null) {
+        if (map.containsKey("fetchSize") && map.get("fetchSize") != null) {
             details.setFetchSize(map.get("fetchSize") instanceof Integer ? (Integer) map.get("fetchSize") : Integer.parseInt(map.get("fetchSize").toString()));
         }
-        details.setReadOnly(map.containsKey("readOnly") && Boolean.TRUE.equals(map.get("readOnly")));
-        details.setExtraProps((String) map.get("extraProps"));
+        if (map.containsKey("readOnly") && map.get("readOnly") != null) {
+            details.setReadOnly(Boolean.TRUE.equals(map.get("readOnly")));
+        }
+        if (map.containsKey("extraProps")) details.setExtraProps((String) map.get("extraProps"));
 
         return details;
+    }
+
+    private String decodeBase64IfNeeded(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return raw;
+        try {
+            // Frontend sends base64. Let's try to decode it.
+            byte[] decoded = java.util.Base64.getDecoder().decode(raw);
+            String decodedStr = new String(decoded, java.nio.charset.StandardCharsets.UTF_8);
+            if (decodedStr.contains("\uFFFD")) return raw;
+            for (char ch : decodedStr.toCharArray()) {
+                if (ch < 32 && ch != '\t' && ch != '\n' && ch != '\r') return raw;
+            }
+            return decodedStr;
+        } catch (Exception e) {
+            return raw;
+        }
     }
 }
 

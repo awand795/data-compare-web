@@ -99,7 +99,8 @@ public class DynamicSchedulerService {
         if (future != null) {
             future.cancel(false);
         }
-        scheduleSemaphores.remove(scheduleId);
+        // Do not remove from scheduleSemaphores to prevent race conditions
+        // if a job is currently executing and releasing the semaphore.
     }
 
     private void scheduleTask(ScheduleConfig schedule) {

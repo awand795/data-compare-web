@@ -80,9 +80,14 @@ public class ConnectionRepository {
                      "socket_timeout = EXCLUDED.socket_timeout, fetch_size = EXCLUDED.fetch_size, " +
                      "read_only = EXCLUDED.read_only, extra_props = EXCLUDED.extra_props";
                      
-        jdbcTemplate.update(sql, c.getId(), c.getName(), c.getType(), c.getHost(), c.getPort(), c.getDatabase(), c.getUsername(), c.getPassword(),
+        String encodedPassword = c.getPassword() != null ? Base64.getEncoder().encodeToString(c.getPassword().getBytes(StandardCharsets.UTF_8)) : null;
+        String encodedSshPassword = c.getSshPassword() != null ? Base64.getEncoder().encodeToString(c.getSshPassword().getBytes(StandardCharsets.UTF_8)) : null;
+        String encodedSshKeyFile = c.getSshKeyFile() != null ? Base64.getEncoder().encodeToString(c.getSshKeyFile().getBytes(StandardCharsets.UTF_8)) : null;
+        String encodedSshPassphrase = c.getSshPassphrase() != null ? Base64.getEncoder().encodeToString(c.getSshPassphrase().getBytes(StandardCharsets.UTF_8)) : null;
+
+        jdbcTemplate.update(sql, c.getId(), c.getName(), c.getType(), c.getHost(), c.getPort(), c.getDatabase(), c.getUsername(), encodedPassword,
                 c.getSchema(), c.getSslMode(), c.getSslCaFile(), c.getSslCertFile(), c.getSslKeyFile(),
-                c.isUseSsh(), c.getSshHost(), c.getSshPort(), c.getSshUsername(), c.getSshAuthMode(), c.getSshPassword(), c.getSshKeyFile(), c.getSshPassphrase(), c.isSshStrictHostKeyChecking(),
+                c.isUseSsh(), c.getSshHost(), c.getSshPort(), c.getSshUsername(), c.getSshAuthMode(), encodedSshPassword, encodedSshKeyFile, encodedSshPassphrase, c.isSshStrictHostKeyChecking(),
                 c.getConnectionTimeout(), c.getSocketTimeout(), c.getFetchSize(), c.isReadOnly(), c.getExtraProps());
     }
 

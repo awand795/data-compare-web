@@ -87,26 +87,27 @@ public class SshTunnelService implements DisposableBean {
      * mengira tunnel masih aktif padahal server sudah memutus koneksi secara diam-diam.
      */
     public boolean isTunnelHealthy(String connId) {
+        Session session;
+        Integer port;
         lock.lock();
         try {
-            Session session = activeSessions.get(connId);
-            if (session == null || !session.isConnected()) {
-                return false;
-            }
-            Integer port = localPorts.get(connId);
-            if (port == null) {
-                return false;
-            }
-            // Probe TCP ke port forwarding — ini yang paling akurat
-            try (Socket probe = new Socket()) {
-                probe.connect(new java.net.InetSocketAddress("127.0.0.1", port), 3000);
-                return true;
-            } catch (Exception e) {
-                logger.warn("SSH tunnel health-check FAILED for {} on port {}: {}", connId, port, e.getMessage());
-                return false;
-            }
+            session = activeSessions.get(connId);
+            port = localPorts.get(connId);
         } finally {
             lock.unlock();
+        }
+
+        if (session == null || !session.isConnected() || port == null) {
+            return false;
+        }
+
+        // Probe TCP ke port forwarding — ini yang paling akurat
+        try (Socket probe = new Socket()) {
+            probe.connect(new java.net.InetSocketAddress("127.0.0.1", port), 3000);
+            return true;
+        } catch (Exception e) {
+            logger.warn("SSH tunnel health-check FAILED for {} on port {}: {}", connId, port, e.getMessage());
+            return false;
         }
     }
 

@@ -204,8 +204,8 @@ public class DatabaseExplorerService {
         List<Map<String, Object>> statsList = new ArrayList<>();
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         try {
-            String q = "\"";
-            String fullTableName = (schema != null && !schema.isEmpty() ? q + schema + q + "." : "") + q + table + q;
+            String q = dbType.contains("mysql") || dbType.contains("mariadb") ? "`" : "\"";
+            String fullTableName = formatTableName(schema, table, q);
             
             // 1. Basic Row Count (Always available)
             Long count = jdbc.queryForObject("SELECT COUNT(*) FROM " + fullTableName, Long.class);
@@ -314,7 +314,7 @@ public class DatabaseExplorerService {
         try (java.sql.Connection conn = dataSource.getConnection()) {
             String dbType = conn.getMetaData().getDatabaseProductName().toLowerCase();
             String q = dbType.contains("mysql") || dbType.contains("mariadb") ? "`" : "\"";
-            String fullTableName = (schema != null && !schema.isEmpty() ? q + schema + q + "." : "") + q + table + q;
+            String fullTableName = formatTableName(schema, table, q);
             String sql = "SELECT * FROM " + fullTableName;
             
             try (java.sql.PreparedStatement ps = conn.prepareStatement(sql, java.sql.ResultSet.TYPE_FORWARD_ONLY, java.sql.ResultSet.CONCUR_READ_ONLY)) {
@@ -349,5 +349,22 @@ public class DatabaseExplorerService {
             return "[BINARY Data: " + ((byte[]) val).length + " bytes]";
         }
         return val;
+    }
+
+    private String formatTableName(String schema, String table, String q) {
+        String escapedTable = escapeIdentifier(table, q);
+        if (schema != null && !schema.isEmpty()) {
+            return escapeIdentifier(schema, q) + "." + escapedTable;
+        }
+        return escapedTable;
+    }
+
+    private String escapeIdentifier(String identifier, String q) {
+        if (identifier == null) return null;
+        if ("`".equals(q)) {
+            return q + identifier.replace("`", "``") + q;
+        } else {
+            return q + identifier.replace("\"", "\"\"") + q;
+        }
     }
 }

@@ -1308,6 +1308,12 @@ public class DataComparisonService {
 
         if (customQuery != null && !customQuery.trim().isEmpty()) {
             String q = customQuery.trim();
+            String upperQ = q.toUpperCase();
+            if (upperQ.contains("INSERT ") || upperQ.contains("UPDATE ") || upperQ.contains("DELETE ") ||
+                upperQ.contains("DROP ") || upperQ.contains("ALTER ") || upperQ.contains("TRUNCATE ") ||
+                upperQ.contains("EXEC ") || upperQ.contains("EXECUTE ")) {
+                throw new IllegalArgumentException("Custom query must be a SELECT statement. DML/DDL operations are not allowed.");
+            }
             while (q.endsWith(";")) {
                 q = q.substring(0, q.length() - 1).trim();
             }
