@@ -102,7 +102,7 @@ public class ConnectionManagerService {
                 logger.warn("Failed to close DataSource during eviction: {}", e.getMessage());
             }
         }
-        poolSemaphores.remove(connectionId);
+        // Do not remove poolSemaphores here to avoid race conditions with running queries
         sshTunnelService.closeTunnel(connectionId);
     }
 
