@@ -124,10 +124,15 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                             </span>
                           </td>
                           <td className="py-3 px-4">
-                            {r.errorMessage ? (
+                            {r.errorMessage === 'RUNNING...' ? (
+                              <div className="flex items-center gap-1.5 text-blue-400">
+                                <Clock className="w-3.5 h-3.5 animate-spin" />
+                                <span>Running...</span>
+                              </div>
+                            ) : r.errorMessage ? (
                               <div className="flex items-center gap-1.5 text-red-400 group relative">
                                 <AlertTriangle className="w-3.5 h-3.5" />
-                                <span className="truncate max-w-[120px]">{r.errorMessage}</span>
+                                <span className="truncate max-w-[120px]" title={r.errorMessage}>{r.errorMessage}</span>
                               </div>
                             ) : (
                               <div className="flex items-center gap-1.5 text-emerald-500">

@@ -140,6 +140,7 @@ public class DynamicSchedulerService {
         result.setId(UUID.randomUUID().toString());
         result.setScheduleId(scheduleId);
         result.setRunTime(LocalDateTime.now());
+        result.setErrorMessage("RUNNING...");
         
         // Save initial result first to satisfy Foreign Key constraints for detail rows
         scheduleManagerService.saveResult(result);
@@ -306,6 +307,7 @@ public class DynamicSchedulerService {
             result.setSourceOnlyCount(totalSrcOnly);
             result.setTargetOnlyCount(totalTgtOnly);
             result.setDetails(objectMapper.writeValueAsString(executionDetails));
+            result.setErrorMessage(null); // Clear "RUNNING..." status
 
             scheduleManagerService.updateResult(result);
             scheduleManagerService.updateLastRun(scheduleId, LocalDateTime.now());
