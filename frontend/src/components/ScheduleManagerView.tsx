@@ -329,6 +329,16 @@ export const ScheduleManagerView: React.FC = () => {
                                     <input required type="text" value={cronExpression} onChange={e => setCronExpression(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm font-mono text-blue-400 focus:border-blue-500 focus:outline-none" placeholder="0 0 * * * *" />
                                     <p className="text-[10px] text-text-muted mt-1">Uses Spring Boot 6-field cron syntax (Second, Minute, Hour, Day, Month, Weekday)</p>
                                 </div>
+                                <div className="flex items-center gap-2 mt-2">
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" checked={saveFullData} onChange={e => setSaveFullData(e.target.checked)} className="sr-only peer" />
+                                        <div className="w-8 h-4 bg-bg-hover peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-text-muted peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+                                    </label>
+                                    <div>
+                                        <span className="block text-xs font-bold text-text-main">Save Full Diff Data</span>
+                                        <span className="block text-[10px] text-text-muted mt-0.5">Allow viewing the actual row differences (requires more database storage)</span>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="border border-border-main rounded-xl p-4 bg-bg-subtle/30">
