@@ -163,6 +163,11 @@ public class ScheduleManagerService {
             return r;
         }, scheduleId);
     }
+
+    public void clearResultsForSchedule(String scheduleId) {
+        jdbcTemplate.update("DELETE FROM schedule_result_rows WHERE result_id IN (SELECT id FROM schedule_results WHERE schedule_id = ?)", scheduleId);
+        jdbcTemplate.update("DELETE FROM schedule_results WHERE schedule_id = ?", scheduleId);
+    }
     
     public List<ScheduleResultRow> getRowsForResult(String resultId) {
         return getRowsForResult(resultId, null);

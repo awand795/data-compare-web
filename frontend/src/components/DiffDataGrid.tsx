@@ -19,6 +19,14 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
   const diffResult = directResult || (mappingId ? diffResults[mappingId] : null);
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [copied, setCopied] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, rowIdx: number } | null>(null);
+
+  useEffect(() => {
+    const closeMenu = () => setContextMenu(null);
+    window.addEventListener('click', closeMenu);
+    return () => window.removeEventListener('click', closeMenu);
+  }, []);
 
   const onColumnResize = useCallback((column: GridColumn, newSize: number) => {
     if (column.id) {
@@ -99,6 +107,39 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
     },
     [filteredData, columns]
   );
+
+  const handleCellContextMenu = useCallback((cell: readonly [number, number], e: any) => {
+    e.preventDefault();
+    const rawEvent = e.rawEvent || e;
+    setContextMenu({
+      x: rawEvent.clientX || 0,
+      y: rawEvent.clientY || 0,
+      rowIdx: cell[1]
+    });
+  }, []);
+
+  const handleCopyRow = useCallback(() => {
+    if (!contextMenu) return;
+    const row = filteredData[contextMenu.rowIdx];
+    if (!row) {
+      setContextMenu(null);
+      return;
+    }
+    const obj: any = { rowKey: row.rowKey, status: row.status };
+    if (row.cells) {
+      for (const [col, c] of Object.entries(row.cells) as any) {
+         if (c.isDifferent) {
+            obj[col] = { source: c.sourceValue, target: c.targetValue };
+         } else {
+            obj[col] = c.sourceValue;
+         }
+      }
+    }
+    navigator.clipboard.writeText(JSON.stringify(obj, null, 2)).then(() => {
+      addToast({ type: 'info', title: 'Row Copied', message: `Row ${row.rowKey} copied to clipboard.` });
+    });
+    setContextMenu(null);
+  }, [contextMenu, filteredData, addToast]);
 
   /* ── Export handlers ─────────────────────────────────────────── */
 
@@ -187,6 +228,29 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
     triggerDownload(`/api/export-pdf?filterStatus=${filterStatus}`, `data-compare-${mappingId || 'export'}.pdf`);
   }, [buildExportPayload, filterStatus, mappingId]);
 
+  const handleCopyJSON = useCallback(() => {
+    if (!filteredData) return;
+    const simplified = filteredData.map((row: any) => {
+      const obj: any = { rowKey: row.rowKey, status: row.status };
+      if (row.cells) {
+        for (const [col, cell] of Object.entries(row.cells) as any) {
+           if (cell.isDifferent) {
+              obj[col] = { source: cell.sourceValue, target: cell.targetValue };
+           } else {
+              obj[col] = cell.sourceValue;
+           }
+        }
+      }
+      return obj;
+    });
+    navigator.clipboard.writeText(JSON.stringify(simplified, null, 2)).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      addToast({ type: 'error', title: 'Copy Failed', message: 'Data is too large to copy to clipboard.' });
+    });
+  }, [filteredData, addToast]);
+
 
   const getRowHeight = useCallback((rowIdx: number) => {
     const row = filteredData[rowIdx];
@@ -222,6 +286,7 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
             rows={filteredData.length}
             rowHeight={getRowHeight}
             onColumnResize={onColumnResize}
+            onCellContextMenu={handleCellContextMenu}
             getCellsForSelection={true}
             smoothScrollX={true}
             smoothScrollY={true}
@@ -281,6 +346,13 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
         {/* Export buttons */}
         <div className="flex items-center gap-2">
           <button
+            onClick={handleCopyJSON}
+            className="px-3 py-1.5 bg-slate-600/10 text-slate-600 dark:text-slate-400 hover:bg-slate-600/20 border border-slate-600/20 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            title="Copy current view to clipboard as JSON"
+          >
+            {copied ? 'Copied!' : 'Copy JSON'}
+          </button>
+          <button
             onClick={handleExportExcel}
             className="px-3 py-1.5 bg-green-600/10 text-green-600 dark:text-green-400 hover:bg-green-600/20 border border-green-600/20 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors"
             title="Export current view to Excel"
@@ -296,6 +368,20 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
           </button>
         </div>
       </div>
+
+      {contextMenu && (
+        <div 
+          className="fixed z-[9999] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-md py-1 min-w-[150px] text-slate-700 dark:text-slate-200"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button 
+            className="w-full text-left px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-2 transition-colors font-medium"
+            onClick={(e) => { e.stopPropagation(); handleCopyRow(); }}
+          >
+            📋 Copy Row JSON
+          </button>
+        </div>
+      )}
     </div>
   );
 };

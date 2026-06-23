@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { X, Clock, Calendar, CheckCircle, AlertTriangle, Info, Database, Eye, Plus } from 'lucide-react';
+import { X, Clock, Calendar, CheckCircle, AlertTriangle, Info, Database, Eye, Plus, Trash2 } from 'lucide-react';
 import { ScheduleDataViewer } from './ScheduleDataViewer';
 import clsx from 'clsx';
 
@@ -209,7 +209,22 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
           )}
         </div>
 
-        <div className="p-4 border-t border-border-main flex justify-end bg-bg-header rounded-b-xl">
+        <div className="p-4 border-t border-border-main flex justify-between bg-bg-header rounded-b-xl">
+          <button
+            onClick={async () => {
+              if (confirm('Are you sure you want to clear all execution history for this job?')) {
+                try {
+                  await axios.delete(`/api/schedules/${scheduleId}/results`);
+                  setResults([]);
+                } catch (e) {
+                  alert('Failed to clear execution history.');
+                }
+              }
+            }}
+            className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg text-sm font-semibold hover:bg-red-500/20 transition-colors flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" /> Clear All History
+          </button>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-bg-panel border border-border-input rounded-lg text-sm font-semibold hover:bg-bg-hover transition-colors"

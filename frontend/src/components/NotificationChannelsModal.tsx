@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { XCircle, Trash2, Plus, MessageCircle, Send } from 'lucide-react';
+import { XCircle, Trash2, Plus, MessageCircle, Send, Edit } from 'lucide-react';
 import { useAppStore, type NotificationChannel } from '../store/useAppStore';
 
 interface NotificationChannelsModalProps {
@@ -12,6 +12,7 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
     const { notificationChannels, setNotificationChannels } = useAppStore();
     const [channels, setChannels] = useState<NotificationChannel[]>(notificationChannels || []);
     const [isCreating, setIsCreating] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
     
     const [formData, setFormData] = useState<Partial<NotificationChannel>>({
         name: '',
@@ -38,8 +39,13 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await axios.post('/api/notification-channels', formData);
-            setIsCreating(false);
+            if (editingId) {
+                await axios.put(`/api/notification-channels/${editingId}`, formData);
+                setEditingId(null);
+            } else {
+                await axios.post('/api/notification-channels', formData);
+                setIsCreating(false);
+            }
             setFormData({ name: '', type: 'TELEGRAM', botToken: '', chatId: '', webhookUrl: '' });
             fetchChannels();
         } catch (e) {
@@ -71,7 +77,7 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
                 </div>
 
                 <div className="flex-1 overflow-auto p-4 flex flex-col gap-4">
-                    {!isCreating && (
+                    {!isCreating && !editingId && (
                         <div className="flex justify-end mb-2">
                             <button 
                                 onClick={() => setIsCreating(true)}
@@ -82,9 +88,9 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
                         </div>
                     )}
 
-                    {isCreating && (
+                    {(isCreating || editingId) && (
                         <form onSubmit={handleSave} className="bg-bg-subtle border border-border-main rounded-lg p-4 mb-4 flex flex-col gap-3 shadow-inner">
-                            <h3 className="font-semibold text-sm border-b border-border-item pb-2 mb-2">New Profile</h3>
+                            <h3 className="font-semibold text-sm border-b border-border-item pb-2 mb-2">{editingId ? 'Edit Profile' : 'New Profile'}</h3>
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="col-span-2">
                                     <label className="block text-xs font-semibold text-text-muted mb-1">Profile Name</label>
@@ -117,8 +123,8 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
                                 )}
                             </div>
                             <div className="flex justify-end gap-2 mt-4 pt-2 border-t border-border-item">
-                                <button type="button" onClick={() => setIsCreating(false)} className="px-3 py-1.5 text-xs font-semibold border border-orange-500/30 bg-orange-500/15 text-orange-500 hover:bg-orange-500/25 hover:text-orange-400 rounded transition-colors">Cancel</button>
-                                <button type="submit" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded shadow transition-colors">Save</button>
+                                <button type="button" onClick={() => { setIsCreating(false); setEditingId(null); setFormData({ name: '', type: 'TELEGRAM', botToken: '', chatId: '', webhookUrl: '' }); }} className="px-3 py-1.5 text-xs font-semibold border border-orange-500/30 bg-orange-500/15 text-orange-500 hover:bg-orange-500/25 hover:text-orange-400 rounded transition-colors">Cancel</button>
+                                <button type="submit" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded shadow transition-colors">{editingId ? 'Update' : 'Save'}</button>
                             </div>
                         </form>
                     )}
@@ -141,9 +147,14 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
                                         {c.type === 'TELEGRAM' ? `Chat ID: ${c.chatId}` : 'Webhook configured'}
                                     </div>
                                 </div>
-                                <button onClick={() => handleDelete(c.id)} className="p-1.5 text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded transition-colors">
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                    <button onClick={() => { setFormData(c); setEditingId(c.id); setIsCreating(false); }} className="p-1.5 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300 rounded transition-colors" title="Edit Profile">
+                                        <Edit className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => handleDelete(c.id)} className="p-1.5 text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded transition-colors" title="Delete Profile">
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>

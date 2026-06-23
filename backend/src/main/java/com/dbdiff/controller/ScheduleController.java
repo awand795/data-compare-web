@@ -80,6 +80,16 @@ public class ScheduleController {
         return ResponseEntity.ok(scheduleManagerService.getResultsForSchedule(id));
     }
 
+    @DeleteMapping("/{id}/results")
+    public ResponseEntity<?> clearScheduleResults(@PathVariable String id) {
+        try {
+            scheduleManagerService.clearResultsForSchedule(id);
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+        }
+    }
+
     @GetMapping("/results/{resultId}/rows")
     public ResponseEntity<List<ScheduleResultRow>> getResultRows(
             @PathVariable String resultId,
