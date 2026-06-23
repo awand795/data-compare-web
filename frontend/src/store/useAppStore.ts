@@ -379,7 +379,7 @@ export const useAppStore = create<AppState>()(
     const existing = state.diffResults[mappingId];
     if (!existing) return state;
 
-    let combinedRows = [...existing.rows, ...newRows];
+    const combinedRows = [...existing.rows, ...newRows];
     let { matchCount, differentCount, sourceOnlyCount, targetOnlyCount } = existing;
 
     for (const r of newRows) {
@@ -387,18 +387,6 @@ export const useAppStore = create<AppState>()(
       else if (r.status === 'DIFFERENT') differentCount++;
       else if (r.status === 'SOURCE_ONLY') sourceOnlyCount++;
       else if (r.status === 'TARGET_ONLY') targetOnlyCount++;
-    }
-
-    const maxRows = state.maxRowsInMemory || 100000;
-    if (combinedRows.length > maxRows) {
-      let dropped = 0;
-      const excess = combinedRows.length - maxRows;
-      combinedRows = combinedRows.filter(row =>
-        !(row.status === 'MATCH' && dropped++ < excess)
-      );
-      if (combinedRows.length > maxRows) {
-        combinedRows = combinedRows.slice(combinedRows.length - maxRows);
-      }
     }
 
     return {

@@ -575,6 +575,7 @@ export const TableDetailPanel: React.FC = () => {
                   columns={gridColumns}
                   rows={tableData.length}
                   onColumnResize={onColumnResizeGrid}
+                  getCellsForSelection={true}
                   onVisibleRegionChanged={(range) => {
                     if (limit === 'unlimited' && !loading && !isFetchingMore && hasMoreUnlimited) {
                       if (range.y + range.height >= tableData.length - 10) {

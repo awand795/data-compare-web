@@ -40,6 +40,7 @@ public class DynamicSchedulerService {
     
     // Limit concurrent scheduled compare jobs per-schedule
     private final Map<String, Semaphore> scheduleSemaphores = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> lastRunErrorState = new ConcurrentHashMap<>();
 
     private Semaphore getScheduleSemaphore(String scheduleId) {
         return scheduleSemaphores.computeIfAbsent(scheduleId, k -> new Semaphore(1));
@@ -319,6 +320,7 @@ public class DynamicSchedulerService {
             int diffs = result.getDifferentCount() + result.getSourceOnlyCount() + result.getTargetOnlyCount();
             logger.info("Job {} finished. Total diffs: {}", schedule.getName(), diffs);
             
+            boolean hasErrors = executionDetails.stream().anyMatch(td -> td.containsKey("error"));
             boolean hasDiffs = diffs > 0;
             logger.info("Checking notification channels for job {}...", schedule.getName());
             logger.debug("Telegram Channel ID: {}", schedule.getTelegramChannelId());
@@ -328,10 +330,27 @@ public class DynamicSchedulerService {
             StringBuilder tableDetailsHtml = new StringBuilder();
             StringBuilder tableDetailsDiscord = new StringBuilder();
             
-            String titleHtml = hasDiffs ? "<b>🚨 Data Mismatch Detected!</b>" : "<b>✅ All Data Match!</b>";
-            String titleDiscord = hasDiffs ? "🚨 **Data Mismatch Detected!**" : "✅ **All Data Match!**";
-            String statusHtml = hasDiffs ? String.format("⚠️ %d differences found", diffs) : "✅ No differences found";
-            String statusDiscord = hasDiffs ? String.format("⚠️ %d differences found", diffs) : "✅ No differences found";
+            String titleHtml;
+            String titleDiscord;
+            String statusHtml;
+            String statusDiscord;
+
+            if (hasErrors) {
+                titleHtml = "<b>❌ Job Finished with Errors!</b>";
+                titleDiscord = "❌ **Job Finished with Errors!**";
+                statusHtml = hasDiffs ? String.format("⚠️ %d differences found, and some tables failed", diffs) : "❌ Some tables failed to compare";
+                statusDiscord = hasDiffs ? String.format("⚠️ %d differences found, and some tables failed", diffs) : "❌ Some tables failed to compare";
+            } else if (hasDiffs) {
+                titleHtml = "<b>🚨 Data Mismatch Detected!</b>";
+                titleDiscord = "🚨 **Data Mismatch Detected!**";
+                statusHtml = String.format("⚠️ %d differences found", diffs);
+                statusDiscord = String.format("⚠️ %d differences found", diffs);
+            } else {
+                titleHtml = "<b>✅ All Data Match!</b>";
+                titleDiscord = "✅ **All Data Match!**";
+                statusHtml = "✅ No differences found";
+                statusDiscord = "✅ No differences found";
+            }
 
             String telegramTemplate = String.format(
                     "%s\n\n" +
@@ -444,13 +463,34 @@ public class DynamicSchedulerService {
             String message = String.format(telegramTemplate, tableDetailsHtml.toString());
             String discordMessage = String.format(discordTemplate, tableDetailsDiscord.toString());
 
-            if (schedule.getTelegramChannelId() != null && !schedule.getTelegramChannelId().isEmpty()) {
-                logger.info("Sending to Telegram channel: {}", schedule.getTelegramChannelId());
-                notificationService.sendToChannel(schedule.getTelegramChannelId(), message);
+            boolean shouldNotify = false;
+            
+            // Only send if there are diffs
+            if (hasDiffs) {
+                shouldNotify = true;
             }
-            if (schedule.getDiscordChannelId() != null && !schedule.getDiscordChannelId().isEmpty()) {
-                logger.info("Sending to Discord channel: {}", schedule.getDiscordChannelId());
-                notificationService.sendToChannel(schedule.getDiscordChannelId(), discordMessage);
+            
+            // Or if there is an error, but ONLY if the last run didn't have an error (throttle error spam)
+            if (hasErrors) {
+                Boolean wasError = lastRunErrorState.getOrDefault(scheduleId, false);
+                if (!wasError) {
+                    shouldNotify = true;
+                }
+            }
+            
+            lastRunErrorState.put(scheduleId, hasErrors);
+
+            if (!shouldNotify) {
+                logger.info("Skipping notification for schedule {} (no diffs, or error already reported).", schedule.getName());
+            } else {
+                if (schedule.getTelegramChannelId() != null && !schedule.getTelegramChannelId().isEmpty()) {
+                    logger.info("Sending to Telegram channel: {}", schedule.getTelegramChannelId());
+                    notificationService.sendToChannel(schedule.getTelegramChannelId(), message);
+                }
+                if (schedule.getDiscordChannelId() != null && !schedule.getDiscordChannelId().isEmpty()) {
+                    logger.info("Sending to Discord channel: {}", schedule.getDiscordChannelId());
+                    notificationService.sendToChannel(schedule.getDiscordChannelId(), discordMessage);
+                }
             }
         } catch (Exception e) {
             logger.error("Error executing job: {}", e.getMessage(), e);

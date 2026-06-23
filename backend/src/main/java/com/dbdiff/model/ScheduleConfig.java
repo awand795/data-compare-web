@@ -31,6 +31,9 @@ public class ScheduleConfig {
 
     private boolean saveFullData;
     
+    private boolean notifyOnlyOnDiff;
+    private boolean disableOnError;
+    
     private boolean active;
 
     private String mappings; // JSON array of TableMapping objects
@@ -144,6 +147,20 @@ public class ScheduleConfig {
     }
     public void setSaveFullData(boolean saveFullData) {
         this.saveFullData = saveFullData;
+    }
+
+    public boolean isNotifyOnlyOnDiff() {
+        return this.notifyOnlyOnDiff;
+    }
+    public void setNotifyOnlyOnDiff(boolean notifyOnlyOnDiff) {
+        this.notifyOnlyOnDiff = notifyOnlyOnDiff;
+    }
+
+    public boolean isDisableOnError() {
+        return this.disableOnError;
+    }
+    public void setDisableOnError(boolean disableOnError) {
+        this.disableOnError = disableOnError;
     }
 
     @JsonProperty("isActive")

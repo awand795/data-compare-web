@@ -535,6 +535,24 @@ public class ApiController {
             return "[CLOB Data: " + c.length() + " chars]";
         } else if (val instanceof byte[]) {
             return "[BINARY Data: " + ((byte[]) val).length + " bytes]";
+        } else if (val instanceof java.sql.Timestamp) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format((java.util.Date) val);
+        } else if (val instanceof java.sql.Date) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd").format((java.util.Date) val);
+        } else if (val instanceof java.sql.Time) {
+            return new java.text.SimpleDateFormat("HH:mm:ss").format((java.util.Date) val);
+        } else if (val instanceof java.util.Date) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format((java.util.Date) val);
+        } else if (val instanceof java.time.LocalDateTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format((java.time.LocalDateTime) val);
+        } else if (val instanceof java.time.LocalDate) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").format((java.time.LocalDate) val);
+        } else if (val instanceof java.time.LocalTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss").format((java.time.LocalTime) val);
+        } else if (val instanceof java.time.ZonedDateTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").format((java.time.ZonedDateTime) val);
+        } else if (val instanceof java.time.OffsetDateTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX").format((java.time.OffsetDateTime) val);
         }
         return val;
     }

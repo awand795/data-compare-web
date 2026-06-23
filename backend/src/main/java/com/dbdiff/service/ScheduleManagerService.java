@@ -48,6 +48,8 @@ public class ScheduleManagerService {
         s.setSortColumns(rs.getString("sort_columns"));
         s.setMappings(rs.getString("mappings"));
         s.setSaveFullData(rs.getBoolean("save_full_data"));
+        s.setNotifyOnlyOnDiff(rs.getBoolean("notify_only_on_diff"));
+        s.setDisableOnError(rs.getBoolean("disable_on_error"));
         s.setActive(rs.getBoolean("is_active"));
         
         Timestamp created = rs.getTimestamp("created_at");
@@ -74,14 +76,14 @@ public class ScheduleManagerService {
         
                 String sql = "INSERT INTO schedules (id, name, source_connection_id, target_connection_id, source_table, target_table, " +
                 "cron_expression, telegram_bot_token, telegram_chat_id, discord_webhook_url, telegram_channel_id, discord_channel_id, " +
-                "custom_query_source, custom_query_target, primary_keys, exclude_columns, sort_columns, mappings, save_full_data, is_active) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "custom_query_source, custom_query_target, primary_keys, exclude_columns, sort_columns, mappings, save_full_data, notify_only_on_diff, disable_on_error, is_active) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 
         jdbcTemplate.update(sql, config.getId(), config.getName(), config.getSourceConnectionId(), config.getTargetConnectionId(),
                 config.getSourceTable(), config.getTargetTable(), config.getCronExpression(), config.getTelegramBotToken(),
                 config.getTelegramChatId(), config.getDiscordWebhookUrl(), config.getTelegramChannelId(), config.getDiscordChannelId(),
                 config.getCustomQuerySource(), config.getCustomQueryTarget(), config.getPrimaryKeys(), config.getExcludeColumns(), config.getSortColumns(),
-                config.getMappings(), config.isSaveFullData(), config.isActive());
+                config.getMappings(), config.isSaveFullData(), config.isNotifyOnlyOnDiff(), config.isDisableOnError(), config.isActive());
                 
         return getSchedule(config.getId());
     }
@@ -89,14 +91,14 @@ public class ScheduleManagerService {
     public ScheduleConfig updateSchedule(String id, ScheduleConfig config) {
                 String sql = "UPDATE schedules SET name=?, source_connection_id=?, target_connection_id=?, source_table=?, target_table=?, " +
                 "cron_expression=?, telegram_bot_token=?, telegram_chat_id=?, discord_webhook_url=?, telegram_channel_id=?, discord_channel_id=?, " +
-                "custom_query_source=?, custom_query_target=?, primary_keys=?, exclude_columns=?, sort_columns=?, mappings=?, save_full_data=?, is_active=? " +
+                "custom_query_source=?, custom_query_target=?, primary_keys=?, exclude_columns=?, sort_columns=?, mappings=?, save_full_data=?, notify_only_on_diff=?, disable_on_error=?, is_active=? " +
                 "WHERE id=?";
                 
         jdbcTemplate.update(sql, config.getName(), config.getSourceConnectionId(), config.getTargetConnectionId(),
                 config.getSourceTable(), config.getTargetTable(), config.getCronExpression(), config.getTelegramBotToken(),
                 config.getTelegramChatId(), config.getDiscordWebhookUrl(), config.getTelegramChannelId(), config.getDiscordChannelId(),
                 config.getCustomQuerySource(), config.getCustomQueryTarget(), config.getPrimaryKeys(), config.getExcludeColumns(), config.getSortColumns(),
-                config.getMappings(), config.isSaveFullData(), config.isActive(), id);
+                config.getMappings(), config.isSaveFullData(), config.isNotifyOnlyOnDiff(), config.isDisableOnError(), config.isActive(), id);
                 
         return getSchedule(id);
     }

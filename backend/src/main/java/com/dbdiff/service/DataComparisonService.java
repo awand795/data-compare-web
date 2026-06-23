@@ -116,9 +116,10 @@ public class DataComparisonService {
             }
         }
 
-        String dbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), pksForOrder, effectiveSortColumns, useSurrogateKey, false, dbType);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), pksForOrder, effectiveSortColumns, useSurrogateKey, false, dbType);
+        String sourceDbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
+        String targetDbType = request.getTargetConnection().getType() != null ? request.getTargetConnection().getType().toLowerCase() : "postgresql";
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), pksForOrder, effectiveSortColumns, useSurrogateKey, false, sourceDbType);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), pksForOrder, effectiveSortColumns, useSurrogateKey, false, targetDbType);
 
         if (useSurrogateKey) {
             pksForOrder = Collections.singletonList("__rn__");
@@ -467,13 +468,15 @@ public class DataComparisonService {
         }
 
         boolean useMd5Fallback = !useSurrogateKey && exactPks != null && exactPks.equals(effectiveSortColumns) && exactPks.size() > 5;
-        String dbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, dbType);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, dbType);
+        String sourceDbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
+        String targetDbType = request.getTargetConnection().getType() != null ? request.getTargetConnection().getType().toLowerCase() : "postgresql";
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, sourceDbType);
+        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, targetDbType);
 
-        logger.info("STREAM COMPARE: useSurrogateKey={}, exactPks.size={}", useSurrogateKey, exactPks.size());
-        logger.info("STREAM COMPARE: Source Query = {}", sourceQuery);
-        logger.info("STREAM COMPARE: Target Query = {}", targetQuery);
+        logger.info("STREAM COMPARE: Source DB type={}, Target DB type={}", sourceDbType, targetDbType);
+        logger.info("STREAM COMPARE: PK column={}, exactPks={}", request.getPrimaryKeys(), exactPks);
+        logger.info("STREAM COMPARE: Source Query FINAL = {}", sourceQuery);
+        logger.info("STREAM COMPARE: Target Query FINAL = {}", targetQuery);
 
         List<String> columns = new ArrayList<>();
         int[] totalSourceRows = {0};
@@ -553,127 +556,57 @@ public class DataComparisonService {
                             int[] sPkIdx = resolveColumnIndices(sMeta, exactPks);
                             int[] tPkIdx = resolveColumnIndices(tMeta, exactPks);
                             
-                            boolean hasSource = rsSource.next();
-                            boolean hasTarget = rsTarget.next();
+                            // === HashMap-based comparison (toleran terhadap perbedaan collation) ===
+                            // Phase 1: stream seluruh source → simpan ke HashMap
+                            Map<String, Object[]> sourceHashMap = new LinkedHashMap<>(100_000);
+                            while (rsSource.next()) {
+                                String sKey = buildKeyFromRs(rsSource, sPkIdx);
+                                Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
+                                sourceHashMap.put(sKey, sRow);
+                                totalSourceRows[0]++;
+                            }
+                            logger.info("STREAM COMPARE: Source loaded {} rows into HashMap", sourceHashMap.size());
 
-                            Map<String, DiffRow> sourceOnlyMap = new LinkedHashMap<>();
-                            Map<String, DiffRow> targetOnlyMap = new LinkedHashMap<>();
+                            // Phase 2: stream target → lookup di sourceHashMap
+                            Set<String> matchedKeys = new HashSet<>(sourceHashMap.size());
+                            while (rsTarget.next()) {
+                                String tKey = buildKeyFromRs(rsTarget, tPkIdx);
+                                Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
+                                totalTargetRows[0]++;
 
-                            while (hasSource || hasTarget) {
-                                if (hasSource && hasTarget) {
-                                    int cmp = compareKeys(rsSource, rsTarget, sPkIdx, tPkIdx);
-                                    if (cmp == 0) {
-                                        boolean allEqual = fastRowEquals(rsSource, rsTarget, sColIdx, tColIdx, columns.size());
-                                        if (allEqual) {
-                                            if (request.isReturnMatchedRows()) {
-                                                String sKey = buildKeyFromRs(rsSource, sPkIdx);
-                                                Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
-                                                consumer.onMatchRow(sKey, sRow, columns);
-                                            }
-                                        } else {
-                                            String sKey = buildKeyFromRs(rsSource, sPkIdx);
-                                            Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
-                                            Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
-                                            differences[0]++;
-                                            DiffRow diffRow = buildDiffRowFromArrays(sKey, sRow, tRow, columns);
-                                            consumer.onRow(diffRow);
+                                Object[] sRow = sourceHashMap.get(tKey);
+                                if (sRow != null) {
+                                    matchedKeys.add(tKey);
+                                    boolean allEqual = true;
+                                    for (int i = 0; i < columns.size(); i++) {
+                                        if (!normalizedEquals(sRow[i], tRow[i])) { allEqual = false; break; }
+                                    }
+                                    if (allEqual) {
+                                        if (request.isReturnMatchedRows()) {
+                                            consumer.onMatchRow(tKey, sRow, columns);
                                         }
-                                        totalSourceRows[0]++;
-                                        totalTargetRows[0]++;
-                                        hasSource = rsSource.next();
-                                        hasTarget = rsTarget.next();
-                                    } else if (cmp < 0) {
-                                        String sKey = buildKeyFromRs(rsSource, sPkIdx);
-                                        Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
-                                        DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
-                                        sRow = null; // allow GC
-                                        if (targetOnlyMap.containsKey(sKey)) {
-                                            DiffRow targetOnly = targetOnlyMap.remove(sKey);
-                                            reconcile(sKey, diffRow, targetOnly, columns, request, consumer, differences);
-                                        } else {
-                                            sourceOnlyMap.put(sKey, diffRow);
-                                        }
-                                        if (sourceOnlyMap.size() >= MAX_UNMATCHED_BUFFER) {
-                                            for (DiffRow r : sourceOnlyMap.values()) {
-                                                differences[0]++;
-                                                consumer.onRow(r);
-                                            }
-                                            sourceOnlyMap.clear();
-                                        }
-                                        totalSourceRows[0]++;
-                                        hasSource = rsSource.next();
                                     } else {
-                                        String tKey = buildKeyFromRs(rsTarget, tPkIdx);
-                                        Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
-                                        DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
-                                        tRow = null; // allow GC
-                                        if (sourceOnlyMap.containsKey(tKey)) {
-                                            DiffRow sourceOnly = sourceOnlyMap.remove(tKey);
-                                            reconcile(tKey, sourceOnly, diffRow, columns, request, consumer, differences);
-                                        } else {
-                                            targetOnlyMap.put(tKey, diffRow);
-                                        }
-                                        if (targetOnlyMap.size() >= MAX_UNMATCHED_BUFFER) {
-                                            for (DiffRow r : targetOnlyMap.values()) {
-                                                differences[0]++;
-                                                consumer.onRow(r);
-                                            }
-                                            targetOnlyMap.clear();
-                                        }
-                                        totalTargetRows[0]++;
-                                        hasTarget = rsTarget.next();
+                                        differences[0]++;
+                                        DiffRow diffRow = buildDiffRowFromArrays(tKey, sRow, tRow, columns);
+                                        consumer.onRow(diffRow);
                                     }
-                                } else if (hasSource) {
-                                    String sKey = buildKeyFromRs(rsSource, sPkIdx);
-                                    Object[] sRow = getRow(rsSource, columns.size(), sColIdx);
-                                    DiffRow diffRow = buildSourceOnlyRow(sKey, sRow, columns);
-                                    sRow = null; // allow GC
-                                    if (targetOnlyMap.containsKey(sKey)) {
-                                        DiffRow targetOnly = targetOnlyMap.remove(sKey);
-                                        reconcile(sKey, diffRow, targetOnly, columns, request, consumer, differences);
-                                    } else {
-                                        sourceOnlyMap.put(sKey, diffRow);
-                                    }
-                                    if (sourceOnlyMap.size() >= MAX_UNMATCHED_BUFFER) {
-                                        for (DiffRow r : sourceOnlyMap.values()) {
-                                            differences[0]++;
-                                            consumer.onRow(r);
-                                        }
-                                        sourceOnlyMap.clear();
-                                    }
-                                    totalSourceRows[0]++;
-                                    hasSource = rsSource.next();
                                 } else {
-                                    String tKey = buildKeyFromRs(rsTarget, tPkIdx);
-                                    Object[] tRow = getRow(rsTarget, columns.size(), tColIdx);
+                                    differences[0]++;
                                     DiffRow diffRow = buildTargetOnlyRow(tKey, tRow, columns);
-                                    tRow = null; // allow GC
-                                    if (sourceOnlyMap.containsKey(tKey)) {
-                                        DiffRow sourceOnly = sourceOnlyMap.remove(tKey);
-                                        reconcile(tKey, sourceOnly, diffRow, columns, request, consumer, differences);
-                                    } else {
-                                        targetOnlyMap.put(tKey, diffRow);
-                                    }
-                                    if (targetOnlyMap.size() >= MAX_UNMATCHED_BUFFER) {
-                                        for (DiffRow r : targetOnlyMap.values()) {
-                                            differences[0]++;
-                                            consumer.onRow(r);
-                                        }
-                                        targetOnlyMap.clear();
-                                    }
-                                    totalTargetRows[0]++;
-                                    hasTarget = rsTarget.next();
+                                    consumer.onRow(diffRow);
                                 }
                             }
 
-                            for (DiffRow sourceOnly : sourceOnlyMap.values()) {
-                                differences[0]++;
-                                consumer.onRow(sourceOnly);
+                            // Phase 3: SOURCE_ONLY = keys source yang tidak pernah match dengan target
+                            for (Map.Entry<String, Object[]> entry : sourceHashMap.entrySet()) {
+                                if (!matchedKeys.contains(entry.getKey())) {
+                                    differences[0]++;
+                                    DiffRow diffRow = buildSourceOnlyRow(entry.getKey(), entry.getValue(), columns);
+                                    consumer.onRow(diffRow);
+                                }
                             }
-                            for (DiffRow targetOnly : targetOnlyMap.values()) {
-                                differences[0]++;
-                                consumer.onRow(targetOnly);
-                            }
+                            logger.info("STREAM COMPARE: Done. source={} target={} diff={}", 
+                                totalSourceRows[0], totalTargetRows[0], differences[0]);
                         }
                     }
                 } finally {
@@ -776,40 +709,45 @@ public class DataComparisonService {
         }
 
         boolean useMd5Fallback = !useSurrogateKey && exactPks != null && exactPks.equals(effectiveSortColumns) && exactPks.size() > 5;
-        String dbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
-        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, dbType);
-        String targetQuery = buildQuery(request.getTableName(), request.getCustomQueryTarget(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, dbType);
-
-        // Add LIMIT/OFFSET
+        String sourceDbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
+        String targetDbType = request.getTargetConnection().getType() != null ? request.getTargetConnection().getType().toLowerCase() : "postgresql";
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, sourceDbType);
+        // Ambil batch dari SOURCE saja
         sourceQuery = addLimitOffset(sourceQuery, batchSize, offset);
-        targetQuery = addLimitOffset(targetQuery, batchSize, offset);
 
         logger.info("BATCH COMPARE: offset={} batchSize={}", offset, batchSize);
         logger.info("BATCH COMPARE: Source Query = {}", sourceQuery);
-        logger.info("BATCH COMPARE: Target Query = {}", targetQuery);
 
-        // Memory-efficient: fetch with cursor instead of queryForList() which loads entire batch at once
         List<Map<String, Object>> sourceData = fetchWithCursor(sourceDs, sourceQuery);
-        List<Map<String, Object>> targetData = fetchWithCursor(targetDs, targetQuery);
-
         Set<String> excludeSet = buildExcludeSet(request);
-        List<String> columns = extractColumns(sourceData, targetData, excludeSet);
-        List<String> pks = resolvePks(request, sourceDs, columns);
-
-        // Build source map, then null out sourceData to free memory before building target map
         int sourceSize = sourceData.size();
+
+        List<Map<String, Object>> targetData = new ArrayList<>();
+        if (sourceSize > 0) {
+            final List<String> finalExactPks = exactPks;
+            List<Object> sourcePkValues = sourceData.stream()
+                .map(row -> finalExactPks.size() == 1 ? row.get(finalExactPks.get(0)) : buildKey(row, finalExactPks))
+                .collect(java.util.stream.Collectors.toList());
+
+            String baseQuery = request.getCustomQueryTarget() != null && !request.getCustomQueryTarget().trim().isEmpty()
+                ? request.getCustomQueryTarget() 
+                : "SELECT * FROM " + formatTableName(request.getTableName());
+                
+            String targetKeyQuery = buildInClauseQuery(baseQuery, exactPks, sourcePkValues, targetDbType);
+            logger.info("BATCH COMPARE: Target Query = {}", targetKeyQuery);
+            targetData = fetchWithCursor(targetDs, targetKeyQuery);
+        }
+
+        List<String> columns = extractColumns(sourceData, targetData, excludeSet);
+        Map<String, Map<String, Object>> sourceMap = mapByKeys(sourceData, exactPks);
         int targetSize = targetData.size();
-        Map<String, Map<String, Object>> sourceMap = mapByKeys(sourceData, pks);
-        sourceData = null; // Allow GC to reclaim
 
         int matchCount = 0, differentCount = 0, sourceOnlyCount = 0, targetOnlyCount = 0;
-        // Pre-size for diffs only (most rows are typically matches)
         List<DiffRow> rows = new ArrayList<>(Math.min(1000, Math.max(sourceSize, targetSize)));
 
-        // Process target data row-by-row instead of building a full targetMap
         Set<String> matchedSourceKeys = new HashSet<>();
         for (Map<String, Object> tRow : targetData) {
-            String key = buildKey(tRow, pks);
+            String key = buildKey(tRow, exactPks);
             Map<String, Object> sRow = sourceMap.get(key);
             DiffRow row = buildDiffRow(key, sRow, tRow, columns);
             if (sRow != null) matchedSourceKeys.add(key);
@@ -823,9 +761,7 @@ public class DataComparisonService {
                 rows.add(row);
             }
         }
-        targetData = null; // Allow GC to reclaim
 
-        // Process source-only keys (keys in source but not matched from target)
         for (Map.Entry<String, Map<String, Object>> entry : sourceMap.entrySet()) {
             if (!matchedSourceKeys.contains(entry.getKey())) {
                 DiffRow row = buildDiffRow(entry.getKey(), entry.getValue(), null, columns);
@@ -833,10 +769,9 @@ public class DataComparisonService {
                 rows.add(row);
             }
         }
-        sourceMap = null; // Allow GC to reclaim
-        matchedSourceKeys = null;
 
-        boolean hasMore = sourceSize >= batchSize || targetSize >= batchSize;
+        int effectiveCap = Math.min(batchSize, MAX_SYNC_ROWS);
+        boolean hasMore = sourceSize >= effectiveCap;
 
         Map<String, Object> result = new HashMap<>();
         result.put("columns", columns);
@@ -846,20 +781,135 @@ public class DataComparisonService {
         result.put("sourceOnlyCount", sourceOnlyCount);
         result.put("targetOnlyCount", targetOnlyCount);
         result.put("hasMore", hasMore);
-        result.put("nextOffset", offset + Math.max(sourceSize, targetSize));
+        result.put("nextOffset", offset + sourceSize);
         result.put("sourceBatchRows", sourceSize);
         result.put("targetBatchRows", targetSize);
         result.put("elapsedMs", System.currentTimeMillis() - startTime);
 
         boolean isDifferentDB = !request.getSourceConnection().getStableIdentifier().equals(request.getTargetConnection().getStableIdentifier());
         if (isDifferentDB) {
-            result.put("warning", "CompareBatch relies on LIMIT/OFFSET which may cause misalignment if data is actively mutating or if DB specific sort stability varies. Please ensure stable ordering or consider this a static snapshot.");
+            result.put("warning", "Cross-DB Comparison Warning: Untuk data yang sangat besar atau jika ada perbedaan struktur collation, direkomendasikan menggunakan mode Streaming Compare (/api/compare) daripada Batch Mode, karena Streaming menggunakan algoritma merge-join cursor yang lebih handal dan aman dari pergeseran baris.");
         }
 
         logger.info("BATCH COMPARE: SELESAI offset={} rows={} diff={} hasMore={} elapsed={}ms",
                 offset, rows.size(), differentCount + sourceOnlyCount + targetOnlyCount, hasMore, result.get("elapsedMs"));
 
         return result;
+    }
+
+    public Map<String, Object> compareBatchBySourceKeys(DiffRequest request, int batchSize, int offset) {
+        long startTime = System.currentTimeMillis();
+        sanitizeCustomQueries(request);
+        DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
+        DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
+
+        List<String> exactPks = resolvePks(request, sourceDs, null);
+        boolean useSurrogateKey = exactPks.isEmpty();
+        if (useSurrogateKey) {
+            throw new IllegalArgumentException("compareBatchBySourceKeys requires primary keys to be set.");
+        }
+
+        List<String> effectiveSortColumns = request.getSortColumns();
+        boolean useMd5Fallback = false;
+
+        String sourceDbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
+        String targetDbType = request.getTargetConnection().getType() != null ? request.getTargetConnection().getType().toLowerCase() : "postgresql";
+        
+        String sourceQuery = buildQuery(request.getTableName(), request.getCustomQuerySource(), exactPks, effectiveSortColumns, useSurrogateKey, useMd5Fallback, sourceDbType);
+        sourceQuery = addLimitOffset(sourceQuery, batchSize, offset);
+
+        logger.info("BATCH COMPARE BY KEYS: Source Query = {}", sourceQuery);
+
+        List<Map<String, Object>> sourceData = fetchWithCursor(sourceDs, sourceQuery);
+        Set<String> excludeSet = buildExcludeSet(request);
+        int sourceSize = sourceData.size();
+        
+        List<Map<String, Object>> targetData = new ArrayList<>();
+        if (sourceSize > 0) {
+            List<Object> sourcePkValues = sourceData.stream()
+                .map(row -> exactPks.size() == 1 ? row.get(exactPks.get(0)) : buildKey(row, exactPks))
+                .collect(java.util.stream.Collectors.toList());
+
+            String baseQuery = request.getCustomQueryTarget() != null && !request.getCustomQueryTarget().trim().isEmpty()
+                ? request.getCustomQueryTarget() 
+                : "SELECT * FROM " + formatTableName(request.getTableName());
+                
+            String targetKeyQuery = buildInClauseQuery(baseQuery, exactPks, sourcePkValues, targetDbType);
+            logger.info("BATCH COMPARE BY KEYS: Target Query = {}", targetKeyQuery);
+            targetData = fetchWithCursor(targetDs, targetKeyQuery);
+        }
+
+        List<String> columns = extractColumns(sourceData, targetData, excludeSet);
+        Map<String, Map<String, Object>> sourceMap = mapByKeys(sourceData, exactPks);
+        int targetSize = targetData.size();
+
+        int matchCount = 0, differentCount = 0, sourceOnlyCount = 0, targetOnlyCount = 0;
+        List<DiffRow> rows = new ArrayList<>(Math.min(1000, Math.max(sourceSize, targetSize)));
+
+        Set<String> matchedSourceKeys = new HashSet<>();
+        for (Map<String, Object> tRow : targetData) {
+            String key = buildKey(tRow, exactPks);
+            Map<String, Object> sRow = sourceMap.get(key);
+            DiffRow row = buildDiffRow(key, sRow, tRow, columns);
+            if (sRow != null) matchedSourceKeys.add(key);
+            switch (row.getStatus()) {
+                case MATCH: matchCount++; break;
+                case DIFFERENT: differentCount++; break;
+                case SOURCE_ONLY: sourceOnlyCount++; break;
+                case TARGET_ONLY: targetOnlyCount++; break;
+            }
+            if (request.isReturnMatchedRows() || row.getStatus() != DiffRow.Status.MATCH) {
+                rows.add(row);
+            }
+        }
+
+        for (Map.Entry<String, Map<String, Object>> entry : sourceMap.entrySet()) {
+            if (!matchedSourceKeys.contains(entry.getKey())) {
+                DiffRow row = buildDiffRow(entry.getKey(), entry.getValue(), null, columns);
+                sourceOnlyCount++;
+                rows.add(row);
+            }
+        }
+
+        int effectiveCap = Math.min(batchSize, MAX_SYNC_ROWS);
+        boolean hasMore = sourceSize >= effectiveCap;
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("columns", columns);
+        result.put("rows", rows);
+        result.put("matchCount", matchCount);
+        result.put("differentCount", differentCount);
+        result.put("sourceOnlyCount", sourceOnlyCount);
+        result.put("targetOnlyCount", targetOnlyCount);
+        result.put("hasMore", hasMore);
+        result.put("nextOffset", offset + sourceSize);
+        result.put("sourceBatchRows", sourceSize);
+        result.put("targetBatchRows", targetSize);
+        result.put("elapsedMs", System.currentTimeMillis() - startTime);
+
+        logger.info("BATCH COMPARE BY KEYS: SELESAI offset={} rows={} diff={} hasMore={} elapsed={}ms",
+                offset, rows.size(), differentCount + sourceOnlyCount + targetOnlyCount, hasMore, result.get("elapsedMs"));
+
+        return result;
+    }
+
+    private String buildInClauseQuery(String baseQuery, List<String> pks, List<Object> pkValues, String dbType) {
+        if (pks.size() == 1) {
+            // Single PK: use simple IN clause
+            String pkList = pkValues.stream()
+                .map(v -> v == null ? "NULL" : "'" + v.toString().replace("'", "''") + "'")
+                .collect(java.util.stream.Collectors.joining(", "));
+            String pkCol = quoteIdentifier(pks.get(0), dbType);
+            String inner = "SELECT * FROM (" + baseQuery + ") AS __src_keys WHERE " + pkCol + " IN (" + pkList + ")";
+            return inner + " ORDER BY " + pkCol + ("postgresql".equals(dbType) ? " ASC NULLS FIRST" : " ASC");
+        } else {
+            // Composite PK: build tuple IN clause (PostgreSQL/MySQL support this)
+            String pkCols = pks.stream().map(p -> quoteIdentifier(p, dbType)).collect(java.util.stream.Collectors.joining(", "));
+            String tupleList = pkValues.stream()
+                .map(v -> "(" + v.toString().replace("\u0000", ", ").replace("'", "''") + ")")
+                .collect(java.util.stream.Collectors.joining(", "));
+            return "SELECT * FROM (" + baseQuery + ") AS __src_keys WHERE (" + pkCols + ") IN (" + tupleList + ")";
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1290,14 +1340,24 @@ public class DataComparisonService {
             }).collect(java.util.stream.Collectors.joining(", '|', "));
             orderByClause = "MD5(CONCAT_WS('|', " + concatCols + "))";
         } else if (sortColumns != null && !sortColumns.isEmpty()) {
-            orderByClause = sortColumns.stream().map(c -> {
+            // Build user sort columns
+            String userSort = sortColumns.stream().map(c -> {
                 String q = quoteIdentifier(c, dbType);
-                if ("postgresql".equals(dbType)) {
-                    return q + " ASC NULLS FIRST";
-                } else {
-                    return q + " ASC";
-                }
+                return "postgresql".equals(dbType) ? q + " ASC NULLS FIRST" : q + " ASC";
             }).collect(java.util.stream.Collectors.joining(", "));
+            
+            // Append PK as final tiebreaker (only PKs not already in sortColumns)
+            Set<String> sortColsLower = sortColumns.stream()
+                .map(String::toLowerCase).collect(java.util.stream.Collectors.toSet());
+            String pkTiebreaker = (pks != null) ? pks.stream()
+                .filter(pk -> !sortColsLower.contains(pk.toLowerCase()))
+                .map(pk -> {
+                    String q2 = quoteIdentifier(pk, dbType);
+                    return "postgresql".equals(dbType) ? q2 + " ASC NULLS FIRST" : q2 + " ASC";
+                })
+                .collect(java.util.stream.Collectors.joining(", ")) : "";
+            
+            orderByClause = pkTiebreaker.isEmpty() ? userSort : userSort + ", " + pkTiebreaker;
         } else if (pks != null && !pks.isEmpty()) {
             orderByClause = pks.stream().map(c -> {
                 String q = quoteIdentifier(c, dbType);
@@ -1327,6 +1387,10 @@ public class DataComparisonService {
                 q = "SELECT ROW_NUMBER() OVER (" + window + ") as __rn__, tmp.* FROM (" + q + ") as tmp ORDER BY __rn__";
             } else if (useMd5Fallback) {
                 q = "SELECT tmp.* FROM (" + q + ") as tmp ORDER BY " + orderByClause;
+            } else if (q.toUpperCase().contains("ORDER BY") && hasOrderBy) {
+                // Custom query already has ORDER BY — wrap it and enforce PK as final tiebreaker
+                // This guarantees deterministic ordering for LIMIT/OFFSET pagination
+                q = "SELECT * FROM (" + q + ") AS __deterministic_order ORDER BY " + orderByClause;
             } else if (!q.toUpperCase().contains("ORDER BY") && hasOrderBy) {
                 q = q + " ORDER BY " + orderByClause;
             }

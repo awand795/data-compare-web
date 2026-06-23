@@ -1,47 +1,27 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Play, Plus, Clock, FileText, Settings, Database, RefreshCw, XCircle, MessageCircle, CheckSquare, Square, Trash2, LayoutList, Eye, Edit, Save } from 'lucide-react';
-import { useAppStore, type ScheduleConfig, type TableMapping } from '../store/useAppStore';
+import { Play, Plus, Clock, RefreshCw, XCircle, MessageCircle, Trash2, Eye, Edit, Save } from 'lucide-react';
+import { useAppStore, type ScheduleConfig, type Template } from '../store/useAppStore';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
-import { ScheduleMappingModal } from './ScheduleMappingModal';
 import { ScheduleResultsModal } from './ScheduleResultsModal';
 import clsx from 'clsx';
 
 export const ScheduleManagerView: React.FC = () => {
-    const { connections, addSchedule, schedules, updateScheduleStatus, runScheduleNow, notificationChannels, addToast } = useAppStore();
+    const { connections, schedules, updateScheduleStatus, runScheduleNow, notificationChannels, addToast, templates, setTemplates, setSchedules, setNotificationChannels } = useAppStore();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isProfilesModalOpen, setIsProfilesModalOpen] = useState(false);
     const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
-    const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
     const [viewingResultsJob, setViewingResultsJob] = useState<{id: string, name: string} | null>(null);
     const [expandedJobIds, setExpandedJobIds] = useState<string[]>([]);
     
     // Form state
     const [jobPrefix, setJobPrefix] = useState('');
+    const [selectedTemplateId, setSelectedTemplateId] = useState('');
     const [cronExpression, setCronExpression] = useState('0 0 * * * *');
     const [telegramChannelId, setTelegramChannelId] = useState('');
     const [discordChannelId, setDiscordChannelId] = useState('');
     const [saveFullData, setSaveFullData] = useState(false);
-    const [sourceConnectionId, setSourceConnectionId] = useState('');
-    const [targetConnectionId, setTargetConnectionId] = useState('');
-
-    const [sourceTables, setSourceTables] = useState<string[]>([]);
-    const [targetTables, setTargetTables] = useState<string[]>([]);
-    const [loadingTables, setLoadingTables] = useState(false);
-
-    // Mappings state
-    const [tableMappings, setTableMappings] = useState<TableMapping[]>([]);
-    const [selectedMappingIds, setSelectedMappingIds] = useState<string[]>([]);
-    const [editingMapping, setEditingMapping] = useState<TableMapping | null>(null);
-    const [currentStep, setCurrentStep] = useState(0);
-
-    // Reset step when modal opens
-    useEffect(() => {
-        if (isFormOpen) setCurrentStep(0);
-    }, [isFormOpen]);
-
-    const { setSchedules, setNotificationChannels } = useAppStore();
 
     const loadSchedules = () => {
         axios.get('/api/schedules')
@@ -49,92 +29,40 @@ export const ScheduleManagerView: React.FC = () => {
             .catch(err => console.error("Failed to fetch schedules", err));
     };
 
-    // Fetch schedules and channels on mount
+    // Fetch on mount
     useEffect(() => {
         loadSchedules();
-            
         axios.get('/api/notification-channels')
             .then(res => setNotificationChannels(res.data || []))
             .catch(err => console.error("Failed to fetch channels", err));
-    }, [setSchedules, setNotificationChannels]);
-
-    const sourceConn = connections.find(c => c.id === sourceConnectionId);
-    const targetConn = connections.find(c => c.id === targetConnectionId);
-
-    // Fetch tables when connections change
-    useEffect(() => {
-        let sourceLoading = !!sourceConn;
-        let targetLoading = !!targetConn;
-        setLoadingTables(sourceLoading || targetLoading);
-        
-        const p1 = sourceConn 
-            ? axios.post('/api/tables', sourceConn).then(res => setSourceTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
-            : Promise.resolve(setSourceTables([]));
-            
-        const p2 = targetConn 
-            ? axios.post('/api/tables', targetConn).then(res => setTargetTables(res.data.filter((t: any) => !t.name.toLowerCase().startsWith('excel_import_')).map((t: any) => t.name))).catch(console.error)
-            : Promise.resolve(setTargetTables([]));
-            
-        Promise.all([p1, p2]).finally(() => setLoadingTables(false));
-    }, [sourceConn?.id, targetConn?.id]);
-
-    // Auto-create mappings
-    useEffect(() => {
-        if (sourceTables.length > 0 && targetTables.length > 0 && tableMappings.length === 0) {
-            const newMappings: TableMapping[] = [];
-            const commonTables = sourceTables.filter(t => targetTables.includes(t));
-            commonTables.forEach(t => {
-                newMappings.push({ id: `auto-${t}`, sourceTable: t, targetTable: t });
-            });
-            sourceTables.filter(t => !targetTables.includes(t)).forEach(t => {
-                newMappings.push({ id: `src-only-${t}`, sourceTable: t, targetTable: '' });
-            });
-            targetTables.filter(t => !sourceTables.includes(t)).forEach(t => {
-                newMappings.push({ id: `tgt-only-${t}`, sourceTable: '', targetTable: t });
-            });
-            setTableMappings(newMappings);
-            // Auto-select the matching ones
-            setSelectedMappingIds(commonTables.map(t => `auto-${t}`));
-        }
-    }, [sourceTables, targetTables]);
-
-    const handleSaveMapping = (mapping: TableMapping) => {
-        setTableMappings(prev => {
-            const exists = prev.find(m => m.id === mapping.id);
-            if (exists) return prev.map(m => m.id === mapping.id ? mapping : m);
-            return [...prev, mapping];
-        });
-        if (!selectedMappingIds.includes(mapping.id)) {
-            setSelectedMappingIds(prev => [...prev, mapping.id]);
-        }
-    };
-
-    const removeMapping = (id: string) => {
-        setTableMappings(prev => prev.filter(m => m.id !== id));
-        setSelectedMappingIds(prev => prev.filter(sid => sid !== id));
-    };
-
-    const toggleSelectAll = () => {
-        if (selectedMappingIds.length === tableMappings.length) {
-            setSelectedMappingIds([]);
-        } else {
-            setSelectedMappingIds(tableMappings.map(m => m.id));
-        }
-    };
-
-    const toggleSelect = (id: string) => {
-        setSelectedMappingIds(prev => prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]);
-    };
+        axios.get('/api/templates')
+            .then(res => setTemplates(res.data || []))
+            .catch(err => console.error("Failed to fetch templates", err));
+    }, [setSchedules, setNotificationChannels, setTemplates]);
 
     const handleSubmit = async () => {
-        if (!sourceConnectionId || !targetConnectionId || selectedMappingIds.length === 0 || !jobPrefix || !cronExpression) {
-            addToast({ type: 'warning', title: 'Validation Error', message: 'Please fill all required fields and select at least one mapping.' });
+        if (!jobPrefix || !selectedTemplateId || !cronExpression) {
+            addToast({ type: 'warning', title: 'Validation Error', message: 'Please fill all required fields.' });
             return;
         }
 
-        const mappingsToSchedule = tableMappings.filter(m => selectedMappingIds.includes(m.id));
+        const template = templates.find(t => t.id === selectedTemplateId);
+        if (!template) {
+            addToast({ type: 'warning', title: 'Validation Error', message: 'Selected template not found.' });
+            return;
+        }
+
+        const mappingsToSchedule = [{
+            id: `template-${template.id}`,
+            sourceTable: 'query',
+            targetTable: 'query',
+            customQuerySource: template.customQuerySource,
+            customQueryTarget: template.customQueryTarget,
+            primaryKeys: template.queryPrimaryKeys ? template.queryPrimaryKeys.split(',').map(s=>s.trim()) : [],
+            isManualQuerySource: true,
+            isManualQueryTarget: true
+        }];
         
-        // Auto-fix cron: Spring Boot requires 6 fields. If 5 fields given, prepend '0 '
         let finalCron = cronExpression.trim();
         if (finalCron.split(/\s+/).length === 5) {
             finalCron = '0 ' + finalCron;
@@ -143,8 +71,8 @@ export const ScheduleManagerView: React.FC = () => {
         try {
             const payload: Partial<ScheduleConfig> = {
                 name: jobPrefix,
-                sourceConnectionId,
-                targetConnectionId,
+                sourceConnectionId: template.sourceConnectionId,
+                targetConnectionId: template.targetConnectionId,
                 sourceTable: 'multiple',
                 targetTable: 'multiple',
                 cronExpression: finalCron,
@@ -160,16 +88,13 @@ export const ScheduleManagerView: React.FC = () => {
                 addToast({ type: 'success', title: 'Job Updated', message: `Successfully updated job: ${jobPrefix}` });
             } else {
                 await axios.post('/api/schedules', payload);
-                addToast({ type: 'success', title: 'Job Created', message: `Successfully created grouped job: ${jobPrefix}` });
+                addToast({ type: 'success', title: 'Job Created', message: `Successfully created job: ${jobPrefix}` });
             }
             
             setIsFormOpen(false);
             setEditingScheduleId(null);
-            setTableMappings([]);
-            setSelectedMappingIds([]);
-            setSourceConnectionId('');
-            setTargetConnectionId('');
             setJobPrefix('');
+            setSelectedTemplateId('');
             
             loadSchedules();
         } catch (error) {
@@ -182,21 +107,9 @@ export const ScheduleManagerView: React.FC = () => {
         setExpandedJobIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
 
-    const openAddModal = () => {
-        setEditingMapping(null);
-        setIsMappingModalOpen(true);
-    };
-    
-    const openEditModal = (m: TableMapping) => {
-        setEditingMapping(m);
-        setIsMappingModalOpen(true);
-    };
-
     const handleEditSchedule = (job: ScheduleConfig) => {
         setEditingScheduleId(job.id);
         setJobPrefix(job.name);
-        setSourceConnectionId(job.sourceConnectionId);
-        setTargetConnectionId(job.targetConnectionId);
         setCronExpression(job.cronExpression);
         setTelegramChannelId(job.telegramChannelId || '');
         setDiscordChannelId(job.discordChannelId || '');
@@ -205,33 +118,21 @@ export const ScheduleManagerView: React.FC = () => {
         if (job.mappings) {
             try {
                 const parsed = typeof job.mappings === 'string' ? JSON.parse(job.mappings) : job.mappings;
-                setTableMappings(parsed);
-                setSelectedMappingIds(parsed.map((m: any) => m.id));
-            } catch (e) { console.error("Failed to parse mappings", e); }
-        } else {
-            setTableMappings([]);
-            setSelectedMappingIds([]);
+                if (parsed.length > 0 && parsed[0].id.startsWith('template-')) {
+                    setSelectedTemplateId(parsed[0].id.replace('template-', ''));
+                }
+            } catch (e) { console.error(e); }
         }
 
         setIsFormOpen(true);
-        setCurrentStep(1);
     };
+
+    const queryTemplates = templates.filter(t => t.appMode === 'query');
 
     return (
         <div className="flex-1 flex flex-col min-h-0 bg-bg-main relative">
             {isProfilesModalOpen && <NotificationChannelsModal onClose={() => setIsProfilesModalOpen(false)} />}
-            {isMappingModalOpen && (
-                <ScheduleMappingModal
-                    sourceTables={sourceTables}
-                    targetTables={targetTables}
-                    editingMapping={editingMapping}
-                    sourceConn={sourceConn}
-                    targetConn={targetConn}
-                    onSave={handleSaveMapping}
-                    onClose={() => setIsMappingModalOpen(false)}
-                />
-            )}
-
+            
             <div className="px-3 sm:px-4 py-2.5 border-b border-border-main flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 bg-bg-panel shrink-0">
                 <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
@@ -281,7 +182,6 @@ export const ScheduleManagerView: React.FC = () => {
                                         jobMappings = typeof job.mappings === 'string' ? JSON.parse(job.mappings) : (job.mappings || []);
                                     } catch (e) {}
 
-                                    // Fallback for legacy jobs (pre-grouping)
                                     if (jobMappings.length === 0 && job.sourceTable && job.sourceTable !== 'multiple') {
                                         jobMappings = [{
                                             sourceTable: job.sourceTable,
@@ -394,7 +294,6 @@ export const ScheduleManagerView: React.FC = () => {
                 )}
             </div>
 
-            {/* Modals */}
             {viewingResultsJob && (
                 <ScheduleResultsModal 
                     scheduleId={viewingResultsJob.id} 
@@ -405,228 +304,71 @@ export const ScheduleManagerView: React.FC = () => {
 
             {isFormOpen && (
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[680px] flex flex-col max-h-[90vh] overflow-hidden">
-                        <div className="px-4 py-3 border-b border-border-main flex justify-between items-center shrink-0">
-                            <h2 className="font-bold text-sm flex items-center gap-2"><Clock className="w-4 h-4 text-purple-400"/> {editingScheduleId ? 'Edit Scheduled Job' : 'Create Scheduled Jobs'}</h2>
-                            <button onClick={() => { setIsFormOpen(false); setEditingScheduleId(null); setTableMappings([]); }} className="p-1 text-text-muted hover:text-text-main hover:bg-bg-hover rounded transition-colors"><XCircle className="w-5 h-5"/></button>
+                    <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[600px] flex flex-col">
+                        <div className="px-5 py-4 border-b border-border-main flex justify-between items-center">
+                            <h2 className="font-bold text-[15px] flex items-center gap-2"><Clock className="w-4 h-4 text-purple-400"/> {editingScheduleId ? 'Edit Scheduled Job' : 'Create Scheduled Job'}</h2>
+                            <button onClick={() => { setIsFormOpen(false); setEditingScheduleId(null); }} className="p-1 text-text-muted hover:text-text-main hover:bg-bg-hover rounded transition-colors"><XCircle className="w-5 h-5"/></button>
                         </div>
 
-                        {/* Multi-step indicator */}
-                        <div className="flex items-center gap-2 px-5 py-3 border-b border-border-main">
-                            {['Job Setup', 'Mappings', 'Notifications'].map((step, i) => (
-                                <div key={i} className={clsx(
-                                    "flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full transition-all",
-                                    currentStep === i ? "bg-purple-500/20 text-purple-400" : 
-                                    currentStep > i ? "text-emerald-400" : "text-text-muted"
-                                )}>
-                                    <span className={clsx("w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold",
-                                        currentStep > i ? "bg-emerald-500/20" : currentStep === i ? "bg-purple-500/20" : "bg-bg-hover"
-                                    )}>{i + 1}</span>
-                                    {step}
+                        <div className="p-5 flex flex-col gap-6">
+                            <div className="flex flex-col gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Job Name</label>
+                                    <input required type="text" value={jobPrefix} onChange={e => setJobPrefix(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" placeholder="e.g. Daily Sync" />
                                 </div>
-                            ))}
-                            <div className="flex-1" />
-                            <span className="text-[10px] text-text-muted">Step {currentStep + 1} of 3</span>
+                                <div>
+                                    <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Query Template</label>
+                                    <select required value={selectedTemplateId} onChange={e => setSelectedTemplateId(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+                                        <option value="">Select a template...</option>
+                                        {queryTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+                                    {queryTemplates.length === 0 && <p className="text-[10px] text-amber-500 mt-1">No Query Workspace templates found. Please create one first.</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Cron Expression</label>
+                                    <input required type="text" value={cronExpression} onChange={e => setCronExpression(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm font-mono text-blue-400 focus:border-blue-500 focus:outline-none" placeholder="0 0 * * * *" />
+                                    <p className="text-[10px] text-text-muted mt-1">Uses Spring Boot 6-field cron syntax (Second, Minute, Hour, Day, Month, Weekday)</p>
+                                </div>
+                            </div>
+
+                            <div className="border border-border-main rounded-xl p-4 bg-bg-subtle/30">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xs font-bold text-text-muted uppercase tracking-widest">Notifications</h3>
+                                    <button type="button" onClick={() => setIsProfilesModalOpen(true)} className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                                        <MessageCircle className="w-3.5 h-3.5" /> Manage Profiles
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-text-muted mb-1">Telegram Profile</label>
+                                        <select value={telegramChannelId} onChange={e => setTelegramChannelId(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-xs focus:border-blue-500 focus:outline-none">
+                                            <option value="">None</option>
+                                            {notificationChannels?.filter(c => c.type === 'TELEGRAM').map(c => (
+                                                <option key={c.id} value={c.id}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-text-muted mb-1">Discord Profile</label>
+                                        <select value={discordChannelId} onChange={e => setDiscordChannelId(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-xs focus:border-blue-500 focus:outline-none">
+                                            <option value="">None</option>
+                                            {notificationChannels?.filter(c => c.type === 'DISCORD').map(c => (
+                                                <option key={c.id} value={c.id}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="flex-1 flex flex-col p-5 gap-6 min-h-0 overflow-hidden">
-                            
-                            {/* Step 1: Job Setup */}
-                            {currentStep === 0 && (
-                                <div className="flex flex-col gap-5">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="col-span-2">
-                                            <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Job Name Prefix</label>
-                                            <input required type="text" value={jobPrefix} onChange={e => setJobPrefix(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" placeholder="e.g. Daily Sync" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-semibold text-blue-400 mb-1 uppercase tracking-widest">Source Connection</label>
-                                            <select required value={sourceConnectionId} onChange={e => {setSourceConnectionId(e.target.value); setTableMappings([]);}} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                                                <option value="">Select...</option>
-                                                {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-semibold text-emerald-400 mb-1 uppercase tracking-widest">Target Connection</label>
-                                            <select required value={targetConnectionId} onChange={e => {setTargetConnectionId(e.target.value); setTableMappings([]);}} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                                                <option value="">Select...</option>
-                                                {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Cron Expression (Spring Boot)</label>
-                                            <input required type="text" value={cronExpression} onChange={e => setCronExpression(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm font-mono text-blue-400 focus:border-blue-500 focus:outline-none" placeholder="0 0 * * * *" />
-                                        </div>
-                                        <div className="flex items-end pb-2">
-                                            <label className="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" checked={saveFullData} onChange={e => setSaveFullData(e.target.checked)} className="rounded border-border-input text-purple-500 bg-bg-input focus:ring-purple-500 w-4 h-4" />
-                                                <span className="text-xs font-medium">Save full differing rows</span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-end gap-2 mt-2">
-                                        <button onClick={() => { setIsFormOpen(false); setEditingScheduleId(null); }} className="px-4 py-2 text-xs font-semibold border border-orange-500/30 bg-orange-500/15 text-orange-500 hover:bg-orange-500/25 hover:text-orange-400 rounded-lg transition-colors">Cancel</button>
-                                        <button onClick={() => setCurrentStep(1)} disabled={!jobPrefix || !sourceConnectionId || !targetConnectionId} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
-                                            Next: Mappings <span className="text-lg leading-none">→</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Step 2: Mappings */}
-                            {currentStep === 1 && (
-                                <div className="flex-1 flex flex-col min-h-0">
-                                    <div className="flex-1 flex flex-col border border-border-main rounded-xl overflow-hidden min-h-0">
-                                        <div className="bg-bg-header px-4 py-2.5 flex items-center justify-between border-b border-border-main shrink-0">
-                                            <div className="flex items-center gap-2 text-sm font-semibold text-text-main">
-                                                <LayoutList className="w-4 h-4 text-purple-400" /> Tables to Schedule
-                                                <span className="px-1.5 py-0.5 bg-bg-hover rounded text-xs text-text-muted">{selectedMappingIds.length} / {tableMappings.length}</span>
-                                            </div>
-                                            <button
-                                                onClick={openAddModal}
-                                                className="px-3 py-1.5 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-xs font-medium text-text-main flex items-center gap-1.5 transition-colors"
-                                            >
-                                                <Plus className="w-3.5 h-3.5 text-blue-500" /> Add Custom
-                                            </button>
-                                        </div>
-                                        
-                                        <div className="flex-1 overflow-auto min-h-0">
-                                            <table className="w-full text-left text-xs">
-                                                <thead className="sticky top-0 z-10 bg-bg-header text-xs text-text-muted uppercase tracking-wider border-b border-border-main">
-                                            <tr>
-                                                <th className="py-2 px-3 w-10 text-center">
-                                                    <button onClick={toggleSelectAll} className="text-text-muted hover:text-purple-400 pt-0.5">
-                                                        {selectedMappingIds.length === tableMappings.length && tableMappings.length > 0
-                                                            ? <CheckSquare className="w-4 h-4 text-purple-500" />
-                                                            : <Square className="w-4 h-4" />}
-                                                    </button>
-                                                </th>
-                                                <th className="py-2 px-3">Label / Source</th>
-                                                <th className="py-2 px-3 text-center w-8">→</th>
-                                                <th className="py-2 px-3">Target</th>
-                                                <th className="py-2 px-3 text-center w-14">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {loadingTables && (
-                                                <tr>
-                                                    <td colSpan={5} className="py-12 text-center text-sm text-text-muted">
-                                                        Loading tables...
-                                                    </td>
-                                                </tr>
-                                            )}
-                                            {!loadingTables && tableMappings.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={5} className="py-12 text-center text-sm text-text-muted">
-                                                        Select Source and Target connections to load tables.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                            {!loadingTables && tableMappings.filter(m => 
-                                                !(m.sourceTable?.toLowerCase().startsWith('excel_import_') || m.targetTable?.toLowerCase().startsWith('excel_import_'))
-                                            ).map(m => {
-                                                const isChecked = selectedMappingIds.includes(m.id);
-                                                const hasCustom = !!(m.customQuerySource || m.customQueryTarget);
-                                                const displayName = m.label || m.sourceTable || '(none)';
-
-                                                return (
-                                                    <tr key={m.id} className={clsx("border-b border-border-item transition-colors", isChecked ? "bg-purple-500/5" : "hover:bg-bg-hover")}>
-                                                        <td className="py-2 px-3 text-center">
-                                                            <button onClick={() => toggleSelect(m.id)} className="pt-0.5">
-                                                                {isChecked
-                                                                    ? <CheckSquare className="w-4 h-4 text-purple-500" />
-                                                                    : <Square className="w-4 h-4 text-text-muted" />}
-                                                            </button>
-                                                        </td>
-                                                        <td className="py-2 px-3">
-                                                            <span className={clsx("font-mono text-xs font-medium", m.sourceTable ? "text-text-main" : "text-text-muted italic")}>
-                                                                {displayName}
-                                                            </span>
-                                                            {hasCustom && <span className="ml-2 text-[9px] bg-blue-500/20 text-blue-500 px-1.5 py-0.5 rounded font-bold">SQL</span>}
-                                                        </td>
-                                                        <td className="py-2 px-3 text-center text-text-muted">→</td>
-                                                        <td className="py-2 px-3">
-                                                            <span className={clsx("font-mono text-xs font-medium", m.targetTable ? "text-text-main" : "text-text-muted italic")}>
-                                                                {m.targetTable || '(none)'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-2 px-3 text-center">
-                                                            <div className="flex items-center justify-center gap-1">
-                                                                <button onClick={() => openEditModal(m)} className="p-1 rounded text-text-muted hover:text-blue-500 hover:bg-bg-hover transition-colors" title="Edit mapping">
-                                                                    <Settings className="w-3.5 h-3.5" />
-                                                                </button>
-                                                                <button onClick={() => removeMapping(m.id)} className="p-1 rounded text-text-muted hover:text-red-500 hover:bg-bg-hover transition-colors" title="Remove mapping">
-                                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-2 px-4 py-3 border-t border-border-main bg-bg-header shrink-0 rounded-b-xl">
-                                        <button onClick={() => setCurrentStep(0)} className="px-4 py-2 text-xs font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors flex items-center gap-1">
-                                            <span className="text-lg leading-none">←</span> Back
-                                        </button>
-                                        <div className="flex-1" />
-                                        <button onClick={() => setCurrentStep(2)} disabled={selectedMappingIds.length === 0} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
-                                            Next: Notifications <span className="text-lg leading-none">→</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Step 3: Notifications */}
-                            {currentStep === 2 && (
-                                <div className="flex flex-col gap-5">
-                                    <div className="border border-border-main rounded-xl p-4">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className="text-xs font-bold text-text-muted uppercase tracking-widest">Notifications</h3>
-                                            <button type="button" onClick={() => setIsProfilesModalOpen(true)} className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors">
-                                                <MessageCircle className="w-3.5 h-3.5" /> Manage Profiles
-                                            </button>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-[11px] font-semibold text-text-muted mb-1">Telegram Profile</label>
-                                                <select value={telegramChannelId} onChange={e => setTelegramChannelId(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-xs focus:border-blue-500 focus:outline-none">
-                                                    <option value="">None</option>
-                                                    {notificationChannels?.filter(c => c.type === 'TELEGRAM').map(c => (
-                                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="block text-[11px] font-semibold text-text-muted mb-1">Discord Profile</label>
-                                                <select value={discordChannelId} onChange={e => setDiscordChannelId(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-xs focus:border-blue-500 focus:outline-none">
-                                                    <option value="">None</option>
-                                                    {notificationChannels?.filter(c => c.type === 'DISCORD').map(c => (
-                                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-end gap-2 mt-2">
-                                        <button onClick={() => setCurrentStep(1)} className="px-4 py-2 text-xs font-semibold hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors flex items-center gap-1">
-                                            <span className="text-lg leading-none">←</span> Back
-                                        </button>
-                                        <button onClick={() => { setIsFormOpen(false); setEditingScheduleId(null); setTableMappings([]); }} className="px-5 py-2 text-xs font-bold text-text-muted hover:text-text-main">
-                                            Cancel
-                                        </button>
-                                        <button onClick={handleSubmit} disabled={selectedMappingIds.length === 0} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
-                                            <Save className="w-4 h-4" /> {editingScheduleId ? 'Update Job' : 'Save Job'}
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            </div>
+                        <div className="px-5 py-4 border-t border-border-main bg-bg-header flex justify-end gap-2 shrink-0">
+                            <button onClick={() => { setIsFormOpen(false); setEditingScheduleId(null); }} className="px-5 py-2 text-xs font-bold text-text-muted hover:text-text-main transition-colors">
+                                Cancel
+                            </button>
+                            <button onClick={handleSubmit} disabled={!selectedTemplateId} className="px-6 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2">
+                                <Save className="w-4 h-4" /> {editingScheduleId ? 'Update Job' : 'Save Job'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

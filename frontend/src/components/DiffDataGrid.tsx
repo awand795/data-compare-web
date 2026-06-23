@@ -222,6 +222,7 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
             rows={filteredData.length}
             rowHeight={getRowHeight}
             onColumnResize={onColumnResize}
+            getCellsForSelection={true}
             smoothScrollX={true}
             smoothScrollY={true}
             theme={theme === 'dark' ? {
