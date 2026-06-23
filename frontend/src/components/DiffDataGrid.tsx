@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Database, ArrowRight } from 'lucide-react';
 import { buildEffectiveQuery } from '../utils/queryHelpers';
@@ -108,12 +108,24 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
     [filteredData, columns]
   );
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const handleCellContextMenu = useCallback((cell: readonly [number, number], e: any) => {
     e.preventDefault();
-    const rawEvent = e.rawEvent || e;
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    
+    const cellBoundsX = e.bounds?.x || 0;
+    const cellBoundsY = e.bounds?.y || 0;
+    const clickOffsetX = e.localEventX || 0;
+    const clickOffsetY = e.localEventY || 0;
+
+    const x = rect.left + cellBoundsX + clickOffsetX;
+    const y = rect.top + cellBoundsY + clickOffsetY;
+
     setContextMenu({
-      x: rawEvent.clientX || 0,
-      y: rawEvent.clientY || 0,
+      x,
+      y,
       rowIdx: cell[1]
     });
   }, []);
@@ -278,7 +290,7 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
 
   return (
     <div className="h-full flex flex-col w-full bg-white dark:bg-[#0b1120]">
-      <div className="flex-1 overflow-hidden relative">
+      <div className="flex-1 overflow-hidden relative" ref={containerRef}>
         {filteredData.length > 0 ? (
           <DataEditor
             getCellContent={getCellContent}

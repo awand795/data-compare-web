@@ -194,7 +194,7 @@ public class DataComparisonService {
                         int rowNum = 0;
                         while (rs.next() && rowNum < MAX_SYNC_ROWS) {
                             Map<String, Object> row = new LinkedHashMap<>(colCount);
-                            for (int i = 0; i < colCount; i++) row.put(cols[i], rs.getObject(i + 1));
+                            for (int i = 0; i < colCount; i++) row.put(cols[i], getSafeObject(rs, i + 1));
                             results.add(row);
                             rowNum++;
                         }
@@ -1453,6 +1453,20 @@ public class DataComparisonService {
             return "[CLOB Data: " + c.length() + " chars]";
         } else if (val instanceof byte[]) {
             return "[BINARY Data: " + ((byte[]) val).length + " bytes]";
+        } else if (val instanceof java.sql.Timestamp) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format((java.util.Date) val);
+        } else if (val instanceof java.sql.Date) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd").format((java.util.Date) val);
+        } else if (val instanceof java.sql.Time) {
+            return new java.text.SimpleDateFormat("HH:mm:ss").format((java.util.Date) val);
+        } else if (val instanceof java.util.Date) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format((java.util.Date) val);
+        } else if (val instanceof java.time.LocalDateTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format((java.time.LocalDateTime) val);
+        } else if (val instanceof java.time.LocalDate) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").format((java.time.LocalDate) val);
+        } else if (val instanceof java.time.LocalTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss").format((java.time.LocalTime) val);
         }
         return val;
     }
