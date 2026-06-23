@@ -116,13 +116,13 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
                               {r.matchCount}
                             </span>
                           </td>
-                          <td className={clsx("py-3 px-4 text-center font-bold", r.sourceOnlyCount > 0 ? "text-orange-500" : "text-text-muted")}>{r.sourceOnlyCount}</td>
-                          <td className={clsx("py-3 px-4 text-center font-bold", r.targetOnlyCount > 0 ? "text-blue-500" : "text-text-muted")}>{r.targetOnlyCount}</td>
                           <td className="py-3 px-4 text-center">
                             <span className={clsx("px-2 py-0.5 rounded-full font-bold", r.differentCount > 0 ? "bg-red-500/10 text-red-500" : "bg-bg-hover text-text-muted")}>
                               {r.differentCount}
                             </span>
                           </td>
+                          <td className={clsx("py-3 px-4 text-center font-bold", r.sourceOnlyCount > 0 ? "text-orange-500" : "text-text-muted")}>{r.sourceOnlyCount}</td>
+                          <td className={clsx("py-3 px-4 text-center font-bold", r.targetOnlyCount > 0 ? "text-blue-500" : "text-text-muted")}>{r.targetOnlyCount}</td>
                           <td className="py-3 px-4">
                             {r.errorMessage === 'RUNNING...' ? (
                               <div className="flex items-center gap-1.5 text-blue-400">
