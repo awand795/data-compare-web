@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Database, ArrowRight } from 'lucide-react';
 import { buildEffectiveQuery } from '../utils/queryHelpers';
