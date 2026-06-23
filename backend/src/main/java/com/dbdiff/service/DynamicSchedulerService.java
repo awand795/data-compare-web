@@ -80,18 +80,10 @@ public class DynamicSchedulerService {
     }
 
     public void refreshSchedule(String scheduleId) {
-        // Cek apakah sebelumnya sudah aktif (ada di scheduledTasks) agar kita tahu ini toggle ON atau update biasa
-        boolean wasScheduled = scheduledTasks.containsKey(scheduleId);
         cancelSchedule(scheduleId);
         ScheduleConfig schedule = scheduleManagerService.getSchedule(scheduleId);
         if (schedule != null && schedule.isActive()) {
             scheduleTask(schedule);
-            // Hanya trigger immediate execution jika transisi dari inactive → active
-            // (toggle ON), bukan saat update schedule yang sudah aktif
-            if (!wasScheduled) {
-                logger.info("Triggering immediate execution for schedule: {} ({})", schedule.getName(), scheduleId);
-                taskExecutor.execute(() -> executeCompareJob(scheduleId));
-            }
         }
     }
 
