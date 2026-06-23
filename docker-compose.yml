@@ -9,10 +9,10 @@ services:
     environment:
       TZ: Asia/Jakarta
       DB_HOST: ***REMOVED***
-      DB_PORT: 5432
-      DB_NAME: neondb
-      DB_USER: neondb_owner
-      DB_PASSWORD: npg_lSm6g8kRZEoL
+      DB_PORT: 25789
+      DB_NAME: defaultdb
+      DB_USER: avnadmin
+      DB_PASSWORD: YOUR_AIVEN_PASSWORD
     ports:
       - "5300:8081"
     volumes:

@@ -5,6 +5,10 @@ import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import { format } from 'sql-formatter';
 import { useAppStore } from '../store/useAppStore';
 import { AlignLeft, Search, Loader2, Maximize2, Minimize2, X } from 'lucide-react';
+import { linter, lintGutter } from '@codemirror/lint';
+import type { Diagnostic } from '@codemirror/lint';
+import { syntaxTree } from '@codemirror/language';
+import type { Completion } from '@codemirror/autocomplete';
 import axios from 'axios';
 import clsx from 'clsx';
 import { createPortal } from 'react-dom';
@@ -20,7 +24,7 @@ interface SQLEditorProps {
   showMaximize?: boolean;
 }
 
-const schemaCache: Record<string, { tables: string[], schema: Record<string, string[]> }> = {};
+const schemaCache: Record<string, { tables: string[], schema: Record<string, (string | Completion)[]> }> = {};
 
 export const SQLEditor: React.FC<SQLEditorProps> = ({
   value,
@@ -34,7 +38,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 }) => {
   const { theme, connections } = useAppStore();
   const [loadingSchema, setLoadingSchema] = useState(false);
-  const [schemaData, setSchemaData] = useState<Record<string, string[]>>({});
+  const [schemaData, setSchemaData] = useState<Record<string, (string | Completion)[]>>({});
   const [isMaximized, setIsMaximized] = useState(false);
 
   const conn = useMemo(() => connections.find(c => c.id === connectionId), [connections, connectionId]);
@@ -59,14 +63,29 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
       
       const tablesToFetch = tables.slice(0, 50).map(t => t.name);
       for (const tableName of tablesToFetch) {
-        axios.post('/api/columns', { connection: conn, tableName }).then(res => {
+        axios.post('/api/table-info', { connection: conn, tableName }).then(res => {
             const cols = res.data;
+            const completions: Completion[] = cols.map((c: any) => ({
+                label: c.columnName || '',
+                type: c.primaryKeySource ? "keyword" : "property",
+                info: `${c.sourceType || 'unknown'}${c.sourceSize ? `(${c.sourceSize})` : ''} ${c.primaryKeySource ? 'PK' : ''}`,
+                detail: c.sourceType || ''
+            }));
             setSchemaData(prev => {
-                const updated = { ...prev, [tableName]: cols };
+                const updated = { ...prev, [tableName]: completions };
                 if (schemaCache[connectionId]) schemaCache[connectionId].schema = updated;
                 return updated;
             });
-        }).catch(() => {});
+        }).catch(() => {
+            // Fallback to /api/columns if /api/table-info fails or isn't supported
+            axios.post('/api/columns', { connection: conn, tableName }).then(res => {
+                setSchemaData(prev => {
+                    const updated = { ...prev, [tableName]: res.data };
+                    if (schemaCache[connectionId]) schemaCache[connectionId].schema = updated;
+                    return updated;
+                });
+            }).catch(() => {});
+        });
       }
     } catch (err) {
       console.error("Failed to fetch schema", err);
@@ -99,6 +118,21 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   };
 
   const sqlExtension = useMemo(() => sql({ schema: schemaData }), [schemaData]);
+
+  const sqlLinter = useMemo(() => linter((view) => {
+    const diagnostics: Diagnostic[] = [];
+    syntaxTree(view.state).cursor().iterate((node) => {
+      if (node.type.isError) {
+        diagnostics.push({
+          from: node.from,
+          to: node.to,
+          severity: "error",
+          message: "Syntax error",
+        });
+      }
+    });
+    return diagnostics;
+  }), []);
 
   const editorUI = (isFullScreen: boolean) => (
     <div 
@@ -165,7 +199,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
           value={value}
           height="100%"
           theme={theme === 'dark' ? vscodeDark : vscodeLight}
-          extensions={[sqlExtension]}
+          extensions={[sqlExtension, sqlLinter, lintGutter()]}
           onChange={onChange}
           placeholder={placeholder}
           basicSetup={{
