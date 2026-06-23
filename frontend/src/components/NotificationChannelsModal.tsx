@@ -64,7 +64,7 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
     };
 
     return (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
             <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
                 <div className="p-4 border-b border-border-main flex justify-between items-center shrink-0">
                     <h2 className="font-bold text-lg flex items-center gap-2">

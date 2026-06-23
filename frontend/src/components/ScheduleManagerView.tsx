@@ -303,8 +303,8 @@ export const ScheduleManagerView: React.FC = () => {
             )}
 
             {isFormOpen && (
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[600px] max-h-full flex flex-col">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-bg-panel border border-border-main rounded-xl shadow-2xl w-full max-w-[600px] max-h-[90vh] flex flex-col">
                         <div className="px-5 py-4 border-b border-border-main flex justify-between items-center shrink-0">
                             <h2 className="font-bold text-[15px] flex items-center gap-2"><Clock className="w-4 h-4 text-purple-400"/> {editingScheduleId ? 'Edit Scheduled Job' : 'Create Scheduled Job'}</h2>
                             <button onClick={() => { setIsFormOpen(false); setEditingScheduleId(null); }} className="p-1 text-text-muted hover:text-text-main hover:bg-bg-hover rounded transition-colors"><XCircle className="w-5 h-5"/></button>
