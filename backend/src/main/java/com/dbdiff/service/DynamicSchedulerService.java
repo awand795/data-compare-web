@@ -178,14 +178,20 @@ public class DynamicSchedulerService {
 
             int totalMatch = 0, totalDifferent = 0, totalSrcOnly = 0, totalTgtOnly = 0;
             List<Map<String, Object>> executionDetails = new ArrayList<>();
-
             for (Map<String, Object> mapping : mappings) {
+                String label = (String) mapping.get("label");
+                String rawSourceTable = (String) mapping.get("sourceTable");
+                String displayTableName = label != null && !label.trim().isEmpty() ? label.trim() : rawSourceTable;
+                if (displayTableName == null || displayTableName.equalsIgnoreCase("query") || displayTableName.trim().isEmpty()) {
+                    displayTableName = schedule.getName() != null && !schedule.getName().trim().isEmpty() ? schedule.getName() : "Custom Query";
+                }
+
                 try {
                     DiffRequest request = new DiffRequest();
                     request.setSourceConnection(srcConn);
                     request.setTargetConnection(tgtConn);
 
-                    String sourceTable = (String) mapping.get("sourceTable");
+                    String sourceTable = rawSourceTable;
                     String targetTable = (String) mapping.get("targetTable");
                     String cqSource = (String) mapping.get("customQuerySource");
                     String cqTarget = (String) mapping.get("customQueryTarget");
@@ -230,8 +236,7 @@ public class DynamicSchedulerService {
                     request.setReturnMatchedRows(true);
                     int[] mArr = {0}, dArr = {0}, sArr = {0}, tArr = {0};
                     int[] totalsArr = {0}; // totalSource from onTotals
-                    // FIX: Stream rows directly to DB instead of collecting in memory
-                    String displayTableName = sourceTable != null ? sourceTable : "Custom Query";
+                    final String finalDisplayTableName = displayTableName;
                     final String resultId = result.getId();
 
                     dataComparisonService.processStream(request, new DiffRowConsumer() {
@@ -248,22 +253,19 @@ public class DynamicSchedulerService {
 
                         @Override
                         public void onRow(DiffRow row) throws Exception {
-                            // NOTE: MATCH rows are NOT sent when returnMatchedRows=false.
-                            // Only DIFFERENT, SOURCE_ONLY, TARGET_ONLY arrive here.
                             switch (row.getStatus()) {
                                 case DIFFERENT: dArr[0]++; break;
                                 case SOURCE_ONLY: sArr[0]++; break;
                                 case TARGET_ONLY: tArr[0]++; break;
                                 default: break;
                             }
-                            // Buffer rows and flush in batches to reduce DB round-trips
                             if (schedule.isSaveFullData()) {
                                 ScheduleResultRow rr = new ScheduleResultRow();
                                 rr.setResultId(resultId);
                                 rr.setRowKey(row.getRowKey());
                                 rr.setStatus(row.getStatus().name());
                                 rr.setDataJson(objectMapper.writeValueAsString(row.getCells()));
-                                rr.setTableName(displayTableName);
+                                rr.setTableName(finalDisplayTableName);
                                 rowBuffer.add(rr);
                                 if (rowBuffer.size() >= BATCH_FLUSH_SIZE) {
                                     flushBuffer();
@@ -280,7 +282,6 @@ public class DynamicSchedulerService {
 
                         @Override
                         public void onTotals(int totalSource, int totalTarget, int totalDiffs) throws Exception {
-                            // Flush remaining buffered rows before finishing
                             flushBuffer();
                             totalsArr[0] = totalSource;
                         }
@@ -302,7 +303,7 @@ public class DynamicSchedulerService {
                 } catch (Exception e) {
                     logger.error("Error comparing mapping: {}", e.getMessage(), e);
                     Map<String, Object> errorTable = new HashMap<>();
-                    errorTable.put("tableName", mapping.get("sourceTable"));
+                    errorTable.put("tableName", displayTableName);
                     errorTable.put("error", e.getMessage());
                     executionDetails.add(errorTable);
                 }
