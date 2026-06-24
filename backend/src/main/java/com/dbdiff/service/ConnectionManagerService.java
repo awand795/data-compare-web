@@ -337,8 +337,8 @@ public class ConnectionManagerService {
             }
         }
 
-        config.setMaximumPoolSize(4);
-        config.setMinimumIdle(1);
+        config.setMaximumPoolSize(10);
+        config.setMinimumIdle(2);
         // Frontend sends timeout in seconds, HikariCP expects milliseconds
         int timeoutMs = details.getConnectionTimeout() != null ? details.getConnectionTimeout() * 1000 : 60000;
         if (timeoutMs < 250) timeoutMs = 250;
