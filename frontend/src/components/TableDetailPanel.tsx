@@ -434,10 +434,10 @@ export const TableDetailPanel: React.FC = () => {
         )}
 
         {!loading && !error && activeTab === 'columns' && (
-          <div className="border border-border-main rounded-lg overflow-hidden bg-bg-panel">
+          <div className="border border-border-main rounded-lg overflow-auto bg-bg-panel flex-1">
             <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-bg-hover border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted">
+              <thead className="sticky top-0 bg-bg-hover z-10">
+                <tr className="border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted">
                   <th className="p-3 font-semibold">Column Name</th>
                   <th className="p-3 font-semibold">Data Type</th>
                   <th className="p-3 font-semibold">Size</th>
@@ -468,10 +468,10 @@ export const TableDetailPanel: React.FC = () => {
         )}
 
         {!loading && !error && activeTab === 'indexes' && (
-          <div className="border border-border-main rounded-lg overflow-hidden bg-bg-panel">
+          <div className="border border-border-main rounded-lg overflow-auto bg-bg-panel flex-1">
             <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-bg-hover border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted">
+              <thead className="sticky top-0 bg-bg-hover z-10">
+                <tr className="border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted">
                   <th className="p-3 font-semibold">Index Name</th>
                   <th className="p-3 font-semibold">Columns</th>
                   <th className="p-3 font-semibold">Unique</th>
@@ -494,10 +494,10 @@ export const TableDetailPanel: React.FC = () => {
         )}
 
         {!loading && !error && activeTab === 'foreign_keys' && (
-          <div className="border border-border-main rounded-lg overflow-hidden bg-bg-panel">
+          <div className="border border-border-main rounded-lg overflow-auto bg-bg-panel flex-1">
             <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-bg-hover border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted">
+              <thead className="sticky top-0 bg-bg-hover z-10">
+                <tr className="border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted">
                   <th className="p-3 font-semibold">FK Name</th>
                   <th className="p-3 font-semibold">Column</th>
                   <th className="p-3 font-semibold">Target Table</th>
@@ -522,16 +522,16 @@ export const TableDetailPanel: React.FC = () => {
         )}
 
         {!loading && !error && activeTab === 'ddl' && (
-          <div className="border border-border-main rounded-lg overflow-hidden bg-bg-panel p-4">
+          <div className="border border-border-main rounded-lg overflow-auto bg-bg-panel p-4 flex-1">
             <pre className="text-xs font-mono text-blue-400 whitespace-pre-wrap">{ddlData || 'No DDL available.'}</pre>
           </div>
         )}
 
         {!loading && !error && activeTab === 'stats' && (
-          <div className="border border-border-main rounded-lg overflow-hidden bg-bg-panel">
+          <div className="border border-border-main rounded-lg overflow-auto bg-bg-panel flex-1">
             <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-bg-hover border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted">
+              <thead className="sticky top-0 bg-bg-hover z-10">
+                <tr className="border-b border-border-main text-[11px] uppercase tracking-wider text-text-muted">
                   <th className="p-3 font-semibold">Property</th>
                   <th className="p-3 font-semibold">Value</th>
                 </tr>
