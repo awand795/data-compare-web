@@ -9,7 +9,7 @@ import { TableDetailPanel } from './components/TableDetailPanel';
 import { ExcelCompareView } from './components/ExcelCompareView';
 import { ScheduleManagerView } from './components/ScheduleManagerView';
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { DatabaseZap, GitCompareArrows, Table2, Terminal, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2 } from 'lucide-react';
+import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2 } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
 import { AlertModal } from './components/AlertModal';
