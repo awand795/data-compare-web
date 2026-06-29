@@ -6,9 +6,32 @@ Awalnya, aplikasi ini menggunakan **Neon** sebagai database internal, kemudian d
 
 ---
 
-## 1. Aiven Database (Active)
+## 1. Darkosuite Database (Active)
 
 Konfigurasi ini saat ini digunakan sebagai sumber data utama aplikasi.
+
+- **Provider**: Self-Hosted (***REMOVED***)
+- **Service URI**: `postgres://postgres:***REMOVED***@***REMOVED***:8832/data_setting_sync`
+- **Host**: `***REMOVED***`
+- **Port**: `8832`
+- **Database Name**: `data_setting_sync`
+- **Username**: `postgres`
+- **Password**: `***REMOVED***`
+
+### Environment Variables
+```env
+DB_HOST=***REMOVED***
+DB_PORT=8832
+DB_NAME=data_setting_sync
+DB_USER=postgres
+DB_PASSWORD=***REMOVED***
+```
+
+---
+
+## 2. Aiven Database (Legacy)
+
+Konfigurasi historis sebelum migrasi dilakukan.
 
 - **Provider**: Aiven
 - **Service URI**: `postgres://avnadmin:YOUR_AIVEN_PASSWORD@***REMOVED***:25789/defaultdb?sslmode=require`
@@ -18,17 +41,6 @@ Konfigurasi ini saat ini digunakan sebagai sumber data utama aplikasi.
 - **Username**: `avnadmin`
 - **Password**: `YOUR_AIVEN_PASSWORD`
 - **SSL Mode**: `require`
-
-### Environment Variables
-```env
-DB_HOST=***REMOVED***
-DB_PORT=25789
-DB_NAME=defaultdb
-DB_USER=avnadmin
-DB_PASSWORD=YOUR_AIVEN_PASSWORD
-```
-
----
 
 ## 2. Neon Database (Legacy)
 
