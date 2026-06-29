@@ -9,7 +9,7 @@ import { TableDetailPanel } from './components/TableDetailPanel';
 import { ExcelCompareView } from './components/ExcelCompareView';
 import { ScheduleManagerView } from './components/ScheduleManagerView';
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { DatabaseZap, GitCompareArrows, Table2, Terminal, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock } from 'lucide-react';
+import { DatabaseZap, GitCompareArrows, Table2, Terminal, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2 } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
 import { AlertModal } from './components/AlertModal';
@@ -81,7 +81,7 @@ function App() {
   const modes = [
     { id: 'data' as const, label: 'Data Compare', icon: GitCompareArrows, desc: 'Compare row data between databases' },
     { id: 'schema' as const, label: 'Schema Compare', icon: Table2, desc: 'Compare table structures' },
-    { id: 'query' as const, label: 'Query Workspace', icon: Terminal, desc: 'Run custom SQL queries and compare results' },
+    { id: 'query' as const, label: 'Query Workspace', icon: Code2, desc: 'Run custom SQL queries and compare results' },
     { id: 'excel' as const, label: 'Excel Compare', icon: FileSpreadsheet, desc: 'Compare DB table against an uploaded Excel file' },
     { id: 'schedule' as const, label: 'Scheduled Jobs', icon: CalendarClock, desc: 'Automated data comparison tasks' },
   ];
