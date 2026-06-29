@@ -260,6 +260,10 @@ type AppState = {
   queryResult: DiffResult | null;
   setQueryResult: (r: DiffResult | null) => void;
 
+  // Trigger to reset workspace local states (e.g., when loading a new template)
+  workspaceResetTrigger: number;
+  triggerWorkspaceReset: () => void;
+
   // Toasts
   toasts: Toast[];
   addToast: (toast: Omit<Toast, 'id'>) => void;
@@ -546,6 +550,9 @@ export const useAppStore = create<AppState>()(
   }),
   queryResult: null,
   setQueryResult: (r) => set({ queryResult: r }),
+
+  workspaceResetTrigger: 0,
+  triggerWorkspaceReset: () => set(state => ({ workspaceResetTrigger: state.workspaceResetTrigger + 1 })),
 
 
   notificationChannels: [],

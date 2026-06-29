@@ -13,7 +13,8 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
     activeTemplateId, setActiveTemplateId,
     sourceConnectionId, targetConnectionId, tableMappings,
     customQuerySource, customQueryTarget, queryPrimaryKeys, setSourceConnectionId, setTargetConnectionId,
-    clearTableMappings, setCustomQuerySource, setCustomQueryTarget, setQueryPrimaryKeys
+    clearTableMappings, setCustomQuerySource, setCustomQueryTarget, setQueryPrimaryKeys,
+    clearDiffResults, triggerWorkspaceReset
   } = useAppStore();
 
   const [showLoadModal, setShowLoadModal] = useState(false);
@@ -37,13 +38,12 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
     
     if (appMode === 'data') {
       clearTableMappings();
+      clearDiffResults();
       if (t.tableMappings) {
-        useAppStore.setState({ 
-          tableMappings: t.tableMappings, 
-          selectedMappingIds: t.tableMappings.map(m => m.id)
+        t.tableMappings.forEach(mapping => {
+          if (!mapping.id) mapping.id = 'mapping_' + Date.now() + Math.random().toString(36).substring(2, 9);
+          addTableMapping(mapping);
         });
-        const firstMappingId = t.tableMappings.length > 0 ? t.tableMappings[0].id : null;
-        useAppStore.getState().setFocusedMappingId(firstMappingId);
       }
     } else if (appMode === 'query') {
       useAppStore.setState({ focusedMappingId: null });
@@ -58,6 +58,7 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
       }
       setQueryPrimaryKeys(pks);
     }
+    triggerWorkspaceReset();
     setShowLoadModal(false);
     useAppStore.getState().addToast({ type: 'success', title: 'Template Loaded', message: `Loaded template: ${t.name}` });
   };
@@ -85,7 +86,9 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
       setQueryPrimaryKeys('');
     } else if (appMode === 'data') {
       clearTableMappings();
+      clearDiffResults();
     }
+    triggerWorkspaceReset();
   };
 
   const handleSaveAs = () => {

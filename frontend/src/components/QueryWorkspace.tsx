@@ -26,6 +26,7 @@ export const QueryWorkspace: React.FC = () => {
     defaultRowLimit,
     queryPrimaryKeys, setQueryPrimaryKeys,
     showAlert, addToast,
+    workspaceResetTrigger
   } = useAppStore();
 
   const [sourceResults, setSourceResults] = useState<any[] | null>(null);
@@ -93,6 +94,17 @@ export const QueryWorkspace: React.FC = () => {
     if (/limit\s+\d+\s*$/i.test(trimmed)) return trimmed;
     return `${trimmed} LIMIT ${n}`;
   };
+
+  useEffect(() => {
+    if (workspaceResetTrigger > 0) {
+      setSourceResults(null);
+      setTargetResults(null);
+      setWorkspaceDiffResult({ columns: [], rows: [], summary: null });
+      setSourceError('');
+      setTargetError('');
+      setLocalBatchProgress(null);
+    }
+  }, [workspaceResetTrigger]);
 
   const applyWhere = (query: string, extraWhere: string | undefined): string => {
     if (!extraWhere) return query;
