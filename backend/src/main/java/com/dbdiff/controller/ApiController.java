@@ -365,7 +365,9 @@ public class ApiController {
         };
 
         return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE)
+                .header("X-Accel-Buffering", "no")
+                .header("Cache-Control", "no-cache")
                 .body(stream);
     }
 
