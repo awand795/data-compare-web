@@ -333,14 +333,6 @@ public class ApiController {
                                 gen.writeEndObject();
                                 gen.writeRaw('\n');
                                 rowCount++;
-                                if (rowCount >= 50000) {
-                                    gen.writeStartObject();
-                                    gen.writeStringField("type", "error");
-                                    gen.writeStringField("message", "Query execution stopped at 50,000 rows to prevent memory exhaustion.");
-                                    gen.writeEndObject();
-                                    gen.writeRaw('\n');
-                                    break;
-                                }
                                 if (rowCount % 5000 == 0) gen.flush();
                             }
 
