@@ -290,7 +290,8 @@ public class ApiController {
         StreamingResponseBody stream = out -> {
             ObjectMapper mapper = new ObjectMapper();
             try (JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
-                gen.disable(JsonGenerator.Feature.FLUSH_PASSED_TO_STREAM);
+                // Remove disable FLUSH_PASSED_TO_STREAM so gen.flush() flushes the underlying stream
+
 
                 try {
                     DataSource ds = connectionManagerService.getDataSource(request.getConnection());
@@ -320,6 +321,7 @@ public class ApiController {
                             gen.writeEndObject();
                             gen.writeRaw('\n');
                             gen.flush();
+                            out.flush();
 
                             int rowCount = 0;
                             while (rs.next()) {
@@ -333,7 +335,10 @@ public class ApiController {
                                 gen.writeEndObject();
                                 gen.writeRaw('\n');
                                 rowCount++;
-                                if (rowCount % 5000 == 0) gen.flush();
+                                if (rowCount % 5000 == 0) {
+                                gen.flush();
+                                out.flush();
+                            }
                             }
 
                             gen.writeStartObject();
@@ -344,6 +349,7 @@ public class ApiController {
                             gen.writeEndObject();
                             gen.writeRaw('\n');
                             gen.flush();
+                            out.flush();
                         } finally {
                             // Selalu rollback untuk PostgreSQL cursor query — bersihkan transaction state
                             // sebelum koneksi kembali ke pool, mencegah "dirty commit state" warning
@@ -360,6 +366,7 @@ public class ApiController {
                     gen.writeEndObject();
                     gen.writeRaw('\n');
                     gen.flush();
+                    out.flush();
                 }
             }
         };
