@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore, type Template } from '../store/useAppStore';
-import { Save, Copy, FolderOpen, X, Trash2, Search, Edit2, Check } from 'lucide-react';
+import { Save, Copy, FolderOpen, X, Trash2, Search, Edit2, Check, Plus } from 'lucide-react';
 import { detectPrimaryKeysFromQuery } from '../utils/queryHelpers';
 
 interface Props {
@@ -77,6 +77,16 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
     updateTemplate(activeTemplateId, updates);
     useAppStore.getState().addToast({ type: 'success', title: 'Template Saved', message: 'Current settings have been saved to the template.' });
   };
+  const handleNewTemplate = () => {
+    setActiveTemplateId(null);
+    if (appMode === 'query') {
+      setCustomQuerySource('');
+      setCustomQueryTarget('');
+      setQueryPrimaryKeys('');
+    } else if (appMode === 'data') {
+      clearTableMappings();
+    }
+  };
 
   const handleSaveAs = () => {
     if (!newTemplateName.trim()) return;
@@ -141,6 +151,16 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
             title="Save as template"
           >
             <Save className="w-3.5 h-3.5" /> Save Template
+          </button>
+        )}
+        
+        {appMode === 'query' && (
+          <button 
+            onClick={handleNewTemplate}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
+            title="Create new blank template"
+          >
+            <Plus className="w-3.5 h-3.5" /> New Template
           </button>
         )}
       </div>
