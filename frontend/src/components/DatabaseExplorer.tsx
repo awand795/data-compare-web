@@ -39,7 +39,7 @@ export const DatabaseExplorer: React.FC = () => {
           parentId: null,
           type: 'server',
           name: conn.name,
-          label: `${conn.name} (${conn.type})`,
+          label: `${conn.name} (${conn.database})`,
           isLoaded: false,
           isLoading: false,
           isExpanded: false,
