@@ -307,7 +307,12 @@ public class DynamicSchedulerService {
             result.setSourceOnlyCount(totalSrcOnly);
             result.setTargetOnlyCount(totalTgtOnly);
             result.setDetails(objectMapper.writeValueAsString(executionDetails));
-            result.setErrorMessage(null); // Clear "RUNNING..." status
+            boolean hasErrors = executionDetails.stream().anyMatch(td -> td.containsKey("error"));
+            if (hasErrors) {
+                result.setErrorMessage("Job finished with errors in some tables.");
+            } else {
+                result.setErrorMessage(null); // Clear "RUNNING..." status
+            }
 
             scheduleManagerService.updateResult(result);
             scheduleManagerService.updateLastRun(scheduleId, LocalDateTime.now());
@@ -315,7 +320,6 @@ public class DynamicSchedulerService {
             int diffs = result.getDifferentCount() + result.getSourceOnlyCount() + result.getTargetOnlyCount();
             logger.info("Job {} finished. Total diffs: {}", schedule.getName(), diffs);
             
-            boolean hasErrors = executionDetails.stream().anyMatch(td -> td.containsKey("error"));
             boolean hasDiffs = diffs > 0;
             logger.info("Checking notification channels for job {}...", schedule.getName());
             logger.debug("Telegram Channel ID: {}", schedule.getTelegramChannelId());
