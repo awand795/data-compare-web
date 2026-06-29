@@ -92,6 +92,7 @@ public class ApiController {
 
     @PostMapping("/test-connection")
     public ResponseEntity<?> testConnection(@RequestBody ConnectionDetails details) {
+        details = fillConnectionDetails(details);
         Map<String, Object> result = connectionManagerService.testConnection(details);
         return ResponseEntity.ok(result);
     }
@@ -100,7 +101,7 @@ public class ApiController {
     public ResponseEntity<?> warmupConnections(@RequestBody List<ConnectionDetails> connections) {
         for (ConnectionDetails details : connections) {
             try {
-                connectionManagerService.getDataSource(details); // triggers the async warmup
+                connectionManagerService.getDataSource(fillConnectionDetails(details)); // triggers the async warmup
             } catch (Exception e) {
                 // Ignore errors for warmup
             }
@@ -110,6 +111,7 @@ public class ApiController {
 
     @PostMapping("/tables")
     public ResponseEntity<List<TableInfo>> getTables(@RequestBody ConnectionDetails details) {
+        details = fillConnectionDetails(details);
         DataSource ds = connectionManagerService.getDataSource(details);
         List<TableInfo> tables = metaDataService.getTables(ds, details.getSchema());
         return ResponseEntity.ok(tables);
@@ -147,6 +149,8 @@ public class ApiController {
 
     @PostMapping("/compare")
     public ResponseEntity<StreamingResponseBody> compareData(@RequestBody DiffRequest request) {
+        request.setSourceConnection(fillConnectionDetails(request.getSourceConnection()));
+        request.setTargetConnection(fillConnectionDetails(request.getTargetConnection()));
         StreamingResponseBody stream = out -> {
             try (java.io.BufferedOutputStream bos = new java.io.BufferedOutputStream(out, 65536)) {
                 comparisonService.compareAndStream(request, bos);
@@ -236,6 +240,9 @@ public class ApiController {
             @RequestBody DiffRequest request,
             @RequestParam(defaultValue = "ALL") String filterStatus) {
         
+        request.setSourceConnection(fillConnectionDetails(request.getSourceConnection()));
+        request.setTargetConnection(fillConnectionDetails(request.getTargetConnection()));
+        
         StreamingResponseBody stream = out -> {
             try {
                 exportService.exportExcel(request, filterStatus, out);
@@ -254,6 +261,9 @@ public class ApiController {
     public ResponseEntity<StreamingResponseBody> exportPdf(
             @RequestBody DiffRequest request,
             @RequestParam(defaultValue = "ALL") String filterStatus) {
+        
+        request.setSourceConnection(fillConnectionDetails(request.getSourceConnection()));
+        request.setTargetConnection(fillConnectionDetails(request.getTargetConnection()));
         
         StreamingResponseBody stream = out -> {
             try {
@@ -276,78 +286,79 @@ public class ApiController {
      */
     @PostMapping("/execute-query")
     public ResponseEntity<StreamingResponseBody> executeQuery(@RequestBody QueryRequest request) {
+        request.setConnection(fillConnectionDetails(request.getConnection()));
         StreamingResponseBody stream = out -> {
             ObjectMapper mapper = new ObjectMapper();
             try (JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
                 gen.disable(JsonGenerator.Feature.FLUSH_PASSED_TO_STREAM);
 
-                DataSource ds = connectionManagerService.getDataSource(request.getConnection());
-                try (Connection conn = ds.getConnection();
-                     PreparedStatement ps = conn.prepareStatement(request.getQuery(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                try {
+                    DataSource ds = connectionManagerService.getDataSource(request.getConnection());
+                    try (Connection conn = ds.getConnection();
+                         PreparedStatement ps = conn.prepareStatement(request.getQuery(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
 
-                    boolean isPostgres = conn.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres");
-                    boolean isMysql = conn.getMetaData().getDatabaseProductName().toLowerCase().contains("mysql");
-                    if (isPostgres) {
-                        conn.setAutoCommit(false);
-                    }
-                    ps.setFetchSize(isMysql ? Integer.MIN_VALUE : 1000);
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        ResultSetMetaData meta = rs.getMetaData();
-                        int colCount = meta.getColumnCount();
-                        String[] cols = new String[colCount];
-                        for (int i = 1; i <= colCount; i++) {
-                            cols[i - 1] = meta.getColumnLabel(i);
+                        boolean isPostgres = conn.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres");
+                        boolean isMysql = conn.getMetaData().getDatabaseProductName().toLowerCase().contains("mysql");
+                        if (isPostgres) {
+                            conn.setAutoCommit(false);
                         }
+                        ps.setFetchSize(isMysql ? Integer.MIN_VALUE : 1000);
 
-                        gen.writeStartObject();
-                        gen.writeStringField("type", "columns");
-                        gen.writeArrayFieldStart("data");
-                        for (String col : cols) gen.writeString(col);
-                        gen.writeEndArray();
-                        gen.writeEndObject();
-                        gen.writeRaw('\n');
-                        gen.flush();
-
-                        gen.flush();
-
-                        int rowCount = 0;
-                        while (rs.next()) {
-                            gen.writeStartObject();
-                            gen.writeStringField("type", "row");
-                            gen.writeObjectFieldStart("data");
+                        try (ResultSet rs = ps.executeQuery()) {
+                            ResultSetMetaData meta = rs.getMetaData();
+                            int colCount = meta.getColumnCount();
+                            String[] cols = new String[colCount];
                             for (int i = 1; i <= colCount; i++) {
-                                gen.writeObjectField(cols[i - 1], getSafeObject(rs, i));
+                                cols[i - 1] = meta.getColumnLabel(i);
                             }
+
+                            gen.writeStartObject();
+                            gen.writeStringField("type", "columns");
+                            gen.writeArrayFieldStart("data");
+                            for (String col : cols) gen.writeString(col);
+                            gen.writeEndArray();
+                            gen.writeEndObject();
+                            gen.writeRaw('\n');
+                            gen.flush();
+
+                            int rowCount = 0;
+                            while (rs.next()) {
+                                gen.writeStartObject();
+                                gen.writeStringField("type", "row");
+                                gen.writeObjectFieldStart("data");
+                                for (int i = 1; i <= colCount; i++) {
+                                    gen.writeObjectField(cols[i - 1], getSafeObject(rs, i));
+                                }
+                                gen.writeEndObject();
+                                gen.writeEndObject();
+                                gen.writeRaw('\n');
+                                rowCount++;
+                                if (rowCount >= 50000) {
+                                    gen.writeStartObject();
+                                    gen.writeStringField("type", "error");
+                                    gen.writeStringField("message", "Query execution stopped at 50,000 rows to prevent memory exhaustion.");
+                                    gen.writeEndObject();
+                                    gen.writeRaw('\n');
+                                    break;
+                                }
+                                if (rowCount % 5000 == 0) gen.flush();
+                            }
+
+                            gen.writeStartObject();
+                            gen.writeStringField("type", "summary");
+                            gen.writeObjectFieldStart("data");
+                            gen.writeNumberField("totalRows", rowCount);
                             gen.writeEndObject();
                             gen.writeEndObject();
                             gen.writeRaw('\n');
-                            rowCount++;
-                            if (rowCount >= 50000) {
-                                gen.writeStartObject();
-                                gen.writeStringField("type", "error");
-                                gen.writeStringField("message", "Query execution stopped at 50,000 rows to prevent memory exhaustion.");
-                                gen.writeEndObject();
-                                gen.writeRaw('\n');
-                                break;
+                            gen.flush();
+                        } finally {
+                            // Selalu rollback untuk PostgreSQL cursor query — bersihkan transaction state
+                            // sebelum koneksi kembali ke pool, mencegah "dirty commit state" warning
+                            if (isPostgres) {
+                                try { conn.rollback(); } catch (Exception ignored) {}
+                                try { conn.setAutoCommit(true); } catch (Exception ignored) {}
                             }
-                            if (rowCount % 5000 == 0) gen.flush();
-                        }
-
-                        gen.writeStartObject();
-                        gen.writeStringField("type", "summary");
-                        gen.writeObjectFieldStart("data");
-                        gen.writeNumberField("totalRows", rowCount);
-                        gen.writeEndObject();
-                        gen.writeEndObject();
-                        gen.writeRaw('\n');
-                        gen.flush();
-                    } finally {
-                        // Selalu rollback untuk PostgreSQL cursor query — bersihkan transaction state
-                        // sebelum koneksi kembali ke pool, mencegah "dirty commit state" warning
-                        if (isPostgres) {
-                            try { conn.rollback(); } catch (Exception ignored) {}
-                            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
                         }
                     }
                 } catch (Exception e) {
@@ -371,6 +382,8 @@ public class ApiController {
      */
     @PostMapping("/data-sync")
     public ResponseEntity<?> syncData(@RequestBody DiffRequest request) {
+        request.setSourceConnection(fillConnectionDetails(request.getSourceConnection()));
+        request.setTargetConnection(fillConnectionDetails(request.getTargetConnection()));
         try {
             return ResponseEntity.ok(comparisonService.syncData(request));
         } catch (Exception e) {
@@ -386,6 +399,8 @@ public class ApiController {
      */
     @PostMapping("/schema-compare")
     public ResponseEntity<?> compareSchema(@RequestBody DiffRequest request) {
+        request.setSourceConnection(fillConnectionDetails(request.getSourceConnection()));
+        request.setTargetConnection(fillConnectionDetails(request.getTargetConnection()));
         try {
             DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
             DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
@@ -409,6 +424,8 @@ public class ApiController {
      */
     @PostMapping("/schema-compare-all")
     public ResponseEntity<?> schemaCompareAll(@RequestBody SchemaCompareRequest request) {
+        request.setSourceConnection(fillConnectionDetails(request.getSourceConnection()));
+        request.setTargetConnection(fillConnectionDetails(request.getTargetConnection()));
         try {
             DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
             DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
@@ -707,6 +724,22 @@ public class ApiController {
             return (Map<String, Object>) obj;
         }
         return null;
+    }
+
+    private ConnectionDetails fillConnectionDetails(ConnectionDetails details) {
+        if (details == null) return null;
+        if (details.getId() != null && !details.getId().trim().isEmpty()) {
+            ConnectionDetails existing = connectionRepository.findById(details.getId());
+            if (existing != null) {
+                if (details.getPassword() == null) details.setPassword(existing.getPassword());
+                if (details.getSshPassword() == null) details.setSshPassword(existing.getSshPassword());
+                if (details.getSshPassphrase() == null) details.setSshPassphrase(existing.getSshPassphrase());
+            }
+        }
+        details.setPassword(decodeBase64IfNeeded(details.getPassword()));
+        details.setSshPassword(decodeBase64IfNeeded(details.getSshPassword()));
+        details.setSshPassphrase(decodeBase64IfNeeded(details.getSshPassphrase()));
+        return details;
     }
 
     private ConnectionDetails mapToDetails(Map<String, Object> map) {
