@@ -128,9 +128,14 @@ public class ScheduleManagerService {
         jdbcTemplate.update("DELETE FROM schedule_result_rows WHERE result_id = ?", resultId);
     }
     
+    private String sanitizeNullBytes(String str) {
+        if (str == null) return null;
+        return str.replace("\u0000", "");
+    }
+    
     public void saveResultRow(ScheduleResultRow row) {
         String sql = "INSERT INTO schedule_result_rows (result_id, row_key, status, data_json, table_name) VALUES (?, ?, ?, ?, ?)";
-        jdbcTemplate.update(sql, row.getResultId(), row.getRowKey(), row.getStatus(), row.getDataJson(), row.getTableName());
+        jdbcTemplate.update(sql, row.getResultId(), sanitizeNullBytes(row.getRowKey()), row.getStatus(), sanitizeNullBytes(row.getDataJson()), sanitizeNullBytes(row.getTableName()));
     }
 
     /**
@@ -142,7 +147,7 @@ public class ScheduleManagerService {
         String sql = "INSERT INTO schedule_result_rows (result_id, row_key, status, data_json, table_name) VALUES (?, ?, ?, ?, ?)";
         List<Object[]> batchArgs = new ArrayList<>(rows.size());
         for (ScheduleResultRow row : rows) {
-            batchArgs.add(new Object[]{row.getResultId(), row.getRowKey(), row.getStatus(), row.getDataJson(), row.getTableName()});
+            batchArgs.add(new Object[]{row.getResultId(), sanitizeNullBytes(row.getRowKey()), row.getStatus(), sanitizeNullBytes(row.getDataJson()), sanitizeNullBytes(row.getTableName())});
         }
         jdbcTemplate.batchUpdate(sql, batchArgs);
     }
