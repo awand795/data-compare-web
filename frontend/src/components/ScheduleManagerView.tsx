@@ -127,6 +127,17 @@ export const ScheduleManagerView: React.FC = () => {
         setIsFormOpen(true);
     };
 
+    const openNewForm = () => {
+        setEditingScheduleId(null);
+        setJobPrefix('');
+        setSelectedTemplateId('');
+        setCronExpression('0 0 * * * *');
+        setTelegramChannelId('');
+        setDiscordChannelId('');
+        setSaveFullData(false);
+        setIsFormOpen(true);
+    };
+
     const queryTemplates = templates.filter(t => t.appMode === 'query');
 
     return (
@@ -146,7 +157,7 @@ export const ScheduleManagerView: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto">
-                    <button onClick={() => setIsFormOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded shadow-lg shadow-purple-500/20 transition-colors w-full sm:w-auto">
+                    <button onClick={openNewForm} className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded shadow-lg shadow-purple-500/20 transition-colors w-full sm:w-auto">
                         <Plus className="w-4 h-4" /> New Job
                     </button>
                 </div>
@@ -157,8 +168,8 @@ export const ScheduleManagerView: React.FC = () => {
                     <div className="flex flex-col items-center justify-center h-full text-text-muted gap-4">
                         <Clock className="w-16 h-16 opacity-20" />
                         <p>No scheduled jobs configured</p>
-                        <button onClick={() => setIsFormOpen(true)} className="text-sm font-semibold text-purple-400 hover:text-purple-300">
-                            Create your first job
+                        <button onClick={openNewForm} className="text-sm font-semibold text-purple-400 hover:text-purple-300">
+                            + Create your first job
                         </button>
                     </div>
                 ) : (
