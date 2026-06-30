@@ -60,6 +60,7 @@ public class ApiController {
 
     @PostMapping("/connections")
     public ResponseEntity<?> saveConnection(@RequestBody ConnectionDetails details) {
+        details = fillConnectionDetails(details);
         connectionManagerService.evictConnection(details.getStableIdentifier());
         connectionRepository.save(details);
         return ResponseEntity.ok(Map.of("success", true, "connection", details));
@@ -68,11 +69,13 @@ public class ApiController {
     @PutMapping("/connections/{id}")
     public ResponseEntity<?> updateConnection(@PathVariable String id, @RequestBody ConnectionDetails details) {
         details.setId(id);
+        details = fillConnectionDetails(details);
         ConnectionDetails existing = connectionRepository.findById(id);
         if (existing != null) {
-            if (details.getPassword() == null) details.setPassword(existing.getPassword());
-            if (details.getSshPassword() == null) details.setSshPassword(existing.getSshPassword());
-            if (details.getSshPassphrase() == null) details.setSshPassphrase(existing.getSshPassphrase());
+            if (details.getPassword() == null || details.getPassword().isEmpty()) details.setPassword(existing.getPassword());
+            if (details.getSshPassword() == null || details.getSshPassword().isEmpty()) details.setSshPassword(existing.getSshPassword());
+            if (details.getSshPassphrase() == null || details.getSshPassphrase().isEmpty()) details.setSshPassphrase(existing.getSshPassphrase());
+            if (details.getSshKeyFile() == null || details.getSshKeyFile().isEmpty()) details.setSshKeyFile(existing.getSshKeyFile());
             connectionManagerService.evictConnection(existing.getStableIdentifier());
         }
         connectionManagerService.evictConnection(details.getStableIdentifier());
@@ -93,6 +96,16 @@ public class ApiController {
     @PostMapping("/test-connection")
     public ResponseEntity<?> testConnection(@RequestBody ConnectionDetails details) {
         details = fillConnectionDetails(details);
+        if (details.getId() != null && !details.getId().trim().isEmpty()) {
+            ConnectionDetails existing = connectionRepository.findById(details.getId());
+            if (existing != null) {
+                if (details.getPassword() == null || details.getPassword().isEmpty()) details.setPassword(existing.getPassword());
+                if (details.getSshPassword() == null || details.getSshPassword().isEmpty()) details.setSshPassword(existing.getSshPassword());
+                if (details.getSshPassphrase() == null || details.getSshPassphrase().isEmpty()) details.setSshPassphrase(existing.getSshPassphrase());
+                if (details.getSshKeyFile() == null || details.getSshKeyFile().isEmpty()) details.setSshKeyFile(existing.getSshKeyFile());
+            }
+            connectionManagerService.evictConnection(details.getStableIdentifier());
+        }
         Map<String, Object> result = connectionManagerService.testConnection(details);
         return ResponseEntity.ok(result);
     }
@@ -735,11 +748,13 @@ public class ApiController {
                 if (details.getPassword() == null) details.setPassword(existing.getPassword());
                 if (details.getSshPassword() == null) details.setSshPassword(existing.getSshPassword());
                 if (details.getSshPassphrase() == null) details.setSshPassphrase(existing.getSshPassphrase());
+                if (details.getSshKeyFile() == null) details.setSshKeyFile(existing.getSshKeyFile());
             }
         }
         details.setPassword(decodeBase64IfNeeded(details.getPassword()));
         details.setSshPassword(decodeBase64IfNeeded(details.getSshPassword()));
         details.setSshPassphrase(decodeBase64IfNeeded(details.getSshPassphrase()));
+        details.setSshKeyFile(decodeBase64IfNeeded(details.getSshKeyFile()));
         return details;
     }
 
@@ -789,7 +804,7 @@ public class ApiController {
         if (map.containsKey("sshPassword") && map.get("sshPassword") != null) {
             details.setSshPassword(decodeBase64IfNeeded((String) map.get("sshPassword")));
         }
-        if (map.containsKey("sshKeyFile")) details.setSshKeyFile((String) map.get("sshKeyFile"));
+        if (map.containsKey("sshKeyFile")) details.setSshKeyFile(decodeBase64IfNeeded((String) map.get("sshKeyFile")));
         if (map.containsKey("sshPassphrase") && map.get("sshPassphrase") != null) {
             details.setSshPassphrase(decodeBase64IfNeeded((String) map.get("sshPassphrase")));
         }
