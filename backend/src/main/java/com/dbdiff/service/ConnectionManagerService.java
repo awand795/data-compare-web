@@ -373,7 +373,7 @@ public class ConnectionManagerService {
                 boolean valid;
                 String errorMsg = null;
                 try {
-                    valid = conn.isValid(5);
+                    valid = conn.isValid(15);
                 } catch (Exception e) {
                     valid = false;
                     errorMsg = e.getMessage();
@@ -381,6 +381,7 @@ public class ConnectionManagerService {
                 
                 if (!valid) {
                     try (java.sql.Statement stmt = conn.createStatement()) {
+                        stmt.setQueryTimeout(15);
                         stmt.execute("SELECT 1");
                         valid = true;
                         errorMsg = null;

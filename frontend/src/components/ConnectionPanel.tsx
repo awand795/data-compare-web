@@ -228,7 +228,7 @@ export const ConnectionPanel: React.FC = () => {
               ) : (
                 <Server className="w-3 h-3" />
               )}
-              {testStatus === 'testing' ? 'Testing...' : testStatus === 'success' ? '✓ Connected' : 'Test Connection'}
+              {testStatus === 'testing' ? 'Loading...' : testStatus === 'success' ? '✓ Connected' : 'Test Connection'}
             </button>
             <button onClick={handleAdd} className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-semibold shadow-lg shadow-blue-500/20">
               Add
