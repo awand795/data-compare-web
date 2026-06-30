@@ -242,6 +242,10 @@ public class ConnectionManagerService {
             config.setReadOnly(true);
         }
 
+        // Jangan lempar exception langsung saat inisialisasi pool kalau database sedang mati/tidur (misal: serverless DB wake up).
+        // Biarkan getConnection() nanti yang memblokir (loading) sambil mencoba reconnect.
+        config.setInitializationFailTimeout(-1L);
+
         switch (details.getType().toLowerCase()) {
             case "postgresql":
                 config.setDriverClassName("org.postgresql.Driver");
