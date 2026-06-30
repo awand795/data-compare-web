@@ -296,6 +296,12 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                       <option value="verify-ca">Verify-CA</option>
                       <option value="verify-full">Verify-Full</option>
                     </select>
+                    {formData.type === 'clickhouse' && formData.sslMode !== 'disable' && (
+                      <p className="text-[11px] text-yellow-400 mt-1">
+                        ⚠️ ClickHouse dengan SSL biasanya menggunakan port <strong>8443</strong> (HTTPS),
+                        bukan 8123 (HTTP). Pastikan port sudah diubah di tab General &gt; Port.
+                      </p>
+                    )}
                   </div>
 
                   {formData.sslMode !== 'disable' && (

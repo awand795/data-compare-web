@@ -219,6 +219,11 @@ public class ConnectionManagerService {
         return ds;
     }
 
+    /** True jika string tidak null dan tidak kosong (setelah trim). */
+    private static boolean isSet(String s) {
+        return s != null && !s.trim().isEmpty();
+    }
+
     private DataSource createDataSource(ConnectionDetails details, String connId) throws Exception {
         HikariConfig config = new HikariConfig();
         
@@ -246,6 +251,11 @@ public class ConnectionManagerService {
         // Biarkan getConnection() nanti yang memblokir (loading) sambil mencoba reconnect.
         config.setInitializationFailTimeout(-1L);
 
+        // Frontend sends timeout in seconds, HikariCP expects milliseconds.
+        // Dihitung di sini agar bisa dipakai juga sebagai driver-level connect/login timeout per tipe DB.
+        int timeoutMs = details.getConnectionTimeout() != null ? details.getConnectionTimeout() * 1000 : 60000;
+        if (timeoutMs < 250) timeoutMs = 250;
+
         switch (details.getType().toLowerCase()) {
             case "postgresql":
                 config.setDriverClassName("org.postgresql.Driver");
@@ -257,17 +267,24 @@ public class ConnectionManagerService {
                 config.addDataSourceProperty("reWriteBatchedInserts", "true");
                 config.addDataSourceProperty("socketReceiveBufferSize", "1048576"); // 1MB buffer
                 
-                if (details.getSslMode() != null && !details.getSslMode().isEmpty() && !"disable".equalsIgnoreCase(details.getSslMode())) {
+                if (isSet(details.getSslMode()) && !"disable".equalsIgnoreCase(details.getSslMode())) {
                     config.addDataSourceProperty("ssl", "true");
                     config.addDataSourceProperty("sslmode", details.getSslMode());
-                    if (details.getSslCaFile() != null) config.addDataSourceProperty("sslrootcert", details.getSslCaFile());
-                    if (details.getSslCertFile() != null) config.addDataSourceProperty("sslcert", details.getSslCertFile());
-                    if (details.getSslKeyFile() != null) config.addDataSourceProperty("sslkey", details.getSslKeyFile());
+                    // Hanya set file cert kalau benar-benar diisi. Path kosong ("") membuat
+                    // driver mencoba membaca file dari path kosong sehingga handshake menggantung.
+                    if (isSet(details.getSslCaFile())) config.addDataSourceProperty("sslrootcert", details.getSslCaFile());
+                    if (isSet(details.getSslCertFile())) config.addDataSourceProperty("sslcert", details.getSslCertFile());
+                    if (isSet(details.getSslKeyFile())) config.addDataSourceProperty("sslkey", details.getSslKeyFile());
                 } else {
                     config.addDataSourceProperty("sslmode", "disable");
                 }
-                
-                if (details.getSocketTimeout() != null) {
+
+                // Batasi fase connect + TLS handshake di level driver (detik) agar host SSL yang
+                // tidak responsif gagal cepat dengan pesan jelas, bukan menggantung sampai HikariCP timeout.
+                config.addDataSourceProperty("loginTimeout", String.valueOf(Math.max(1, timeoutMs / 1000)));
+                config.addDataSourceProperty("connectTimeout", String.valueOf(Math.max(1, timeoutMs / 1000)));
+
+                if (details.getSocketTimeout() != null && details.getSocketTimeout() > 0) {
                     config.addDataSourceProperty("socketTimeout", String.valueOf(details.getSocketTimeout() / 1000)); // PG uses seconds
                 }
                 break;
@@ -290,12 +307,14 @@ public class ConnectionManagerService {
                 // OPTIMIZATION: Boost MySQL sort and read buffers to keep 1M+ rows in memory
                 config.setConnectionInitSql("SET SESSION sort_buffer_size = 268435456; SET SESSION read_rnd_buffer_size = 268435456; SET SESSION join_buffer_size = 67108864; SET SESSION max_sort_length = 1024;");
                 
-                if (details.getSslMode() != null && !details.getSslMode().isEmpty()) {
+                if (isSet(details.getSslMode()) && !"disable".equalsIgnoreCase(details.getSslMode())) {
                     config.addDataSourceProperty("useSSL", "true");
                     if ("require".equalsIgnoreCase(details.getSslMode())) {
                         config.addDataSourceProperty("requireSSL", "true");
                     }
-                    if (details.getSslCaFile() != null) config.addDataSourceProperty("trustCertificateKeyStoreUrl", "file:" + details.getSslCaFile());
+                    if (isSet(details.getSslCaFile())) config.addDataSourceProperty("trustCertificateKeyStoreUrl", "file:" + details.getSslCaFile());
+                } else {
+                    config.addDataSourceProperty("useSSL", "false");
                 }
                 
                 if (details.getSocketTimeout() != null) {
@@ -320,7 +339,7 @@ public class ConnectionManagerService {
             case "sqlserver":
                 config.setDriverClassName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
                 config.setAutoCommit(true);
-                if (details.getSslMode() != null && !details.getSslMode().isEmpty()) {
+                if (isSet(details.getSslMode()) && !"disable".equalsIgnoreCase(details.getSslMode())) {
                     config.addDataSourceProperty("encrypt", "true");
                     config.addDataSourceProperty("trustServerCertificate", "require".equalsIgnoreCase(details.getSslMode()) ? "false" : "true");
                 }
@@ -329,15 +348,23 @@ public class ConnectionManagerService {
             case "clickhouse":
                 config.setDriverClassName("com.clickhouse.jdbc.ClickHouseDriver");
                 config.setAutoCommit(true);
-                if (details.getSslMode() != null && !details.getSslMode().isEmpty() && !"disable".equalsIgnoreCase(details.getSslMode())) {
+                if (isSet(details.getSslMode()) && !"disable".equalsIgnoreCase(details.getSslMode())) {
                     config.addDataSourceProperty("ssl", "true");
-                    if ("require".equalsIgnoreCase(details.getSslMode())) {
+                    // require -> strict (SSL enabled, minimal cert check)
+                    // verify-ca, verify-full -> strict + SSL cert verification
+                    // prefer/allow -> none (SSL enabled, no cert verification)
+                    String mode = details.getSslMode().toLowerCase();
+                    if ("verify-ca".equals(mode) || "verify-full".equals(mode) || "require".equals(mode)) {
                         config.addDataSourceProperty("sslmode", "strict");
                     } else {
                         config.addDataSourceProperty("sslmode", "none");
                     }
-                    if (details.getSslCaFile() != null) config.addDataSourceProperty("sslrootcert", details.getSslCaFile());
+                    if (isSet(details.getSslCaFile())) config.addDataSourceProperty("sslrootcert", details.getSslCaFile());
+                    if (isSet(details.getSslCertFile())) config.addDataSourceProperty("sslcert", details.getSslCertFile());
+                    if (isSet(details.getSslKeyFile())) config.addDataSourceProperty("sslkey", details.getSslKeyFile());
                 }
+                config.addDataSourceProperty("connect_timeout", String.valueOf(timeoutMs));
+                config.addDataSourceProperty("socket_timeout", String.valueOf(timeoutMs));
                 break;
 
             default:
@@ -357,9 +384,6 @@ public class ConnectionManagerService {
 
         config.setMaximumPoolSize(10);
         config.setMinimumIdle(2);
-        // Frontend sends timeout in seconds, HikariCP expects milliseconds
-        int timeoutMs = details.getConnectionTimeout() != null ? details.getConnectionTimeout() * 1000 : 60000;
-        if (timeoutMs < 250) timeoutMs = 250;
         config.setConnectionTimeout(timeoutMs);
         config.setIdleTimeout(120000);    // 2 menit — kasih waktu lebih sebelum evict
         config.setMaxLifetime(300000);    // 5 menit
