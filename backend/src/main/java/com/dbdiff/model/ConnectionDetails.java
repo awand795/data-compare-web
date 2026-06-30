@@ -3,7 +3,7 @@ package com.dbdiff.model;
 public class ConnectionDetails {
     private String id;
     private String name;
-    private String type; // postgresql, mysql, mariadb, sqlserver
+    private String type; // postgresql, mysql, mariadb, sqlserver, clickhouse
     private String host;
     private int port;
     private String database;
@@ -79,6 +79,8 @@ public class ConnectionDetails {
                 return "jdbc:mariadb://" + effectiveHost + ":" + effectivePort + "/" + database;
             case "sqlserver":
                 return "jdbc:sqlserver://" + effectiveHost + ":" + effectivePort + ";databaseName=" + database;
+            case "clickhouse":
+                return "jdbc:clickhouse://" + effectiveHost + ":" + effectivePort + "/" + database;
             default:
                 throw new IllegalArgumentException("Unsupported database type: " + type);
         }

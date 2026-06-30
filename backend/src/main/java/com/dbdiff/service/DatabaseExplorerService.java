@@ -20,7 +20,7 @@ public class DatabaseExplorerService {
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
             String dbType = metaData.getDatabaseProductName().toLowerCase();
-            if (dbType.contains("mysql") || dbType.contains("mariadb")) {
+            if (dbType.contains("mysql") || dbType.contains("mariadb") || dbType.contains("clickhouse")) {
                 String currentDb = conn.getCatalog();
                 if (currentDb != null && !currentDb.trim().isEmpty()) {
                     schemas.add(currentDb);
@@ -60,7 +60,7 @@ public class DatabaseExplorerService {
             String dbType = metaData.getDatabaseProductName().toLowerCase();
             String catalog = null;
             String schemaPattern = schema;
-            if (dbType.contains("mysql") || dbType.contains("mariadb")) {
+            if (dbType.contains("mysql") || dbType.contains("mariadb") || dbType.contains("clickhouse")) {
                 catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
                 schemaPattern = null;
             }
@@ -93,7 +93,7 @@ public class DatabaseExplorerService {
             String dbType = metaData.getDatabaseProductName().toLowerCase();
             String catalog = null;
             String schemaPattern = schema;
-            if (dbType.contains("mysql") || dbType.contains("mariadb")) {
+            if (dbType.contains("mysql") || dbType.contains("mariadb") || dbType.contains("clickhouse")) {
                 catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
                 schemaPattern = null;
             }
@@ -135,7 +135,7 @@ public class DatabaseExplorerService {
             String dbType = metaData.getDatabaseProductName().toLowerCase();
             String catalog = null;
             String schemaPattern = schema;
-            if (dbType.contains("mysql") || dbType.contains("mariadb")) {
+            if (dbType.contains("mysql") || dbType.contains("mariadb") || dbType.contains("clickhouse")) {
                 catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
                 schemaPattern = null;
             }
@@ -160,7 +160,7 @@ public class DatabaseExplorerService {
             String dbType = metaData.getDatabaseProductName().toLowerCase();
             String catalog = null;
             String schemaPattern = schema;
-            if (dbType.contains("mysql") || dbType.contains("mariadb")) {
+            if (dbType.contains("mysql") || dbType.contains("mariadb") || dbType.contains("clickhouse")) {
                 catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
                 schemaPattern = null;
             }
@@ -241,6 +241,13 @@ public class DatabaseExplorerService {
                 }
                 ddl.append(");\n");
                 return ddl.toString();
+            } else if ("clickhouse".equalsIgnoreCase(dbType)) {
+                String quotedTable = "`" + table + "`";
+                String quotedFull = (schema != null && !schema.isEmpty()) ? "`" + schema + "`." + quotedTable : quotedTable;
+                List<Map<String, Object>> res = jdbc.queryForList("SHOW CREATE TABLE " + quotedFull);
+                if (!res.isEmpty()) {
+                    return (String) res.get(0).get("statement");
+                }
             }
             return "-- DDL extraction not fully supported for this database type (" + dbType + ") via generic JDBC.\n-- Check table details for structure.";
         } catch (Exception e) {
@@ -252,7 +259,7 @@ public class DatabaseExplorerService {
         List<Map<String, Object>> statsList = new ArrayList<>();
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         try {
-            String q = dbType.contains("mysql") || dbType.contains("mariadb") ? "`" : "\"";
+            String q = dbType.contains("mysql") || dbType.contains("mariadb") || dbType.contains("clickhouse") ? "`" : "\"";
             String fullTableName = formatTableName(schema, table, q);
             
             // 1. Basic Row Count (Always available)
@@ -361,7 +368,7 @@ public class DatabaseExplorerService {
         List<Map<String, Object>> results = new java.util.ArrayList<>();
         try (java.sql.Connection conn = dataSource.getConnection()) {
             String dbType = conn.getMetaData().getDatabaseProductName().toLowerCase();
-            String q = dbType.contains("mysql") || dbType.contains("mariadb") ? "`" : "\"";
+            String q = dbType.contains("mysql") || dbType.contains("mariadb") || dbType.contains("clickhouse") ? "`" : "\"";
             String fullTableName = formatTableName(schema, table, q);
             String sql = "SELECT * FROM " + fullTableName;
             

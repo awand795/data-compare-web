@@ -322,6 +322,20 @@ public class ConnectionManagerService {
                 }
                 break;
 
+            case "clickhouse":
+                config.setDriverClassName("com.clickhouse.jdbc.ClickHouseDriver");
+                config.setAutoCommit(true);
+                if (details.getSslMode() != null && !details.getSslMode().isEmpty() && !"disable".equalsIgnoreCase(details.getSslMode())) {
+                    config.addDataSourceProperty("ssl", "true");
+                    if ("require".equalsIgnoreCase(details.getSslMode())) {
+                        config.addDataSourceProperty("sslmode", "strict");
+                    } else {
+                        config.addDataSourceProperty("sslmode", "none");
+                    }
+                    if (details.getSslCaFile() != null) config.addDataSourceProperty("sslrootcert", details.getSslCaFile());
+                }
+                break;
+
             default:
                 config.setAutoCommit(true);
                 break;
@@ -356,11 +370,30 @@ public class ConnectionManagerService {
         try {
             DataSource ds = getDataSource(details);
             try (java.sql.Connection conn = ds.getConnection()) {
-                boolean valid = conn.isValid(5);
+                boolean valid;
+                String errorMsg = null;
+                try {
+                    valid = conn.isValid(5);
+                } catch (Exception e) {
+                    valid = false;
+                    errorMsg = e.getMessage();
+                }
+                
+                if (!valid) {
+                    try (java.sql.Statement stmt = conn.createStatement()) {
+                        stmt.execute("SELECT 1");
+                        valid = true;
+                        errorMsg = null;
+                    } catch (Exception e) {
+                        valid = false;
+                        errorMsg = e.getMessage();
+                    }
+                }
+
                 if (valid) {
                     return Map.of("success", true, "message", "Connection successful");
                 } else {
-                    return Map.of("success", false, "message", "Connection timeout — database did not respond within 5 seconds");
+                    return Map.of("success", false, "message", "Connection validation failed: " + (errorMsg != null ? errorMsg : "Timeout or false response"));
                 }
             }
         } catch (Exception e) {

@@ -18,6 +18,7 @@ const DRIVERS = [
   { id: 'mysql', name: 'MySQL', defaultPort: 3306, color: 'text-orange-400', border: 'border-orange-500/30', bgHover: 'hover:bg-orange-500/10' },
   { id: 'mariadb', name: 'MariaDB', defaultPort: 3306, color: 'text-teal-400', border: 'border-teal-500/30', bgHover: 'hover:bg-teal-500/10' },
   { id: 'sqlserver', name: 'SQL Server', defaultPort: 1433, color: 'text-red-400', border: 'border-red-500/30', bgHover: 'hover:bg-red-500/10' },
+  { id: 'clickhouse', name: 'ClickHouse', defaultPort: 8123, color: 'text-yellow-400', border: 'border-yellow-500/30', bgHover: 'hover:bg-yellow-500/10' },
 ];
 
 export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConnection }) => {
@@ -74,7 +75,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
     const { name, type, value: rawValue } = e.target;
     const value = type === 'checkbox' ? (e.target as HTMLInputElement).checked : rawValue;
 
-    if (typeof value === 'string' && (value.startsWith('postgres://') || value.startsWith('postgresql://') || value.startsWith('mysql://'))) {
+    if (typeof value === 'string' && (value.startsWith('postgres://') || value.startsWith('postgresql://') || value.startsWith('mysql://') || value.startsWith('clickhouse://'))) {
       try {
         const url = new URL(value);
         let dbType = url.protocol.replace(':', '');

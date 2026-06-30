@@ -1325,6 +1325,7 @@ public class DataComparisonService {
 
     private String quoteIdentifier(String col, String dbType) {
         if ("sqlserver".equals(dbType)) return "[" + col.replace("]", "]]") + "]";
+        if ("mysql".equals(dbType) || "mariadb".equals(dbType) || "clickhouse".equals(dbType)) return "`" + col.replace("`", "``") + "`";
         return "\"" + col.replace("\"", "\"\"") + "\"";
     }
 

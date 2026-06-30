@@ -152,6 +152,7 @@ export const ConnectionPanel: React.FC = () => {
     mysql: '🐬',
     mariadb: '🔷',
     sqlserver: '🟦',
+    clickhouse: '⚡',
   };
 
   return (
@@ -180,6 +181,7 @@ export const ConnectionPanel: React.FC = () => {
             <option value="mysql">🐬 MySQL</option>
             <option value="mariadb">🔷 MariaDB</option>
             <option value="sqlserver">🟦 SQL Server</option>
+            <option value="clickhouse">⚡ ClickHouse</option>
           </select>
           <div className="grid grid-cols-3 gap-1.5">
             <input name="host" onChange={handleChange} className="col-span-2 px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-xs text-text-input placeholder-slate-500 focus:border-blue-500 outline-none" placeholder="Host" />
