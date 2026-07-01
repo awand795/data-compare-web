@@ -10,9 +10,9 @@ Awalnya, aplikasi ini menggunakan **Neon** sebagai database internal, kemudian d
 
 Konfigurasi ini saat ini digunakan sebagai sumber data utama aplikasi.
 
-- **Provider**: Self-Hosted (***REMOVED***)
-- **Service URI**: `postgres://postgres:YOUR_DARKOSUITE_PASSWORD@***REMOVED***:8832/data_setting_sync`
-- **Host**: `***REMOVED***`
+- **Provider**: Self-Hosted (YOUR_DB_HOST)
+- **Service URI**: `postgres://postgres:YOUR_DARKOSUITE_PASSWORD@YOUR_DB_HOST:8832/data_setting_sync`
+- **Host**: `YOUR_DB_HOST`
 - **Port**: `8832`
 - **Database Name**: `data_setting_sync`
 - **Username**: `postgres`
@@ -20,7 +20,7 @@ Konfigurasi ini saat ini digunakan sebagai sumber data utama aplikasi.
 
 ### Environment Variables
 ```env
-DB_HOST=***REMOVED***
+DB_HOST=YOUR_DB_HOST
 DB_PORT=8832
 DB_NAME=data_setting_sync
 DB_USER=postgres
@@ -34,8 +34,8 @@ DB_PASSWORD=YOUR_DARKOSUITE_PASSWORD
 Konfigurasi historis sebelum migrasi dilakukan.
 
 - **Provider**: Aiven
-- **Service URI**: `postgres://avnadmin:YOUR_AIVEN_PASSWORD@***REMOVED***:25789/defaultdb?sslmode=require`
-- **Host**: `***REMOVED***`
+- **Service URI**: `postgres://avnadmin:YOUR_AIVEN_PASSWORD@YOUR_AIVEN_HOST:25789/defaultdb?sslmode=require`
+- **Host**: `YOUR_AIVEN_HOST`
 - **Port**: `25789`
 - **Database Name**: `defaultdb`
 - **Username**: `avnadmin`
@@ -47,7 +47,7 @@ Konfigurasi historis sebelum migrasi dilakukan.
 Konfigurasi historis sebelum migrasi dilakukan. Kredensial ini mungkin masih dapat diakses tetapi tidak lagi digunakan sebagai database utama aplikasi.
 
 - **Provider**: Neon
-- **Host**: `***REMOVED***`
+- **Host**: `YOUR_NEON_HOST`
 - **Port**: `5432`
 - **Database Name**: `neondb`
 - **Username**: `neondb_owner`
@@ -56,7 +56,7 @@ Konfigurasi historis sebelum migrasi dilakukan. Kredensial ini mungkin masih dap
 
 ### Environment Variables
 ```env
-DB_HOST=***REMOVED***
+DB_HOST=YOUR_NEON_HOST
 DB_PORT=5432
 DB_NAME=neondb
 DB_USER=neondb_owner

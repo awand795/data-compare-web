@@ -1,8 +1,8 @@
 import psycopg2
 import psycopg2.extras
 
-source_url = "postgres://avnadmin:YOUR_AIVEN_PASSWORD@***REMOVED***:25789/defaultdb?sslmode=require"
-target_url = "postgres://postgres:YOUR_DARKOSUITE_PASSWORD@***REMOVED***:8832/data_setting_sync"
+source_url = "postgres://avnadmin:YOUR_AIVEN_PASSWORD@YOUR_AIVEN_HOST:25789/defaultdb?sslmode=require"
+target_url = "postgres://postgres:YOUR_DARKOSUITE_PASSWORD@YOUR_DB_HOST:8832/data_setting_sync"
 
 schema_file = r"backend/src/main/resources/schema.sql"
 
@@ -18,7 +18,7 @@ tables_to_migrate = [
 def migrate():
     print("Connecting to source (Aiven)...")
     src_conn = psycopg2.connect(source_url)
-    print("Connecting to target (***REMOVED***)...")
+    print("Connecting to target (YOUR_DB_HOST)...")
     tgt_conn = psycopg2.connect(target_url)
     
     tgt_cur = tgt_conn.cursor()

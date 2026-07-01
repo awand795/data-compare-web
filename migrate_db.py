@@ -2,8 +2,8 @@ import psycopg2
 import psycopg2.extras
 import os
 
-source_url = "postgres://neondb_owner:YOUR_NEON_PASSWORD@***REMOVED***:5432/neondb?sslmode=require"
-target_url = "postgres://avnadmin:YOUR_AIVEN_PASSWORD@***REMOVED***:25789/defaultdb?sslmode=require"
+source_url = "postgres://neondb_owner:YOUR_NEON_PASSWORD@YOUR_NEON_HOST:5432/neondb?sslmode=require"
+target_url = "postgres://avnadmin:YOUR_AIVEN_PASSWORD@YOUR_AIVEN_HOST:25789/defaultdb?sslmode=require"
 
 schema_file = r"backend/src/main/resources/schema.sql"
 
