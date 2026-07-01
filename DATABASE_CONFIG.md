@@ -10,9 +10,9 @@ Awalnya, aplikasi ini menggunakan **Neon** sebagai database internal, kemudian d
 
 Konfigurasi ini saat ini digunakan sebagai sumber data utama aplikasi.
 
-- **Provider**: Self-Hosted (YOUR_DB_HOST)
-- **Service URI**: `postgres://postgres:YOUR_DARKOSUITE_PASSWORD@YOUR_DB_HOST:8832/data_setting_sync`
-- **Host**: `YOUR_DB_HOST`
+- **Provider**: Self-Hosted (war.darkosuite.com)
+- **Service URI**: `postgres://postgres:YOUR_DARKOSUITE_PASSWORD@war.darkosuite.com:8832/data_setting_sync`
+- **Host**: `war.darkosuite.com`
 - **Port**: `8832`
 - **Database Name**: `data_setting_sync`
 - **Username**: `postgres`
@@ -20,7 +20,7 @@ Konfigurasi ini saat ini digunakan sebagai sumber data utama aplikasi.
 
 ### Environment Variables
 ```env
-DB_HOST=YOUR_DB_HOST
+DB_HOST=war.darkosuite.com
 DB_PORT=8832
 DB_NAME=data_setting_sync
 DB_USER=postgres
