@@ -168,7 +168,7 @@ export const TemplateManager: React.FC<Props> = ({ appMode, children }) => {
           {children}
         </div>
         {activeTemplateId && activeTemplate && (
-          <span className="text-[10px] text-text-muted hidden md:inline px-1">
+          <span className="text-[10px] text-text-muted block w-full text-right px-1 mt-1">
             Active: <span className="font-bold text-blue-500">{activeTemplate.name}</span>
           </span>
         )}

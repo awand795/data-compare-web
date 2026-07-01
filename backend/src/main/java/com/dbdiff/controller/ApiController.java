@@ -611,6 +611,7 @@ public class ApiController {
             DataSource ds = connectionManagerService.getDataSource(details);
             return ResponseEntity.ok(explorerService.getTables(ds, "null".equals(schema) ? null : schema));
         } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }

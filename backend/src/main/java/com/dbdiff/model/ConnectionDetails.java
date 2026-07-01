@@ -80,9 +80,7 @@ public class ConnectionDetails {
             case "sqlserver":
                 return "jdbc:sqlserver://" + effectiveHost + ":" + effectivePort + ";databaseName=" + database;
             case "clickhouse":
-                boolean sslEnabled = sslMode != null && !sslMode.trim().isEmpty() && !"disable".equalsIgnoreCase(sslMode);
-                String protocol = sslEnabled ? "jdbc:clickhouse:https://" : "jdbc:clickhouse://";
-                return protocol + effectiveHost + ":" + effectivePort + "/" + database;
+                return "jdbc:ch://" + effectiveHost + ":" + effectivePort + "/" + database + "?compress=0&decompress=0";
             default:
                 throw new IllegalArgumentException("Unsupported database type: " + type);
         }

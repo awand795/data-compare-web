@@ -58,9 +58,40 @@ public class DatabaseExplorerService {
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
             String dbType = metaData.getDatabaseProductName().toLowerCase();
+            System.out.println("DEBUG getObjectsByType dbType: " + dbType);
             String catalog = null;
             String schemaPattern = schema;
-            if (dbType.contains("mysql") || dbType.contains("mariadb") || dbType.contains("clickhouse")) {
+            if (dbType.contains("clickhouse")) {
+                try {
+                    catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
+                    if (catalog == null) catalog = "default";
+                    try (java.sql.Statement st = conn.createStatement()) {
+                        String query = "SELECT name, engine FROM system.tables WHERE database = '" + catalog.replace("'", "''") + "'";
+                        try (ResultSet rs = st.executeQuery(query)) {
+                            while (rs.next()) {
+                                String tName = rs.getString("name");
+                                Map<String, Object> map = new LinkedHashMap<>();
+                                map.put("name", tName);
+                                String engine = rs.getString("engine");
+                                String type = "TABLE";
+                                if (engine != null && engine.toLowerCase().contains("view")) {
+                                    type = "VIEW";
+                                } else if (engine != null && engine.toLowerCase().contains("system")) {
+                                    type = "SYSTEM TABLE";
+                                    map.put("isSystem", true);
+                                }
+                                map.put("type", type);
+                                objects.add(map);
+                            }
+                        }
+                    }
+                    return objects;
+                } catch (Exception ex) {
+                    System.out.println("CLICKHOUSE ERROR: " + ex);
+                    ex.printStackTrace(System.out);
+                    throw ex;
+                }
+            } else if (dbType.contains("mysql") || dbType.contains("mariadb")) {
                 catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
                 schemaPattern = null;
             }
@@ -93,7 +124,29 @@ public class DatabaseExplorerService {
             String dbType = metaData.getDatabaseProductName().toLowerCase();
             String catalog = null;
             String schemaPattern = schema;
-            if (dbType.contains("mysql") || dbType.contains("mariadb") || dbType.contains("clickhouse")) {
+            if (dbType.contains("clickhouse")) {
+                catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
+                if (catalog == null) catalog = "default";
+                try (java.sql.Statement st = conn.createStatement()) {
+                    String query = "SELECT name, type, is_in_primary_key, default_expression FROM system.columns WHERE database = '" + catalog.replace("'", "''") + "' AND table = '" + table.replace("'", "''") + "'";
+                    try (ResultSet rs = st.executeQuery(query)) {
+                        while (rs.next()) {
+                            Map<String, Object> map = new LinkedHashMap<>();
+                            map.put("name", rs.getString("name"));
+                            String t = rs.getString("type");
+                            map.put("type", t);
+                            map.put("size", 0);
+                            map.put("nullable", t != null && t.toLowerCase().startsWith("nullable("));
+                            map.put("defaultValue", rs.getString("default_expression"));
+                            String isPk = rs.getString("is_in_primary_key");
+                            map.put("isPk", "1".equals(isPk) || "true".equalsIgnoreCase(isPk));
+                            map.put("isFk", false);
+                            columns.add(map);
+                        }
+                    }
+                }
+                return columns;
+            } else if (dbType.contains("mysql") || dbType.contains("mariadb")) {
                 catalog = (schema != null && !"null".equals(schema) && !schema.isEmpty()) ? schema : conn.getCatalog();
                 schemaPattern = null;
             }

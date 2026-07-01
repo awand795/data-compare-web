@@ -389,6 +389,7 @@ public class ConnectionManagerService {
         config.setMaxLifetime(300000);    // 5 menit
         config.setKeepaliveTime(50000);   // harus < idleTimeout=120000
         config.setLeakDetectionThreshold(120000);
+        config.setConnectionTestQuery("SELECT 1");
 
         HikariDataSource ds = new HikariDataSource(config);
         return ds;
