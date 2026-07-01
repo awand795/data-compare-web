@@ -15,7 +15,7 @@ export const TemplateManager: React.FC<Props> = ({ appMode, children }) => {
     sourceConnectionId, targetConnectionId, tableMappings,
     customQuerySource, customQueryTarget, queryPrimaryKeys, setSourceConnectionId, setTargetConnectionId,
     clearTableMappings, addTableMapping, setCustomQuerySource, setCustomQueryTarget, setQueryPrimaryKeys,
-    clearDiffResults, triggerWorkspaceReset
+    clearDiffResults, triggerWorkspaceReset, showAlert
   } = useAppStore();
 
   const [showLoadModal, setShowLoadModal] = useState(false);
@@ -275,7 +275,16 @@ export const TemplateManager: React.FC<Props> = ({ appMode, children }) => {
                           </button>
                         )}
                         <button 
-                          onClick={(e) => { e.stopPropagation(); removeTemplate(t.id); }}
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            showAlert({
+                              title: 'Delete Template?',
+                              message: `Are you sure you want to delete "${t.name}"? This action cannot be undone.`,
+                              type: 'error',
+                              confirmLabel: 'Delete',
+                              onConfirm: () => removeTemplate(t.id)
+                            });
+                          }}
                           className="p-2 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
                           title="Delete template"
                         >
