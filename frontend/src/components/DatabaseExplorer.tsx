@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore, type Connection } from '../store/useAppStore';
 import { useExplorerStore, type ExplorerNode, type ExplorerNodeType } from '../store/useExplorerStore';
 import { ConnectionDialog } from './ConnectionDialog';
-import { Database, Plus, Trash2, Search, ChevronRight, ChevronDown, Table as TableIcon, LayoutList, FileCode2, Link as LinkIcon, Key, Hash, RefreshCw, Server, Settings2, Play, Edit2 } from 'lucide-react';
+import { Database, Plus, Trash2, Search, ChevronRight, ChevronDown, Table as TableIcon, LayoutList, FileCode2, Link as LinkIcon, Key, Hash, RefreshCw, Server, Settings2, Play, Edit2, MoreHorizontal } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
 
@@ -23,9 +23,13 @@ export const DatabaseExplorer: React.FC = () => {
   
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, nodeId: string } | null>(null);
+  const [actionMenu, setActionMenu] = useState<{ x: number, y: number, nodeId: string } | null>(null);
 
   useEffect(() => {
-    const handleClick = () => setContextMenu(null);
+    const handleClick = () => {
+      setContextMenu(null);
+      setActionMenu(null);
+    };
     window.addEventListener('click', handleClick);
     return () => window.removeEventListener('click', handleClick);
   }, []);
@@ -258,17 +262,22 @@ export const DatabaseExplorer: React.FC = () => {
           {getNodeIcon(node.type, node.metadata)}
           <span className="truncate text-xs">{node.label || node.name}</span>
           
-          <div className="ml-auto flex items-center gap-1 opacity-0 group-hover/node:opacity-100 transition-opacity">
+          <div className="ml-auto flex items-center gap-1">
              {(node.type === 'server' || node.type === 'schema' || node.type === 'table' || node.type === 'view') && (
-               <button onClick={(e) => handleRefresh(e, node)} className="text-text-muted hover:text-blue-500 p-0.5" title="Refresh">
-                 <RefreshCw className="w-2.5 h-2.5" />
+               <button 
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   const rect = e.currentTarget.getBoundingClientRect();
+                   // If the menu would go off the bottom of the screen, adjust it up
+                   const y = rect.bottom > window.innerHeight - 150 ? rect.top - 100 : rect.bottom;
+                   setActionMenu({ x: Math.max(10, rect.right - 140), y, nodeId: node.id });
+                   setContextMenu(null);
+                 }} 
+                 className="text-text-muted hover:text-blue-500 p-0.5 rounded hover:bg-bg-hover transition-colors" 
+                 title="More Actions"
+               >
+                 <MoreHorizontal className="w-3.5 h-3.5" />
                </button>
-             )}
-             {node.type === 'server' && (
-               <>
-                 <button onClick={(e) => { e.stopPropagation(); setEditingConnectionId(node.id); setIsDialogOpen(true); }} className="text-text-muted hover:text-blue-500 p-0.5" title="Edit Connection"><Edit2 className="w-3 h-3" /></button>
-                 <button onClick={(e) => { e.stopPropagation(); showAlert({ title: 'Delete Connection', message: `Are you sure you want to delete "${node.name}"? This action cannot be undone.`, type: 'error', confirmLabel: 'Delete', onConfirm: () => { removeConnection(node.id); removeNode(node.id); } }); }} className="text-text-muted hover:text-red-500 p-0.5" title="Remove Connection"><Trash2 className="w-3 h-3" /></button>
-               </>
              )}
           </div>
         </div>
@@ -353,6 +362,51 @@ export const DatabaseExplorer: React.FC = () => {
           >
             <Search className="w-3 h-3" /> Copy Full Name
           </button>
+        </div>
+      )}
+
+      {/* ── Action Menu (Three Dots) ── */}
+      {actionMenu && (
+        <div 
+          className="fixed z-[1000] bg-bg-panel border border-border-main rounded-lg shadow-xl py-1 min-w-[140px] animate-in fade-in zoom-in-95 duration-100"
+          style={{ top: actionMenu.y, left: actionMenu.x }}
+          onClick={e => e.stopPropagation()}
+        >
+          {(() => {
+             const node = nodes[actionMenu.nodeId];
+             if (!node) return null;
+             return (
+               <>
+                 <button 
+                   onClick={(e) => { handleRefresh(e, node); setActionMenu(null); }}
+                   className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-blue-500 hover:text-white transition-colors flex items-center gap-2"
+                 >
+                   <RefreshCw className="w-3 h-3" /> Refresh
+                 </button>
+                 {node.type === 'server' && (
+                   <>
+                     <div className="h-px bg-border-main my-1" />
+                     <button 
+                       onClick={(e) => { e.stopPropagation(); setEditingConnectionId(node.id); setIsDialogOpen(true); setActionMenu(null); }}
+                       className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-blue-500 hover:text-white transition-colors flex items-center gap-2"
+                     >
+                       <Edit2 className="w-3 h-3" /> Edit Connection
+                     </button>
+                     <button 
+                       onClick={(e) => { 
+                         e.stopPropagation(); 
+                         showAlert({ title: 'Delete Connection', message: `Are you sure you want to delete "${node.name}"? This action cannot be undone.`, type: 'error', confirmLabel: 'Delete', onConfirm: () => { removeConnection(node.id); removeNode(node.id); } }); 
+                         setActionMenu(null); 
+                       }}
+                       className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-red-500 hover:text-white text-red-500 transition-colors flex items-center gap-2"
+                     >
+                       <Trash2 className="w-3 h-3" /> Remove
+                     </button>
+                   </>
+                 )}
+               </>
+             );
+          })()}
         </div>
       )}
 

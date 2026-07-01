@@ -624,22 +624,23 @@ export const QueryWorkspace: React.FC = () => {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-start xl:justify-end">
-            <TemplateManager appMode="query" />
-            {!focusedMappingId && (
-              <button
-                onClick={() => setShowPrimaryKeyModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-bg-hover text-text-main text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
-                title="Set Primary Keys"
-              >
-                <Key className="w-3.5 h-3.5 text-blue-500" />
-                Primary Keys
-                {queryPrimaryKeys.trim() && (
-                  <span className="ml-1 bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
-                    {queryPrimaryKeys.split(',').length}
-                  </span>
-                )}
-              </button>
-            )}
+            <TemplateManager appMode="query">
+              {!focusedMappingId && (
+                <button
+                  onClick={() => setShowPrimaryKeyModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-bg-hover text-text-main text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
+                  title="Set Primary Keys"
+                >
+                  <Key className="w-3.5 h-3.5 text-blue-500" />
+                  Primary Keys
+                  {queryPrimaryKeys.trim() && (
+                    <span className="ml-1 bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                      {queryPrimaryKeys.split(',').length}
+                    </span>
+                  )}
+                </button>
+              )}
+            </TemplateManager>
           </div>
         </div>
       </div>

@@ -5,9 +5,10 @@ import { detectPrimaryKeysFromQuery } from '../utils/queryHelpers';
 
 interface Props {
   appMode: 'data' | 'query';
+  children?: React.ReactNode;
 }
 
-export const TemplateManager: React.FC<Props> = ({ appMode }) => {
+export const TemplateManager: React.FC<Props> = ({ appMode, children }) => {
   const { 
     templates, addTemplate, updateTemplate, removeTemplate,
     activeTemplateId, setActiveTemplateId,
@@ -118,53 +119,58 @@ export const TemplateManager: React.FC<Props> = ({ appMode }) => {
 
   return (
     <>
-      <div className="flex items-center gap-2 shrink-0">
-        <button 
-          onClick={() => setShowLoadModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-bg-hover text-text-main text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
-        >
-          <FolderOpen className="w-3.5 h-3.5 text-blue-500" />
-          Load Template
-        </button>
-        
-        {activeTemplateId && activeTemplate ? (
-          <>
-            <span className="text-[10px] text-text-muted hidden md:inline px-1">
-              Active: <span className="font-bold text-blue-500">{activeTemplate.name}</span>
-            </span>
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex items-center gap-2 shrink-0">
+          {appMode === 'query' && (
             <button 
-              onClick={handleSave}
+              onClick={handleNewTemplate}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
-              title="Save changes to current template"
+              title="Create new blank template"
             >
-              <Save className="w-3.5 h-3.5" /> Save
+              <Plus className="w-3.5 h-3.5" /> New Template
             </button>
+          )}
+
+          <button 
+            onClick={() => setShowLoadModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-bg-hover text-text-main text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-blue-500" />
+            Load Template
+          </button>
+          
+          {activeTemplateId && activeTemplate ? (
+            <>
+              <button 
+                onClick={handleSave}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
+                title="Save changes to current template"
+              >
+                <Save className="w-3.5 h-3.5" /> Save
+              </button>
+              <button 
+                onClick={() => setShowSaveModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-emerald-500/10 text-text-main hover:text-emerald-500 text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
+                title="Save as new template"
+              >
+                <Copy className="w-3.5 h-3.5" /> Save As
+              </button>
+            </>
+          ) : (
             <button 
               onClick={() => setShowSaveModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-emerald-500/10 text-text-main hover:text-emerald-500 text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
-              title="Save as new template"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
+              title="Save as template"
             >
-              <Copy className="w-3.5 h-3.5" /> Save As
+              <Save className="w-3.5 h-3.5" /> Save Template
             </button>
-          </>
-        ) : (
-          <button 
-            onClick={() => setShowSaveModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
-            title="Save as template"
-          >
-            <Save className="w-3.5 h-3.5" /> Save Template
-          </button>
-        )}
-        
-        {appMode === 'query' && (
-          <button 
-            onClick={handleNewTemplate}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-xs font-medium rounded-md border border-border-main shadow-sm transition-colors"
-            title="Create new blank template"
-          >
-            <Plus className="w-3.5 h-3.5" /> New Template
-          </button>
+          )}
+          {children}
+        </div>
+        {activeTemplateId && activeTemplate && (
+          <span className="text-[10px] text-text-muted hidden md:inline px-1">
+            Active: <span className="font-bold text-blue-500">{activeTemplate.name}</span>
+          </span>
         )}
       </div>
 
