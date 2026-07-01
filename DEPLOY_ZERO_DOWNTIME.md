@@ -27,9 +27,9 @@ Hanya lakukan langkah ini **SATU KALI SAJA** jika servermu saat ini masih menjal
    ```bash
    docker-compose build
    ```
-5. Deploy sistem baru ke Swarm (menggunakan trik config untuk membaca `.env`):
+5. Deploy sistem baru ke Swarm (mengexport .env agar terbaca oleh stack):
    ```bash
-   docker-compose config | docker stack deploy -c - darkosync
+   export $(grep -v '^#' .env | xargs) && docker stack deploy -c docker-compose.yml darkosync
    ```
 
 Selamat! Mulai detik ini, aplikasimu sudah berjalan di atas infrastruktur Swarm dan siap untuk update *Zero Downtime* di masa depan.
@@ -48,7 +48,7 @@ git pull origin main
 docker-compose build
 
 # 3. Deploy dan ganti versi secara otomatis tanpa memutus user
-docker-compose config | docker stack deploy -c - darkosync
+export $(grep -v '^#' .env | xargs) && docker stack deploy -c docker-compose.yml darkosync
 ```
 
 ---
