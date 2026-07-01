@@ -63,34 +63,7 @@ services:
         parallelism: 1
         order: start-first
 
-  dummy-db:
-    image: postgres:15-alpine
-    container_name: dummy-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ubuntu
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: sampledb
-    networks:
-      - darkosync-network
 
-  dummy-ssh:
-    image: lscr.io/linuxserver/openssh-server:latest
-    container_name: dummy-ssh
-    restart: unless-stopped
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - PUBLIC_KEY=ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDa24uWXSYjCtJYKQBwQL6EjhwmY2E70ACTAUSC06qeDFaz4hzzwSeLUlIfCA67kkrYh2CoSjYBdDQ51jNECRsrt7OZkXoOuE8eMsOmyfd9TfvRNkyM2WIvG7/tH958Osq0Njcrqd7nYqjMO/qUAOJngfqhYsFVzehxPfvZ4aQ91uiL3cPGmXeNMNUjjNCKWMST2YtgfFYTS/GF0rIzDqqlvdurKyvIwcBmAXzzWaoYDGn/0IpfVPuzK0jNGSWwdHiVhhWhJun9Q3SIXF1XSC31kjPm1bEGvutQ1vvcq0+VRdPIFAQLyk0GILeBxDhT63tjaeVunqD8POMQ/Dj/1MWd awand@DESKTOP-E9J35AP
-      - USER_NAME=ubuntu
-      - USER_PASSWORD=password123
-      - PASSWORD_ACCESS=true
-      - SUDO_ACCESS=false
-    networks:
-      - darkosync-network
-    ports:
-      - "2222:2222"
 
 networks:
   darkosync-network:
