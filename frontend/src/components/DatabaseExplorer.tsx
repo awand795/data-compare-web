@@ -267,6 +267,10 @@ export const DatabaseExplorer: React.FC = () => {
                <button 
                  onClick={(e) => {
                    e.stopPropagation();
+                   if (actionMenu?.nodeId === node.id) {
+                     setActionMenu(null);
+                     return;
+                   }
                    const rect = e.currentTarget.getBoundingClientRect();
                    // If the menu would go off the bottom of the screen, adjust it up
                    const y = rect.bottom > window.innerHeight - 150 ? rect.top - 100 : rect.bottom;
