@@ -2,7 +2,7 @@ import psycopg2
 import psycopg2.extras
 
 source_url = "postgres://avnadmin:YOUR_AIVEN_PASSWORD@***REMOVED***:25789/defaultdb?sslmode=require"
-target_url = "postgres://postgres:***REMOVED***@***REMOVED***:8832/data_setting_sync"
+target_url = "postgres://postgres:YOUR_DARKOSUITE_PASSWORD@***REMOVED***:8832/data_setting_sync"
 
 schema_file = r"backend/src/main/resources/schema.sql"
 
