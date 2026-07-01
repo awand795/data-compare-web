@@ -24,6 +24,15 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    stop_grace_period: 30m
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        order: start-first
 
   # React Frontend with Nginx
   frontend:
@@ -44,6 +53,15 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    stop_grace_period: 1m
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        order: start-first
 
   dummy-db:
     image: postgres:15-alpine
