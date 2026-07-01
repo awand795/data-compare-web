@@ -630,7 +630,7 @@ export const useAppStore = create<AppState>()(
   addTemplate: (template) => {
     const payload = { ...template, tableMappings: template.tableMappings ? JSON.stringify(template.tableMappings) : null };
     axios.post('/api/templates', payload).catch(e => console.error('Failed to save template to backend:', e));
-    set((state) => ({ templates: [...state.templates, template] }));
+    set((state) => ({ templates: [template, ...state.templates] }));
   },
   updateTemplate: (id, updates) => {
     set((state) => {
