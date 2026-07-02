@@ -388,13 +388,13 @@ public class ConnectionManagerService {
             }
         }
 
-        config.setMaximumPoolSize(10);
+        config.setMaximumPoolSize(20);    // Diperbesar agar aman untuk sync banyak tabel paralel
         config.setMinimumIdle(2);
         config.setConnectionTimeout(timeoutMs);
         config.setIdleTimeout(600000);    // 10 menit
         config.setMaxLifetime(1800000);   // 30 menit
         config.setKeepaliveTime(300000);  // 5 menit
-        config.setLeakDetectionThreshold(120000);
+        config.setLeakDetectionThreshold(0); // Matikan (0) karena proses stream sync memang memakan waktu lama, agar log tidak penuh false alarm
         config.setConnectionTestQuery("SELECT 1");
 
         HikariDataSource ds = new HikariDataSource(config);
