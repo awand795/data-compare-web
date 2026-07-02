@@ -21,7 +21,7 @@ public class ConnectionManagerService {
 
     private static final Logger logger = LoggerFactory.getLogger(ConnectionManagerService.class);
 
-    private final int MAX_POOL_CACHE = 3;
+    private final int MAX_POOL_CACHE = 100;
     private final ReentrantLock cacheLock = new ReentrantLock();
     private final java.util.concurrent.ConcurrentLinkedQueue<Map.Entry<String, Object>> evictedEntries =
         new java.util.concurrent.ConcurrentLinkedQueue<>();
