@@ -2,7 +2,7 @@
 services:
   # Spring Boot Backend (Connected to Internal Database)
   backend:
-    image: darkosync-backend:latest
+    image: awandadarkotech/darkosync-backend:latest
     build:
       context: ./backend
     container_name: darkosync-backend
@@ -40,7 +40,7 @@ services:
 
   # React Frontend with Nginx
   frontend:
-    image: darkosync-frontend:latest
+    image: awandadarkotech/darkosync-frontend:latest
     build:
       context: ./frontend
       args:
