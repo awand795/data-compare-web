@@ -38,18 +38,18 @@ Selamat! Mulai detik ini, aplikasimu sudah berjalan di atas infrastruktur Swarm 
 
 ## 🚀 Langkah Rutin: Update di Kemudian Hari (Zero Downtime)
 
-Untuk update-update selanjutnya (misal besok ada rilis fitur baru), kamu **TIDAK PERLU LAGI** menjalankan `docker-compose down`. Cukup jalankan 3 perintah ini secara berurutan:
+Untuk update-update selanjutnya (misal besok ada rilis fitur baru), kamu **TIDAK PERLU LAGI** menjalankan perintah manual satu per satu. Cukup jalankan script otomatisasi yang sudah disediakan:
 
 ```bash
-# 1. Ambil kode terbaru dari Git
+# Tarik kode terbaru dan pastikan script bisa dieksekusi
 git pull origin main
+chmod +x deploy.sh
 
-# 2. Build ulang image dengan kode terbaru secara lokal
-docker-compose build
-
-# 3. Deploy dan ganti versi secara otomatis tanpa memutus user
-export $(grep -v '^#' .env | xargs) && docker stack deploy -c docker-compose.yml darkosync
+# Eksekusi proses build & deploy secara otomatis
+./deploy.sh
 ```
+
+**Catatan:** Script `deploy.sh` ini sudah membungkus langkah `build`, `docker stack deploy`, serta `docker service update --force` untuk memaksa Docker Swarm mengenali *image* lokal terbaru dan menjalankan transisi *Zero Downtime* dengan sempurna.
 
 ---
 
