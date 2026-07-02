@@ -44,9 +44,25 @@ public class ConnectionManagerService {
 
     private void drainEvictedEntries() {
         Map.Entry<String, Object> entry;
-        while ((entry = evictedEntries.poll()) != null) {
+        int initialSize = evictedEntries.size();
+        int attempts = 0;
+        while ((entry = evictedEntries.poll()) != null && attempts < initialSize) {
+            attempts++;
             final String key = entry.getKey();
             final Object dsObj = entry.getValue();
+            
+            String connId = null;
+            if (key != null && key.contains("|")) {
+                connId = key.substring(0, key.indexOf('|'));
+                java.util.concurrent.Semaphore sem = poolSemaphores.get(connId);
+                // Cek apakah pool masih digunakan oleh job lain (Semaphore dikunci/antri)
+                if (sem != null && (sem.availablePermits() == 0 || sem.hasQueuedThreads())) {
+                    logger.debug("Deferred closing of in-use connection pool: {}", connId);
+                    evictedEntries.add(entry);
+                    continue;
+                }
+            }
+
             try {
                 if (dsObj instanceof HikariDataSource hds) {
                     hds.close();
@@ -55,13 +71,13 @@ public class ConnectionManagerService {
             } catch (Exception e) {
                 logger.warn("Failed to close evicted HikariCP pool: {}", e.getMessage());
             }
-            if (key != null && key.contains("|")) {
-                String connId = key.substring(0, key.indexOf('|'));
+            if (connId != null) {
                 boolean stillInUse;
                 cacheLock.lock();
                 try {
+                    String finalConnId = connId; // for lambda compatibility
                     stillInUse = dataSourceCache.keySet().stream()
-                        .anyMatch(k -> k.startsWith(connId + "|"));
+                        .anyMatch(k -> k.startsWith(finalConnId + "|"));
                 } finally {
                     cacheLock.unlock();
                 }
@@ -69,13 +85,13 @@ public class ConnectionManagerService {
                     sshTunnelService.closeTunnel(connId);
                     logger.info("Closed evicted SSH tunnel for: {}", connId);
                 }
+                poolSemaphores.remove(connId);
             }
         }
     }
 
     public void evictConnection(String connectionId) {
         if (connectionId == null || connectionId.isBlank()) return;
-        List<Object> toClose = new java.util.ArrayList<>();
         cacheLock.lock();
         try {
             java.util.List<String> keysToRemove = new java.util.ArrayList<>();
@@ -86,24 +102,14 @@ public class ConnectionManagerService {
             }
             for (String key : keysToRemove) {
                 Object ds = dataSourceCache.remove(key);
-                if (ds != null) toClose.add(ds);
+                if (ds != null) {
+                    evictedEntries.add(Map.entry(key, ds));
+                }
             }
         } finally {
             cacheLock.unlock();
         }
-        // Tutup DataSource DI LUAR lock untuk menghindari deadlock
-        for (Object ds : toClose) {
-            try {
-                if (ds instanceof HikariDataSource hds) {
-                    hds.close();
-                    logger.info("Closed evicted HikariCP pool from evictConnection: {}", hds.getPoolName());
-                }
-            } catch (Exception e) {
-                logger.warn("Failed to close DataSource during eviction: {}", e.getMessage());
-            }
-        }
-        // Do not remove poolSemaphores here to avoid race conditions with running queries
-        sshTunnelService.closeTunnel(connectionId);
+        drainEvictedEntries();
     }
 
     @Autowired
@@ -385,9 +391,9 @@ public class ConnectionManagerService {
         config.setMaximumPoolSize(10);
         config.setMinimumIdle(2);
         config.setConnectionTimeout(timeoutMs);
-        config.setIdleTimeout(120000);    // 2 menit — kasih waktu lebih sebelum evict
-        config.setMaxLifetime(300000);    // 5 menit
-        config.setKeepaliveTime(50000);   // harus < idleTimeout=120000
+        config.setIdleTimeout(600000);    // 10 menit
+        config.setMaxLifetime(1800000);   // 30 menit
+        config.setKeepaliveTime(300000);  // 5 menit
         config.setLeakDetectionThreshold(120000);
         config.setConnectionTestQuery("SELECT 1");
 
