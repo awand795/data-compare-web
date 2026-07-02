@@ -34,6 +34,8 @@ export const TableDetailPanel: React.FC = () => {
   const [limit, setLimit] = useState<number | 'unlimited' | 'custom'>(defaultRowLimit || 100);
   const [customLimit, setCustomLimit] = useState<string>('');
   const [offset, setOffset] = useState<number>(0);
+  
+  const [execTime, setExecTime] = useState<number | null>(null);
 
   const [hasMoreUnlimited, setHasMoreUnlimited] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -115,10 +117,14 @@ export const TableDetailPanel: React.FC = () => {
 
 
 
-  const fetchData = async (isLoadMore = false) => {
+  const fetchData = async (isAppend = false) => {
     if (!conn || !explorerTableName) return;
-    if (!isLoadMore) setLoading(true);
+    if (!isAppend) {
+      setLoading(true);
+      setExecTime(null);
+    }
     setError(null);
+    const startTime = performance.now();
     try {
       const schema = explorerSchemaName || 'null';
       
@@ -210,6 +216,7 @@ export const TableDetailPanel: React.FC = () => {
     } finally {
       setLoading(false);
       setIsFetchingMore(false);
+      setExecTime(Math.round(performance.now() - startTime));
     }
   };
 
@@ -391,7 +398,7 @@ export const TableDetailPanel: React.FC = () => {
           {limit !== 'unlimited' && (
             <div className="flex items-center gap-3">
               <span className="text-xs text-text-muted">
-                Showing {offset + 1} - {offset + (limit as number)}
+                Showing {offset + 1} - {offset + (limit as number)} {execTime != null && `(${execTime}ms)`}
               </span>
               <div className="flex items-center gap-1">
                 <button 
@@ -410,6 +417,11 @@ export const TableDetailPanel: React.FC = () => {
                 </button>
               </div>
             </div>
+          )}
+          {limit === 'unlimited' && execTime != null && (
+            <span className="text-xs text-text-muted">
+              Load time: {execTime}ms
+            </span>
           )}
         </div>
       )}

@@ -45,6 +45,11 @@ export const QueryWorkspace: React.FC = () => {
   const [workspaceDiffResult, setWorkspaceDiffResult] = useState<any>({ columns: [], rows: [], summary: null });
   const [comparing, setComparing] = useState(false);
   const [localBatchProgress, setLocalBatchProgress] = useState<{ processed: number, total: number } | null>(null);
+  
+  const [sourceExecTime, setSourceExecTime] = useState<number | null>(null);
+  const [targetExecTime, setTargetExecTime] = useState<number | null>(null);
+  const [compareExecTime, setCompareExecTime] = useState<number | null>(null);
+
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'DIFFERENT' | 'SOURCE_ONLY' | 'TARGET_ONLY' | 'IDENTICAL'>('ALL');
   const [showPrimaryKeyModal, setShowPrimaryKeyModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -138,11 +143,14 @@ export const QueryWorkspace: React.FC = () => {
     const setLoading = isSource ? setLoadingSource : setLoadingTarget;
     const setResults = isSource ? setSourceResults : setTargetResults;
     const setError = isSource ? setSourceError : setTargetError;
+    const setExecTime = isSource ? setSourceExecTime : setTargetExecTime;
 
     if (!conn || !rawQuery.trim()) return;
 
     setLoading(true);
     setError('');
+    setExecTime(null);
+    const startTime = performance.now();
     
     let finalQuery = applyLimit(rawQuery, limit);
 
@@ -224,6 +232,7 @@ export const QueryWorkspace: React.FC = () => {
       setError(err.message);
     } finally {
       setLoading(false);
+      setExecTime(Math.round(performance.now() - startTime));
     }
   };
 
@@ -235,6 +244,8 @@ export const QueryWorkspace: React.FC = () => {
     if (!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim()) return;
     setComparing(true);
     setLocalBatchProgress(null);
+    setCompareExecTime(null);
+    const startTime = performance.now();
     abortControllerRef.current = new AbortController();
     setViewMode('diff');
     setWorkspaceDiffResult({ columns: [], rows: [], summary: null, status: 'comparing' });
@@ -478,6 +489,7 @@ export const QueryWorkspace: React.FC = () => {
         counters: { ...counters },
         status: 'done'
       });
+      setCompareExecTime(Math.round(performance.now() - startTime));
       
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -705,6 +717,7 @@ export const QueryWorkspace: React.FC = () => {
                 copied={copied}
                 isFullscreen={fullscreenPanel === 'source'}
                 toggleFullscreen={() => setFullscreenPanel(fullscreenPanel === 'source' ? null : 'source')}
+                execTime={sourceExecTime}
               />
             </Panel>
             <Separator className="w-1 bg-border-main hover:bg-blue-500/50 transition-colors cursor-col-resize flex items-center justify-center">
@@ -729,6 +742,7 @@ export const QueryWorkspace: React.FC = () => {
                 copied={copied}
                 isFullscreen={fullscreenPanel === 'target'}
                 toggleFullscreen={() => setFullscreenPanel(fullscreenPanel === 'target' ? null : 'target')}
+                execTime={targetExecTime}
               />
             </Panel>
           </Group>
@@ -741,6 +755,9 @@ export const QueryWorkspace: React.FC = () => {
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-500 uppercase tracking-wider">
                       <ArrowLeftRight className="w-3 h-3" /> Comparison Results
+                      {!comparing && compareExecTime != null && (
+                        <span className="text-text-muted normal-case ml-1 font-medium">({compareExecTime}ms)</span>
+                      )}
                   </div>
                   {comparing && localBatchProgress && localBatchProgress.total > 0 && (
                     <div className="flex items-center gap-1.5 text-blue-500 text-[11px] font-bold">

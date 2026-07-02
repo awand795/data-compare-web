@@ -15,7 +15,8 @@ export const ResultFooter: React.FC<{
   downloadCSV: (side: 'source' | 'target') => void;
   copyResults: (side: 'source' | 'target') => void;
   copied: string | null;
-}> = ({ data, cols, side, downloadCSV, copyResults, copied }) => {
+  execTime?: number | null;
+}> = ({ data, cols, side, downloadCSV, copyResults, copied, execTime }) => {
   const handleExportExcel = () => {
     if (data.length === 0) return;
     const exportData = data.map(row => {
@@ -50,7 +51,7 @@ export const ResultFooter: React.FC<{
 
   return (
     <div className="shrink-0 bg-bg-header border-t border-border-main px-3 py-1.5 flex items-center justify-between text-xs text-text-muted">
-      <span>{data.length} rows × {cols.length} columns</span>
+      <span>{data.length} rows × {cols.length} columns {execTime != null && `(${execTime}ms)`}</span>
       <div className="flex items-center gap-3">
         <button onClick={() => downloadCSV(side)} className="flex items-center gap-1 hover:text-blue-500 transition-colors">
           <Download className="w-3 h-3" /> CSV
@@ -89,7 +90,8 @@ export const ResultTable: React.FC<{
   copied: string | null;
   isMaximized?: boolean;
   onToggleMaximize?: () => void;
-}> = ({ data, error, loading, side, format, downloadCSV, copyResults, copied, isMaximized, onToggleMaximize }) => {
+  execTime?: number | null;
+}> = ({ data, error, loading, side, format, downloadCSV, copyResults, copied, isMaximized, onToggleMaximize, execTime }) => {
   const [colSearch, setColSearch] = React.useState('');
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -138,7 +140,7 @@ export const ResultTable: React.FC<{
         <div className="flex-1 overflow-auto p-3">
           <pre className="text-[10px] font-mono text-text-main whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>
         </div>
-        <ResultFooter data={data} cols={columns} side={side} downloadCSV={downloadCSV} copyResults={copyResults} copied={copied} />
+        <ResultFooter data={data} cols={columns} side={side} downloadCSV={downloadCSV} copyResults={copyResults} copied={copied} execTime={execTime} />
       </div>
     );
   }
@@ -217,7 +219,7 @@ export const ResultTable: React.FC<{
           </tbody>
         </table>
       </div>
-      <ResultFooter data={data} cols={filteredCols} side={side} downloadCSV={downloadCSV} copyResults={copyResults} copied={copied} />
+      <ResultFooter data={data} cols={filteredCols} side={side} downloadCSV={downloadCSV} copyResults={copyResults} copied={copied} execTime={execTime} />
     </div>
   );
 };
@@ -226,7 +228,7 @@ export const SidePanel = ({
   side, conn, query, setQuery, loading, results, error,
   limit, setLimit, format, setFormat,
   executeQuery, downloadCSV, copyResults, copied,
-  isFullscreen, toggleFullscreen
+  isFullscreen, toggleFullscreen, execTime
 }: any) => {
   const { tableMappings, focusedMappingId, theme } = useAppStore();
   const [resultsMaximized, setResultsMaximized] = React.useState(false);
@@ -340,6 +342,7 @@ export const SidePanel = ({
               copied={copied}
               isMaximized={resultsMaximized}
               onToggleMaximize={() => setResultsMaximized(!resultsMaximized)}
+              execTime={execTime}
             />
           </div>
         </Panel>

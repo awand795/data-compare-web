@@ -1,0 +1,77 @@
+﻿name: dashboarddbcomparecustom
+services:
+  backend:
+    build:
+      context: D:\my-project\dashboard db compare custom\backend
+      dockerfile: Dockerfile
+    container_name: darkosync-backend
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        order: start-first
+    environment:
+      DB_HOST: war.darkosuite.com
+      DB_NAME: data_setting_sync
+      DB_PASSWORD: dataAnalyticW2024
+      DB_PORT: "8832"
+      DB_USER: postgres
+      TZ: Asia/Jakarta
+    image: darkosync-backend:latest
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
+    networks:
+      darkosync-network: null
+    ports:
+      - mode: ingress
+        target: 8081
+        published: "5300"
+        protocol: tcp
+    restart: unless-stopped
+    stop_grace_period: 30m0s
+    volumes:
+      - type: bind
+        source: D:\my-project\dashboard db compare custom\ssh-keys
+        target: /app/ssh-keys
+        read_only: true
+        bind: {}
+  frontend:
+    build:
+      context: D:\my-project\dashboard db compare custom\frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ""
+    container_name: darkosync-frontend
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        order: start-first
+    image: darkosync-frontend:latest
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
+    networks:
+      darkosync-network: null
+    ports:
+      - mode: ingress
+        target: 80
+        published: "5173"
+        protocol: tcp
+    restart: unless-stopped
+    stop_grace_period: 1m0s
+networks:
+  darkosync-network:
+    name: darkosync-swarm-net
+    driver: overlay
