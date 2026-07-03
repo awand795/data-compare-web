@@ -109,6 +109,18 @@ public class DynamicSchedulerService {
     }
 
     public void executeCompareJob(String scheduleId) {
+        // Anti-collision for multi-instance (Docker Swarm)
+        try {
+            Thread.sleep((long) (Math.random() * 2000));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        if (scheduleManagerService.isJobAlreadyRunning(scheduleId)) {
+            logger.info("Job {} skipped — another instance is currently running it (found RUNNING status in DB)", scheduleId);
+            return;
+        }
+
         Semaphore sem = getScheduleSemaphore(scheduleId);
         boolean acquired = false;
         try {
@@ -462,11 +474,11 @@ public class DynamicSchedulerService {
             String message = String.format(telegramTemplate, tableDetailsHtml.toString());
             String discordMessage = String.format(discordTemplate, tableDetailsDiscord.toString());
 
-            boolean shouldNotify = false;
+            boolean shouldNotify = true;
             
-            // Only send if there are diffs
-            if (hasDiffs) {
-                shouldNotify = true;
+            // Only send if there are diffs, unless notifyOnlyOnDiff is false
+            if (schedule.isNotifyOnlyOnDiff() && !hasDiffs) {
+                shouldNotify = false;
             }
             
             // Or if there is an error, but ONLY if the last run didn't have an error (throttle error spam)
@@ -496,9 +508,9 @@ public class DynamicSchedulerService {
             result.setErrorMessage(e.getMessage());
             try {
                 scheduleManagerService.updateResult(result);
-                scheduleManagerService.deleteResultRows(result.getId()); // Clean up orphan result rows on failure
+                // Removed deleteResultRows to prevent partial data wipeout on error
             } catch (Exception saveErr) {
-                logger.error("Failed to save error result or cleanup result rows: {}", saveErr.getMessage());
+                logger.error("Failed to save error result: {}", saveErr.getMessage());
             }
         }
     }

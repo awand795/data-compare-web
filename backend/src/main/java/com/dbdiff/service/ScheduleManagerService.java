@@ -201,4 +201,16 @@ public class ScheduleManagerService {
         try { r.setTableName(rs.getString("table_name")); } catch (Exception ignored) {}
         return r;
     }
+
+    public boolean isJobAlreadyRunning(String scheduleId) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM schedule_results WHERE schedule_id = ? AND error_message = 'RUNNING...'", 
+                Integer.class, scheduleId
+            );
+            return count != null && count > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }
