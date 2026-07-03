@@ -117,7 +117,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
     }
   };
 
-  const sqlExtension = useMemo(() => sql({ schema: schemaData }), [schemaData]);
+  const sqlExtension = useMemo(() => sql({ schema: schemaData, upperCaseKeywords: true }), [schemaData]);
 
   const sqlLinter = useMemo(() => linter((view) => {
     const diagnostics: Diagnostic[] = [];

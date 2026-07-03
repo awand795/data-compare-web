@@ -1,0 +1,78 @@
+
+services:
+  # Spring Boot Backend (Connected to Internal Database)
+  backend:
+    image: awandadarkotech/darkosync-backend:latest
+    build:
+      context: ./backend
+    container_name: darkosync-backend
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Jakarta
+      DB_HOST: war.darkosuite.com
+      DB_PORT: 8832
+      DB_NAME: data_setting_sync
+      DB_USER: postgres
+      DB_PASSWORD: ${INTERNAL_DB_PASSWORD}
+    ports:
+      - target: 8081
+        published: 5300
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - ./ssh-keys:/app/ssh-keys:ro
+    networks:
+      - darkosync-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    stop_grace_period: 30m
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        order: start-first
+
+  # React Frontend with Nginx
+  frontend:
+    image: awandadarkotech/darkosync-frontend:latest
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ""
+    container_name: darkosync-frontend
+    restart: unless-stopped
+    ports:
+      - target: 80
+        published: 5173
+        protocol: tcp
+        mode: ingress
+
+    networks:
+      - darkosync-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    stop_grace_period: 1m
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        order: start-first
+
+
+
+networks:
+  darkosync-network:
+    name: darkosync-local-net
+    driver: bridge

@@ -1,4 +1,4 @@
-﻿name: dashboarddbcomparecustom
+name: dashboarddbcomparecustom
 services:
   backend:
     build:
@@ -31,7 +31,7 @@ services:
     ports:
       - mode: ingress
         target: 8081
-        published: "5300"
+        published: 5300
         protocol: tcp
     restart: unless-stopped
     stop_grace_period: 30m0s
@@ -67,7 +67,7 @@ services:
     ports:
       - mode: ingress
         target: 80
-        published: "5173"
+        published: 5173
         protocol: tcp
     restart: unless-stopped
     stop_grace_period: 1m0s

@@ -112,7 +112,7 @@ public class DynamicSchedulerService {
         Semaphore sem = getScheduleSemaphore(scheduleId);
         boolean acquired = false;
         try {
-            acquired = sem.tryAcquire(1, java.util.concurrent.TimeUnit.MINUTES);
+            acquired = sem.tryAcquire(0, java.util.concurrent.TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             logger.warn("Job {} interrupted while waiting for semaphore", scheduleId);
