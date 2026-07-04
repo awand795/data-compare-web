@@ -474,25 +474,20 @@ public class DynamicSchedulerService {
             String message = String.format(telegramTemplate, tableDetailsHtml.toString());
             String discordMessage = String.format(discordTemplate, tableDetailsDiscord.toString());
 
-            boolean shouldNotify = true;
+            boolean shouldNotify = false;
             
-            // Only send if there are diffs, unless notifyOnlyOnDiff is false
-            if (schedule.isNotifyOnlyOnDiff() && !hasDiffs) {
-                shouldNotify = false;
+            if (hasDiffs) {
+                shouldNotify = true;
             }
             
-            // Or if there is an error, but ONLY if the last run didn't have an error (throttle error spam)
             if (hasErrors) {
-                Boolean wasError = lastRunErrorState.getOrDefault(scheduleId, false);
-                if (!wasError) {
-                    shouldNotify = true;
-                }
+                shouldNotify = true;
             }
             
             lastRunErrorState.put(scheduleId, hasErrors);
 
             if (!shouldNotify) {
-                logger.info("Skipping notification for schedule {} (no diffs, or error already reported).", schedule.getName());
+                logger.info("Skipping notification for schedule {} (no diffs).", schedule.getName());
             } else {
                 if (schedule.getTelegramChannelId() != null && !schedule.getTelegramChannelId().isEmpty()) {
                     logger.info("Sending to Telegram channel: {}", schedule.getTelegramChannelId());
@@ -511,6 +506,29 @@ public class DynamicSchedulerService {
                 // Removed deleteResultRows to prevent partial data wipeout on error
             } catch (Exception saveErr) {
                 logger.error("Failed to save error result: {}", saveErr.getMessage());
+            }
+            
+            lastRunErrorState.put(scheduleId, true);
+            
+            // Send fatal error notification
+            String errorTitleHtml = "<b>❌ Job Fatal Error!</b>";
+            String errorTitleDiscord = "❌ **Job Fatal Error!**";
+            
+            String telegramErrorMsg = String.format(
+                    "%s\n\n<b>Job:</b> <i>%s</i>\n<b>Run Time:</b> %s\n<b>Status:</b> ❌ ERROR\n\n<b>Error Message:</b>\n%s",
+                    errorTitleHtml, schedule.getName(), result.getRunTime().toString().replace("T", " "), e.getMessage()
+            );
+            
+            String discordErrorMsg = String.format(
+                    "%s\n\n**Job:** *%s*\n**Run Time:** %s\n**Status:** ❌ ERROR\n\n**Error Message:**\n%s",
+                    errorTitleDiscord, schedule.getName(), result.getRunTime().toString().replace("T", " "), e.getMessage()
+            );
+            
+            if (schedule.getTelegramChannelId() != null && !schedule.getTelegramChannelId().isEmpty()) {
+                notificationService.sendToChannel(schedule.getTelegramChannelId(), telegramErrorMsg);
+            }
+            if (schedule.getDiscordChannelId() != null && !schedule.getDiscordChannelId().isEmpty()) {
+                notificationService.sendToChannel(schedule.getDiscordChannelId(), discordErrorMsg);
             }
         }
     }
