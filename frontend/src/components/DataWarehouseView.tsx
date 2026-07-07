@@ -89,7 +89,7 @@ export const DataWarehouseView: React.FC = () => {
                     onChange={e => setSourceConnId(e.target.value)}
                   >
                     <option value="">Select source database...</option>
-                    {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
+                    {connections.filter(c => c.enableDataWarehouse).map(c => <option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
                   </select>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -102,7 +102,7 @@ export const DataWarehouseView: React.FC = () => {
                     onChange={e => setTargetConnId(e.target.value)}
                   >
                     <option value="">Select ClickHouse connection...</option>
-                    {connections.map(c => <option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
+                    {connections.filter(c => c.type === 'clickhouse').map(c => <option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
                   </select>
                 </div>
               </div>

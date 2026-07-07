@@ -39,6 +39,7 @@ export type Connection = {
   fetchSize?: number;
   readOnly?: boolean;
   extraProps?: string;
+  enableDataWarehouse?: boolean;
 };
 
 export type DiffCell = {

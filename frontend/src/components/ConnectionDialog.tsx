@@ -283,6 +283,26 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                       </div>
                     </div>
                   </div>
+
+                  {formData.type !== 'clickhouse' && (
+                    <div className="flex flex-col gap-1 mt-2 border-t border-border-item pt-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          name="enableDataWarehouse"
+                          checked={formData.enableDataWarehouse || false}
+                          onChange={handleChange}
+                          className="w-4 h-4 rounded border-border-input bg-bg-input text-indigo-500 focus:ring-indigo-500"
+                        />
+                        <span className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                          Link to Data Warehouse (ClickHouse) <Database className="w-3.5 h-3.5 text-indigo-400" />
+                        </span>
+                      </label>
+                      <p className="text-[11px] text-text-muted ml-6">
+                        Check this if you want to use this connection as a source in the Data Warehouse pipeline.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
