@@ -34,7 +34,7 @@ export const DatabaseExplorer: React.FC = () => {
     return () => window.removeEventListener('click', handleClick);
   }, []);
 
-  // Initialize root nodes (servers) when connections change
+  // Initialize or update root nodes (servers) when connections change
   useEffect(() => {
     connections.forEach(conn => {
       if (!nodes[conn.id]) {
@@ -47,6 +47,13 @@ export const DatabaseExplorer: React.FC = () => {
           isLoaded: false,
           isLoading: false,
           isExpanded: false,
+          metadata: conn
+        });
+      } else {
+        // Update existing node properties if it was edited
+        patchNode(conn.id, {
+          name: conn.name,
+          label: `${conn.name} (${conn.database})`,
           metadata: conn
         });
       }
