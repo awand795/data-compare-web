@@ -315,6 +315,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                             <input 
                               type="file" 
                               className="hidden" 
+                              onClick={(e) => { e.currentTarget.value = ''; }}
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
@@ -348,6 +349,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                             <input 
                               type="file" 
                               className="hidden" 
+                              onClick={(e) => { e.currentTarget.value = ''; }}
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
@@ -381,6 +383,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                             <input 
                               type="file" 
                               className="hidden" 
+                              onClick={(e) => { e.currentTarget.value = ''; }}
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
@@ -465,6 +468,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                                 <input 
                                   type="file" 
                                   className="hidden" 
+                                  onClick={(e) => { e.currentTarget.value = ''; }}
                                   onChange={(e) => {
                                     const file = e.target.files?.[0];
                                     if (file) {
