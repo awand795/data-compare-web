@@ -293,12 +293,16 @@ export const DatabaseExplorer: React.FC = () => {
             Loading...
           </div>
         )}
-        {node.isExpanded && node.childrenIds?.map(cid => renderNode(cid, depth + 1))}
+        {node.isExpanded && [...(node.childrenIds || [])]
+          .sort((a, b) => (nodes[a]?.name || '').localeCompare(nodes[b]?.name || ''))
+          .map(cid => renderNode(cid, depth + 1))}
       </div>
     );
   };
 
-  const rootNodes = Object.values(nodes).filter(n => n.parentId === null);
+  const rootNodes = Object.values(nodes)
+    .filter(n => n.parentId === null)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="flex flex-col h-full bg-bg-main border-r border-border-main">

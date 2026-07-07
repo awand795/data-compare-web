@@ -55,7 +55,7 @@ public class ConnectionRepository {
     };
 
     public List<ConnectionDetails> findAll() {
-        return jdbcTemplate.query("SELECT * FROM connections", rowMapper);
+        return jdbcTemplate.query("SELECT * FROM connections ORDER BY name ASC", rowMapper);
     }
     
     public ConnectionDetails findById(String id) {

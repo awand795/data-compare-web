@@ -33,10 +33,10 @@ services:
       update_config:
         parallelism: 1
         delay: 10s
-        order: start-first
+        order: stop-first
       rollback_config:
         parallelism: 1
-        order: start-first
+        order: stop-first
 
   # React Frontend with Nginx
   frontend:
@@ -65,10 +65,10 @@ services:
       update_config:
         parallelism: 1
         delay: 5s
-        order: start-first
+        order: stop-first
       rollback_config:
         parallelism: 1
-        order: start-first
+        order: stop-first
 
 
 
