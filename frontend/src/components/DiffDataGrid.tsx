@@ -44,8 +44,8 @@ export const DiffDataGrid: React.FC<DiffDataGridProps> = ({ mappingId, filterSta
   const columns = useMemo<GridColumn[]>(() => {
     if (!diffResult) return [];
     const cols: GridColumn[] = [
-      { title: 'Status', width: columnWidths['status'] || 100, id: 'status' },
-      { title: 'Key', width: columnWidths['rowKey'] || 150, id: 'rowKey' },
+      { title: 'Status', width: columnWidths['status'] || 90, id: 'status' },
+      { title: 'Key', width: columnWidths['rowKey'] || 180, id: 'rowKey' },
     ];
     diffResult.columns.forEach((colName: string) => {
       cols.push({ title: colName, width: columnWidths[colName] || 150, id: colName });

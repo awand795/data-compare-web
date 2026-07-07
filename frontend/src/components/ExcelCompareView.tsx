@@ -510,7 +510,7 @@ export const ExcelCompareView: React.FC = () => {
                   </>
                 ) : (
                   <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto max-w-[250px] sm:max-w-[400px] md:max-w-[600px] focus:border-blue-500 outline-none"
+                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto w-full sm:max-w-[360px] lg:max-w-[500px] focus:border-blue-500 outline-none"
                     value={sourceConnectionId || ''}
                     onChange={e => { setSourceConnectionId(e.target.value); handleClearExcelMappings(); }}
                   >
@@ -568,7 +568,7 @@ export const ExcelCompareView: React.FC = () => {
                   </>
                 ) : (
                   <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto max-w-[250px] sm:max-w-[400px] md:max-w-[600px] focus:border-emerald-500 outline-none"
+                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto w-full sm:max-w-[360px] lg:max-w-[500px] focus:border-emerald-500 outline-none"
                     value={targetConnectionId || ''}
                     onChange={e => { setTargetConnectionId(e.target.value); handleClearExcelMappings(); }}
                   >
@@ -680,9 +680,9 @@ export const ExcelCompareView: React.FC = () => {
                             : <Square className="w-3.5 h-3.5" />}
                         </button>
                       </th>
-                      <th className="py-2 px-3">Label / Source</th>
+                      <th className="py-2 px-3 w-[35%] min-w-[140px]">Label / Source</th>
                       <th className="py-2 px-3 text-center w-8">→</th>
-                      <th className="py-2 px-3">Target</th>
+                      <th className="py-2 px-3 w-[35%] min-w-[140px]">Target</th>
                       <th className="py-2 px-3 text-center">Status</th>
                       <th className="py-2 px-3 text-right">Diff</th>
                       <th className="py-2 px-3 text-right">Source Only</th>
@@ -736,8 +736,8 @@ export const ExcelCompareView: React.FC = () => {
                                 : <Square className="w-3.5 h-3.5 text-text-muted" />}
                             </button>
                           </td>
-                          <td className="py-1.5 px-2">
-                            <span className={clsx("font-mono text-xs font-medium", m.sourceTable ? "text-text-main" : "text-text-muted italic")}>
+                          <td className="py-1.5 px-2 max-w-[360px]">
+                            <span className={clsx("font-mono text-xs font-medium truncate", m.sourceTable ? "text-text-main" : "text-text-muted italic")}>
                               {displayName}
                             </span>
                             {hasCustom && (
@@ -756,8 +756,8 @@ export const ExcelCompareView: React.FC = () => {
                           <td className="py-2 px-3 text-center text-text-muted">
                             <ArrowRight className="w-3 h-3 inline" />
                           </td>
-                          <td className="py-1.5 px-2">
-                            <span className={clsx("font-mono text-xs font-medium", m.targetTable ? "text-text-main" : "text-text-muted italic")}>
+                          <td className="py-1.5 px-2 max-w-[360px]">
+                            <span className={clsx("font-mono text-xs font-medium truncate", m.targetTable ? "text-text-main" : "text-text-muted italic")}>
                               {m.targetTable || '(none)'}
                             </span>
                           </td>

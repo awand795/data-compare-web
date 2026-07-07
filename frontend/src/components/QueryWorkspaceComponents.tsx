@@ -199,7 +199,7 @@ export const ResultTable: React.FC<{
                 >
                   <td className="px-2 py-1 text-[10px] text-text-muted font-mono">{i + 1}</td>
                   {filteredCols.map(col => (
-                    <td key={col} className="px-2 py-1 text-[11px] font-mono text-text-main border-r border-border-item max-w-[240px] truncate">
+                    <td key={col} className="px-2 py-1 text-[11px] font-mono text-text-main border-r border-border-item max-w-[320px] min-w-[120px] truncate">
                       {row[col] === null
                         ? <span className="text-text-muted italic">NULL</span>
                         : String(row[col])}

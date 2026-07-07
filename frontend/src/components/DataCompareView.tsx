@@ -573,7 +573,7 @@ export const DataCompareView: React.FC = () => {
             <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
               <select
-                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto max-w-[250px] sm:max-w-[400px] md:max-w-[600px] focus:border-blue-500 outline-none"
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto w-full sm:max-w-[360px] lg:max-w-[500px] focus:border-blue-500 outline-none"
                 value={sourceConnectionId || ''}
                 onChange={e => { setSourceConnectionId(e.target.value); clearTableMappings(); }}
               >
@@ -598,7 +598,7 @@ export const DataCompareView: React.FC = () => {
             <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
               <select
-                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto max-w-[250px] sm:max-w-[400px] md:max-w-[600px] focus:border-blue-500 outline-none"
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto w-full sm:max-w-[360px] lg:max-w-[500px] focus:border-blue-500 outline-none"
                 value={targetConnectionId || ''}
                 onChange={e => { setTargetConnectionId(e.target.value); clearTableMappings(); }}
               >
@@ -742,9 +742,9 @@ export const DataCompareView: React.FC = () => {
                             : <Square className="w-3.5 h-3.5" />}
                         </button>
                       </th>
-                      <th className="py-2 px-3">Label / Source</th>
+                      <th className="py-2 px-3 w-[35%] min-w-[140px]">Label / Source</th>
                       <th className="py-2 px-3 text-center w-8">→</th>
-                      <th className="py-2 px-3">Target</th>
+                      <th className="py-2 px-3 w-[35%] min-w-[140px]">Target</th>
                       <th className="py-2 px-3 text-center">Status</th>
                       <th className="py-2 px-3 text-right">Diff</th>
                       <th className="py-2 px-3 text-right">Source Only</th>
@@ -798,13 +798,13 @@ export const DataCompareView: React.FC = () => {
                                 : <Square className="w-3.5 h-3.5 text-text-muted" />}
                             </button>
                           </td>
-                          <td className="py-2 px-3">
+                          <td className="py-2 px-3 max-w-[360px]">
                             <div className="flex flex-col gap-0.5">
                               {m.label && (
                                 <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">{m.label}</span>
                               )}
                               <div className="flex items-center flex-wrap gap-1">
-                                <span className={clsx("font-mono text-xs font-medium", m.sourceTable ? "text-text-main" : "text-text-muted italic")}>
+                                <span className={clsx("font-mono text-xs font-medium truncate", m.sourceTable ? "text-text-main" : "text-text-muted italic")}>
                                   {m.sourceTable || (m.customQuerySource ? '(Custom SQL)' : '(none)')}
                                 </span>
                                 {hasCustom && (
@@ -825,8 +825,8 @@ export const DataCompareView: React.FC = () => {
                           <td className="py-2 px-3 text-center text-text-muted">
                             <ArrowRight className="w-3 h-3 inline" />
                           </td>
-                          <td className="py-2 px-3">
-                            <span className={clsx("font-mono text-xs font-medium", m.targetTable ? "text-text-main" : "text-text-muted italic")}>
+                          <td className="py-2 px-3 max-w-[360px]">
+                            <span className={clsx("font-mono text-xs font-medium truncate", m.targetTable ? "text-text-main" : "text-text-muted italic")}>
                               {m.targetTable || '(none)'}
                             </span>
                           </td>
