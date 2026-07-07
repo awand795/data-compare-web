@@ -70,7 +70,80 @@ services:
         parallelism: 1
         order: start-first
 
+  # Data Warehouse Stack
+  zookeeper:
+    image: quay.io/debezium/zookeeper:2.4
+    container_name: darkosync-zookeeper
+    ports:
+      - target: 2181
+        published: 2181
+        protocol: tcp
+        mode: ingress
+      - target: 2888
+        published: 2888
+        protocol: tcp
+        mode: ingress
+      - target: 3888
+        published: 3888
+        protocol: tcp
+        mode: ingress
+    networks:
+      - darkosync-network
 
+  kafka:
+    image: quay.io/debezium/kafka:2.4
+    container_name: darkosync-kafka
+    ports:
+      - target: 9092
+        published: 9092
+        protocol: tcp
+        mode: ingress
+    depends_on:
+      - zookeeper
+    environment:
+      - ZOOKEEPER_CONNECT=zookeeper:2181
+    networks:
+      - darkosync-network
+
+  debezium:
+    image: quay.io/debezium/connect:2.4
+    container_name: darkosync-debezium
+    ports:
+      - target: 8083
+        published: 8083
+        protocol: tcp
+        mode: ingress
+    depends_on:
+      - kafka
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=my_connect_configs
+      - OFFSET_STORAGE_TOPIC=my_connect_offsets
+      - STATUS_STORAGE_TOPIC=my_connect_statuses
+    networks:
+      - darkosync-network
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: darkosync-clickhouse
+    ports:
+      - target: 8123
+        published: 8123
+        protocol: tcp
+        mode: ingress
+      - target: 9000
+        published: 9000
+        protocol: tcp
+        mode: ingress
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    volumes:
+      - ./clickhouse_data:/var/lib/clickhouse
+    networks:
+      - darkosync-network
 
 networks:
   darkosync-network:

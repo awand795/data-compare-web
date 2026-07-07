@@ -159,7 +159,7 @@ export type NotificationChannel = {
   createdAt?: string;
 };
 
-export type AppMode = 'data' | 'schema' | 'query' | 'explorer' | 'excel' | 'schedule';
+export type AppMode = 'data' | 'schema' | 'query' | 'explorer' | 'excel' | 'schedule' | 'dwh';
 
 export type AlertType = 'error' | 'success' | 'warning' | 'info';
 

@@ -8,8 +8,9 @@ import { QueryWorkspace } from './components/QueryWorkspace';
 import { TableDetailPanel } from './components/TableDetailPanel';
 import { ExcelCompareView } from './components/ExcelCompareView';
 import { ScheduleManagerView } from './components/ScheduleManagerView';
+import { DataWarehouseView } from './components/DataWarehouseView';
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2 } from 'lucide-react';
+import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2, Database } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
 import { AlertModal } from './components/AlertModal';
@@ -84,6 +85,7 @@ function App() {
     { id: 'query' as const, label: 'Query Workspace', icon: Code2, desc: 'Run custom SQL queries and compare results' },
     { id: 'excel' as const, label: 'Excel Compare', icon: FileSpreadsheet, desc: 'Compare DB table against an uploaded Excel file' },
     { id: 'schedule' as const, label: 'Scheduled Jobs', icon: CalendarClock, desc: 'Automated data comparison tasks' },
+    { id: 'dwh' as const, label: 'Data Warehouse', icon: Database, desc: 'Configure ClickHouse replication via Debezium & Kafka' },
   ];
 
   if (!isAuthenticated) {
@@ -225,6 +227,9 @@ function App() {
             <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'explorer' && "hidden")}>
               <TableDetailPanel />
             </div>
+            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'dwh' && "hidden")}>
+              <DataWarehouseView />
+            </div>
           </div>
         ) : (
           <Group orientation="horizontal">
@@ -257,6 +262,9 @@ function App() {
                 </div>
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'explorer' && "hidden")}>
                   <TableDetailPanel />
+                </div>
+                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'dwh' && "hidden")}>
+                  <DataWarehouseView />
                 </div>
               </div>
             </Panel>
