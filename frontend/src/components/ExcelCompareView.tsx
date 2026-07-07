@@ -503,14 +503,14 @@ export const ExcelCompareView: React.FC = () => {
                     <button
                       onClick={() => document.getElementById('excel-upload')?.click()}
                       disabled={!targetConnectionId}
-                      className="px-3 py-2 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-md text-[12px] sm:text-[13px] font-bold hover:bg-blue-500 hover:text-white transition-colors w-full sm:w-40 md:w-52"
+                      className="px-3 py-2 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-md text-[12px] sm:text-[13px] font-bold hover:bg-blue-500 hover:text-white transition-colors w-full sm:w-48 md:w-64 lg:w-72 xl:w-80"
                     >
                       {targetConnectionId ? "Upload Excel File" : "Select Target DB First"}
                     </button>
                   </>
                 ) : (
                   <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-blue-500 outline-none truncate"
+                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-48 md:w-64 lg:w-72 xl:w-80 focus:border-blue-500 outline-none truncate"
                     value={sourceConnectionId || ''}
                     onChange={e => { setSourceConnectionId(e.target.value); handleClearExcelMappings(); }}
                   >
@@ -561,14 +561,14 @@ export const ExcelCompareView: React.FC = () => {
                     <button
                       onClick={() => document.getElementById('excel-upload-target')?.click()}
                       disabled={!sourceConnectionId}
-                      className="px-3 py-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-md text-[12px] sm:text-[13px] font-bold hover:bg-emerald-500 hover:text-white transition-colors w-full sm:w-40 md:w-52"
+                      className="px-3 py-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-md text-[12px] sm:text-[13px] font-bold hover:bg-emerald-500 hover:text-white transition-colors w-full sm:w-48 md:w-64 lg:w-72 xl:w-80"
                     >
                       {sourceConnectionId ? "Upload Excel File" : "Select Source DB First"}
                     </button>
                   </>
                 ) : (
                   <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-40 md:w-52 focus:border-emerald-500 outline-none truncate"
+                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-48 md:w-64 lg:w-72 xl:w-80 focus:border-emerald-500 outline-none truncate"
                     value={targetConnectionId || ''}
                     onChange={e => { setTargetConnectionId(e.target.value); handleClearExcelMappings(); }}
                   >
