@@ -510,7 +510,7 @@ export const ExcelCompareView: React.FC = () => {
                   </>
                 ) : (
                   <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-[200px] sm:w-[300px] md:w-[400px] xl:w-[500px] max-w-full focus:border-blue-500 outline-none truncate"
+                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto max-w-[250px] sm:max-w-[400px] md:max-w-[600px] focus:border-blue-500 outline-none"
                     value={sourceConnectionId || ''}
                     onChange={e => { setSourceConnectionId(e.target.value); handleClearExcelMappings(); }}
                   >
@@ -568,7 +568,7 @@ export const ExcelCompareView: React.FC = () => {
                   </>
                 ) : (
                   <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-[200px] sm:w-[300px] md:w-[400px] xl:w-[500px] max-w-full focus:border-emerald-500 outline-none truncate"
+                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto max-w-[250px] sm:max-w-[400px] md:max-w-[600px] focus:border-emerald-500 outline-none"
                     value={targetConnectionId || ''}
                     onChange={e => { setTargetConnectionId(e.target.value); handleClearExcelMappings(); }}
                   >
