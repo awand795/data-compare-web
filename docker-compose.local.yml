@@ -141,9 +141,12 @@ services:
       - CLICKHOUSE_USER=default
       - CLICKHOUSE_PASSWORD=
     volumes:
-      - ./clickhouse_data:/var/lib/clickhouse
+      - clickhouse_data:/var/lib/clickhouse
     networks:
       - darkosync-network
+
+volumes:
+  clickhouse_data:
 
 networks:
   darkosync-network:
