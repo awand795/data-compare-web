@@ -230,6 +230,22 @@ public class ConnectionManagerService {
         return s != null && !s.trim().isEmpty();
     }
 
+    private String resolveSslFile(String content, String prefix, String suffix) {
+        if (!isSet(content)) return content;
+        if (content.contains("BEGIN CERTIFICATE") || content.contains("BEGIN PRIVATE KEY") || content.contains("BEGIN RSA PRIVATE KEY")) {
+            try {
+                java.io.File tempFile = java.io.File.createTempFile(prefix, suffix);
+                tempFile.deleteOnExit();
+                java.nio.file.Files.writeString(tempFile.toPath(), content, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+                return tempFile.getAbsolutePath();
+            } catch (Exception e) {
+                logger.warn("Failed to write SSL file to temp", e);
+                return content;
+            }
+        }
+        return content;
+    }
+
     private DataSource createDataSource(ConnectionDetails details, String connId) throws Exception {
         HikariConfig config = new HikariConfig();
         
@@ -278,9 +294,13 @@ public class ConnectionManagerService {
                     config.addDataSourceProperty("sslmode", details.getSslMode());
                     // Hanya set file cert kalau benar-benar diisi. Path kosong ("") membuat
                     // driver mencoba membaca file dari path kosong sehingga handshake menggantung.
-                    if (isSet(details.getSslCaFile())) config.addDataSourceProperty("sslrootcert", details.getSslCaFile());
-                    if (isSet(details.getSslCertFile())) config.addDataSourceProperty("sslcert", details.getSslCertFile());
-                    if (isSet(details.getSslKeyFile())) config.addDataSourceProperty("sslkey", details.getSslKeyFile());
+                    String resolvedCa = resolveSslFile(details.getSslCaFile(), "pg_ca_", ".crt");
+                    String resolvedCert = resolveSslFile(details.getSslCertFile(), "pg_cert_", ".crt");
+                    String resolvedKey = resolveSslFile(details.getSslKeyFile(), "pg_key_", ".key");
+                    
+                    if (isSet(resolvedCa)) config.addDataSourceProperty("sslrootcert", resolvedCa);
+                    if (isSet(resolvedCert)) config.addDataSourceProperty("sslcert", resolvedCert);
+                    if (isSet(resolvedKey)) config.addDataSourceProperty("sslkey", resolvedKey);
                 } else {
                     config.addDataSourceProperty("sslmode", "disable");
                 }
@@ -318,7 +338,8 @@ public class ConnectionManagerService {
                     if ("require".equalsIgnoreCase(details.getSslMode())) {
                         config.addDataSourceProperty("requireSSL", "true");
                     }
-                    if (isSet(details.getSslCaFile())) config.addDataSourceProperty("trustCertificateKeyStoreUrl", "file:" + details.getSslCaFile());
+                    String resolvedCa = resolveSslFile(details.getSslCaFile(), "mysql_ca_", ".crt");
+                    if (isSet(resolvedCa)) config.addDataSourceProperty("trustCertificateKeyStoreUrl", "file:" + resolvedCa);
                 } else {
                     config.addDataSourceProperty("useSSL", "false");
                 }
@@ -365,9 +386,13 @@ public class ConnectionManagerService {
                     } else {
                         config.addDataSourceProperty("sslmode", "none");
                     }
-                    if (isSet(details.getSslCaFile())) config.addDataSourceProperty("sslrootcert", details.getSslCaFile());
-                    if (isSet(details.getSslCertFile())) config.addDataSourceProperty("sslcert", details.getSslCertFile());
-                    if (isSet(details.getSslKeyFile())) config.addDataSourceProperty("sslkey", details.getSslKeyFile());
+                    String resolvedCa = resolveSslFile(details.getSslCaFile(), "ch_ca_", ".crt");
+                    String resolvedCert = resolveSslFile(details.getSslCertFile(), "ch_cert_", ".crt");
+                    String resolvedKey = resolveSslFile(details.getSslKeyFile(), "ch_key_", ".key");
+
+                    if (isSet(resolvedCa)) config.addDataSourceProperty("sslrootcert", resolvedCa);
+                    if (isSet(resolvedCert)) config.addDataSourceProperty("sslcert", resolvedCert);
+                    if (isSet(resolvedKey)) config.addDataSourceProperty("sslkey", resolvedKey);
                 }
                 config.addDataSourceProperty("connect_timeout", String.valueOf(timeoutMs));
                 config.addDataSourceProperty("socket_timeout", String.valueOf(timeoutMs));

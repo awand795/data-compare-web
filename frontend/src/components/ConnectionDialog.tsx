@@ -307,16 +307,103 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                   {formData.sslMode !== 'disable' && (
                     <div className="flex flex-col gap-3">
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs text-text-muted">CA Certificate Path (root.crt)</label>
-                        <input name="sslCaFile" value={formData.sslCaFile || ''} onChange={handleChange} className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" placeholder="/path/to/server-ca.pem" />
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-text-muted">CA Certificate (Content or Path)</label>
+                          <label className="cursor-pointer flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-400 font-medium">
+                            <Upload className="w-3 h-3" />
+                            Upload File
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => {
+                                    const text = ev.target?.result;
+                                    if (typeof text === 'string') {
+                                      setFormData(prev => ({ ...prev, sslCaFile: text }));
+                                    }
+                                  };
+                                  reader.readAsText(file);
+                                }
+                              }} 
+                            />
+                          </label>
+                        </div>
+                        <textarea 
+                          name="sslCaFile" 
+                          value={formData.sslCaFile || ''} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, sslCaFile: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-xs font-mono text-text-input outline-none focus:border-blue-500 h-16 whitespace-pre" 
+                          placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----&#10;OR /path/to/server-ca.pem" 
+                        />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs text-text-muted">Client Certificate Path (client.crt)</label>
-                        <input name="sslCertFile" value={formData.sslCertFile || ''} onChange={handleChange} className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" placeholder="/path/to/client-cert.pem" />
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-text-muted">Client Certificate (Content or Path)</label>
+                          <label className="cursor-pointer flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-400 font-medium">
+                            <Upload className="w-3 h-3" />
+                            Upload File
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => {
+                                    const text = ev.target?.result;
+                                    if (typeof text === 'string') {
+                                      setFormData(prev => ({ ...prev, sslCertFile: text }));
+                                    }
+                                  };
+                                  reader.readAsText(file);
+                                }
+                              }} 
+                            />
+                          </label>
+                        </div>
+                        <textarea 
+                          name="sslCertFile" 
+                          value={formData.sslCertFile || ''} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, sslCertFile: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-xs font-mono text-text-input outline-none focus:border-blue-500 h-16 whitespace-pre" 
+                          placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----&#10;OR /path/to/client-cert.pem" 
+                        />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs text-text-muted">Client Key Path (client.key)</label>
-                        <input name="sslKeyFile" value={formData.sslKeyFile || ''} onChange={handleChange} className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-sm text-text-input outline-none focus:border-blue-500" placeholder="/path/to/client-key.pem" />
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-text-muted">Client Key (Content or Path)</label>
+                          <label className="cursor-pointer flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-400 font-medium">
+                            <Upload className="w-3 h-3" />
+                            Upload File
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => {
+                                    const text = ev.target?.result;
+                                    if (typeof text === 'string') {
+                                      setFormData(prev => ({ ...prev, sslKeyFile: text }));
+                                    }
+                                  };
+                                  reader.readAsText(file);
+                                }
+                              }} 
+                            />
+                          </label>
+                        </div>
+                        <textarea 
+                          name="sslKeyFile" 
+                          value={formData.sslKeyFile || ''} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, sslKeyFile: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-bg-input border border-border-input rounded text-xs font-mono text-text-input outline-none focus:border-blue-500 h-16 whitespace-pre" 
+                          placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----&#10;OR /path/to/client-key.pem" 
+                        />
                       </div>
                     </div>
                   )}

@@ -9,9 +9,9 @@ CREATE TABLE IF NOT EXISTS connections (
     password VARCHAR(200),
     schema_name VARCHAR(100),
     ssl_mode VARCHAR(50),
-    ssl_ca_file VARCHAR(255),
-    ssl_cert_file VARCHAR(255),
-    ssl_key_file VARCHAR(255),
+    ssl_ca_file TEXT,
+    ssl_cert_file TEXT,
+    ssl_key_file TEXT,
     use_ssh BOOLEAN DEFAULT FALSE,
     ssh_host VARCHAR(200),
     ssh_port INT,
@@ -29,9 +29,12 @@ CREATE TABLE IF NOT EXISTS connections (
 
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS schema_name VARCHAR(100);
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssl_mode VARCHAR(50);
-ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssl_ca_file VARCHAR(255);
-ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssl_cert_file VARCHAR(255);
-ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssl_key_file VARCHAR(255);
+ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssl_ca_file TEXT;
+ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssl_cert_file TEXT;
+ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssl_key_file TEXT;
+ALTER TABLE connections ALTER COLUMN ssl_ca_file TYPE TEXT;
+ALTER TABLE connections ALTER COLUMN ssl_cert_file TYPE TEXT;
+ALTER TABLE connections ALTER COLUMN ssl_key_file TYPE TEXT;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS use_ssh BOOLEAN DEFAULT FALSE;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_host VARCHAR(200);
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_port INT;
