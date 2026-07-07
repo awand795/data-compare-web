@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Database, Play, Loader2, ArrowRight, Settings2, Table as TableIcon, Server, Cpu } from 'lucide-react';
+import { Database, Play, Loader2, Settings2, Table as TableIcon, Server, Cpu } from 'lucide-react';
 import clsx from 'clsx';
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import Editor from '@monaco-editor/react';
 
 export const DataWarehouseView: React.FC = () => {
-  const { connections, addToast, theme } = useAppStore();
+  const { connections, addToast } = useAppStore();
   const [sourceConnId, setSourceConnId] = useState('');
   const [targetConnId, setTargetConnId] = useState('');
   const [query, setQuery] = useState('-- Define the data to sync via Debezium\nSELECT * FROM source_schema.source_table');
@@ -129,19 +128,11 @@ export const DataWarehouseView: React.FC = () => {
                   <span className="ml-auto text-[10px] bg-indigo-500/10 text-indigo-500 px-2 py-0.5 rounded-full font-semibold border border-indigo-500/20">SQL</span>
                 </div>
                 <div className="flex-1 p-1">
-                  <Editor
-                    height="100%"
-                    language="sql"
-                    theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                  <textarea
+                    className="w-full h-full bg-transparent text-text-main font-mono text-[13px] p-3 outline-none resize-none"
                     value={query}
-                    onChange={v => setQuery(v || '')}
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 13,
-                      padding: { top: 12 },
-                      scrollBeyondLastLine: false,
-                      roundedSelection: true,
-                    }}
+                    onChange={(e) => setQuery(e.target.value)}
+                    spellCheck={false}
                   />
                 </div>
               </div>
