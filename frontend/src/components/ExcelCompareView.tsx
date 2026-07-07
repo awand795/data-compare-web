@@ -510,12 +510,12 @@ export const ExcelCompareView: React.FC = () => {
                   </>
                 ) : (
                   <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-48 md:w-64 lg:w-72 xl:w-80 focus:border-blue-500 outline-none truncate"
+                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-[200px] sm:w-[300px] md:w-[400px] xl:w-[500px] max-w-full focus:border-blue-500 outline-none truncate"
                     value={sourceConnectionId || ''}
                     onChange={e => { setSourceConnectionId(e.target.value); handleClearExcelMappings(); }}
                   >
                     <option value="">Select source...</option>
-                    {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
+                    {connections.map(c => <option key={c.id} value={c.id} > {c.name} ({c.database})</option>)}
                   </select>
                 )}
               </div>
@@ -568,12 +568,12 @@ export const ExcelCompareView: React.FC = () => {
                   </>
                 ) : (
                   <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-48 md:w-64 lg:w-72 xl:w-80 focus:border-emerald-500 outline-none truncate"
+                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-[200px] sm:w-[300px] md:w-[400px] xl:w-[500px] max-w-full focus:border-emerald-500 outline-none truncate"
                     value={targetConnectionId || ''}
                     onChange={e => { setTargetConnectionId(e.target.value); handleClearExcelMappings(); }}
                   >
                     <option value="">Select target...</option>
-                    {connections.map(c => <option key={c.id} value={c.id} className="truncate">{c.name} ({c.database})</option>)}
+                    {connections.map(c => <option key={c.id} value={c.id} > {c.name} ({c.database})</option>)}
                   </select>
                 )}
               </div>
