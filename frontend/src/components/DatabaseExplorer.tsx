@@ -267,7 +267,7 @@ export const DatabaseExplorer: React.FC = () => {
             <span className={clsx("w-1.5 h-1.5 rounded-full shrink-0", node.isLoaded ? "bg-green-500" : "bg-slate-500")} />
           )}
           {getNodeIcon(node.type, node.metadata)}
-          <span className="truncate text-xs">{node.label || node.name}</span>
+          <span className="flex-1 text-xs break-words whitespace-normal leading-[1.4] pr-1">{node.label || node.name}</span>
           
           <div className="ml-auto flex items-center gap-1">
              {(node.type === 'server' || node.type === 'schema' || node.type === 'table' || node.type === 'view') && (

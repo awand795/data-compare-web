@@ -580,8 +580,8 @@ export const ExcelCompareView: React.FC = () => {
             </div>
           </div>
 
-        <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end min-w-0 shrink">
-          <div className="flex flex-nowrap items-center justify-start gap-1.5 sm:gap-2 w-full overflow-x-auto pb-1 -mb-1 scrollbar-hide">
+        <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end min-w-0">
+          <div className="flex flex-wrap items-center justify-start xl:justify-end gap-1.5 sm:gap-2 w-full xl:w-auto">
             {loading && (
             <div className="flex items-center gap-2 text-xs text-blue-500 mr-2 font-medium w-full sm:w-auto order-last sm:order-none">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
