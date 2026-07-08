@@ -61,8 +61,9 @@ public class SshTunnelService implements DisposableBean {
             session.setConfig("PubkeyAcceptedAlgorithms", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
             session.setConfig("server_host_key", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
             session.setConfig("kex", "curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512,diffie-hellman-group-exchange-sha256");
-            session.setServerAliveInterval(30000);  // ping SSH server setiap 30 detik
-            session.setServerAliveCountMax(3);       // max 3 kali gagal sebelum disconnect
+            session.setConfig("TCPKeepAlive", "yes"); // Let OS handle keep-alive to avoid blocking during heavy data stream
+            session.setServerAliveInterval(120000);   // 2 menit (jauh lebih longgar agar tidak timeout saat data stream penuh)
+            session.setServerAliveCountMax(5);        // 5 kali gagal = 10 menit total
             
             logger.info("Opening SSH tunnel to {}@{}:{}", details.getSshUsername(), details.getSshHost(), sshPort);
             session.connect(60000);  // naik dari 30s → 60s untuk koneksi lambat

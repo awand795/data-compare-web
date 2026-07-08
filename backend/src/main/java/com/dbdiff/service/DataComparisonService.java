@@ -532,8 +532,8 @@ public class DataComparisonService {
                         
                         String sName = sConn.getMetaData().getDatabaseProductName().toLowerCase();
                         String tName = tConn.getMetaData().getDatabaseProductName().toLowerCase();
-                        psSource.setFetchSize(sName.contains("mysql") ? Integer.MIN_VALUE : 10000);
-                        psTarget.setFetchSize(tName.contains("mysql") ? Integer.MIN_VALUE : 10000);
+                        psSource.setFetchSize(sName.contains("mysql") ? Integer.MIN_VALUE : 2000);
+                        psTarget.setFetchSize(tName.contains("mysql") ? Integer.MIN_VALUE : 2000);
                         psSource.setQueryTimeout(3600); // 1 hour safety timeout
                         psTarget.setQueryTimeout(3600); // 1 hour safety timeout
 
