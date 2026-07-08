@@ -62,8 +62,8 @@ public class SshTunnelService implements DisposableBean {
             session.setConfig("server_host_key", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
             session.setConfig("kex", "curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512,diffie-hellman-group-exchange-sha256");
             session.setConfig("TCPKeepAlive", "yes"); // Let OS handle keep-alive to avoid blocking during heavy data stream
-            session.setServerAliveInterval(120000);   // 2 menit (jauh lebih longgar agar tidak timeout saat data stream penuh)
-            session.setServerAliveCountMax(5);        // 5 kali gagal = 10 menit total
+            session.setServerAliveInterval(15000);    // 15 detik (agar cepat mendeteksi tunnel putus)
+            session.setServerAliveCountMax(3);        // 3 kali gagal = 45 detik
             
             logger.info("Opening SSH tunnel to {}@{}:{}", details.getSshUsername(), details.getSshHost(), sshPort);
             session.connect(60000);  // naik dari 30s → 60s untuk koneksi lambat
@@ -83,31 +83,29 @@ public class SshTunnelService implements DisposableBean {
     }
 
     /**
-     * Cek apakah SSH tunnel masih benar-benar hidup dengan membuka test TCP socket
-     * ke localhost:localPort. session.isConnected() saja tidak cukup — JSch bisa
-     * mengira tunnel masih aktif padahal server sudah memutus koneksi secara diam-diam.
+     * Cek apakah SSH tunnel masih benar-benar hidup.
+     * Menggunakan session.sendKeepAliveMsg() lebih akurat daripada sekadar probe TCP lokal
+     * karena JSch tetap membuka port lokal meskipun koneksi ke server SSH sudah terputus.
      */
     public boolean isTunnelHealthy(String connId) {
         Session session;
-        Integer port;
         lock.lock();
         try {
             session = activeSessions.get(connId);
-            port = localPorts.get(connId);
         } finally {
             lock.unlock();
         }
 
-        if (session == null || !session.isConnected() || port == null) {
+        if (session == null || !session.isConnected()) {
             return false;
         }
 
-        // Probe TCP ke port forwarding — ini yang paling akurat
-        try (Socket probe = new Socket()) {
-            probe.connect(new java.net.InetSocketAddress("127.0.0.1", port), 3000);
+        try {
+            // Mengirim global request SSH-level keepalive ke server
+            session.sendKeepAliveMsg();
             return true;
         } catch (Exception e) {
-            logger.warn("SSH tunnel health-check FAILED for {} on port {}: {}", connId, port, e.getMessage());
+            logger.warn("SSH tunnel health-check FAILED for {}: {}", connId, e.getMessage());
             return false;
         }
     }
