@@ -9,7 +9,6 @@ import {
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import axios from 'axios';
 import clsx from 'clsx';
-import { toast } from 'react-hot-toast';
 import { ConnectionSelect } from './ConnectionSelect';
 import { buildEffectiveQuery } from '../utils/queryHelpers';
 import { DiffDataGrid } from './DiffDataGrid';
