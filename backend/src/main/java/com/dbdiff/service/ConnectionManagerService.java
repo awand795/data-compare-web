@@ -407,9 +407,6 @@ public class ConnectionManagerService {
                 // Solusi: set socket buffer lebih kecil agar TLS records tidak di-fragment,
                 // dan disable HTTP compression yang memperburuk ukuran paket.
                 config.addDataSourceProperty("compress", "0");             // Disable LZ4 compression
-                config.addDataSourceProperty("http_connection_provider", "apache"); // Pakai Apache HttpClient
-                config.addDataSourceProperty("custom_http_params",
-                    "socket_rcvbuf=65536,socket_sndbuf=65536");            // Limit socket buffer = less fragmentation
                 break;
 
             default:
