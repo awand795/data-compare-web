@@ -44,7 +44,7 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: ""
+        VITE_API_URL: "/"
     container_name: darkosync-frontend
     restart: unless-stopped
     ports:
@@ -55,7 +55,7 @@ services:
       - target: 80
         published: 5175
         protocol: tcp
-        mode: host
+        mode: ingress
 
     networks:
       - darkosync-network
