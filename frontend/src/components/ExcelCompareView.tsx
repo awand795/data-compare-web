@@ -511,7 +511,6 @@ export const ExcelCompareView: React.FC = () => {
                   </>
                 ) : (
                   <ConnectionSelect
-                    className="w-full sm:w-auto sm:min-w-[180px] sm:max-w-[280px] lg:max-w-[320px] xl:max-w-[360px] shrink min-w-0"
                     value={sourceConnectionId || ''}
                     onChange={(val) => { setSourceConnectionId(val); handleClearExcelMappings(); }}
                     connections={connections}
@@ -568,7 +567,6 @@ export const ExcelCompareView: React.FC = () => {
                   </>
                 ) : (
                   <ConnectionSelect
-                    className="w-full sm:w-auto sm:min-w-[180px] sm:max-w-[280px] lg:max-w-[320px] xl:max-w-[360px] shrink min-w-0"
                     value={targetConnectionId || ''}
                     onChange={(val) => { setTargetConnectionId(val); handleClearExcelMappings(); }}
                     connections={connections}
