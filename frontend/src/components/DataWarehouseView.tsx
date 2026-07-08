@@ -41,7 +41,30 @@ export const DataWarehouseView: React.FC = () => {
         throw new Error(await response.text());
       }
 
-      setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Pipeline deployment completed successfully! 🎉`]);
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No readable stream available');
+      const decoder = new TextDecoder('utf-8');
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data:')) {
+              const logMsg = line.substring(5).trim();
+              if (logMsg) {
+                setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${logMsg}`]);
+                if (logMsg.startsWith('ERROR:')) {
+                  throw new Error(logMsg.substring(6).trim());
+                }
+              }
+            }
+          }
+        }
+      }
+
       addToast({ type: 'success', title: 'Deployed Successfully', message: 'Data Warehouse pipeline is now active.' });
     } catch (error: any) {
       setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Deployment failed: ${error.message}`]);
