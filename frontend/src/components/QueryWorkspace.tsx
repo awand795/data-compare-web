@@ -539,12 +539,12 @@ export const QueryWorkspace: React.FC = () => {
     <div className={clsx("flex flex-col bg-bg-main text-text-main", isFullscreen ? "fixed inset-0 z-[100]" : "h-full min-h-0")}>
       <div className="bg-bg-header border-b border-border-main px-2 sm:px-4 py-2.5 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 shrink-0">
         <div className="flex flex-col gap-3 w-full xl:w-auto">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full xl:w-auto">
-          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full xl:w-auto min-w-0">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
             <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
               <select
-                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto focus:border-blue-500 outline-none"
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto sm:max-w-[280px] lg:max-w-[360px] xl:max-w-[400px] focus:border-blue-500 outline-none"
                 value={sourceConnectionId || ''}
                 onChange={e => setSourceConnectionId(e.target.value)}
               >
@@ -566,7 +566,7 @@ export const QueryWorkspace: React.FC = () => {
             <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
               <select
-                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto focus:border-blue-500 outline-none"
+                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto sm:max-w-[280px] lg:max-w-[360px] xl:max-w-[400px] focus:border-blue-500 outline-none"
                 value={targetConnectionId || ''}
                 onChange={e => setTargetConnectionId(e.target.value)}
               >
