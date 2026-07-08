@@ -154,5 +154,6 @@ volumes:
 
 networks:
   darkosync-network:
-    name: darkosync-swarm-net
-    external: true
+    driver: overlay
+    driver_opts:
+      com.docker.network.driver.mtu: "1350"
