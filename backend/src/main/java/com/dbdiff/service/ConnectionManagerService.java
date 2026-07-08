@@ -403,8 +403,19 @@ public class ConnectionManagerService {
                     if (isSet(resolvedCert)) config.addDataSourceProperty("sslcert", resolvedCert);
                     if (isSet(resolvedKey)) config.addDataSourceProperty("sslkey", resolvedKey);
                 }
+                // Timeout dalam milliseconds sesuai format ClickHouse JDBC driver
                 config.addDataSourceProperty("connect_timeout", String.valueOf(timeoutMs));
-                config.addDataSourceProperty("socket_timeout", String.valueOf(timeoutMs));
+                config.addDataSourceProperty("socket_timeout", String.valueOf(timeoutMs * 2)); // 2x untuk query timeout
+
+                // Fix: Docker overlay network MTU (1350) dapat menyebabkan TLS record fragmentation
+                // yang membuat Java HttpClient hang saat SSL handshake dengan ClickHouse Cloud.
+                // curl dari host berhasil karena pakai host network stack (MTU 1400).
+                // Solusi: set socket buffer lebih kecil agar TLS records tidak di-fragment,
+                // dan disable HTTP compression yang memperburuk ukuran paket.
+                config.addDataSourceProperty("compress", "0");             // Disable LZ4 compression
+                config.addDataSourceProperty("http_connection_provider", "apache"); // Pakai Apache HttpClient
+                config.addDataSourceProperty("custom_http_params",
+                    "socket_rcvbuf=65536,socket_sndbuf=65536");            // Limit socket buffer = less fragmentation
                 break;
 
             default:
