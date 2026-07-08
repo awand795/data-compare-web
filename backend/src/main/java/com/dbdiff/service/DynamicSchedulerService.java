@@ -47,6 +47,9 @@ public class DynamicSchedulerService {
     }
 
     @Autowired
+    private ConnectionManagerService connectionManagerService;
+
+    @Autowired
     private org.springframework.core.task.TaskExecutor taskExecutor;
 
     @Autowired
@@ -191,126 +194,148 @@ public class DynamicSchedulerService {
                     displayTableName = schedule.getName() != null && !schedule.getName().trim().isEmpty() ? schedule.getName() : "Custom Query";
                 }
 
-                try {
-                    DiffRequest request = new DiffRequest();
-                    request.setSourceConnection(srcConn);
-                    request.setTargetConnection(tgtConn);
+                int maxAttempts = 2;
+                boolean mappingSuccess = false;
 
-                    String sourceTable = rawSourceTable;
-                    String targetTable = (String) mapping.get("targetTable");
-                    String cqSource = (String) mapping.get("customQuerySource");
-                    String cqTarget = (String) mapping.get("customQueryTarget");
+                for (int attempt = 1; attempt <= maxAttempts && !mappingSuccess; attempt++) {
+                    try {
+                        DiffRequest request = new DiffRequest();
+                        request.setSourceConnection(srcConn);
+                        request.setTargetConnection(tgtConn);
 
-                    if ((cqSource != null && !cqSource.isEmpty()) || (cqTarget != null && !cqTarget.isEmpty())) {
-                        request.setCustomQuerySource(cqSource);
-                        request.setCustomQueryTarget(cqTarget);
-                        request.setTableName(null);
-                    } else {
-                        if (sourceTable != null && sourceTable.equals(targetTable)) {
-                            request.setTableName(sourceTable);
+                        String sourceTable = rawSourceTable;
+                        String targetTable = (String) mapping.get("targetTable");
+                        String cqSource = (String) mapping.get("customQuerySource");
+                        String cqTarget = (String) mapping.get("customQueryTarget");
+
+                        if ((cqSource != null && !cqSource.isEmpty()) || (cqTarget != null && !cqTarget.isEmpty())) {
+                            request.setCustomQuerySource(cqSource);
+                            request.setCustomQueryTarget(cqTarget);
+                            request.setTableName(null);
                         } else {
-                            request.setCustomQuerySource("SELECT * FROM " + sourceTable);
-                            request.setCustomQueryTarget("SELECT * FROM " + targetTable);
-                        }
-                    }
-
-                    // Primary Keys
-                    Object pks = mapping.get("primaryKeys");
-                    if (pks instanceof List) {
-                        request.setPrimaryKeys((List<String>) pks);
-                    } else if (pks instanceof String && !((String) pks).isEmpty() && !pks.equals("[]")) {
-                        request.setPrimaryKeys(objectMapper.readValue((String) pks, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){}));
-                    }
-
-                    // Exclude Columns
-                    Object excludes = mapping.get("excludeColumns");
-                    if (excludes instanceof List) {
-                        request.setExcludeColumns((List<String>) excludes);
-                    } else if (excludes instanceof String && !((String) excludes).isEmpty() && !excludes.equals("[]")) {
-                        request.setExcludeColumns(objectMapper.readValue((String) excludes, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){}));
-                    }
-
-                    // Sort Columns
-                    Object sorts = mapping.get("sortColumns");
-                    if (sorts instanceof List) {
-                        request.setSortColumns((List<String>) sorts);
-                    } else if (sorts instanceof String && !((String) sorts).isEmpty() && !sorts.equals("[]")) {
-                        request.setSortColumns(objectMapper.readValue((String) sorts, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){}));
-                    }
-
-                    request.setReturnMatchedRows(true);
-                    int[] mArr = {0}, dArr = {0}, sArr = {0}, tArr = {0};
-                    int[] totalsArr = {0}; // totalSource from onTotals
-                    final String finalDisplayTableName = displayTableName;
-                    final String resultId = result.getId();
-
-                    dataComparisonService.processStream(request, new DiffRowConsumer() {
-                        private static final int BATCH_FLUSH_SIZE = 100;
-                        private final List<ScheduleResultRow> rowBuffer = new ArrayList<>(BATCH_FLUSH_SIZE);
-
-                        @Override
-                        public void onColumns(List<String> columns) throws Exception {}
-
-                        @Override
-                        public void onMatchRow(String key, Object[] values, List<String> columns) throws Exception {
-                            mArr[0]++;
-                        }
-
-                        @Override
-                        public void onRow(DiffRow row) throws Exception {
-                            switch (row.getStatus()) {
-                                case DIFFERENT: dArr[0]++; break;
-                                case SOURCE_ONLY: sArr[0]++; break;
-                                case TARGET_ONLY: tArr[0]++; break;
-                                default: break;
+                            if (sourceTable != null && sourceTable.equals(targetTable)) {
+                                request.setTableName(sourceTable);
+                            } else {
+                                request.setCustomQuerySource("SELECT * FROM " + sourceTable);
+                                request.setCustomQueryTarget("SELECT * FROM " + targetTable);
                             }
-                            if (schedule.isSaveFullData()) {
-                                ScheduleResultRow rr = new ScheduleResultRow();
-                                rr.setResultId(resultId);
-                                rr.setRowKey(row.getRowKey());
-                                rr.setStatus(row.getStatus().name());
-                                rr.setDataJson(objectMapper.writeValueAsString(row.getCells()));
-                                rr.setTableName(finalDisplayTableName);
-                                rowBuffer.add(rr);
-                                if (rowBuffer.size() >= BATCH_FLUSH_SIZE) {
-                                    flushBuffer();
+                        }
+
+                        // Primary Keys
+                        Object pks = mapping.get("primaryKeys");
+                        if (pks instanceof List) {
+                            request.setPrimaryKeys((List<String>) pks);
+                        } else if (pks instanceof String && !((String) pks).isEmpty() && !pks.equals("[]")) {
+                            request.setPrimaryKeys(objectMapper.readValue((String) pks, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){}));
+                        }
+
+                        // Exclude Columns
+                        Object excludes = mapping.get("excludeColumns");
+                        if (excludes instanceof List) {
+                            request.setExcludeColumns((List<String>) excludes);
+                        } else if (excludes instanceof String && !((String) excludes).isEmpty() && !excludes.equals("[]")) {
+                            request.setExcludeColumns(objectMapper.readValue((String) excludes, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){}));
+                        }
+
+                        // Sort Columns
+                        Object sorts = mapping.get("sortColumns");
+                        if (sorts instanceof List) {
+                            request.setSortColumns((List<String>) sorts);
+                        } else if (sorts instanceof String && !((String) sorts).isEmpty() && !sorts.equals("[]")) {
+                            request.setSortColumns(objectMapper.readValue((String) sorts, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){}));
+                        }
+
+                        request.setReturnMatchedRows(true);
+                        int[] mArr = {0}, dArr = {0}, sArr = {0}, tArr = {0};
+                        int[] totalsArr = {0}; // totalSource from onTotals
+                        final String finalDisplayTableName = displayTableName;
+                        final String resultId = result.getId();
+
+                        dataComparisonService.processStream(request, new DiffRowConsumer() {
+                            private static final int BATCH_FLUSH_SIZE = 100;
+                            private final List<ScheduleResultRow> rowBuffer = new ArrayList<>(BATCH_FLUSH_SIZE);
+
+                            @Override
+                            public void onColumns(List<String> columns) throws Exception {}
+
+                            @Override
+                            public void onMatchRow(String key, Object[] values, List<String> columns) throws Exception {
+                                mArr[0]++;
+                            }
+
+                            @Override
+                            public void onRow(DiffRow row) throws Exception {
+                                switch (row.getStatus()) {
+                                    case DIFFERENT: dArr[0]++; break;
+                                    case SOURCE_ONLY: sArr[0]++; break;
+                                    case TARGET_ONLY: tArr[0]++; break;
+                                    default: break;
+                                }
+                                if (schedule.isSaveFullData()) {
+                                    ScheduleResultRow rr = new ScheduleResultRow();
+                                    rr.setResultId(resultId);
+                                    rr.setRowKey(row.getRowKey());
+                                    rr.setStatus(row.getStatus().name());
+                                    rr.setDataJson(objectMapper.writeValueAsString(row.getCells()));
+                                    rr.setTableName(finalDisplayTableName);
+                                    rowBuffer.add(rr);
+                                    if (rowBuffer.size() >= BATCH_FLUSH_SIZE) {
+                                        flushBuffer();
+                                    }
                                 }
                             }
-                        }
 
-                        private void flushBuffer() {
-                            if (!rowBuffer.isEmpty()) {
-                                scheduleManagerService.saveResultRowsBatch(rowBuffer);
-                                rowBuffer.clear();
+                            private void flushBuffer() {
+                                if (!rowBuffer.isEmpty()) {
+                                    scheduleManagerService.saveResultRowsBatch(rowBuffer);
+                                    rowBuffer.clear();
+                                }
                             }
+
+                            @Override
+                            public void onTotals(int totalSource, int totalTarget, int totalDiffs) throws Exception {
+                                flushBuffer();
+                                totalsArr[0] = totalSource;
+                            }
+                        });
+
+                        totalMatch += mArr[0];
+                        totalDifferent += dArr[0];
+                        totalSrcOnly += sArr[0];
+                        totalTgtOnly += tArr[0];
+
+                        Map<String, Object> tableResult = new HashMap<>();
+                        tableResult.put("tableName", displayTableName);
+                        tableResult.put("match", mArr[0]);
+                        tableResult.put("different", dArr[0]);
+                        tableResult.put("sourceOnly", sArr[0]);
+                        tableResult.put("targetOnly", tArr[0]);
+                        tableResult.put("totalSourceRows", totalsArr[0]);
+                        executionDetails.add(tableResult);
+                        mappingSuccess = true;
+                    } catch (Exception e) {
+                        boolean isRetryable = isConnectionError(e);
+
+                        if (isRetryable && attempt < maxAttempts) {
+                            logger.warn("Connection error on mapping '{}' (attempt {}/{}). Evicting connections and retrying...",
+                                displayTableName, attempt, maxAttempts);
+                            logger.debug("Connection error details", e);
+                            // Evict broken connections so next getDataSource() creates fresh ones
+                            try { connectionManagerService.evictConnection(srcConn.getStableIdentifier()); } catch (Exception ignored) {}
+                            try { connectionManagerService.evictConnection(tgtConn.getStableIdentifier()); } catch (Exception ignored) {}
+                            // Wait briefly before retry
+                            try { Thread.sleep(3000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        } else {
+                            logger.error("Error comparing mapping '{}' after {} attempt(s): {}", displayTableName, attempt, e.getMessage());
+                            if (!isRetryable) {
+                                logger.debug("Non-retryable error details", e);
+                            }
+                            Map<String, Object> errorTable = new HashMap<>();
+                            errorTable.put("tableName", displayTableName);
+                            errorTable.put("error", e.getMessage());
+                            executionDetails.add(errorTable);
                         }
-
-                        @Override
-                        public void onTotals(int totalSource, int totalTarget, int totalDiffs) throws Exception {
-                            flushBuffer();
-                            totalsArr[0] = totalSource;
-                        }
-                    });
-
-                    totalMatch += mArr[0];
-                    totalDifferent += dArr[0];
-                    totalSrcOnly += sArr[0];
-                    totalTgtOnly += tArr[0];
-
-                    Map<String, Object> tableResult = new HashMap<>();
-                    tableResult.put("tableName", displayTableName);
-                    tableResult.put("match", mArr[0]);
-                    tableResult.put("different", dArr[0]);
-                    tableResult.put("sourceOnly", sArr[0]);
-                    tableResult.put("targetOnly", tArr[0]);
-                    tableResult.put("totalSourceRows", totalsArr[0]);
-                    executionDetails.add(tableResult);
-                } catch (Exception e) {
-                    logger.error("Error comparing mapping: {}", e.getMessage(), e);
-                    Map<String, Object> errorTable = new HashMap<>();
-                    errorTable.put("tableName", displayTableName);
-                    errorTable.put("error", e.getMessage());
-                    executionDetails.add(errorTable);
+                    }
                 }
             }
 
@@ -531,5 +556,40 @@ public class DynamicSchedulerService {
                 notificationService.sendToChannel(schedule.getDiscordChannelId(), discordErrorMsg);
             }
         }
+    }
+
+    /**
+     * Deteksi apakah exception disebabkan oleh koneksi database yang putus/tidak stabil.
+     * Jika true, sistem akan evict pool dan retry.
+     */
+    private boolean isConnectionError(Exception e) {
+        String msg = e.getMessage();
+        if (msg == null) {
+            msg = e.getClass().getSimpleName();
+        }
+        String lowerMsg = msg.toLowerCase();
+
+        // Cek exception class
+        if (e instanceof java.sql.SQLTransientConnectionException) return true;
+        if (e.getClass().getName().contains("PsqlException") ||
+            e.getClass().getName().contains("SQLException")) return true;
+
+        // Cek message content
+        return lowerMsg.contains("eofexception") ||
+               lowerMsg.contains("eof") ||
+               lowerMsg.contains("i/o error") ||
+               lowerMsg.contains("an i/o error occurred") ||
+               lowerMsg.contains("connection is not available") ||
+               lowerMsg.contains("timed out") ||
+               lowerMsg.contains("08006") ||
+               lowerMsg.contains("broken") ||
+               lowerMsg.contains("closed.") ||
+               lowerMsg.contains("this connection has been closed") ||
+               lowerMsg.contains("connection reset") ||
+               lowerMsg.contains("connection refused") ||
+               lowerMsg.contains("failed to validate connection") ||
+               lowerMsg.contains("connect timed out") ||
+               lowerMsg.contains("read timed out") ||
+               lowerMsg.contains("socket write error");
     }
 }

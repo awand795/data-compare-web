@@ -282,6 +282,7 @@ public class ConnectionManagerService {
             case "postgresql":
                 config.setDriverClassName("org.postgresql.Driver");
                 config.setAutoCommit(true);
+                config.setConnectionInitSql("SELECT 1"); // Validasi koneksi baru sebelum dipakai
                 config.addDataSourceProperty("prepareThreshold", "3");
                 config.addDataSourceProperty("preparedStatementCacheQueries", "256");
                 config.addDataSourceProperty("preparedStatementCacheSizeMiB", "5");
@@ -436,8 +437,8 @@ public class ConnectionManagerService {
         config.setMaximumPoolSize(20);    // Diperbesar agar aman untuk sync banyak tabel paralel
         config.setMinimumIdle(2);
         config.setConnectionTimeout(timeoutMs);
-        config.setIdleTimeout(600000);    // 10 menit
-        config.setMaxLifetime(1800000);   // 30 menit
+        config.setIdleTimeout(300000);    // 5 menit (RDS idle timeout biasanya 10 menit)
+        config.setMaxLifetime(540000);    // 9 menit — lebih pendek dari RDS idle timeout utk cegah EOF
         config.setKeepaliveTime(300000);  // 5 menit
         config.setLeakDetectionThreshold(0); // Matikan (0) karena proses stream sync memang memakan waktu lama, agar log tidak penuh false alarm
         config.setConnectionTestQuery("SELECT 1");
