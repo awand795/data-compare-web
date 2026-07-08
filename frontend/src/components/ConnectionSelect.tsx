@@ -33,7 +33,7 @@ export function ConnectionSelect({ value, onChange, connections, placeholder = "
   const selectedConn = connections.find(c => c.id === value);
 
   return (
-    <div className={clsx("relative w-[28%] min-w-[140px] max-w-[260px] shrink-0", className)} ref={containerRef}>
+    <div className={clsx("relative w-[200px] xl:w-[240px] shrink-0", className)} ref={containerRef}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}

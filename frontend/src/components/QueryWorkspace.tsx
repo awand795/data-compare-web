@@ -541,7 +541,7 @@ export const QueryWorkspace: React.FC = () => {
       <div className="bg-bg-header border-b border-border-main px-2 sm:px-4 py-2.5 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 shrink-0">
         <div className="flex flex-col gap-3 w-full xl:w-auto">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full xl:w-auto min-w-0">
-          <div className="flex flex-nowrap items-center gap-2 sm:gap-3 w-full sm:w-auto shrink">
+          <div className="flex flex-nowrap items-end gap-2 sm:gap-3 w-full sm:w-auto shrink">
             <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
               <ConnectionSelect
@@ -557,7 +557,7 @@ export const QueryWorkspace: React.FC = () => {
                 setSourceConnectionId(targetConnectionId);
                 setTargetConnectionId(temp);
               }}
-              className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main mt-4 sm:mt-6 transition-colors cursor-pointer shrink-0"
+              className="w-8 h-8 rounded-full bg-bg-panel hover:bg-bg-hover flex items-center justify-center border border-border-main transition-colors cursor-pointer shrink-0 mb-0.5"
               title="Swap Source and Target"
             >
               <ArrowLeftRight className="w-3.5 h-3.5 text-text-muted" />
