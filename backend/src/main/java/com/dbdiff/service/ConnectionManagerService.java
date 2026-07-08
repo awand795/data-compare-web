@@ -269,9 +269,8 @@ public class ConnectionManagerService {
             config.setReadOnly(true);
         }
 
-        // Jangan lempar exception langsung saat inisialisasi pool kalau database sedang mati/tidur (misal: serverless DB wake up).
-        // Biarkan getConnection() nanti yang memblokir (loading) sambil mencoba reconnect.
-        config.setInitializationFailTimeout(-1L);
+        // Fail fast during initialization so we can see the actual connection error!
+        config.setInitializationFailTimeout(1);
 
         // Frontend sends timeout in seconds, HikariCP expects milliseconds.
         // Dihitung di sini agar bisa dipakai juga sebagai driver-level connect/login timeout per tipe DB.
