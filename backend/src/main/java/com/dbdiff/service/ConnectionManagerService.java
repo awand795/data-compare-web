@@ -288,8 +288,17 @@ public class ConnectionManagerService {
                 config.addDataSourceProperty("defaultRowFetchSize", details.getFetchSize() != null ? String.valueOf(details.getFetchSize()) : "5000");
                 config.addDataSourceProperty("reWriteBatchedInserts", "true");
                 config.addDataSourceProperty("socketReceiveBufferSize", "1048576"); // 1MB buffer
-                
-                if (isSet(details.getSslMode()) && !"disable".equalsIgnoreCase(details.getSslMode())) {
+                config.addDataSourceProperty("tcpKeepAlive", "true"); // Detect broken connections faster
+
+                // PENTING: Ketika koneksi melalui SSH tunnel, SSL HARUS di-disable.
+                // SSH tunnel ke 127.0.0.1 sudah enkripsi; kalau SSL tetap aktif, driver PG
+                // akan kirim SSLRequest ke 127.0.0.1 yang dijawab dengan koneksi biasa
+                // (bukan SSL), menyebabkan EOFException / "Read timed out" di enableSSL.
+                if (details.isUseSsh()) {
+                    // Via SSH tunnel → SSL tidak diperlukan, tunnel sudah enkripsi
+                    config.addDataSourceProperty("ssl", "false");
+                    config.addDataSourceProperty("sslmode", "disable");
+                } else if (isSet(details.getSslMode()) && !"disable".equalsIgnoreCase(details.getSslMode())) {
                     config.addDataSourceProperty("ssl", "true");
                     config.addDataSourceProperty("sslmode", details.getSslMode());
                     // Hanya set file cert kalau benar-benar diisi. Path kosong ("") membuat
@@ -297,7 +306,7 @@ public class ConnectionManagerService {
                     String resolvedCa = resolveSslFile(details.getSslCaFile(), "pg_ca_", ".crt");
                     String resolvedCert = resolveSslFile(details.getSslCertFile(), "pg_cert_", ".crt");
                     String resolvedKey = resolveSslFile(details.getSslKeyFile(), "pg_key_", ".key");
-                    
+
                     if (isSet(resolvedCa)) config.addDataSourceProperty("sslrootcert", resolvedCa);
                     if (isSet(resolvedCert)) config.addDataSourceProperty("sslcert", resolvedCert);
                     if (isSet(resolvedKey)) config.addDataSourceProperty("sslkey", resolvedKey);
