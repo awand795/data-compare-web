@@ -510,7 +510,7 @@ export const ExcelCompareView: React.FC = () => {
                   </>
                 ) : (
                   <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto w-full sm:max-w-[360px] lg:max-w-[500px] focus:border-blue-500 outline-none"
+                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto focus:border-blue-500 outline-none"
                     value={sourceConnectionId || ''}
                     onChange={e => { setSourceConnectionId(e.target.value); handleClearExcelMappings(); }}
                   >
@@ -568,7 +568,7 @@ export const ExcelCompareView: React.FC = () => {
                   </>
                 ) : (
                   <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto w-full sm:max-w-[360px] lg:max-w-[500px] focus:border-emerald-500 outline-none"
+                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto focus:border-emerald-500 outline-none"
                     value={targetConnectionId || ''}
                     onChange={e => { setTargetConnectionId(e.target.value); handleClearExcelMappings(); }}
                   >
