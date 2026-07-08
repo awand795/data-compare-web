@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { DiffDataGrid } from './DiffDataGrid';
+import { DataGrid } from './DataGrid';
+import { ConnectionSelect } from './ConnectionSelect';
 import { ExcelMappingModal } from './ExcelMappingModal';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import clsx from 'clsx';
@@ -509,14 +511,13 @@ export const ExcelCompareView: React.FC = () => {
                     </button>
                   </>
                 ) : (
-                  <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto sm:max-w-[280px] lg:max-w-[360px] xl:max-w-[400px] focus:border-blue-500 outline-none"
+                  <ConnectionSelect
+                    className="w-full sm:w-auto sm:min-w-[200px] sm:max-w-[280px] lg:max-w-[360px] xl:max-w-[400px]"
                     value={sourceConnectionId || ''}
-                    onChange={e => { setSourceConnectionId(e.target.value); handleClearExcelMappings(); }}
-                  >
-                    <option value="">Select source...</option>
-                    {connections.map(c => <option key={c.id} value={c.id} > {c.name} ({c.database})</option>)}
-                  </select>
+                    onChange={(val) => { setSourceConnectionId(val); handleClearExcelMappings(); }}
+                    connections={connections}
+                    placeholder="Select source..."
+                  />
                 )}
               </div>
 
@@ -567,14 +568,13 @@ export const ExcelCompareView: React.FC = () => {
                     </button>
                   </>
                 ) : (
-                  <select
-                    className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto sm:max-w-[280px] lg:max-w-[360px] xl:max-w-[400px] focus:border-emerald-500 outline-none"
+                  <ConnectionSelect
+                    className="w-full sm:w-auto sm:min-w-[200px] sm:max-w-[280px] lg:max-w-[360px] xl:max-w-[400px]"
                     value={targetConnectionId || ''}
-                    onChange={e => { setTargetConnectionId(e.target.value); handleClearExcelMappings(); }}
-                  >
-                    <option value="">Select target...</option>
-                    {connections.map(c => <option key={c.id} value={c.id} > {c.name} ({c.database})</option>)}
-                  </select>
+                    onChange={(val) => { setTargetConnectionId(val); handleClearExcelMappings(); }}
+                    connections={connections}
+                    placeholder="Select target..."
+                  />
                 )}
               </div>
             </div>

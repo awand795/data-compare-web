@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 import { Table2, ArrowLeftRight, Loader2, KeyRound, AlertTriangle, CheckCircle, MinusCircle, PlusCircle, Database, Search, FileDown } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
+import { ConnectionSelect } from './ConnectionSelect';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
 export const SchemaCompareView: React.FC = () => {
@@ -185,14 +186,13 @@ export const SchemaCompareView: React.FC = () => {
           <div className="flex flex-nowrap items-center gap-2 sm:gap-3 w-full sm:w-auto shrink">
             <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
-              <select 
-                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto sm:max-w-[280px] lg:max-w-[360px] xl:max-w-[400px] focus:border-blue-500 outline-none"
+              <ConnectionSelect 
+                className="w-full sm:w-auto sm:min-w-[200px] sm:max-w-[280px] lg:max-w-[360px] xl:max-w-[400px]"
                 value={sourceConnectionId || ''}
-                onChange={e => setSourceConnectionId(e.target.value)}
-              >
-                <option value="">Select source...</option>
-                {connections.map(c => <option key={c.id} value={c.id} > {c.name} ({c.database})</option>)}
-              </select>
+                onChange={val => setSourceConnectionId(val)}
+                connections={connections}
+                placeholder="Select source..."
+              />
             </div>
             
             <button
@@ -210,14 +210,13 @@ export const SchemaCompareView: React.FC = () => {
             
             <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Target</span>
-              <select 
-                className="px-3 py-2 bg-bg-input border border-border-input rounded-md text-[12px] sm:text-[13px] font-medium text-text-input w-full sm:w-auto sm:max-w-[280px] lg:max-w-[360px] xl:max-w-[400px] focus:border-blue-500 outline-none"
+              <ConnectionSelect 
+                className="w-full sm:w-auto sm:min-w-[200px] sm:max-w-[280px] lg:max-w-[360px] xl:max-w-[400px]"
                 value={targetConnectionId || ''}
-                onChange={e => setTargetConnectionId(e.target.value)}
-              >
-                <option value="">Select target...</option>
-                {connections.map(c => <option key={c.id} value={c.id} > {c.name} ({c.database})</option>)}
-              </select>
+                onChange={val => setTargetConnectionId(val)}
+                connections={connections}
+                placeholder="Select target..."
+              />
             </div>
           </div>
         </div>
