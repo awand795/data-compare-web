@@ -89,10 +89,11 @@ export const DataWarehouseView: React.FC = () => {
         <button
           onClick={handleDeploy}
           disabled={isDeploying || !sourceConnId || !targetConnId || !targetTable}
-          className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-all flex items-center gap-2 shadow-lg shadow-indigo-500/30 whitespace-nowrap"
+          className="group relative overflow-hidden px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-all flex items-center gap-2 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:-translate-y-0.5 active:translate-y-0 duration-300 whitespace-nowrap"
         >
-          {isDeploying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
-          {isDeploying ? 'Deploying Pipeline...' : 'Deploy Pipeline'}
+          <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          {isDeploying ? <Loader2 className="w-4 h-4 animate-spin relative z-10" /> : <Play className="w-4 h-4 fill-current relative z-10" />}
+          <span className="relative z-10">{isDeploying ? 'Deploying Pipeline...' : 'Deploy Pipeline'}</span>
         </button>
       </div>
 

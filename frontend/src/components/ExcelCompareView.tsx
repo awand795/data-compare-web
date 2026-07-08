@@ -609,38 +609,40 @@ export const ExcelCompareView: React.FC = () => {
             </div>
             <button
               onClick={openAddModal}
-              className="px-3 sm:px-4 py-2 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-xs font-medium text-text-main flex items-center justify-center gap-1.5 transition-colors flex-1 sm:flex-none whitespace-nowrap"
+              className="px-4 py-2 border border-border-input bg-bg-panel hover:bg-bg-hover hover:border-blue-400 rounded-lg text-sm font-medium text-text-main flex items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-0.5 flex-1 sm:flex-none whitespace-nowrap"
             >
-              <Plus className="w-3.5 h-3.5 text-blue-500" /> Add Mapping
+              <Plus className="w-4 h-4 text-blue-500" /> Add Mapping
             </button>
             
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="px-2 py-1.5 border border-border-input bg-bg-panel hover:bg-bg-hover rounded-md text-text-muted hover:text-text-main flex items-center justify-center transition-colors hidden sm:flex shrink-0"
+              className="px-2.5 py-2 border border-border-input bg-bg-panel hover:bg-bg-hover hover:border-blue-400 rounded-lg text-text-muted hover:text-text-main flex items-center justify-center transition-all hover:shadow-md hover:-translate-y-0.5 hidden sm:flex shrink-0"
               title={isFullscreen ? "Exit Full View" : "Full View"}
             >
-              {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
             </button>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0 flex-1 sm:flex-none">
+          <div className="flex items-center gap-3 w-full sm:w-auto mt-2 sm:mt-0 flex-1 sm:flex-none">
             <button
               onClick={handleSynchronize}
               disabled={true}
-              className="px-3 sm:px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white rounded-md flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20 transition-all flex-1"
+              className="group relative overflow-hidden px-4 sm:px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-lg flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 flex-1"
               title="Synchronize Data from Source to Target"
             >
-              {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-              {syncing ? 'Syncing...' : 'Synchronize'}
+              <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              {syncing ? <Loader2 className="w-4 h-4 animate-spin relative z-10" /> : <RefreshCw className="w-4 h-4 relative z-10" />}
+              <span className="relative z-10">{syncing ? 'Syncing...' : 'Synchronize'}</span>
             </button>
 
             <button
               onClick={handleCompare}
               disabled={!(excelIsTarget ? sourceConn : targetConn) || selectedMappings.size === 0 || loading || syncing}
-              className="px-3 sm:px-5 py-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-md flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 transition-all flex-1 whitespace-nowrap"
+              className="group relative overflow-hidden px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white rounded-lg flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 flex-1 whitespace-nowrap"
             >
-              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-              {loading ? 'Comparing...' : `Compare (${selectedMappings.size})`}
+              <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              {loading ? <Loader2 className="w-4 h-4 animate-spin relative z-10" /> : <Play className="w-4 h-4 fill-current relative z-10" />}
+              <span className="relative z-10">{loading ? 'Comparing...' : `Compare (${selectedMappings.size})`}</span>
             </button>
           </div>
         </div>

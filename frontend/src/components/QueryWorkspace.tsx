@@ -616,22 +616,24 @@ export const QueryWorkspace: React.FC = () => {
               </label>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-none">
+            <div className="flex items-center gap-3 w-full sm:w-auto flex-1 sm:flex-none">
               <button
                 onClick={handleCompare}
                 disabled={(!comparing && (!sourceConn || !targetConn || !sourceQuery.trim() || !targetQuery.trim())) || (loadingSource || loadingTarget)}
-                className="flex-1 sm:flex-none px-4 py-2 sm:py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap"
+                className="group relative overflow-hidden flex-1 sm:flex-none px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white rounded-lg text-sm font-bold disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-0.5 active:translate-y-0 duration-300 whitespace-nowrap"
               >
-                {comparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                {comparing ? 'Stop' : 'Compare'}
+                <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                {comparing ? <Loader2 className="w-4 h-4 animate-spin relative z-10" /> : <Play className="w-4 h-4 fill-current relative z-10" />}
+                <span className="relative z-10">{comparing ? 'Stop' : 'Compare'}</span>
               </button>
               <button
                 onClick={executeBoth}
                 disabled={(!sourceConn || !sourceQuery.trim()) && (!targetConn || !targetQuery.trim())}
-                className="flex-1 sm:flex-none px-4 py-2 sm:py-1.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-md flex items-center justify-center gap-2 text-xs font-bold disabled:opacity-40 shadow-lg shadow-amber-500/20 transition-all whitespace-nowrap"
+                className="group relative overflow-hidden flex-1 sm:flex-none px-4 sm:px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-lg flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-50 shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 whitespace-nowrap"
               >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                Execute Both
+                <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <Play className="w-4 h-4 fill-current relative z-10" />
+                <span className="relative z-10">Execute Both</span>
               </button>
             </div>
           </div>

@@ -225,10 +225,11 @@ export const SchemaCompareView: React.FC = () => {
         <button 
           onClick={handleCompareSchema}
           disabled={!sourceConn || !targetConn || loading}
-          className="px-5 py-2 bg-gradient-to-r from-purple-600 to-violet-500 hover:from-purple-500 hover:to-violet-400 text-white rounded-md flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-40 shadow-lg shadow-purple-500/20 transition-all w-full sm:w-auto"
+          className="group relative overflow-hidden px-5 sm:px-6 py-2 bg-gradient-to-r from-purple-600 to-violet-500 hover:from-purple-500 hover:to-violet-400 text-white rounded-lg flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-50 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 w-full sm:w-auto whitespace-nowrap"
         >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Table2 className="w-3.5 h-3.5" />}
-          {loading ? 'Comparing...' : 'Compare Schema'}
+          <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          {loading ? <Loader2 className="w-4 h-4 animate-spin relative z-10" /> : <Table2 className="w-4 h-4 relative z-10" />}
+          <span className="relative z-10">{loading ? 'Comparing...' : 'Compare Schema'}</span>
         </button>
       </div>
 
