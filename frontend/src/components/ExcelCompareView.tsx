@@ -594,8 +594,22 @@ export const ExcelCompareView: React.FC = () => {
             </div>
           )}
           
-          <div className="flex flex-1 sm:flex-none items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 bg-bg-input px-2 py-1 rounded-md border border-border-input flex-1 sm:flex-none justify-center">
+        <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 w-full xl:w-auto">
+            {loading && (
+            <div className="flex items-center gap-2 text-xs text-blue-500 mr-2 font-medium w-full sm:w-auto order-last sm:order-none">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>{progress.current}/{progress.total}</span>
+              <div className="w-24 h-1.5 bg-bg-hover rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                  style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+            )}
+            
+            <div className="flex items-center gap-1.5 bg-bg-input px-3 py-2 rounded-lg border border-border-input shrink-0 justify-center">
               <input
                 type="checkbox"
                 id="returnMatchedRowsExcel"
@@ -603,13 +617,13 @@ export const ExcelCompareView: React.FC = () => {
                 onChange={e => setReturnMatchedRows(!e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-border-item bg-bg-panel text-amber-500 focus:ring-amber-500 focus:ring-offset-bg-main"
               />
-              <label htmlFor="returnMatchedRowsExcel" className="text-[11px] font-medium text-text-muted cursor-pointer hover:text-text-main select-none whitespace-nowrap">
-                Only Diff
+              <label htmlFor="returnMatchedRowsExcel" className="text-[12px] font-medium text-text-muted cursor-pointer hover:text-text-main select-none whitespace-nowrap">
+                Only Diff (Fast)
               </label>
             </div>
             <button
               onClick={openAddModal}
-              className="px-4 py-2 border border-border-input bg-bg-panel hover:bg-bg-hover hover:border-blue-400 rounded-lg text-sm font-medium text-text-main flex items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-0.5 flex-1 sm:flex-none whitespace-nowrap"
+              className="px-4 py-2 border border-border-input bg-bg-panel hover:bg-bg-hover hover:border-blue-400 rounded-lg text-sm font-medium text-text-main flex items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-0.5 flex-1 sm:flex-none whitespace-nowrap shrink-0"
             >
               <Plus className="w-4 h-4 text-blue-500" /> Add Mapping
             </button>
@@ -621,13 +635,11 @@ export const ExcelCompareView: React.FC = () => {
             >
               {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
             </button>
-          </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto mt-2 sm:mt-0 flex-1 sm:flex-none">
             <button
               onClick={handleSynchronize}
               disabled={true}
-              className="group relative overflow-hidden px-4 sm:px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-lg flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 flex-1"
+              className="group relative overflow-hidden px-4 sm:px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-lg flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 flex-1 sm:flex-none shrink-0"
               title="Synchronize Data from Source to Target"
             >
               <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -638,7 +650,7 @@ export const ExcelCompareView: React.FC = () => {
             <button
               onClick={handleCompare}
               disabled={!(excelIsTarget ? sourceConn : targetConn) || selectedMappings.size === 0 || loading || syncing}
-              className="group relative overflow-hidden px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white rounded-lg flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 flex-1 whitespace-nowrap"
+              className="group relative overflow-hidden px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white rounded-lg flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 flex-1 sm:flex-none whitespace-nowrap shrink-0"
             >
               <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               {loading ? <Loader2 className="w-4 h-4 animate-spin relative z-10" /> : <Play className="w-4 h-4 fill-current relative z-10" />}
