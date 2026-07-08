@@ -182,7 +182,7 @@ export const SchemaCompareView: React.FC = () => {
       {/* Connection Bar */}
       <div className="bg-bg-header border-b border-border-main px-2 sm:px-4 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full sm:w-auto min-w-0">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          <div className="flex flex-nowrap items-center gap-2 sm:gap-3 w-full sm:w-auto shrink">
             <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
               <select 
@@ -222,7 +222,7 @@ export const SchemaCompareView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-start xl:justify-end gap-1.5 sm:gap-2 w-full xl:w-auto">
+        <div className="flex flex-nowrap items-center justify-start xl:justify-end gap-1.5 sm:gap-2 w-full overflow-x-auto pb-1 -mb-1 scrollbar-hide min-w-0 shrink">
           <button 
             onClick={handleCompareSchema}
             disabled={!sourceConn || !targetConn || loading}

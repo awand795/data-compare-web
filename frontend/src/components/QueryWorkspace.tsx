@@ -540,7 +540,7 @@ export const QueryWorkspace: React.FC = () => {
       <div className="bg-bg-header border-b border-border-main px-2 sm:px-4 py-2.5 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 shrink-0">
         <div className="flex flex-col gap-3 w-full xl:w-auto">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full xl:w-auto min-w-0">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          <div className="flex flex-nowrap items-center gap-2 sm:gap-3 w-full sm:w-auto shrink">
             <div className="flex flex-col flex-1 sm:flex-none">
               <span className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">Source</span>
               <select
@@ -578,8 +578,8 @@ export const QueryWorkspace: React.FC = () => {
         </div>
         </div>
 
-        <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end mt-1 xl:mt-0 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full xl:w-auto justify-start xl:justify-end">
+        <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end mt-1 xl:mt-0 min-w-0 shrink">
+          <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 w-full justify-start xl:justify-end overflow-x-auto pb-1 -mb-1 scrollbar-hide">
             <div className="flex rounded-md overflow-hidden border border-border-input text-xs mr-0 sm:mr-2 w-full sm:w-auto order-last sm:order-none mt-2 sm:mt-0">
               <button
                 onClick={() => setViewMode('results')}
