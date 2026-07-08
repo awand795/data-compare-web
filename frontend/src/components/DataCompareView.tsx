@@ -610,7 +610,7 @@ export const DataCompareView: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end min-w-0 shrink">
-          <div className="flex flex-nowrap items-center justify-start xl:justify-end gap-1.5 sm:gap-2 w-full overflow-x-auto pb-1 -mb-1 scrollbar-hide">
+          <div className="flex flex-nowrap items-center justify-start gap-1.5 sm:gap-2 w-full overflow-x-auto pb-1 -mb-1 scrollbar-hide">
             {loading && (
             <div className="flex flex-col mr-2 min-w-[200px] sm:min-w-[280px] w-full sm:w-auto order-last sm:order-none">
               {/* Mapping-level progress */}

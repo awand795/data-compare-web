@@ -222,7 +222,7 @@ export const SchemaCompareView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-nowrap items-center justify-start xl:justify-end gap-1.5 sm:gap-2 w-full overflow-x-auto pb-1 -mb-1 scrollbar-hide min-w-0 shrink">
+        <div className="flex flex-nowrap items-center justify-start gap-1.5 sm:gap-2 w-full overflow-x-auto pb-1 -mb-1 scrollbar-hide min-w-0 shrink">
           <button 
             onClick={handleCompareSchema}
             disabled={!sourceConn || !targetConn || loading}

@@ -579,7 +579,7 @@ export const QueryWorkspace: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-3 w-full xl:w-auto xl:items-end mt-1 xl:mt-0 min-w-0 shrink">
-          <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 w-full justify-start xl:justify-end overflow-x-auto pb-1 -mb-1 scrollbar-hide">
+          <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 w-full justify-start overflow-x-auto pb-1 -mb-1 scrollbar-hide">
             <div className="flex rounded-md overflow-hidden border border-border-input text-xs mr-0 sm:mr-2 w-full sm:w-auto order-last sm:order-none mt-2 sm:mt-0">
               <button
                 onClick={() => setViewMode('results')}
@@ -637,7 +637,7 @@ export const QueryWorkspace: React.FC = () => {
               </button>
             </div>
           </div>
-          <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 w-full justify-start xl:justify-end overflow-x-auto pb-1 -mb-1 scrollbar-hide min-w-0 shrink">
+          <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 w-full justify-start overflow-x-auto pb-1 -mb-1 scrollbar-hide min-w-0 shrink">
             <TemplateManager appMode="query">
               {!focusedMappingId && (
                 <button
