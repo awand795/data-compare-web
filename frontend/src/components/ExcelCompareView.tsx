@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { DiffDataGrid } from './DiffDataGrid';
-import { DataGrid } from './DataGrid';
 import { ConnectionSelect } from './ConnectionSelect';
 import { ExcelMappingModal } from './ExcelMappingModal';
 import { Panel, Group, Separator } from 'react-resizable-panels';
