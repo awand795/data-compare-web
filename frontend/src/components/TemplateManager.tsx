@@ -124,18 +124,18 @@ export const TemplateManager: React.FC<Props> = ({ appMode, children }) => {
           {appMode === 'query' && (
             <button 
               onClick={handleNewTemplate}
-              className="flex items-center gap-1.5 px-4 py-2 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-xs font-medium rounded-lg border border-border-main shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-[11px] font-medium rounded-lg border border-border-main shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
               title="Create new blank template"
             >
-              <Plus className="w-4 h-4" /> New Template
+              <Plus className="w-3.5 h-3.5" /> New Template
             </button>
           )}
 
           <button 
             onClick={() => setShowLoadModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-bg-panel hover:bg-bg-hover text-text-main text-xs font-medium rounded-lg border border-border-main shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-bg-hover text-text-main text-[11px] font-medium rounded-lg border border-border-main shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
           >
-            <FolderOpen className="w-4 h-4 text-blue-500" />
+            <FolderOpen className="w-3.5 h-3.5 text-blue-500" />
             Load Template
           </button>
           
@@ -143,26 +143,26 @@ export const TemplateManager: React.FC<Props> = ({ appMode, children }) => {
             <>
               <button 
                 onClick={handleSave}
-                className="flex items-center gap-1.5 px-4 py-2 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-xs font-medium rounded-lg border border-border-main shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-[11px] font-medium rounded-lg border border-border-main shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
                 title="Save changes to current template"
               >
-                <Save className="w-4 h-4" /> Save
+                <Save className="w-3.5 h-3.5" /> Save
               </button>
               <button 
                 onClick={() => setShowSaveModal(true)}
-                className="flex items-center gap-1.5 px-4 py-2 bg-bg-panel hover:bg-emerald-500/10 text-text-main hover:text-emerald-500 text-xs font-medium rounded-lg border border-border-main shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-emerald-500/10 text-text-main hover:text-emerald-500 text-[11px] font-medium rounded-lg border border-border-main shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
                 title="Save as new template"
               >
-                <Copy className="w-4 h-4" /> Save As
+                <Copy className="w-3.5 h-3.5" /> Save As
               </button>
             </>
           ) : (
             <button 
               onClick={() => setShowSaveModal(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-xs font-medium rounded-lg border border-border-main shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-panel hover:bg-blue-500/10 text-text-main hover:text-blue-500 text-[11px] font-medium rounded-lg border border-border-main shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
               title="Save as template"
             >
-              <Save className="w-4 h-4" /> Save Template
+              <Save className="w-3.5 h-3.5" /> Save Template
             </button>
           )}
           {children}
