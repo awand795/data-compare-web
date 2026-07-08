@@ -157,4 +157,4 @@ networks:
     name: darkosync-swarm-net
     driver: overlay
     driver_opts:
-      com.docker.network.driver.mtu: 1350
+      com.docker.network.driver.mtu: "1350"
