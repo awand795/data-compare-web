@@ -157,3 +157,6 @@ networks:
     driver: overlay
     driver_opts:
       com.docker.network.driver.mtu: "1350"
+    ipam:
+      config:
+        - subnet: 10.151.0.0/16
