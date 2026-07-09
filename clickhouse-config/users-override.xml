@@ -1,0 +1,19 @@
+<clickhouse>
+    <users>
+        <!-- Membuat user baru khusus untuk akses dari luar (DB Explorer) -->
+        <darkosync>
+            <password>darkoSync9292</password>
+            
+            <!-- HOST ANY (Izinkan akses dari semua IP luar) -->
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            
+            <profile>default</profile>
+            <quota>default</quota>
+            
+            <!-- Berikan hak akses penuh / admin -->
+            <access_management>1</access_management>
+        </darkosync>
+    </users>
+</clickhouse>

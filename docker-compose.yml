@@ -146,6 +146,7 @@ services:
       - CLICKHOUSE_PASSWORD=
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse-config/users-override.xml:/etc/clickhouse-server/users.d/users-override.xml:ro
     networks:
       - darkosync-network
 
