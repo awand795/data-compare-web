@@ -35,6 +35,7 @@ public class ConnectionDetails {
     private Integer fetchSize;
     private boolean readOnly;
     private String extraProps;
+    private boolean enableDataWarehouse;
 
     @Override
     public boolean equals(Object o) {
@@ -256,5 +257,11 @@ public class ConnectionDetails {
     }
     public void setExtraProps(String extraProps) {
         this.extraProps = extraProps;
+    }
+    public boolean isEnableDataWarehouse() {
+        return this.enableDataWarehouse;
+    }
+    public void setEnableDataWarehouse(boolean enableDataWarehouse) {
+        this.enableDataWarehouse = enableDataWarehouse;
     }
 }

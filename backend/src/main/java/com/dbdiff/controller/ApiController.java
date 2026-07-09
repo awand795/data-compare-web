@@ -826,6 +826,9 @@ public class ApiController {
             details.setReadOnly(Boolean.TRUE.equals(map.get("readOnly")));
         }
         if (map.containsKey("extraProps")) details.setExtraProps((String) map.get("extraProps"));
+        if (map.containsKey("enableDataWarehouse") && map.get("enableDataWarehouse") != null) {
+            details.setEnableDataWarehouse(Boolean.TRUE.equals(map.get("enableDataWarehouse")));
+        }
 
         return details;
     }

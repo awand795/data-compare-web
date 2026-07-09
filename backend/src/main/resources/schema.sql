@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS connections (
     socket_timeout INT,
     fetch_size INT,
     read_only BOOLEAN DEFAULT FALSE,
-    extra_props VARCHAR(1000)
+    extra_props VARCHAR(1000),
+    enable_data_warehouse BOOLEAN DEFAULT FALSE
 );
 
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS schema_name VARCHAR(100);
@@ -48,6 +49,7 @@ ALTER TABLE connections ADD COLUMN IF NOT EXISTS socket_timeout INT;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS fetch_size INT;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS read_only BOOLEAN DEFAULT FALSE;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS extra_props VARCHAR(1000);
+ALTER TABLE connections ADD COLUMN IF NOT EXISTS enable_data_warehouse BOOLEAN DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS schedules (
     id VARCHAR(50) PRIMARY KEY,
