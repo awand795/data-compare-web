@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Database, Play, Loader2, Settings2, Table as TableIcon, Server, Cpu } from 'lucide-react';
+import { Database, Play, Loader2, Settings2, Table as TableIcon, Server, Cpu, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 
@@ -142,7 +142,18 @@ export const DataWarehouseView: React.FC = () => {
                   value={targetTable}
                   onChange={e => setTargetTable(e.target.value)}
                 />
-                <p className="text-[10px] text-text-muted mt-0.5 ml-1">Table will be automatically created in the Data Warehouse if it doesn't exist.</p>
+                <p className="text-[10px] text-text-muted mt-0.5 ml-1">Table will be automatically created in ClickHouse with composite sorting keys for JOIN queries.</p>
+                <div className="mt-2.5 p-3 rounded-lg bg-indigo-500/5 border border-indigo-500/10 flex items-start gap-2.5">
+                  <div className="mt-0.5 p-1 rounded-md bg-indigo-500/10 text-indigo-500">
+                    <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">Multi-Table JOIN Auto-Pipeline</h4>
+                    <p className="text-[10.5px] text-text-muted mt-0.5 leading-normal">
+                      Write queries with 2 or more joined tables. The system will automatically detect the source tables, deploy Debezium CDC, pre-create ClickHouse landing tables, and generate dual-join Materialized Views for real-time accurate synchronization.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="flex flex-col flex-1 min-h-[300px] border border-border-input rounded-xl overflow-hidden bg-bg-panel shadow-sm">
