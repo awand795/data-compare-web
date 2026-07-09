@@ -4,7 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 import {
   Play, ArrowLeftRight, Loader2, Database, Copy, Check,
   Download, RefreshCw, ChevronDown, Maximize, Minimize,
-  Key, X
+  Key, X, Square
 } from 'lucide-react';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import axios from 'axios';
