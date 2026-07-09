@@ -81,20 +81,38 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
         let dbType = url.protocol.replace(':', '');
         if (dbType === 'postgresql') dbType = 'postgresql';
         
-        setFormData(prev => ({
-          ...prev,
-          type: dbType as any,
-          host: url.hostname || prev.host,
-          port: url.port ? parseInt(url.port) : prev.port,
-          database: url.pathname ? url.pathname.replace('/', '') : prev.database,
-          username: url.username ? decodeURIComponent(url.username) : prev.username,
-          password: url.password ? decodeURIComponent(url.password) : prev.password,
-          sslMode: url.searchParams.get('sslmode') || (dbType === 'postgresql' ? 'require' : prev.sslMode)
-        }));
+        setFormData(prev => {
+          const nextSslMode = (url.searchParams.get('sslmode') || (dbType === 'postgresql' ? 'require' : prev.sslMode)) as any;
+          const isRequireOrDisable = nextSslMode === 'disable' || nextSslMode === 'require';
+          return {
+            ...prev,
+            type: dbType as any,
+            host: url.hostname || prev.host,
+            port: url.port ? parseInt(url.port) : prev.port,
+            database: url.pathname ? url.pathname.replace('/', '') : prev.database,
+            username: url.username ? decodeURIComponent(url.username) : prev.username,
+            password: url.password ? decodeURIComponent(url.password) : prev.password,
+            sslMode: nextSslMode,
+            sslCaFile: isRequireOrDisable ? '' : (prev.sslCaFile || ''),
+            sslCertFile: isRequireOrDisable ? '' : (prev.sslCertFile || ''),
+            sslKeyFile: isRequireOrDisable ? '' : (prev.sslKeyFile || '')
+          };
+        });
         return;
       } catch (err) {
         // ignore parse errors and fall through
       }
+    }
+
+    if (name === 'sslMode' && (value === 'disable' || value === 'require')) {
+      setFormData(prev => ({
+        ...prev,
+        sslMode: value as any,
+        sslCaFile: '',
+        sslCertFile: '',
+        sslKeyFile: ''
+      }));
+      return;
     }
 
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -109,8 +127,14 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
     setTestStatus('testing');
     setTestDetails(null);
     try {
+      const testData = { ...formData };
+      if (testData.sslMode === 'disable' || testData.sslMode === 'require') {
+        testData.sslCaFile = '';
+        testData.sslCertFile = '';
+        testData.sslKeyFile = '';
+      }
       // Endpoint to be implemented by backend subagent
-      const res = await axios.post('/api/test-connection', formData);
+      const res = await axios.post('/api/test-connection', testData);
       setTestStatus(res.data.success ? 'success' : 'error');
       setTestDetails(res.data.message || (res.data.success ? 'Connection successful' : 'Connection failed'));
       if (res.data.success) {
@@ -131,6 +155,11 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
     
     // Encrypt passwords locally before saving (simple base64 for now, can be upgraded to AES)
     const secureData = { ...formData };
+    if (secureData.sslMode === 'disable' || secureData.sslMode === 'require') {
+      secureData.sslCaFile = '';
+      secureData.sslCertFile = '';
+      secureData.sslKeyFile = '';
+    }
     if (secureData.password) secureData.password = btoa(secureData.password);
     if (secureData.sshPassword) secureData.sshPassword = btoa(secureData.sshPassword);
     if (secureData.sshPassphrase) secureData.sshPassphrase = btoa(secureData.sshPassphrase);
@@ -322,9 +351,14 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                         bukan 8123 (HTTP). Pastikan port sudah diubah di tab General &gt; Port.
                       </p>
                     )}
+                    {formData.sslMode === 'require' && (
+                      <p className="text-[11px] text-text-muted mt-1.5">
+                        💡 SSL Mode <strong>Require</strong> tidak memerlukan berkas CA Certificate, Client Certificate, atau Client Key untuk koneksi standar.
+                      </p>
+                    )}
                   </div>
 
-                  {formData.sslMode !== 'disable' && (
+                  {formData.sslMode !== 'disable' && formData.sslMode !== 'require' && (
                     <div className="flex flex-col gap-3">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center justify-between">
