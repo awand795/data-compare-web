@@ -33,7 +33,7 @@ import net.sf.jsqlparser.util.TablesNamesFinder;
 public class DataWarehouseService {
     private static final Logger logger = LoggerFactory.getLogger(DataWarehouseService.class);
     private final RestTemplate restTemplate = new RestTemplate();
-    private static final String DEBEZIUM_URL = "http://darkosync-debezium:8083/connectors";
+    private static final String DEBEZIUM_URL = "http://debezium:8083/connectors";
 
     @Autowired
     private ConnectionManagerService connectionManagerService;
