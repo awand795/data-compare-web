@@ -504,9 +504,9 @@ export const ExcelCompareView: React.FC = () => {
                     <button
                       onClick={() => document.getElementById('excel-upload')?.click()}
                       disabled={!targetConnectionId}
-                      className="px-3 py-2 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-md text-[12px] sm:text-[13px] font-bold hover:bg-blue-500 hover:text-white transition-colors w-full sm:w-48 md:w-64 lg:w-72 xl:w-80"
+                      className="px-3 py-2 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-md text-[12px] sm:text-[13px] font-bold hover:bg-blue-500 hover:text-white transition-colors w-[160px] xl:w-[190px] truncate shrink-0"
                     >
-                      {targetConnectionId ? "Upload Excel File" : "Select Target DB First"}
+                      {targetConnectionId ? "Upload Excel" : "Select Target DB"}
                     </button>
                   </>
                 ) : (
@@ -560,9 +560,9 @@ export const ExcelCompareView: React.FC = () => {
                     <button
                       onClick={() => document.getElementById('excel-upload-target')?.click()}
                       disabled={!sourceConnectionId}
-                      className="px-3 py-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-md text-[12px] sm:text-[13px] font-bold hover:bg-emerald-500 hover:text-white transition-colors w-full sm:w-48 md:w-64 lg:w-72 xl:w-80"
+                      className="px-3 py-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-md text-[12px] sm:text-[13px] font-bold hover:bg-emerald-500 hover:text-white transition-colors w-[160px] xl:w-[190px] truncate shrink-0"
                     >
-                      {sourceConnectionId ? "Upload Excel File" : "Select Source DB First"}
+                      {sourceConnectionId ? "Upload Excel" : "Select Source DB"}
                     </button>
                   </>
                 ) : (
