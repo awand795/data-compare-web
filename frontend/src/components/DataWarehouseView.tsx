@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Database, Play, Loader2, Settings2, Table as TableIcon, Server, Cpu, Sparkles } from 'lucide-react';
+import { Database, Play, Loader2, Table as TableIcon, Server, Cpu, Sparkles } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
 import { Panel, Group, Separator } from 'react-resizable-panels';
