@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Database, Play, Loader2, Settings2, Table as TableIcon, Server, Cpu, Sparkles } from 'lucide-react';
+import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 
@@ -156,20 +157,15 @@ export const DataWarehouseView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col flex-1 min-h-[300px] border border-border-input rounded-xl overflow-hidden bg-bg-panel shadow-sm">
-                <div className="bg-bg-header/50 border-b border-border-main px-4 py-2.5 flex items-center gap-2">
-                  <Settings2 className="w-4 h-4 text-indigo-500" />
-                  <span className="text-xs font-bold text-text-main">Extraction Query (Source)</span>
-                  <span className="ml-auto text-[10px] bg-indigo-500/10 text-indigo-500 px-2 py-0.5 rounded-full font-semibold border border-indigo-500/20">SQL</span>
-                </div>
-                <div className="flex-1 p-1">
-                  <textarea
-                    className="w-full h-full bg-transparent text-text-main font-mono text-[13px] p-3 outline-none resize-none"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    spellCheck={false}
-                  />
-                </div>
+              <div className="flex-1 min-h-[300px] shadow-sm rounded-xl overflow-hidden border border-border-input">
+                <SQLEditor
+                  value={query}
+                  onChange={setQuery}
+                  connectionId={sourceConnId}
+                  placeholder="-- Define the data to sync via Debezium&#10;SELECT * FROM source_schema.source_table"
+                  className="h-full"
+                  showMaximize={true}
+                />
               </div>
             </div>
           </Panel>
