@@ -64,7 +64,8 @@ public class DataWarehouseService {
             // STEP 1: Parse Query, Introspect Schema and PKs
             // =========================================================================
             sendLog(emitter, "Parsing source query to detect physical tables...");
-            List<String> physicalTables = extractPhysicalTables(request.getQuery());
+            String originalQuery = autoAliasSelectItems(request.getQuery());
+            List<String> physicalTables = extractPhysicalTables(originalQuery);
             if (physicalTables.isEmpty()) {
                 throw new RuntimeException("Could not extract any source tables from the query. Please verify the query syntax is correct.");
             }
@@ -77,9 +78,9 @@ public class DataWarehouseService {
             String dryRunSql;
             String srcType = request.getSourceConnection().getType().toLowerCase();
             if (srcType.contains("sqlserver")) {
-                dryRunSql = "SELECT TOP 0 * FROM (" + request.getQuery() + ") AS tmp";
+                dryRunSql = "SELECT TOP 0 * FROM (" + originalQuery + ") AS tmp";
             } else {
-                dryRunSql = "SELECT * FROM (" + request.getQuery() + ") AS tmp LIMIT 0";
+                dryRunSql = "SELECT * FROM (" + originalQuery + ") AS tmp LIMIT 0";
             }
             
             List<ColumnInfo> targetColumns = new ArrayList<>();
@@ -403,7 +404,7 @@ public class DataWarehouseService {
                 String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
                 String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
                 
-                String rotatedSql = rotateQuery(request.getQuery(), t);
+                String rotatedSql = rotateQuery(originalQuery, t);
                 String sqlWithMeta = addMetadataColsToSelect(rotatedSql, t);
                 String rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
                 
@@ -481,6 +482,37 @@ public class DataWarehouseService {
         table = table.replaceAll("[^a-zA-Z0-9_]", "_");
         
         return "cdc_" + baseName + "_" + schema + "_" + table;
+    }
+
+    private String autoAliasSelectItems(String sql) {
+        try {
+            net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
+            if (stmt instanceof Select) {
+                Select select = (Select) stmt;
+                net.sf.jsqlparser.statement.select.PlainSelect plain = select.getPlainSelect();
+                if (plain != null) {
+                    boolean modified = false;
+                    for (net.sf.jsqlparser.statement.select.SelectItem item : plain.getSelectItems()) {
+                        if (item instanceof net.sf.jsqlparser.statement.select.SelectExpressionItem) {
+                            net.sf.jsqlparser.statement.select.SelectExpressionItem exprItem = (net.sf.jsqlparser.statement.select.SelectExpressionItem) item;
+                            if (exprItem.getAlias() == null && exprItem.getExpression() instanceof net.sf.jsqlparser.schema.Column) {
+                                net.sf.jsqlparser.schema.Column col = (net.sf.jsqlparser.schema.Column) exprItem.getExpression();
+                                if (col.getTable() != null && col.getTable().getName() != null) {
+                                    exprItem.setAlias(new net.sf.jsqlparser.expression.Alias(col.getColumnName()));
+                                    modified = true;
+                                }
+                            }
+                        }
+                    }
+                    if (modified) {
+                        return select.toString();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Could not auto-alias SQL query using JSqlParser: " + e.getMessage());
+        }
+        return sql;
     }
 
     private String rewriteQueryForClickHouse(String sql, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb) {
