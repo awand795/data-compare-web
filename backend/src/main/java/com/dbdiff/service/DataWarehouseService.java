@@ -493,14 +493,11 @@ public class DataWarehouseService {
                 if (plain != null) {
                     boolean modified = false;
                     for (net.sf.jsqlparser.statement.select.SelectItem item : plain.getSelectItems()) {
-                        if (item instanceof net.sf.jsqlparser.statement.select.SelectExpressionItem) {
-                            net.sf.jsqlparser.statement.select.SelectExpressionItem exprItem = (net.sf.jsqlparser.statement.select.SelectExpressionItem) item;
-                            if (exprItem.getAlias() == null && exprItem.getExpression() instanceof net.sf.jsqlparser.schema.Column) {
-                                net.sf.jsqlparser.schema.Column col = (net.sf.jsqlparser.schema.Column) exprItem.getExpression();
-                                if (col.getTable() != null && col.getTable().getName() != null) {
-                                    exprItem.setAlias(new net.sf.jsqlparser.expression.Alias(col.getColumnName()));
-                                    modified = true;
-                                }
+                        if (item.getExpression() instanceof net.sf.jsqlparser.schema.Column) {
+                            net.sf.jsqlparser.schema.Column col = (net.sf.jsqlparser.schema.Column) item.getExpression();
+                            if (item.getAlias() == null && col.getTable() != null && col.getTable().getName() != null) {
+                                item.setAlias(new net.sf.jsqlparser.expression.Alias(col.getColumnName()));
+                                modified = true;
                             }
                         }
                     }
