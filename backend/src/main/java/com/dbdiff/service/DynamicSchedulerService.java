@@ -100,6 +100,7 @@ public class DynamicSchedulerService {
     }
 
     private void scheduleTask(ScheduleConfig schedule) {
+        cancelSchedule(schedule.getId());
         Runnable task = () -> executeCompareJob(schedule.getId());
         try {
             CronTrigger cronTrigger = new CronTrigger(schedule.getCronExpression());
@@ -121,6 +122,12 @@ public class DynamicSchedulerService {
 
         if (scheduleManagerService.isJobAlreadyRunning(scheduleId)) {
             logger.info("Job {} skipped — another instance is currently running it (found RUNNING status in DB)", scheduleId);
+            return;
+        }
+
+        // DB-level lock to prevent race conditions on multi-instance setups
+        if (!scheduleManagerService.acquireJobLock(scheduleId, LocalDateTime.now(), 15)) {
+            logger.info("Job {} skipped — another instance has already acquired the lock recently", scheduleId);
             return;
         }
 

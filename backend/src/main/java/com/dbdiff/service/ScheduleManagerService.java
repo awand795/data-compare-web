@@ -213,4 +213,18 @@ public class ScheduleManagerService {
             return false;
         }
     }
+
+    public boolean acquireJobLock(String id, LocalDateTime time, int graceSeconds) {
+        try {
+            String sql = "UPDATE schedules SET last_run = ? WHERE id = ? AND (last_run IS NULL OR last_run < ?)";
+            int rows = jdbcTemplate.update(sql, 
+                Timestamp.valueOf(time), 
+                id, 
+                Timestamp.valueOf(time.minusSeconds(graceSeconds))
+            );
+            return rows > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }
