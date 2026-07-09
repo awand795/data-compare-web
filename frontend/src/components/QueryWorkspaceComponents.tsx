@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useRef, useMemo } from 'react';
-import { Download, Check, Copy, Loader2, Database, ChevronDown, RefreshCw, Play, Maximize, Minimize } from 'lucide-react';
+import { Download, Check, Copy, Loader2, Database, ChevronDown, RefreshCw, Play, Maximize, Minimize, Square } from 'lucide-react';
 import clsx from 'clsx';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { useAppStore } from '../store/useAppStore';
@@ -279,19 +279,25 @@ export const SidePanel = ({
             {results && (
               <button
                 onClick={() => executeQuery(side)}
-                className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-blue-500 transition-colors"
+                disabled={loading}
+                className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-blue-500 transition-colors disabled:opacity-40"
                 title="Re-run"
               >
-                <RefreshCw className="w-3 h-3" />
+                <RefreshCw className={clsx("w-3 h-3", loading && "animate-spin")} />
               </button>
             )}
             <button
               onClick={() => executeQuery(side)}
-              disabled={!conn || !query.trim() || loading}
-              className={`px-2.5 py-1 bg-${accent}-600/20 hover:bg-${accent}-600/30 text-${accent}-500 dark:text-${accent}-400 rounded text-[10px] font-medium disabled:opacity-40 flex items-center gap-1 transition-colors`}
+              disabled={!conn || !query.trim()}
+              className={clsx(
+                "px-2.5 py-1 rounded text-[10px] font-medium flex items-center gap-1 transition-colors",
+                loading 
+                  ? "bg-red-500/20 hover:bg-red-500/30 text-red-500" 
+                  : `bg-${accent}-600/20 hover:bg-${accent}-600/30 text-${accent}-500 dark:text-${accent}-400`
+              )}
             >
-              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3 fill-current" />}
-              Run
+              {loading ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
+              {loading ? 'Stop' : 'Run'}
             </button>
             <button
               onClick={toggleFullscreen}

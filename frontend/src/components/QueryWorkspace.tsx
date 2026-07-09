@@ -57,6 +57,8 @@ export const QueryWorkspace: React.FC = () => {
   const [fullscreenPanel, setFullscreenPanel] = useState<'source' | 'target' | 'diff' | null>(null);
   const [returnMatchedRows, setReturnMatchedRows] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sourceAbortControllerRef = useRef<AbortController | null>(null);
+  const targetAbortControllerRef = useRef<AbortController | null>(null);
 
   const sourceConn = connections.find(c => c.id === sourceConnectionId);
   const targetConn = connections.find(c => c.id === targetConnectionId);
@@ -138,6 +140,16 @@ export const QueryWorkspace: React.FC = () => {
 
   const executeQuery = async (side: 'source' | 'target') => {
     const isSource = side === 'source';
+    const loading = isSource ? loadingSource : loadingTarget;
+    const abortRef = isSource ? sourceAbortControllerRef : targetAbortControllerRef;
+
+    if (loading) {
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+      return;
+    }
+
     const conn = isSource ? sourceConn : targetConn;
     const rawQuery = isSource ? sourceQuery : targetQuery;
     const limit = isSource ? sourceLimit : targetLimit;
@@ -152,6 +164,8 @@ export const QueryWorkspace: React.FC = () => {
     setError('');
     setExecTime(null);
     const startTime = performance.now();
+    const abortController = new AbortController();
+    abortRef.current = abortController;
     
     let finalQuery = applyLimit(rawQuery, limit);
 
@@ -179,7 +193,8 @@ export const QueryWorkspace: React.FC = () => {
       const response = await fetch('/api/execute-query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connection: conn, query: finalQuery })
+        body: JSON.stringify({ connection: conn, query: finalQuery }),
+        signal: abortController.signal
       });
       
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -230,9 +245,14 @@ export const QueryWorkspace: React.FC = () => {
          setResults([...allRows]);
       }
     } catch (err: any) {
-      setError(err.message);
+      if (err.name === 'AbortError') {
+        setError('Stopped by user');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
+      abortRef.current = null;
       setExecTime(Math.round(performance.now() - startTime));
     }
   };
@@ -507,8 +527,18 @@ export const QueryWorkspace: React.FC = () => {
   };
 
   const executeBoth = () => {
-    if (sourceConn && sourceQuery.trim()) executeQuery('source');
-    if (targetConn && targetQuery.trim()) executeQuery('target');
+    const isRunning = loadingSource || loadingTarget;
+    if (isRunning) {
+      if (loadingSource && sourceAbortControllerRef.current) {
+        sourceAbortControllerRef.current.abort();
+      }
+      if (loadingTarget && targetAbortControllerRef.current) {
+        targetAbortControllerRef.current.abort();
+      }
+    } else {
+      if (sourceConn && sourceQuery.trim()) executeQuery('source');
+      if (targetConn && targetQuery.trim()) executeQuery('target');
+    }
   };
 
   const copyResults = (side: 'source' | 'target') => {
@@ -625,12 +655,17 @@ export const QueryWorkspace: React.FC = () => {
               </button>
               <button
                 onClick={executeBoth}
-                disabled={(!sourceConn || !sourceQuery.trim()) && (!targetConn || !targetQuery.trim())}
-                className="group relative overflow-hidden flex-1 sm:flex-none px-3 sm:px-4 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-lg flex items-center justify-center gap-1.5 text-[13px] font-bold disabled:opacity-50 shadow-md shadow-amber-500/30 hover:shadow-lg hover:shadow-amber-500/50 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 whitespace-nowrap"
+                disabled={!(loadingSource || loadingTarget) && (!sourceConn || !sourceQuery.trim()) && (!targetConn || !targetQuery.trim())}
+                className={clsx(
+                  "group relative overflow-hidden flex-1 sm:flex-none px-3 sm:px-4 py-1.5 text-white rounded-lg flex items-center justify-center gap-1.5 text-[13px] font-bold disabled:opacity-50 shadow-md transition-all duration-300 whitespace-nowrap",
+                  (loadingSource || loadingTarget)
+                    ? "bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-400 hover:to-rose-500 shadow-red-500/30 hover:shadow-red-500/50 hover:-translate-y-0.5 active:translate-y-0"
+                    : "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 shadow-amber-500/30 hover:shadow-lg hover:shadow-amber-500/50 hover:-translate-y-0.5 active:translate-y-0"
+                )}
               >
                 <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <Play className="w-3.5 h-3.5 fill-current relative z-10" />
-                <span className="relative z-10">Execute Both</span>
+                {(loadingSource || loadingTarget) ? <Square className="w-3.5 h-3.5 fill-current relative z-10" /> : <Play className="w-3.5 h-3.5 fill-current relative z-10" />}
+                <span className="relative z-10">{(loadingSource || loadingTarget) ? 'Stop Both' : 'Execute Both'}</span>
               </button>
             </div>
           </div>
