@@ -312,11 +312,11 @@ public class DataWarehouseService {
             }
             
             sourceConfig.put("tasks.max", "1");
-            sourceConfig.put("database.hostname", request.getSourceConnection().getHost());
+            sourceConfig.put("database.hostname", request.getSourceConnection().getHost() != null ? request.getSourceConnection().getHost().trim() : "");
             sourceConfig.put("database.port", String.valueOf(request.getSourceConnection().getPort()));
-            sourceConfig.put("database.user", request.getSourceConnection().getUsername());
+            sourceConfig.put("database.user", request.getSourceConnection().getUsername() != null ? request.getSourceConnection().getUsername().trim() : "");
             sourceConfig.put("database.password", request.getSourceConnection().getPassword());
-            sourceConfig.put("database.dbname", request.getSourceConnection().getDatabase());
+            sourceConfig.put("database.dbname", request.getSourceConnection().getDatabase() != null ? request.getSourceConnection().getDatabase().trim() : "");
             sourceConfig.put("database.server.name", sourceConnectorName);
             sourceConfig.put("topic.prefix", sourceConnectorName); // Compatibility with Debezium 2.x
 
@@ -374,11 +374,11 @@ public class DataWarehouseService {
             sinkConfig.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
             sinkConfig.put("tasks.max", "1");
             sinkConfig.put("topics.regex", topicPrefix + ".*");
-            sinkConfig.put("clickhouse.server.host", request.getTargetConnection().getHost());
+            sinkConfig.put("clickhouse.server.host", request.getTargetConnection().getHost() != null ? request.getTargetConnection().getHost().trim() : "");
             sinkConfig.put("clickhouse.server.port", String.valueOf(request.getTargetConnection().getPort()));
-            sinkConfig.put("clickhouse.server.user", request.getTargetConnection().getUsername());
+            sinkConfig.put("clickhouse.server.user", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
             sinkConfig.put("clickhouse.server.password", request.getTargetConnection().getPassword());
-            sinkConfig.put("clickhouse.database", request.getTargetConnection().getDatabase());
+            sinkConfig.put("clickhouse.database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
             sinkConfig.put("clickhouse.auto.create", "true");
             sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
             sinkConfig.put("value.converter.schemas.enable", "false");

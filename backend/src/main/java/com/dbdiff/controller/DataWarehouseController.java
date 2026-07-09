@@ -2,6 +2,7 @@ package com.dbdiff.controller;
 
 import com.dbdiff.model.DataWarehouseDeployRequest;
 import com.dbdiff.service.DataWarehouseService;
+import com.dbdiff.repository.ConnectionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,11 +17,22 @@ public class DataWarehouseController {
 
     @Autowired
     private DataWarehouseService dataWarehouseService;
+    
+    @Autowired
+    private ConnectionRepository connectionRepository;
 
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @PostMapping(value = "/deploy", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter deployPipeline(@RequestBody DataWarehouseDeployRequest request) {
+        // Fetch full connection details from the database so that passwords are included
+        if (request.getSourceConnection() != null && request.getSourceConnection().getId() != null) {
+            request.setSourceConnection(connectionRepository.findById(request.getSourceConnection().getId()));
+        }
+        if (request.getTargetConnection() != null && request.getTargetConnection().getId() != null) {
+            request.setTargetConnection(connectionRepository.findById(request.getTargetConnection().getId()));
+        }
+        
         SseEmitter emitter = new SseEmitter(600_000L); // 10 minutes timeout
         
         executor.execute(() -> {
