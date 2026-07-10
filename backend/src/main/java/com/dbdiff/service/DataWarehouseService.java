@@ -323,10 +323,20 @@ public class DataWarehouseService {
 
             // Route Debezium topics to a unified target format: cdc_[baseName]_[schema]_[table]
             String topicPrefix = "cdc_" + baseName + "_";
-            sourceConfig.put("transforms", "route");
+            sourceConfig.put("transforms", "route,unwrap,rename");
             sourceConfig.put("transforms.route.type", "org.apache.kafka.connect.transforms.RegexRouter");
             sourceConfig.put("transforms.route.regex", "([^\\.]+)\\.([^\\.]+)\\.([^\\.]+)");
             sourceConfig.put("transforms.route.replacement", topicPrefix + "$2_$3");
+            
+            // Flatten the Debezium CDC payload
+            sourceConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
+            sourceConfig.put("transforms.unwrap.drop.tombstones", "false");
+            sourceConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
+            sourceConfig.put("transforms.unwrap.add.fields", "ts_ms");
+            
+            // Rename internal Debezium fields to match our ClickHouse landing tables
+            sourceConfig.put("transforms.rename.type", "org.apache.kafka.connect.transforms.ReplaceField$Value");
+            sourceConfig.put("transforms.rename.renames", "__deleted:is_deleted,__ts_ms:version");
             
             List<String> formattedTables = new ArrayList<>();
             for (String t : physicalTables) {
