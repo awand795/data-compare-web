@@ -557,7 +557,7 @@ public class DataWarehouseService {
                     }
 
                     boolean modified = false;
-                    List<net.sf.jsqlparser.statement.select.SelectItem> newItems = new ArrayList<>();
+                    List<net.sf.jsqlparser.statement.select.SelectItem<?>> newItems = new ArrayList<>();
                     
                     for (net.sf.jsqlparser.statement.select.SelectItem item : plain.getSelectItems()) {
                         if (item.getExpression() instanceof net.sf.jsqlparser.statement.select.AllTableColumns) {
@@ -607,7 +607,8 @@ public class DataWarehouseService {
                         newItems.add(item);
                     }
                     if (modified) {
-                        plain.setSelectItems(newItems);
+                        plain.getSelectItems().clear();
+                        plain.getSelectItems().addAll(newItems);
                         return select.toString();
                     }
                 }
