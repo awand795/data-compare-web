@@ -336,64 +336,42 @@ public class DataWarehouseService {
                 }
             }
 
-            // 2b. Create Physical Target ReplacingMergeTree Table or VIEW
-            if (physicalTables.size() > 1) {
-                // IT'S A JOIN QUERY -> Use standard VIEW on ClickHouse to avoid ghost rows
-                sendLog(emitter, "Query contains JOINs. Using dynamic standard VIEW for 100% data accuracy...");
-                
-                String viewSql = rewriteQueryForClickHouseView(originalQuery, physicalTables, baseName, request.getSourceConnection(), chDb, tableToPKs);
-                String viewDdl = "CREATE OR REPLACE VIEW `" + chDb + "`.`" + request.getTargetTable() + "` AS " + viewSql;
-                
-                sendLog(emitter, "Creating target VIEW `" + request.getTargetTable() + "` in ClickHouse...");
-                logger.info("Executing VIEW DDL:\n{}", viewDdl);
-                try (Connection conn = targetDs.getConnection();
-                     Statement stmt = conn.createStatement()) {
-                    // We must drop any existing physical table first if it exists
-                    stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + request.getTargetTable() + "`");
-                    stmt.execute(viewDdl);
-                    sendLog(emitter, "Target VIEW `" + request.getTargetTable() + "` created/verified successfully.");
-                } catch (Exception e) {
-                    sendLog(emitter, "ERROR: Target VIEW creation failed: " + e.getMessage());
-                    throw e;
-                }
-            } else {
-                // IT'S A SINGLE TABLE QUERY -> Use ReplacingMergeTree + MV (original approach)
-                StringBuilder targetDdl = new StringBuilder();
-                targetDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(request.getTargetTable()).append("` (\n");
-                for (ColumnInfo col : targetColumns) {
-                    targetDdl.append("    `").append(col.name).append("` ").append(col.clickhouseType).append(",\n");
-                }
-                targetDdl.append("    `version` UInt64 DEFAULT 0,\n");
-                targetDdl.append("    `is_deleted` UInt8 DEFAULT 0\n");
-                targetDdl.append(") ENGINE = ReplacingMergeTree(version)\n");
-                
-                StringBuilder pkBuilder = new StringBuilder();
-                for (String pk : compositePKs) {
-                    if (pkBuilder.length() > 0) pkBuilder.append(", ");
-                    pkBuilder.append("`").append(pk).append("`");
-                }
-                targetDdl.append("ORDER BY (").append(pkBuilder.toString()).append(")");
-                
-                sendLog(emitter, "Creating target table `" + request.getTargetTable() + "` in ClickHouse...");
-                try (Connection conn = targetDs.getConnection();
-                     Statement stmt = conn.createStatement()) {
-                    // Drop view if it was previously created as a view
-                    stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + request.getTargetTable() + "`");
-                    stmt.execute(targetDdl.toString());
-                    sendLog(emitter, "Target table `" + request.getTargetTable() + "` verified/created.");
-                } catch (Exception e) {
-                    sendLog(emitter, "ERROR: Target table creation failed: " + e.getMessage());
-                    throw e;
-                }
+            // 2b. Create Physical Target ReplacingMergeTree Table
+            StringBuilder targetDdl = new StringBuilder();
+            targetDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(request.getTargetTable()).append("` (\n");
+            for (ColumnInfo col : targetColumns) {
+                targetDdl.append("    `").append(col.name).append("` ").append(col.clickhouseType).append(",\n");
+            }
+            targetDdl.append("    `version` UInt64 DEFAULT 0,\n");
+            targetDdl.append("    `is_deleted` UInt8 DEFAULT 0\n");
+            targetDdl.append(") ENGINE = ReplacingMergeTree(version)\n");
+            
+            StringBuilder pkBuilder = new StringBuilder();
+            for (String pk : compositePKs) {
+                if (pkBuilder.length() > 0) pkBuilder.append(", ");
+                pkBuilder.append("`").append(pk).append("`");
+            }
+            targetDdl.append("ORDER BY (").append(pkBuilder.toString()).append(")");
+            
+            sendLog(emitter, "Creating target table `" + request.getTargetTable() + "` in ClickHouse...");
+            try (Connection conn = targetDs.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                // Drop view if it was previously created as a view
+                stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + request.getTargetTable() + "`");
+                stmt.execute(targetDdl.toString());
+                sendLog(emitter, "Target table `" + request.getTargetTable() + "` verified/created.");
+            } catch (Exception e) {
+                sendLog(emitter, "ERROR: Target table creation failed: " + e.getMessage());
+                throw e;
+            }
 
-                // Truncate target table
-                try (Connection conn = targetDs.getConnection();
-                     Statement stmt = conn.createStatement()) {
-                    stmt.execute("TRUNCATE TABLE `" + chDb + "`.`" + request.getTargetTable() + "`");
-                    sendLog(emitter, "Truncated target table `" + request.getTargetTable() + "`.");
-                } catch (Exception e) {
-                    // Ignore
-                }
+            // Truncate target table
+            try (Connection conn = targetDs.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("TRUNCATE TABLE `" + chDb + "`.`" + request.getTargetTable() + "`");
+                sendLog(emitter, "Truncated target table `" + request.getTargetTable() + "`.");
+            } catch (Exception e) {
+                // Ignore
             }
 
             // =========================================================================
@@ -490,35 +468,40 @@ public class DataWarehouseService {
             // =========================================================================
             // STEP 4: Create Materialized Views for All Source Tables
             // =========================================================================
-            if (physicalTables.size() == 1) {
-                sendLog(emitter, "Generating Materialized Views for automatic updates...");
-                for (String t : physicalTables) {
-                    String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
-                    String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
-                    
-                    String rotatedSql = rotateQuery(originalQuery, t);
-                    String sqlWithMeta = addMetadataColsToSelect(rotatedSql, t);
-                    String rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
-                    
-                    StringBuilder mvDdl = new StringBuilder();
-                    mvDdl.append("CREATE MATERIALIZED VIEW IF NOT EXISTS `").append(chDb).append("`.`").append(mvName).append("`\n");
-                    mvDdl.append("TO `").append(chDb).append("`.`").append(request.getTargetTable()).append("`\n");
-                    mvDdl.append("AS ").append(rewrittenSql);
-                    
-                    sendLog(emitter, "Creating MV `" + mvName + "` triggered on landing table `" + landingTable + "`...");
-                    logger.info("Executing MV DDL:\n{}", mvDdl.toString());
-                    
-                    try (Connection conn = targetDs.getConnection();
-                         Statement stmt = conn.createStatement()) {
-                        stmt.execute(mvDdl.toString());
-                        sendLog(emitter, "Materialized View `" + mvName + "` registered successfully.");
-                    } catch (Exception e) {
-                        sendLog(emitter, "ERROR: Failed to create Materialized View `" + mvName + "`: " + e.getMessage());
-                        throw e;
-                    }
+            sendLog(emitter, "Generating Materialized Views for automatic updates...");
+            for (String t : physicalTables) {
+                String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
+                String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
+                
+                String rotatedSql = rotateQuery(originalQuery, t);
+                String sqlWithMeta = addMetadataColsToSelect(rotatedSql, t);
+                
+                String rewrittenSql;
+                if (physicalTables.size() > 1) {
+                    // For JOIN queries, use rewriteQueryForClickHouseView to filter out empty PKs and apply FINAL
+                    rewrittenSql = rewriteQueryForClickHouseView(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb, tableToPKs);
+                    // Change LEFT JOIN -> INNER JOIN to prevent ghost rows
+                    rewrittenSql = rewrittenSql.replaceAll("(?i)\\bLEFT\\s+JOIN\\b", "INNER JOIN");
+                } else {
+                    rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
                 }
-            } else {
-                sendLog(emitter, "Query contains JOINs. Skipping Materialized View creation as target is a dynamic VIEW.");
+                
+                StringBuilder mvDdl = new StringBuilder();
+                mvDdl.append("CREATE MATERIALIZED VIEW IF NOT EXISTS `").append(chDb).append("`.`").append(mvName).append("`\n");
+                mvDdl.append("TO `").append(chDb).append("`.`").append(request.getTargetTable()).append("`\n");
+                mvDdl.append("AS ").append(rewrittenSql);
+                
+                sendLog(emitter, "Creating MV `" + mvName + "` triggered on landing table `" + landingTable + "`...");
+                logger.info("Executing MV DDL:\n{}", mvDdl.toString());
+                
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    stmt.execute(mvDdl.toString());
+                    sendLog(emitter, "Materialized View `" + mvName + "` registered successfully.");
+                } catch (Exception e) {
+                    sendLog(emitter, "ERROR: Failed to create Materialized View `" + mvName + "`: " + e.getMessage());
+                    throw e;
+                }
             }
 
             // =========================================================================
@@ -558,7 +541,7 @@ public class DataWarehouseService {
             // STEP 6: Wait for Snapshot to Complete
             // =========================================================================
             if (physicalTables.size() > 1) {
-                sendLog(emitter, "Waiting for initial snapshot to complete and populate the target VIEW...");
+                sendLog(emitter, "Waiting for initial snapshot to complete and populate the target table...");
                 
                 // Poll landing table row counts until they stabilize (unchanged for 3 consecutive checks)
                 int pollIntervalMs = 5000; // check every 5 seconds
@@ -597,7 +580,7 @@ public class DataWarehouseService {
                 // Give some extra time for the sink connector to flush all data to ClickHouse
                 sendLog(emitter, "Waiting for sink connector to flush data to ClickHouse...");
                 Thread.sleep(10000);
-                sendLog(emitter, "Target VIEW populated successfully with initial snapshot data.");
+                sendLog(emitter, "Target table populated successfully with initial snapshot data.");
             }
 
             sendLog(emitter, "Pipeline deployment completed successfully.");
