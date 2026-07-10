@@ -64,7 +64,8 @@ public class DataWarehouseService {
             // STEP 1: Parse Query, Introspect Schema and PKs
             // =========================================================================
             sendLog(emitter, "Parsing source query to detect physical tables...");
-            String originalQuery = autoAliasSelectItems(request.getQuery());
+            DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
+            String originalQuery = expandWildcardsAndAlias(request.getQuery(), sourceDs, request.getSourceConnection());
             List<String> physicalTables = extractPhysicalTables(originalQuery);
             if (physicalTables.isEmpty()) {
                 throw new RuntimeException("Could not extract any source tables from the query. Please verify the query syntax is correct.");
@@ -72,7 +73,6 @@ public class DataWarehouseService {
             sendLog(emitter, "Detected source tables: " + String.join(", ", physicalTables));
 
             sendLog(emitter, "Running dry-run query on source DB to inspect column types...");
-            DataSource sourceDs = connectionManagerService.getDataSource(request.getSourceConnection());
             DataSource targetDs = connectionManagerService.getDataSource(request.getTargetConnection());
             
             String dryRunSql;
@@ -484,24 +484,130 @@ public class DataWarehouseService {
         return "cdc_" + baseName + "_" + schema + "_" + table;
     }
 
-    private String autoAliasSelectItems(String sql) {
+    private List<String> getColumnsForTable(Connection conn, String physicalTable, ConnectionDetails sourceConn) {
+        List<String> cols = new ArrayList<>();
         try {
+            String schemaName = null;
+            String tableName = physicalTable;
+            if (physicalTable.contains(".")) {
+                int dotIdx = physicalTable.indexOf('.');
+                schemaName = physicalTable.substring(0, dotIdx);
+                tableName = physicalTable.substring(dotIdx + 1);
+            }
+            tableName = tableName.replaceAll("[\"``]", "");
+            if (schemaName != null) {
+                schemaName = schemaName.replaceAll("[\"``]", "");
+            } else {
+                schemaName = "postgresql".equalsIgnoreCase(sourceConn.getType()) ? 
+                    (sourceConn.getSchema() != null ? sourceConn.getSchema() : "public") : 
+                    (sourceConn.getDatabase() != null ? sourceConn.getDatabase() : "");
+            }
+            if (schemaName == null || schemaName.isEmpty()) schemaName = null;
+            
+            DatabaseMetaData metaData = conn.getMetaData();
+            try (ResultSet rs = metaData.getColumns(null, schemaName, tableName, "%")) {
+                while (rs.next()) {
+                    cols.add(rs.getString("COLUMN_NAME"));
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to get columns for table " + physicalTable, e);
+        }
+        return cols;
+    }
+
+    private String expandWildcardsAndAlias(String sql, DataSource sourceDs, ConnectionDetails sourceConn) {
+        try (Connection conn = sourceDs.getConnection()) {
             net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
             if (stmt instanceof Select) {
                 Select select = (Select) stmt;
                 net.sf.jsqlparser.statement.select.PlainSelect plain = select.getPlainSelect();
                 if (plain != null) {
+                    Map<String, String> aliasToTable = new HashMap<>();
+                    String defaultTable = null;
+                    if (plain.getFromItem() instanceof net.sf.jsqlparser.schema.Table) {
+                        net.sf.jsqlparser.schema.Table t = (net.sf.jsqlparser.schema.Table) plain.getFromItem();
+                        String tableName = t.getName();
+                        if (t.getSchemaName() != null) {
+                            tableName = t.getSchemaName() + "." + tableName;
+                        }
+                        defaultTable = tableName;
+                        if (t.getAlias() != null) {
+                            aliasToTable.put(t.getAlias().getName().toLowerCase(), tableName);
+                        } else {
+                            aliasToTable.put(t.getName().toLowerCase(), tableName);
+                        }
+                    }
+                    if (plain.getJoins() != null) {
+                        for (Join j : plain.getJoins()) {
+                            if (j.getRightItem() instanceof net.sf.jsqlparser.schema.Table) {
+                                net.sf.jsqlparser.schema.Table t = (net.sf.jsqlparser.schema.Table) j.getRightItem();
+                                String tableName = t.getName();
+                                if (t.getSchemaName() != null) {
+                                    tableName = t.getSchemaName() + "." + tableName;
+                                }
+                                if (defaultTable == null) defaultTable = tableName;
+                                if (t.getAlias() != null) {
+                                    aliasToTable.put(t.getAlias().getName().toLowerCase(), tableName);
+                                } else {
+                                    aliasToTable.put(t.getName().toLowerCase(), tableName);
+                                }
+                            }
+                        }
+                    }
+
                     boolean modified = false;
+                    List<net.sf.jsqlparser.statement.select.SelectItem> newItems = new ArrayList<>();
+                    
                     for (net.sf.jsqlparser.statement.select.SelectItem item : plain.getSelectItems()) {
-                        if (item.getExpression() instanceof net.sf.jsqlparser.schema.Column) {
+                        if (item.getExpression() instanceof net.sf.jsqlparser.statement.select.AllTableColumns) {
+                            net.sf.jsqlparser.statement.select.AllTableColumns atc = (net.sf.jsqlparser.statement.select.AllTableColumns) item.getExpression();
+                            String alias = atc.getTable().getName();
+                            String physicalTable = aliasToTable.get(alias.toLowerCase());
+                            if (physicalTable != null) {
+                                List<String> cols = getColumnsForTable(conn, physicalTable, sourceConn);
+                                if (!cols.isEmpty()) {
+                                    for (String col : cols) {
+                                        net.sf.jsqlparser.statement.select.SelectItem newItem = new net.sf.jsqlparser.statement.select.SelectItem();
+                                        net.sf.jsqlparser.schema.Column c = new net.sf.jsqlparser.schema.Column(new net.sf.jsqlparser.schema.Table(alias), col);
+                                        newItem.setExpression(c);
+                                        newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col));
+                                        newItems.add(newItem);
+                                    }
+                                    modified = true;
+                                    continue;
+                                }
+                            }
+                        } else if (item.getExpression() instanceof net.sf.jsqlparser.statement.select.AllColumns) {
+                            boolean expandedAny = false;
+                            for (Map.Entry<String, String> entry : aliasToTable.entrySet()) {
+                                String aliasOrTable = entry.getKey();
+                                String physicalTable = entry.getValue();
+                                List<String> cols = getColumnsForTable(conn, physicalTable, sourceConn);
+                                for (String col : cols) {
+                                    net.sf.jsqlparser.statement.select.SelectItem newItem = new net.sf.jsqlparser.statement.select.SelectItem();
+                                    net.sf.jsqlparser.schema.Column c = new net.sf.jsqlparser.schema.Column(new net.sf.jsqlparser.schema.Table(aliasOrTable), col);
+                                    newItem.setExpression(c);
+                                    newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col));
+                                    newItems.add(newItem);
+                                    expandedAny = true;
+                                }
+                            }
+                            if (expandedAny) {
+                                modified = true;
+                                continue;
+                            }
+                        } else if (item.getExpression() instanceof net.sf.jsqlparser.schema.Column) {
                             net.sf.jsqlparser.schema.Column col = (net.sf.jsqlparser.schema.Column) item.getExpression();
                             if (item.getAlias() == null && col.getTable() != null && col.getTable().getName() != null) {
                                 item.setAlias(new net.sf.jsqlparser.expression.Alias(col.getColumnName()));
                                 modified = true;
                             }
                         }
+                        newItems.add(item);
                     }
                     if (modified) {
+                        plain.setSelectItems(newItems);
                         return select.toString();
                     }
                 }
