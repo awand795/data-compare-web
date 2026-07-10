@@ -731,7 +731,7 @@ public class DataComparisonService {
 
             String baseQuery = request.getCustomQueryTarget() != null && !request.getCustomQueryTarget().trim().isEmpty()
                 ? request.getCustomQueryTarget() 
-                : "SELECT * FROM " + formatTableName(request.getTableName());
+                : "SELECT * FROM " + formatTableName(request.getTableName()) + ("clickhouse".equals(targetDbType) ? " FINAL" : "");
                 
             String targetKeyQuery = buildInClauseQuery(baseQuery, exactPks, sourcePkValues, targetDbType);
             logger.info("BATCH COMPARE: Target Query = {}", targetKeyQuery);
@@ -832,7 +832,7 @@ public class DataComparisonService {
 
             String baseQuery = request.getCustomQueryTarget() != null && !request.getCustomQueryTarget().trim().isEmpty()
                 ? request.getCustomQueryTarget() 
-                : "SELECT * FROM " + formatTableName(request.getTableName());
+                : "SELECT * FROM " + formatTableName(request.getTableName()) + ("clickhouse".equals(targetDbType) ? " FINAL" : "");
                 
             String targetKeyQuery = buildInClauseQuery(baseQuery, exactPks, sourcePkValues, targetDbType);
             logger.info("BATCH COMPARE BY KEYS: Target Query = {}", targetKeyQuery);
@@ -926,7 +926,8 @@ public class DataComparisonService {
         if (request.getCustomQuerySource() != null && !request.getCustomQuerySource().trim().isEmpty()) {
             sourceQuery = "SELECT COUNT(*) FROM (" + request.getCustomQuerySource().trim() + ") _cnt";
         } else if (request.getTableName() != null) {
-            sourceQuery = "SELECT COUNT(*) FROM " + formatTableName(request.getTableName());
+            String dbType = request.getSourceConnection().getType() != null ? request.getSourceConnection().getType().toLowerCase() : "postgresql";
+            sourceQuery = "SELECT COUNT(*) FROM " + formatTableName(request.getTableName()) + ("clickhouse".equals(dbType) ? " FINAL" : "");
         } else {
             String fallbackSrc = request.getCustomQuerySource();
             if (fallbackSrc == null || fallbackSrc.trim().isEmpty()) {
@@ -938,7 +939,8 @@ public class DataComparisonService {
         if (request.getCustomQueryTarget() != null && !request.getCustomQueryTarget().trim().isEmpty()) {
             targetQuery = "SELECT COUNT(*) FROM (" + request.getCustomQueryTarget().trim() + ") _cnt";
         } else if (request.getTableName() != null) {
-            targetQuery = "SELECT COUNT(*) FROM " + formatTableName(request.getTableName());
+            String dbType = request.getTargetConnection().getType() != null ? request.getTargetConnection().getType().toLowerCase() : "postgresql";
+            targetQuery = "SELECT COUNT(*) FROM " + formatTableName(request.getTableName()) + ("clickhouse".equals(dbType) ? " FINAL" : "");
         } else {
             String fallbackTgt = request.getCustomQueryTarget();
             if (fallbackTgt == null || fallbackTgt.trim().isEmpty()) {
@@ -1399,6 +1401,9 @@ public class DataComparisonService {
         }
 
         String safeTable = formatTableName(tableName);
+        if ("clickhouse".equals(dbType)) {
+            safeTable = safeTable + " FINAL";
+        }
 
         if (useSurrogateKey) {
             String window = hasOrderBy ? " ORDER BY " + orderByClause : "";
