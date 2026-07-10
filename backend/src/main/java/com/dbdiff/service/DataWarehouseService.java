@@ -451,6 +451,84 @@ public class DataWarehouseService {
                 sendLog(emitter, "WARNING: Could not register ClickHouse Sink Connector: " + e.getMessage());
             }
 
+            // =========================================================================
+            // STEP 6: Wait for Snapshot & Clean Repopulation
+            // =========================================================================
+            // During the initial Debezium snapshot, data from multiple tables arrives
+            // in parallel. The Materialized Views fire JOINs immediately, but if the
+            // "other side" of the JOIN hasn't been fully loaded yet, ghost rows with
+            // empty join columns are produced. To fix this, we wait for the snapshot to
+            // finish, then TRUNCATE and re-INSERT clean data from the now-complete
+            // landing tables.
+            if (physicalTables.size() > 1) {
+                sendLog(emitter, "Waiting for initial snapshot to complete before clean repopulation...");
+                
+                // Poll landing table row counts until they stabilize (unchanged for 3 consecutive checks)
+                int pollIntervalMs = 5000; // check every 5 seconds
+                int maxWaitSeconds = 300; // 5 minutes max
+                int stableCount = 0;
+                int requiredStableChecks = 3;
+                long previousTotalRows = -1;
+                long startTime = System.currentTimeMillis();
+                
+                while (stableCount < requiredStableChecks && (System.currentTimeMillis() - startTime) < maxWaitSeconds * 1000L) {
+                    Thread.sleep(pollIntervalMs);
+                    
+                    long totalRows = 0;
+                    try (Connection conn = targetDs.getConnection();
+                         Statement stmt = conn.createStatement()) {
+                        for (String t : physicalTables) {
+                            String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
+                            try (java.sql.ResultSet rs = stmt.executeQuery("SELECT count() FROM `" + chDb + "`.`" + landingTable + "`")) {
+                                if (rs.next()) totalRows += rs.getLong(1);
+                            }
+                        }
+                    }
+                    
+                    if (totalRows == previousTotalRows && totalRows > 0) {
+                        stableCount++;
+                        long elapsed = (System.currentTimeMillis() - startTime) / 1000;
+                        sendLog(emitter, "Landing tables stable (" + totalRows + " total rows, check " + stableCount + "/" + requiredStableChecks + ", " + elapsed + "s elapsed)");
+                    } else {
+                        stableCount = 0;
+                        long elapsed = (System.currentTimeMillis() - startTime) / 1000;
+                        sendLog(emitter, "Snapshot in progress... (" + totalRows + " total rows in landing tables, " + elapsed + "s elapsed)");
+                    }
+                    previousTotalRows = totalRows;
+                }
+                
+                // Give some extra time for the sink connector to flush all data to ClickHouse
+                sendLog(emitter, "Waiting for sink connector to flush data to ClickHouse...");
+                Thread.sleep(10000);
+                
+                // Build the clean SELECT query (without rotation - use original query rewritten for ClickHouse)
+                String cleanSelectSql = addMetadataColsToSelect(originalQuery, physicalTables.get(0));
+                String cleanRewrittenSql = rewriteQueryForClickHouse(cleanSelectSql, physicalTables, baseName, request.getSourceConnection(), chDb);
+                
+                // TRUNCATE and re-INSERT
+                String truncateSql = "TRUNCATE TABLE `" + chDb + "`.`" + request.getTargetTable() + "`";
+                String insertSql = "INSERT INTO `" + chDb + "`.`" + request.getTargetTable() + "` " + cleanRewrittenSql;
+                
+                sendLog(emitter, "Truncating target table to remove ghost rows from parallel snapshot...");
+                logger.info("Executing TRUNCATE: {}", truncateSql);
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    stmt.execute(truncateSql);
+                    sendLog(emitter, "Target table truncated successfully.");
+                }
+                
+                sendLog(emitter, "Re-populating target table with clean JOIN data from landing tables...");
+                logger.info("Executing bulk INSERT: {}", insertSql);
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    stmt.execute(insertSql);
+                    sendLog(emitter, "Target table re-populated successfully with clean data.");
+                } catch (Exception e) {
+                    sendLog(emitter, "WARNING: Clean repopulation failed: " + e.getMessage() + ". Data may contain ghost rows from initial snapshot.");
+                    logger.warn("Clean repopulation failed", e);
+                }
+            }
+
             sendLog(emitter, "Pipeline deployment completed successfully.");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
