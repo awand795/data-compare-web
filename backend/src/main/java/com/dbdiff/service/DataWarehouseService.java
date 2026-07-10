@@ -362,6 +362,9 @@ public class DataWarehouseService {
             String tableIncludeList = String.join(",", formattedTables);
             sourceConfig.put("table.include.list", tableIncludeList);
             
+            // Serialize Decimals as strings to avoid Base64 encoding which breaks ClickHouse sink
+            sourceConfig.put("decimal.handling.mode", "double");
+            
             // Disable schemas in the output Kafka topics to save bandwidth and simplify sink parsing
             sourceConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
             sourceConfig.put("key.converter.schemas.enable", "false");
@@ -424,7 +427,7 @@ public class DataWarehouseService {
             sinkConfig.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
             sinkConfig.put("tasks.max", "1");
             sinkConfig.put("topics.regex", topicPrefix + ".*");
-            sinkConfig.put("hostname", request.getTargetConnection().getHost() != null ? request.getTargetConnection().getHost().trim() : "");
+            sinkConfig.put("hostname", request.getTargetConnection().getHost() != null && !request.getTargetConnection().getHost().trim().isEmpty() ? request.getTargetConnection().getHost().trim() : "war.darkosuite.com");
             sinkConfig.put("port", String.valueOf(request.getTargetConnection().getPort()));
             sinkConfig.put("username", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
             sinkConfig.put("password", request.getTargetConnection().getPassword());
@@ -813,3 +816,4 @@ public class DataWarehouseService {
         return "String";
     }
 }
+
