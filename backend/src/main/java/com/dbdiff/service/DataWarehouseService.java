@@ -359,6 +359,12 @@ public class DataWarehouseService {
             String tableIncludeList = String.join(",", formattedTables);
             sourceConfig.put("table.include.list", tableIncludeList);
             
+            // Disable schemas in the output Kafka topics to save bandwidth and simplify sink parsing
+            sourceConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
+            sourceConfig.put("key.converter.schemas.enable", "false");
+            sourceConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
+            sourceConfig.put("value.converter.schemas.enable", "false");
+            
             java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
             sourcePayload.put("name", sourceConnectorName);
             sourcePayload.put("config", sourceConfig);
@@ -421,6 +427,8 @@ public class DataWarehouseService {
             sinkConfig.put("password", request.getTargetConnection().getPassword());
             sinkConfig.put("database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
             sinkConfig.put("clickhouseSettings", "insert_quorum=1"); // Optional optimization
+            sinkConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
+            sinkConfig.put("key.converter.schemas.enable", "false");
             sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
             sinkConfig.put("value.converter.schemas.enable", "false");
             
