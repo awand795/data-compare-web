@@ -336,10 +336,9 @@ public class DataWarehouseService {
                 }
             }
 
-            // 2b. Create Physical Target ReplacingMergeTree Table (with _raw_ prefix) and standard VIEW
-            String rawTableName = "_raw_" + request.getTargetTable();
+            // 2b. Create Physical Target ReplacingMergeTree Table
             StringBuilder targetDdl = new StringBuilder();
-            targetDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(rawTableName).append("` (\n");
+            targetDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(request.getTargetTable()).append("` (\n");
             for (ColumnInfo col : targetColumns) {
                 targetDdl.append("    `").append(col.name).append("` ").append(col.clickhouseType).append(",\n");
             }
@@ -354,36 +353,23 @@ public class DataWarehouseService {
             }
             targetDdl.append("ORDER BY (").append(pkBuilder.toString()).append(")");
             
-            sendLog(emitter, "Creating raw target table `" + rawTableName + "` in ClickHouse...");
+            sendLog(emitter, "Creating target table `" + request.getTargetTable() + "` in ClickHouse...");
             try (Connection conn = targetDs.getConnection();
                  Statement stmt = conn.createStatement()) {
+                // Drop view if it was previously created as a view
+                stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + request.getTargetTable() + "`");
                 stmt.execute(targetDdl.toString());
-                sendLog(emitter, "Raw target table `" + rawTableName + "` verified/created.");
+                sendLog(emitter, "Target table `" + request.getTargetTable() + "` verified/created.");
             } catch (Exception e) {
-                sendLog(emitter, "ERROR: Raw target table creation failed: " + e.getMessage());
+                sendLog(emitter, "ERROR: Target table creation failed: " + e.getMessage());
                 throw e;
             }
 
-            // Create Standard VIEW over the raw table using FINAL to expose clean, deduplicated rows
-            String viewDdl = "CREATE OR REPLACE VIEW `" + chDb + "`.`" + request.getTargetTable() + "` AS " +
-                              "SELECT * FROM `" + chDb + "`.`" + rawTableName + "` FINAL WHERE is_deleted = 0";
-            sendLog(emitter, "Creating target VIEW `" + request.getTargetTable() + "` pointing to raw table...");
+            // Truncate target table
             try (Connection conn = targetDs.getConnection();
                  Statement stmt = conn.createStatement()) {
-                // Drop any existing physical table first if it exists with the view's name
-                stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + request.getTargetTable() + "`");
-                stmt.execute(viewDdl);
-                sendLog(emitter, "Target VIEW `" + request.getTargetTable() + "` verified/created.");
-            } catch (Exception e) {
-                sendLog(emitter, "ERROR: Target VIEW creation failed: " + e.getMessage());
-                throw e;
-            }
-
-            // Truncate raw target table
-            try (Connection conn = targetDs.getConnection();
-                 Statement stmt = conn.createStatement()) {
-                stmt.execute("TRUNCATE TABLE `" + chDb + "`.`" + rawTableName + "`");
-                sendLog(emitter, "Truncated raw target table `" + rawTableName + "`.");
+                stmt.execute("TRUNCATE TABLE `" + chDb + "`.`" + request.getTargetTable() + "`");
+                sendLog(emitter, "Truncated target table `" + request.getTargetTable() + "`.");
             } catch (Exception e) {
                 // Ignore
             }
@@ -503,7 +489,7 @@ public class DataWarehouseService {
                 
                 StringBuilder mvDdl = new StringBuilder();
                 mvDdl.append("CREATE MATERIALIZED VIEW IF NOT EXISTS `").append(chDb).append("`.`").append(mvName).append("`\n");
-                mvDdl.append("TO `").append(chDb).append("`.`").append(rawTableName).append("`\n");
+                mvDdl.append("TO `").append(chDb).append("`.`").append(request.getTargetTable()).append("`\n");
                 mvDdl.append("AS ").append(rewrittenSql);
                 
                 sendLog(emitter, "Creating MV `" + mvName + "` triggered on landing table `" + landingTable + "`...");
