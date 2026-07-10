@@ -478,8 +478,9 @@ public class DataWarehouseService {
                 
                 String rewrittenSql;
                 if (physicalTables.size() > 1) {
-                    // For JOIN queries, use rewriteQueryForClickHouseView to filter out empty PKs and apply FINAL
-                    rewrittenSql = rewriteQueryForClickHouseView(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb, tableToPKs);
+                    // For JOIN queries, add PK filters to the WHERE clause (avoiding subqueries/FINAL which are disallowed in MVs)
+                    String sqlWithFilters = addPKFiltersToWhere(sqlWithMeta, physicalTables, tableToPKs);
+                    rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, baseName, request.getSourceConnection(), chDb);
                     // Change LEFT JOIN -> INNER JOIN to prevent ghost rows
                     rewrittenSql = rewrittenSql.replaceAll("(?i)\\bLEFT\\s+JOIN\\b", "INNER JOIN");
                 } else {
@@ -831,6 +832,52 @@ public class DataWarehouseService {
             }
         }
         return rewrittenSql;
+    }
+
+    private String addPKFiltersToWhere(String sql, List<String> physicalTables, java.util.Map<String, java.util.Set<String>> tableToPKs) {
+        try {
+            net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
+            if (!(stmt instanceof Select)) {
+                return sql;
+            }
+            Select select = (Select) stmt;
+            PlainSelect plain = select.getPlainSelect();
+            if (plain == null) {
+                return sql;
+            }
+            
+            StringBuilder conds = new StringBuilder();
+            for (String t : physicalTables) {
+                String alias = getTableAlias(sql, t);
+                String prefix = (alias != null && !alias.isEmpty()) ? alias + "." : "";
+                java.util.Set<String> pks = tableToPKs.get(t);
+                if (pks != null) {
+                    for (String pk : pks) {
+                        if (conds.length() > 0) {
+                            conds.append(" AND ");
+                        }
+                        conds.append("not(isNull(").append(prefix).append("`").append(pk).append("`))");
+                        conds.append(" AND toString(").append(prefix).append("`").append(pk).append("`) != ''");
+                    }
+                }
+            }
+            
+            if (conds.length() > 0) {
+                net.sf.jsqlparser.expression.Expression newExpr = CCJSqlParserUtil.parseCondExpression(conds.toString());
+                net.sf.jsqlparser.expression.Expression currentWhere = plain.getWhere();
+                if (currentWhere == null) {
+                    plain.setWhere(newExpr);
+                } else {
+                    net.sf.jsqlparser.expression.operators.conditional.AndExpression and = new net.sf.jsqlparser.expression.operators.conditional.AndExpression(currentWhere, newExpr);
+                    plain.setWhere(and);
+                }
+            }
+            
+            return select.toString();
+        } catch (Exception e) {
+            logger.warn("Failed to inject PK filters to WHERE clause: " + e.getMessage());
+            return sql;
+        }
     }
 
     private String rotateQuery(String sql, String triggerTable) {
