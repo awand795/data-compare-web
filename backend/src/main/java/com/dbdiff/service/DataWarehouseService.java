@@ -212,6 +212,7 @@ public class DataWarehouseService {
             
             // 2a. Pre-create ClickHouse landing tables to avoid MV compilation errors
             sendLog(emitter, "Pre-creating ClickHouse landing tables for CDC...");
+            java.util.Map<String, java.util.Set<String>> tableToPKs = new java.util.HashMap<>();
             for (String t : physicalTables) {
                 String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
                 
@@ -299,6 +300,7 @@ public class DataWarehouseService {
                 if (tablePKs.isEmpty() && !landingCols.isEmpty()) {
                     tablePKs.add(landingCols.get(0).name);
                 }
+                tableToPKs.put(t, tablePKs);
                 
                 StringBuilder landingDdl = new StringBuilder();
                 landingDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(landingTable).append("` (\n");
@@ -339,7 +341,7 @@ public class DataWarehouseService {
                 // IT'S A JOIN QUERY -> Use standard VIEW on ClickHouse to avoid ghost rows
                 sendLog(emitter, "Query contains JOINs. Using dynamic standard VIEW for 100% data accuracy...");
                 
-                String viewSql = rewriteQueryForClickHouseView(originalQuery, physicalTables, baseName, request.getSourceConnection(), chDb);
+                String viewSql = rewriteQueryForClickHouseView(originalQuery, physicalTables, baseName, request.getSourceConnection(), chDb, tableToPKs);
                 String viewDdl = "CREATE OR REPLACE VIEW `" + chDb + "`.`" + request.getTargetTable() + "` AS " + viewSql;
                 
                 sendLog(emitter, "Creating target VIEW `" + request.getTargetTable() + "` in ClickHouse...");
@@ -823,11 +825,18 @@ public class DataWarehouseService {
         return rewrittenSql;
     }
 
-    private String rewriteQueryForClickHouseView(String sql, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb) {
+    private String rewriteQueryForClickHouseView(String sql, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb, java.util.Map<String, java.util.Set<String>> tableToPKs) {
         String rewrittenSql = sql;
         for (String t : physicalTables) {
             String landingTable = getClickHouseLandingTable(t, baseName, sourceConn);
-            String subquery = "(SELECT * FROM `" + chDb + "`.`" + landingTable + "` FINAL WHERE is_deleted = 0)";
+            java.util.Set<String> pks = tableToPKs.get(t);
+            StringBuilder pkFilters = new StringBuilder();
+            if (pks != null) {
+                for (String pk : pks) {
+                    pkFilters.append(" AND not(isNull(`").append(pk).append("`)) AND toString(`").append(pk).append("`) != ''");
+                }
+            }
+            String subquery = "(SELECT * FROM `" + chDb + "`.`" + landingTable + "` FINAL WHERE is_deleted = 0" + pkFilters.toString() + ")";
             
             String patternStrWithSchema = "\\b" + Pattern.quote(t) + "\\b";
             rewrittenSql = rewrittenSql.replaceAll("(?i)" + patternStrWithSchema, subquery);
