@@ -61,6 +61,61 @@ public class DataWarehouseService {
             headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
 
             // =========================================================================
+            // STEP 0.5: Cleanup Old Connectors and Replication Slots
+            // =========================================================================
+            sendLog(emitter, "Cleaning up old pipeline connectors and replication slots...");
+            try {
+                // Fetch all registered connectors from Debezium
+                String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+                if (connectors != null) {
+                    for (String cName : connectors) {
+                        // Check if it belongs to this pipeline target or source
+                        if (cName.startsWith("source-" + baseName) || 
+                            cName.startsWith("sink-clickhouse-" + request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", ""))) {
+                            sendLog(emitter, "Deleting old connector: " + cName);
+                            try {
+                                restTemplate.delete(DEBEZIUM_URL + "/" + cName);
+                            } catch (Exception ex) {
+                                logger.warn("Failed to delete connector " + cName, ex);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                logger.warn("Failed to fetch/delete old connectors from Debezium", ex);
+            }
+
+            // Cleanup replication slots in Postgres source DB
+            DataSource sourceDsForCleanup = connectionManagerService.getDataSource(request.getSourceConnection());
+            try (Connection pgConn = sourceDsForCleanup.getConnection();
+                 Statement pgStmt = pgConn.createStatement()) {
+                String findSlotsSql = "SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name LIKE '%" + baseName.replaceAll("-", "_") + "%'";
+                List<Map<String, Object>> activeSlots = new ArrayList<>();
+                try (ResultSet rs = pgStmt.executeQuery(findSlotsSql)) {
+                    while (rs.next()) {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("slot_name", rs.getString("slot_name"));
+                        map.put("active_pid", rs.getObject("active_pid"));
+                        activeSlots.add(map);
+                    }
+                }
+                
+                for (Map<String, Object> slot : activeSlots) {
+                    String slotName = (String) slot.get("slot_name");
+                    Number activePid = (Number) slot.get("active_pid");
+                    if (activePid != null) {
+                        sendLog(emitter, "Terminating active slot PID " + activePid + " for slot " + slotName);
+                        pgStmt.execute("SELECT pg_terminate_backend(" + activePid.intValue() + ")");
+                        Thread.sleep(1000);
+                    }
+                    sendLog(emitter, "Dropping pg replication slot: " + slotName);
+                    pgStmt.execute("SELECT pg_drop_replication_slot('" + slotName + "')");
+                }
+            } catch (Exception ex) {
+                logger.warn("Failed to clean up old replication slots in Postgres", ex);
+            }
+
+            // =========================================================================
             // STEP 1: Parse Query, Introspect Schema and PKs
             // =========================================================================
             sendLog(emitter, "Parsing source query to detect physical tables...");
@@ -268,6 +323,15 @@ public class DataWarehouseService {
                 } catch (Exception e) {
                     sendLog(emitter, "WARNING: Could not pre-create landing table `" + landingTable + "`: " + e.getMessage());
                 }
+                
+                // Truncate existing landing table to ensure snapshot counts start fresh
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    stmt.execute("TRUNCATE TABLE `" + chDb + "`.`" + landingTable + "`");
+                    sendLog(emitter, "Truncated existing landing table `" + landingTable + "`.");
+                } catch (Exception e) {
+                    // Ignore
+                }
             }
 
             // 2b. Create Physical Target ReplacingMergeTree Table
@@ -295,6 +359,15 @@ public class DataWarehouseService {
             } catch (Exception e) {
                 sendLog(emitter, "ERROR: Target table creation failed: " + e.getMessage());
                 throw e;
+            }
+
+            // Truncate target table
+            try (Connection conn = targetDs.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("TRUNCATE TABLE `" + chDb + "`.`" + request.getTargetTable() + "`");
+                sendLog(emitter, "Truncated target table `" + request.getTargetTable() + "`.");
+            } catch (Exception e) {
+                // Ignore
             }
 
             // =========================================================================
