@@ -306,6 +306,9 @@ public class DataWarehouseService {
             if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
                 sourceConfig.put("connector.class", "io.debezium.connector.postgresql.PostgresConnector");
                 sourceConfig.put("plugin.name", "pgoutput");
+                // Force a fresh snapshot by using a unique slot name for every deployment
+                String safeSlotName = sourceConnectorName.replaceAll("[^a-z0-9_]", "_").toLowerCase();
+                sourceConfig.put("slot.name", safeSlotName);
             } else if ("mysql".equalsIgnoreCase(request.getSourceConnection().getType())) {
                 sourceConfig.put("connector.class", "io.debezium.connector.mysql.MySqlConnector");
             } else {
@@ -431,6 +434,7 @@ public class DataWarehouseService {
             sinkConfig.put("key.converter.schemas.enable", "false");
             sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
             sinkConfig.put("value.converter.schemas.enable", "false");
+            sinkConfig.put("errors.tolerance", "all"); // Skip poison pill messages from previous failed runs
             
             java.util.Map<String, Object> sinkPayload = new java.util.HashMap<>();
             sinkPayload.put("name", sinkConnectorName);
