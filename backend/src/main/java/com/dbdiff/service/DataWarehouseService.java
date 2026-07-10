@@ -367,37 +367,7 @@ public class DataWarehouseService {
             Thread.sleep(3000);
 
             // =========================================================================
-            // STEP 4: Configure ClickHouse Sink Connector
-            // =========================================================================
-            sendLog(emitter, "Configuring ClickHouse Sink Connector (" + sinkConnectorName + ")...");
-            
-            java.util.Map<String, Object> sinkConfig = new java.util.HashMap<>();
-            sinkConfig.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
-            sinkConfig.put("tasks.max", "1");
-            sinkConfig.put("topics.regex", topicPrefix + ".*");
-            sinkConfig.put("hostname", request.getTargetConnection().getHost() != null ? request.getTargetConnection().getHost().trim() : "");
-            sinkConfig.put("port", String.valueOf(request.getTargetConnection().getPort()));
-            sinkConfig.put("username", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
-            sinkConfig.put("password", request.getTargetConnection().getPassword());
-            sinkConfig.put("database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
-            sinkConfig.put("clickhouseSettings", "insert_quorum=1"); // Optional optimization
-            sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
-            sinkConfig.put("value.converter.schemas.enable", "false");
-            
-            java.util.Map<String, Object> sinkPayload = new java.util.HashMap<>();
-            sinkPayload.put("name", sinkConnectorName);
-            sinkPayload.put("config", sinkConfig);
-            
-            try {
-                org.springframework.http.HttpEntity<java.util.Map<String, Object>> sinkEntity = new org.springframework.http.HttpEntity<>(sinkPayload, headers);
-                org.springframework.http.ResponseEntity<String> sinkResponse = restTemplate.postForEntity(DEBEZIUM_URL, sinkEntity, String.class);
-                sendLog(emitter, "Sink connector registered successfully: " + sinkResponse.getStatusCode());
-            } catch (Exception e) {
-                sendLog(emitter, "WARNING: Could not register ClickHouse Sink Connector: " + e.getMessage());
-            }
-
-            // =========================================================================
-            // STEP 5: Create Materialized Views for All Source Tables
+            // STEP 4: Create Materialized Views for All Source Tables
             // =========================================================================
             sendLog(emitter, "Generating Dual-Join Materialized Views for automatic updates...");
             for (String t : physicalTables) {
@@ -424,6 +394,36 @@ public class DataWarehouseService {
                     sendLog(emitter, "ERROR: Failed to create Materialized View `" + mvName + "`: " + e.getMessage());
                     throw e;
                 }
+            }
+
+            // =========================================================================
+            // STEP 5: Configure ClickHouse Sink Connector
+            // =========================================================================
+            sendLog(emitter, "Configuring ClickHouse Sink Connector (" + sinkConnectorName + ")...");
+            
+            java.util.Map<String, Object> sinkConfig = new java.util.HashMap<>();
+            sinkConfig.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
+            sinkConfig.put("tasks.max", "1");
+            sinkConfig.put("topics.regex", topicPrefix + ".*");
+            sinkConfig.put("hostname", request.getTargetConnection().getHost() != null ? request.getTargetConnection().getHost().trim() : "");
+            sinkConfig.put("port", String.valueOf(request.getTargetConnection().getPort()));
+            sinkConfig.put("username", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
+            sinkConfig.put("password", request.getTargetConnection().getPassword());
+            sinkConfig.put("database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
+            sinkConfig.put("clickhouseSettings", "insert_quorum=1"); // Optional optimization
+            sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
+            sinkConfig.put("value.converter.schemas.enable", "false");
+            
+            java.util.Map<String, Object> sinkPayload = new java.util.HashMap<>();
+            sinkPayload.put("name", sinkConnectorName);
+            sinkPayload.put("config", sinkConfig);
+            
+            try {
+                org.springframework.http.HttpEntity<java.util.Map<String, Object>> sinkEntity = new org.springframework.http.HttpEntity<>(sinkPayload, headers);
+                org.springframework.http.ResponseEntity<String> sinkResponse = restTemplate.postForEntity(DEBEZIUM_URL, sinkEntity, String.class);
+                sendLog(emitter, "Sink connector registered successfully: " + sinkResponse.getStatusCode());
+            } catch (Exception e) {
+                sendLog(emitter, "WARNING: Could not register ClickHouse Sink Connector: " + e.getMessage());
             }
 
             sendLog(emitter, "Pipeline deployment completed successfully.");
