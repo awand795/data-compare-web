@@ -571,7 +571,8 @@ public class DataWarehouseService {
                                         net.sf.jsqlparser.statement.select.SelectItem newItem = new net.sf.jsqlparser.statement.select.SelectItem();
                                         net.sf.jsqlparser.schema.Column c = new net.sf.jsqlparser.schema.Column(new net.sf.jsqlparser.schema.Table(alias), col);
                                         newItem.setExpression(c);
-                                        newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col));
+                                        // Use lowercase alias to match the JDBC driver output for target table schema
+                                        newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col.toLowerCase()));
                                         newItems.add(newItem);
                                     }
                                     modified = true;
@@ -588,7 +589,8 @@ public class DataWarehouseService {
                                     net.sf.jsqlparser.statement.select.SelectItem newItem = new net.sf.jsqlparser.statement.select.SelectItem();
                                     net.sf.jsqlparser.schema.Column c = new net.sf.jsqlparser.schema.Column(new net.sf.jsqlparser.schema.Table(aliasOrTable), col);
                                     newItem.setExpression(c);
-                                    newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col));
+                                    // Use lowercase alias to match the JDBC driver output for target table schema
+                                    newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col.toLowerCase()));
                                     newItems.add(newItem);
                                     expandedAny = true;
                                 }

@@ -110,7 +110,7 @@ services:
       - darkosync-network
 
   debezium:
-    image: quay.io/debezium/connect:2.4
+    image: awandadarkotech/debezium-clickhouse:latest
     container_name: darkosync-debezium
     ports:
       - target: 8083
