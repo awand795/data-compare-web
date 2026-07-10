@@ -374,6 +374,20 @@ public class DataWarehouseService {
                 // Ignore
             }
 
+            // Create a convenience VIEW that automatically applies FINAL and filters deleted rows
+            String viewName = "v_" + request.getTargetTable();
+            String viewDdl = "CREATE OR REPLACE VIEW `" + chDb + "`.`" + viewName + "` AS " +
+                             "SELECT * FROM `" + chDb + "`.`" + request.getTargetTable() + "` FINAL WHERE is_deleted = 0";
+            sendLog(emitter, "Creating convenience target VIEW `" + viewName + "` in ClickHouse...");
+            try (Connection conn = targetDs.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute(viewDdl);
+                sendLog(emitter, "Convenience VIEW `" + viewName + "` created successfully.");
+            } catch (Exception e) {
+                sendLog(emitter, "WARNING: Convenience VIEW creation failed: " + e.getMessage());
+            }
+
+
             // =========================================================================
             // STEP 3: Configure Debezium Source Connector
             // =========================================================================

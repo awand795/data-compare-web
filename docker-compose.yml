@@ -156,8 +156,10 @@ volumes:
 networks:
   darkosync-network:
     driver: overlay
+    attachable: true
     driver_opts:
       com.docker.network.driver.mtu: "1350"
     ipam:
       config:
         - subnet: 192.168.199.0/24
+
