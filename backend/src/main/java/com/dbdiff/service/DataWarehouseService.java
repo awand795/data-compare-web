@@ -375,12 +375,12 @@ public class DataWarehouseService {
             sinkConfig.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
             sinkConfig.put("tasks.max", "1");
             sinkConfig.put("topics.regex", topicPrefix + ".*");
-            sinkConfig.put("clickhouse.server.host", request.getTargetConnection().getHost() != null ? request.getTargetConnection().getHost().trim() : "");
-            sinkConfig.put("clickhouse.server.port", String.valueOf(request.getTargetConnection().getPort()));
-            sinkConfig.put("clickhouse.server.user", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
-            sinkConfig.put("clickhouse.server.password", request.getTargetConnection().getPassword());
-            sinkConfig.put("clickhouse.database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
-            sinkConfig.put("clickhouse.auto.create", "true");
+            sinkConfig.put("hostname", request.getTargetConnection().getHost() != null ? request.getTargetConnection().getHost().trim() : "");
+            sinkConfig.put("port", String.valueOf(request.getTargetConnection().getPort()));
+            sinkConfig.put("username", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
+            sinkConfig.put("password", request.getTargetConnection().getPassword());
+            sinkConfig.put("database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
+            sinkConfig.put("clickhouseSettings", "insert_quorum=1"); // Optional optimization
             sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
             sinkConfig.put("value.converter.schemas.enable", "false");
             
@@ -602,10 +602,22 @@ public class DataWarehouseService {
                         } else if (item.getExpression() instanceof net.sf.jsqlparser.schema.Column) {
                             net.sf.jsqlparser.schema.Column col = (net.sf.jsqlparser.schema.Column) item.getExpression();
                             if (item.getAlias() == null && col.getTable() != null && col.getTable().getName() != null) {
-                                item.setAlias(new net.sf.jsqlparser.expression.Alias(col.getColumnName()));
+                                item.setAlias(new net.sf.jsqlparser.expression.Alias(col.getColumnName().toLowerCase()));
                                 modified = true;
                             }
                         }
+                        
+                        // Force any existing alias to lowercase to match PostgreSQL JDBC unquoted identifier behavior
+                        if (item.getAlias() != null) {
+                            String oldAlias = item.getAlias().getName();
+                            if (!oldAlias.equals(oldAlias.toLowerCase())) {
+                                net.sf.jsqlparser.expression.Alias newAlias = new net.sf.jsqlparser.expression.Alias(oldAlias.toLowerCase());
+                                newAlias.setUseAs(item.getAlias().isUseAs());
+                                item.setAlias(newAlias);
+                                modified = true;
+                            }
+                        }
+                        
                         newItems.add(item);
                     }
                     if (modified) {
