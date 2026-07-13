@@ -109,24 +109,24 @@ export const PipelineMonitor: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-bg-panel rounded-xl border border-border-main overflow-hidden">
-      <div className="bg-bg-header border-b border-border-main px-4 py-3 flex items-center justify-between">
-        <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
-          <Activity className="w-4 h-4 text-indigo-500" /> Active Pipelines
-        </h3>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
-            <input
-              type="text"
-              placeholder="Search pipelines..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-bg-panel border border-border-main text-text-main text-xs rounded-md pl-8 pr-3 py-1.5 focus:outline-none focus:border-indigo-500 transition-colors w-48"
-            />
-          </div>
-          <button onClick={fetchPipelines} className="text-[11px] text-text-muted hover:text-indigo-400 font-bold uppercase tracking-wide px-2 py-1.5 bg-indigo-500/10 rounded">
+      <div className="bg-bg-header border-b border-border-main px-4 py-3 flex flex-col gap-2.5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
+            <Activity className="w-4 h-4 text-indigo-500" /> Active Pipelines
+          </h3>
+          <button onClick={fetchPipelines} className="text-[11px] text-text-muted hover:text-indigo-400 font-bold uppercase tracking-wide px-2 py-1 bg-indigo-500/10 rounded">
             Refresh
           </button>
+        </div>
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+          <input
+            type="text"
+            placeholder="Search pipelines..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-bg-panel border border-border-main text-text-main text-xs rounded-md pl-8 pr-3 py-1.5 focus:outline-none focus:border-indigo-500 transition-colors"
+          />
         </div>
       </div>
 
