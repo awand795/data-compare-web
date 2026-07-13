@@ -17,10 +17,10 @@ export const PipelineMonitor: React.FC = () => {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTrace, setSelectedTrace] = useState<string | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   const toggleGroup = (deployId: string) => {
-    setCollapsedGroups(prev => ({
+    setExpandedGroups(prev => ({
       ...prev,
       [deployId]: !prev[deployId]
     }));
@@ -162,7 +162,7 @@ export const PipelineMonitor: React.FC = () => {
                   onClick={() => toggleGroup(deployId)}
                 >
                   <div className="flex items-center gap-2">
-                    {collapsedGroups[deployId] ? (
+                    {!expandedGroups[deployId] ? (
                       <ChevronRight className="w-4 h-4 text-text-muted" />
                     ) : (
                       <ChevronDown className="w-4 h-4 text-text-muted" />
@@ -178,7 +178,7 @@ export const PipelineMonitor: React.FC = () => {
                   </span>
                 </div>
                 
-                {!collapsedGroups[deployId] && (
+                {expandedGroups[deployId] && (
                   <div className="p-3 space-y-3 bg-bg-main">
                   {groupPipelines.map(p => (
                     <div key={p.name} className="bg-bg-panel border border-border-main rounded-lg p-3 hover:border-indigo-500/30 transition-colors">
