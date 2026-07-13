@@ -111,12 +111,21 @@ export const PipelineMonitor: React.FC = () => {
             {Object.entries(
               pipelines.reduce((acc, p) => {
                 const lastDash = p.name.lastIndexOf('-');
-                const deployId = lastDash > 0 && !isNaN(Number(p.name.slice(lastDash + 1))) 
-                  ? p.name.slice(lastDash + 1) 
-                  : 'Legacy';
+                const tsStr = p.name.slice(lastDash + 1);
+                const isTimestamp = lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10;
                 
-                if (!acc[deployId]) acc[deployId] = [];
-                acc[deployId].push(p);
+                if (isTimestamp) {
+                  const ts = Number(tsStr);
+                  // Find if there is an existing group within 2 seconds (to handle legacy connectors)
+                  const existingKey = Object.keys(acc).find(k => k !== 'Legacy' && Math.abs(Number(k) - ts) <= 2000);
+                  const deployId = existingKey ? existingKey : tsStr;
+                  
+                  if (!acc[deployId]) acc[deployId] = [];
+                  acc[deployId].push(p);
+                } else {
+                  if (!acc['Legacy']) acc['Legacy'] = [];
+                  acc['Legacy'].push(p);
+                }
                 return acc;
               }, {} as Record<string, Pipeline[]>)
             ).sort((a, b) => b[0].localeCompare(a[0])).map(([deployId, groupPipelines]) => {
