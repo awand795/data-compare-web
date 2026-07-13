@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import clsx from 'clsx';
 
@@ -19,6 +19,9 @@ export const PipelineMonitor: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTrace, setSelectedTrace] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredPipelines = pipelines.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const toggleGroup = (deployId: string) => {
     setExpandedGroups(prev => ({
@@ -110,9 +113,21 @@ export const PipelineMonitor: React.FC = () => {
         <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
           <Activity className="w-4 h-4 text-indigo-500" /> Active Pipelines
         </h3>
-        <button onClick={fetchPipelines} className="text-[11px] text-text-muted hover:text-indigo-400 font-bold uppercase tracking-wide px-2 py-1 bg-indigo-500/10 rounded">
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+            <input
+              type="text"
+              placeholder="Search pipelines..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-bg-panel border border-border-main text-text-main text-xs rounded-md pl-8 pr-3 py-1.5 focus:outline-none focus:border-indigo-500 transition-colors w-48"
+            />
+          </div>
+          <button onClick={fetchPipelines} className="text-[11px] text-text-muted hover:text-indigo-400 font-bold uppercase tracking-wide px-2 py-1.5 bg-indigo-500/10 rounded">
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-4">
@@ -122,10 +137,14 @@ export const PipelineMonitor: React.FC = () => {
           <div className="flex justify-center items-center h-full text-text-muted text-sm italic">
             No active pipelines found. Deploy one to get started.
           </div>
+        ) : filteredPipelines.length === 0 ? (
+          <div className="flex justify-center items-center h-full text-text-muted text-sm italic">
+            No pipelines match your search.
+          </div>
         ) : (
           <div className="space-y-4">
             {Object.entries(
-              pipelines.reduce((acc, p) => {
+              filteredPipelines.reduce((acc, p) => {
                 const lastDash = p.name.lastIndexOf('-');
                 const tsStr = p.name.slice(lastDash + 1);
                 const isTimestamp = lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10;
