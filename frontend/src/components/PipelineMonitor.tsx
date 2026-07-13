@@ -111,21 +111,34 @@ export const PipelineMonitor: React.FC = () => {
             {Object.entries(
               pipelines.reduce((acc, p) => {
                 const lastDash = p.name.lastIndexOf('-');
-                const isTimestamp = lastDash > 0 && !isNaN(Number(p.name.slice(lastDash + 1)));
-                const baseName = isTimestamp ? p.name.substring(0, lastDash) : p.name;
+                const deployId = lastDash > 0 && !isNaN(Number(p.name.slice(lastDash + 1))) 
+                  ? p.name.slice(lastDash + 1) 
+                  : 'Legacy';
                 
-                if (!acc[baseName]) acc[baseName] = [];
-                acc[baseName].push(p);
+                if (!acc[deployId]) acc[deployId] = [];
+                acc[deployId].push(p);
                 return acc;
               }, {} as Record<string, Pipeline[]>)
-            ).map(([baseName, groupPipelines]) => (
-              <div key={baseName} className="bg-bg-main border border-border-main rounded-xl overflow-hidden">
+            ).sort((a, b) => b[0].localeCompare(a[0])).map(([deployId, groupPipelines]) => {
+              // Try to find target table name from sink connector
+              const sink = groupPipelines.find(p => p.name.startsWith('sink-clickhouse-'));
+              let folderName = `Deployment ID: ${deployId}`;
+              if (sink) {
+                const parts = sink.name.split('-');
+                if (parts.length >= 3) {
+                  const targetTable = parts.slice(2, -1).join('-');
+                  folderName = `Pipeline: ${targetTable}`;
+                }
+              }
+
+              return (
+              <div key={deployId} className="bg-bg-main border border-border-main rounded-xl overflow-hidden">
                 <div className="bg-bg-header/50 border-b border-border-main px-4 py-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-xl">📂</span>
+                    <span className="text-xl">🗂️</span>
                     <h4 className="font-bold text-[13px] text-text-main">
-                      {baseName.startsWith('source-') ? 'Source Group: ' : 'Sink Group: '}
-                      <span className="text-indigo-400">{baseName}</span>
+                      {folderName}
+                      {deployId !== 'Legacy' && <span className="text-text-muted font-normal text-[11px] ml-2">(ID: {deployId})</span>}
                     </h4>
                   </div>
                   <span className="text-[11px] font-bold text-text-muted bg-bg-panel px-2 py-1 rounded">

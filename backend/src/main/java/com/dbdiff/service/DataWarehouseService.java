@@ -52,10 +52,11 @@ public class DataWarehouseService {
         try {
             sendLog(emitter, "Deploying Data Warehouse pipeline for source " + request.getSourceConnection().getName() + " to target table " + request.getTargetTable());
             
-            // Generate unique names for connectors
+            // Generate unique names for connectors based on a single deployment ID
             String baseName = request.getSourceConnection().getName().replaceAll("[^a-zA-Z0-9_-]", "").toLowerCase();
-            String sourceConnectorName = "source-" + baseName + "-" + System.currentTimeMillis();
-            String sinkConnectorName = "sink-clickhouse-" + request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "") + "-" + System.currentTimeMillis();
+            long deployId = System.currentTimeMillis();
+            String sourceConnectorName = "source-" + baseName + "-" + deployId;
+            String sinkConnectorName = "sink-clickhouse-" + request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "") + "-" + deployId;
             
             org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
             headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
