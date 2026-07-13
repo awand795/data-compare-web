@@ -182,12 +182,12 @@ export const PipelineMonitor: React.FC = () => {
                   <div className="p-3 space-y-3 bg-bg-main">
                   {groupPipelines.map(p => (
                     <div key={p.name} className="bg-bg-panel border border-border-main rounded-lg p-3 hover:border-indigo-500/30 transition-colors">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-[13px] text-text-main">{p.name}</span>
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex flex-col flex-1 min-w-0 pr-3">
+                          <span className="font-bold text-[13px] text-text-main break-all" title={p.name}>{p.name}</span>
                           <span className="text-[11px] text-text-muted mt-0.5">Type: {p.type}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
                           <StatusBadge state={p.state} />
                           {p.task_state && p.task_state !== p.state && <StatusBadge state={p.task_state} />}
                         </div>
