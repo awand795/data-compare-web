@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Database, Play, Loader2, Table as TableIcon, Server, Cpu, Sparkles } from 'lucide-react';
+import { Database, Play, Loader2, Table as TableIcon, Server, Cpu, Sparkles, Activity } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
+import { PipelineMonitor } from './PipelineMonitor';
 import clsx from 'clsx';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 
@@ -13,6 +14,7 @@ export const DataWarehouseView: React.FC = () => {
   const [targetTable, setTargetTable] = useState('');
   const [isDeploying, setIsDeploying] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<'console' | 'monitor'>('monitor');
 
   const handleDeploy = async () => {
     if (!sourceConnId || !targetConnId || !query || !targetTable) {
@@ -21,6 +23,7 @@ export const DataWarehouseView: React.FC = () => {
     }
     
     setIsDeploying(true);
+    setActiveTab('console');
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Initializing Data Warehouse pipeline...`]);
     
     try {
@@ -176,43 +179,66 @@ export const DataWarehouseView: React.FC = () => {
 
           <Panel defaultSize={35} minSize={20}>
             <div className="h-full bg-bg-editor flex flex-col border-l border-border-main relative overflow-hidden">
-              {/* Decorative background element */}
-              <div className="absolute top-0 right-0 p-32 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none -mr-16 -mt-16" />
-              
-              <div className="bg-bg-header/80 backdrop-blur-sm border-b border-border-main px-4 py-3 flex items-center justify-between relative z-10">
-                <span className="text-xs font-bold text-text-main flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-indigo-500" /> Deployment Console
-                </span>
-                {logs.length > 0 && (
-                  <button 
-                    onClick={() => setLogs([])}
-                    className="text-[10px] uppercase font-bold text-text-muted hover:text-indigo-500 transition-colors px-2 py-1 rounded hover:bg-indigo-500/10"
-                  >
-                    Clear Logs
-                  </button>
-                )}
+              <div className="bg-bg-header/90 backdrop-blur-sm border-b border-border-main flex items-center relative z-10 px-2 pt-2 gap-1">
+                <button 
+                  onClick={() => setActiveTab('monitor')}
+                  className={clsx(
+                    "px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-t-lg transition-colors border-b-2",
+                    activeTab === 'monitor' ? "bg-bg-panel text-indigo-400 border-indigo-500" : "text-text-muted hover:text-text-main border-transparent hover:bg-bg-panel/50"
+                  )}
+                >
+                  <span className="flex items-center gap-2"><Activity className="w-3.5 h-3.5" /> Pipeline Monitor</span>
+                </button>
+                <button 
+                  onClick={() => setActiveTab('console')}
+                  className={clsx(
+                    "px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-t-lg transition-colors border-b-2",
+                    activeTab === 'console' ? "bg-bg-panel text-indigo-400 border-indigo-500" : "text-text-muted hover:text-text-main border-transparent hover:bg-bg-panel/50"
+                  )}
+                >
+                  <span className="flex items-center gap-2"><Cpu className="w-3.5 h-3.5" /> Deploy Console</span>
+                </button>
               </div>
-              <div className="flex-1 p-4 overflow-y-auto font-mono text-[12px] leading-relaxed flex flex-col gap-2 relative z-10 no-scrollbar">
-                {logs.length === 0 ? (
-                  <div className="text-text-muted/40 h-full flex flex-col items-center justify-center gap-3">
-                    <Server className="w-12 h-12 stroke-[1]" />
-                    <span className="italic">Deployment logs will stream here</span>
-                  </div>
+
+              <div className="flex-1 overflow-hidden relative z-10 bg-bg-panel">
+                {activeTab === 'monitor' ? (
+                  <PipelineMonitor />
                 ) : (
-                  logs.map((log, idx) => (
-                    <div key={idx} className={clsx(
-                      "break-words animate-in slide-in-from-bottom-2 duration-300 py-1 border-b border-border-main/30 last:border-0",
-                      log.includes('successfully') || log.includes('active') ? "text-emerald-500" :
-                      log.includes('error') || log.includes('failed') ? "text-red-500" :
-                      "text-text-muted"
-                    )}>
-                      <span className="opacity-50 mr-2 text-[10px]">►</span> {log}
+                  <div className="h-full flex flex-col">
+                    <div className="flex justify-end px-4 py-2 border-b border-border-main/50">
+                      {logs.length > 0 && (
+                        <button 
+                          onClick={() => setLogs([])}
+                          className="text-[10px] uppercase font-bold text-text-muted hover:text-indigo-500 transition-colors px-2 py-1 rounded hover:bg-indigo-500/10"
+                        >
+                          Clear Logs
+                        </button>
+                      )}
                     </div>
-                  ))
-                )}
-                {isDeploying && (
-                  <div className="text-indigo-500 flex items-center gap-2 mt-2 py-1 animate-pulse">
-                    <span className="opacity-50 text-[10px]">►</span> <span className="flex items-center gap-1">Processing <span className="flex gap-0.5"><span className="animate-bounce">.</span><span className="animate-bounce delay-75">.</span><span className="animate-bounce delay-150">.</span></span></span>
+                    <div className="flex-1 p-4 overflow-y-auto font-mono text-[12px] leading-relaxed flex flex-col gap-2 no-scrollbar">
+                      {logs.length === 0 ? (
+                        <div className="text-text-muted/40 h-full flex flex-col items-center justify-center gap-3">
+                          <Server className="w-12 h-12 stroke-[1]" />
+                          <span className="italic">Deployment logs will stream here</span>
+                        </div>
+                      ) : (
+                        logs.map((log, idx) => (
+                          <div key={idx} className={clsx(
+                            "break-words animate-in slide-in-from-bottom-2 duration-300 py-1 border-b border-border-main/30 last:border-0",
+                            log.includes('successfully') || log.includes('active') ? "text-emerald-500" :
+                            log.includes('error') || log.includes('failed') ? "text-red-500" :
+                            "text-text-muted"
+                          )}>
+                            <span className="opacity-50 mr-2 text-[10px]">►</span> {log}
+                          </div>
+                        ))
+                      )}
+                      {isDeploying && (
+                        <div className="text-indigo-500 flex items-center gap-2 mt-2 py-1 animate-pulse">
+                          <span className="opacity-50 text-[10px]">►</span> <span className="flex items-center gap-1">Processing <span className="flex gap-0.5"><span className="animate-bounce">.</span><span className="animate-bounce delay-75">.</span><span className="animate-bounce delay-150">.</span></span></span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

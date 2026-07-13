@@ -2,7 +2,7 @@
 services:
   # Spring Boot Backend (Connected to Internal Database)
   backend:
-    image: awandadarkotech/darkosync-backend:latest
+    image: darkosync-backend-local:latest
     build:
       context: ./backend
     container_name: darkosync-backend
@@ -40,7 +40,7 @@ services:
 
   # React Frontend with Nginx
   frontend:
-    image: awandadarkotech/darkosync-frontend:latest
+    image: darkosync-frontend-local:latest
     build:
       context: ./frontend
       args:
@@ -87,8 +87,14 @@ services:
         published: 3888
         protocol: tcp
         mode: ingress
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
     networks:
       - darkosync-network
+    deploy:
+      restart_policy:
+        condition: on-failure
 
   kafka:
     image: quay.io/debezium/kafka:2.4
@@ -102,8 +108,13 @@ services:
       - zookeeper
     environment:
       - ZOOKEEPER_CONNECT=zookeeper:2181
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     networks:
       - darkosync-network
+    deploy:
+      restart_policy:
+        condition: on-failure
 
   debezium:
     image: quay.io/debezium/connect:2.4
@@ -123,6 +134,9 @@ services:
       - STATUS_STORAGE_TOPIC=my_connect_statuses
     networks:
       - darkosync-network
+    deploy:
+      restart_policy:
+        condition: on-failure
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -139,17 +153,23 @@ services:
     environment:
       - CLICKHOUSE_DB=default
       - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse-config/users-override.xml:/etc/clickhouse-server/users.d/users-override.xml:ro
     networks:
       - darkosync-network
+    deploy:
+      restart_policy:
+        condition: on-failure
 
 volumes:
   clickhouse_data:
+  kafka_data:
+  zookeeper_data:
+  zookeeper_log:
 
 networks:
   darkosync-network:
     name: darkosync-local-net
-    driver: bridge
+    driver: overlay

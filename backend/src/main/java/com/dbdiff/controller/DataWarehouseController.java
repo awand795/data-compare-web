@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import jakarta.annotation.PreDestroy;
 
 @RestController
 @RequestMapping("/api/dwh")
@@ -21,7 +22,12 @@ public class DataWarehouseController {
     @Autowired
     private ConnectionRepository connectionRepository;
 
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final ExecutorService executor = Executors.newFixedThreadPool(5); // Fixed pool to prevent OOM
+
+    @PreDestroy
+    public void shutdown() {
+        executor.shutdown();
+    }
 
     @PostMapping(value = "/deploy", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter deployPipeline(@RequestBody DataWarehouseDeployRequest request) {
@@ -45,5 +51,22 @@ public class DataWarehouseController {
         });
         
         return emitter;
+    }
+
+    @GetMapping("/pipelines")
+    public ResponseEntity<?> getPipelines() {
+        return ResponseEntity.ok(dataWarehouseService.getPipelinesStatus());
+    }
+
+    @PostMapping("/pipelines/{connectorName}/action")
+    public ResponseEntity<?> manageConnector(@PathVariable String connectorName, @RequestParam String action) {
+        dataWarehouseService.manageConnector(connectorName, action);
+        return ResponseEntity.ok(java.util.Map.of("status", "success", "action", action));
+    }
+
+    @DeleteMapping("/pipelines/{connectorName}")
+    public ResponseEntity<?> deleteConnector(@PathVariable String connectorName) {
+        dataWarehouseService.deleteConnector(connectorName);
+        return ResponseEntity.ok(java.util.Map.of("status", "deleted"));
     }
 }

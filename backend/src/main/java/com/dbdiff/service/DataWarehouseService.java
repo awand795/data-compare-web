@@ -1033,5 +1033,71 @@ public class DataWarehouseService {
         }
         return "String";
     }
-}
 
+    public java.util.List<java.util.Map<String, Object>> getPipelinesStatus() {
+        try {
+            String url = DEBEZIUM_URL + "?expand=status&expand=info";
+            org.springframework.http.ResponseEntity<java.util.Map> response = restTemplate.getForEntity(url, java.util.Map.class);
+            if (response.getBody() != null) {
+                java.util.Map<String, java.util.Map<String, Object>> body = response.getBody();
+                java.util.List<java.util.Map<String, Object>> pipelines = new ArrayList<>();
+                for (java.util.Map.Entry<String, java.util.Map<String, Object>> entry : body.entrySet()) {
+                    String name = entry.getKey();
+                    java.util.Map<String, Object> details = entry.getValue();
+                    java.util.Map<String, Object> statusObj = (java.util.Map<String, Object>) details.get("status");
+                    
+                    java.util.Map<String, Object> pipelineInfo = new HashMap<>();
+                    pipelineInfo.put("name", name);
+                    pipelineInfo.put("type", name.startsWith("sink-") ? "SINK" : "SOURCE");
+                    
+                    if (statusObj != null) {
+                        java.util.Map<String, Object> connectorStatus = (java.util.Map<String, Object>) statusObj.get("connector");
+                        pipelineInfo.put("state", connectorStatus != null ? connectorStatus.get("state") : "UNKNOWN");
+                        pipelineInfo.put("worker_id", connectorStatus != null ? connectorStatus.get("worker_id") : "");
+                        
+                        List<Map<String, Object>> tasks = (List<Map<String, Object>>) statusObj.get("tasks");
+                        if (tasks != null && !tasks.isEmpty()) {
+                            pipelineInfo.put("task_state", tasks.get(0).get("state"));
+                            if (tasks.get(0).containsKey("trace")) {
+                                pipelineInfo.put("trace", tasks.get(0).get("trace"));
+                            }
+                        }
+                    } else {
+                        pipelineInfo.put("state", "UNKNOWN");
+                    }
+                    pipelines.add(pipelineInfo);
+                }
+                return pipelines;
+            }
+        } catch (Exception e) {
+            logger.error("Failed to fetch pipelines status", e);
+        }
+        return Collections.emptyList();
+    }
+
+    public void manageConnector(String connectorName, String action) {
+        String url = DEBEZIUM_URL + "/" + connectorName + "/" + action;
+        try {
+            if ("restart".equalsIgnoreCase(action)) {
+                restTemplate.postForLocation(url, null);
+            } else if ("pause".equalsIgnoreCase(action) || "resume".equalsIgnoreCase(action)) {
+                restTemplate.put(url, null);
+            } else {
+                throw new IllegalArgumentException("Invalid action: " + action);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to " + action + " connector " + connectorName, e);
+            throw new RuntimeException("Failed to " + action + " connector: " + e.getMessage());
+        }
+    }
+
+    public void deleteConnector(String connectorName) {
+        String url = DEBEZIUM_URL + "/" + connectorName;
+        try {
+            restTemplate.delete(url);
+        } catch (Exception e) {
+            logger.error("Failed to delete connector " + connectorName, e);
+            throw new RuntimeException("Failed to delete connector: " + e.getMessage());
+        }
+    }
+}
