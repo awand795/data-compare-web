@@ -13,7 +13,7 @@ interface Pipeline {
 }
 
 export const PipelineMonitor: React.FC = () => {
-  const { addToast } = useAppStore();
+  const { addToast, showAlert } = useAppStore();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTrace, setSelectedTrace] = useState<string | null>(null);
@@ -60,19 +60,26 @@ export const PipelineMonitor: React.FC = () => {
     }
   };
 
-  const handleDelete = async (connectorName: string) => {
-    if (!confirm(`Are you sure you want to delete ${connectorName}?`)) return;
-    try {
-      const response = await fetch(`/api/dwh/pipelines/${connectorName}`, { method: 'DELETE' });
-      if (response.ok) {
-        addToast({ type: 'success', title: 'Deleted', message: `Connector ${connectorName} deleted.` });
-        fetchPipelines();
-      } else {
-        throw new Error('Delete failed');
+  const handleDelete = (connectorName: string) => {
+    showAlert({
+      title: 'Delete Connector',
+      message: `Are you sure you want to delete the connector "${connectorName}"? This action cannot be undone.`,
+      type: 'error',
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`/api/dwh/pipelines/${connectorName}`, { method: 'DELETE' });
+          if (response.ok) {
+            addToast({ type: 'success', title: 'Deleted', message: `Connector ${connectorName} deleted.` });
+            fetchPipelines();
+          } else {
+            throw new Error('Delete failed');
+          }
+        } catch (error) {
+          addToast({ type: 'error', title: 'Delete Failed', message: 'Could not delete connector.' });
+        }
       }
-    } catch (error) {
-      addToast({ type: 'error', title: 'Delete Failed', message: 'Could not delete connector.' });
-    }
+    });
   };
 
   const StatusBadge = ({ state }: { state: string }) => {

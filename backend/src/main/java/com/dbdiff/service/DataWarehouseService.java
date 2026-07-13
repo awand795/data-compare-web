@@ -1095,7 +1095,11 @@ public class DataWarehouseService {
     public void deleteConnector(String connectorName) {
         String url = DEBEZIUM_URL + "/" + connectorName;
         try {
-            restTemplate.delete(url);
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.set("Accept", "application/json");
+            headers.set("Content-Type", "application/json");
+            org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>("", headers);
+            restTemplate.exchange(url, org.springframework.http.HttpMethod.DELETE, entity, String.class);
         } catch (Exception e) {
             logger.error("Failed to delete connector " + connectorName, e);
             throw new RuntimeException("Failed to delete connector: " + e.getMessage());
