@@ -158,22 +158,24 @@ export const PipelineMonitor: React.FC = () => {
               return (
               <div key={deployId} className="bg-bg-main border border-border-main rounded-xl overflow-hidden">
                 <div 
-                  className="bg-bg-header/50 border-b border-border-main px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-bg-header/80 transition-colors"
+                  className="bg-bg-header/50 border-b border-border-main px-4 py-3 flex items-start justify-between cursor-pointer hover:bg-bg-header/80 transition-colors"
                   onClick={() => toggleGroup(deployId)}
                 >
-                  <div className="flex items-center gap-2">
-                    {!expandedGroups[deployId] ? (
-                      <ChevronRight className="w-4 h-4 text-text-muted" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-text-muted" />
-                    )}
-                    <span className="text-xl">🗂️</span>
-                    <h4 className="font-bold text-[13px] text-text-main">
+                  <div className="flex items-start gap-2 flex-1 min-w-0 pr-3">
+                    <div className="mt-1 flex-shrink-0">
+                      {!expandedGroups[deployId] ? (
+                        <ChevronRight className="w-4 h-4 text-text-muted" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-text-muted" />
+                      )}
+                    </div>
+                    <span className="text-xl flex-shrink-0">🗂️</span>
+                    <h4 className="font-bold text-[13px] text-text-main break-all mt-1">
                       {folderName}
-                      {deployId !== 'Legacy' && <span className="text-text-muted font-normal text-[11px] ml-2">(ID: {deployId})</span>}
+                      {deployId !== 'Legacy' && <span className="text-text-muted font-normal text-[11px] ml-2 inline-block">(ID: {deployId})</span>}
                     </h4>
                   </div>
-                  <span className="text-[11px] font-bold text-text-muted bg-bg-panel px-2 py-1 rounded">
+                  <span className="text-[11px] font-bold text-text-muted bg-bg-panel px-2 py-1 rounded flex-shrink-0 mt-1">
                     {groupPipelines.length} Connector(s)
                   </span>
                 </div>
