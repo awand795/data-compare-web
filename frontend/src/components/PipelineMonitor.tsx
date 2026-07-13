@@ -190,7 +190,8 @@ export const PipelineMonitor: React.FC = () => {
                   ))}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
