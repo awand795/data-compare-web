@@ -10,6 +10,7 @@ interface Pipeline {
   worker_id: string;
   task_state?: string;
   trace?: string;
+  lag?: number;
 }
 
 export const PipelineMonitor: React.FC = () => {
@@ -187,7 +188,14 @@ export const PipelineMonitor: React.FC = () => {
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex flex-col flex-1 min-w-0 pr-3">
                           <span className="font-bold text-[13px] text-text-main break-all" title={p.name}>{p.name}</span>
-                          <span className="text-[11px] text-text-muted mt-0.5">Type: {p.type}</span>
+                          <span className="text-[11px] text-text-muted mt-0.5 flex items-center gap-2">
+                            <span>Type: {p.type}</span>
+                            {p.lag !== undefined && (
+                              <span className={clsx("px-1.5 py-0.5 rounded font-bold", p.lag > 0 ? "bg-amber-500/10 text-amber-500" : "bg-emerald-500/10 text-emerald-500")}>
+                                {p.lag > 0 ? `⚠️ Lagging: ${p.lag.toLocaleString()} records` : `⚡ Synced`}
+                              </span>
+                            )}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
                           <StatusBadge state={p.state} />

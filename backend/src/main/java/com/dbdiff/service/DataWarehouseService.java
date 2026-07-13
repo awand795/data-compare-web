@@ -7,6 +7,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.ListOffsetsResult;
+import org.apache.kafka.clients.admin.OffsetSpec;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
+import java.util.Properties;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import javax.sql.DataSource;
@@ -1035,6 +1041,36 @@ public class DataWarehouseService {
         return "String";
     }
 
+    private Long getConnectorLag(String connectorName) {
+        if (!connectorName.startsWith("sink-")) return null;
+        String groupId = "connect-" + connectorName;
+        Properties props = new Properties();
+        props.put("bootstrap.servers", "kafka:9092");
+        try (AdminClient admin = AdminClient.create(props)) {
+            java.util.Map<TopicPartition, OffsetAndMetadata> groupOffsets = admin.listConsumerGroupOffsets(groupId).partitionsToOffsetAndMetadata().get();
+            if (groupOffsets.isEmpty()) return null;
+            
+            java.util.Map<TopicPartition, OffsetSpec> requestOffsets = new HashMap<>();
+            for (TopicPartition tp : groupOffsets.keySet()) {
+                requestOffsets.put(tp, OffsetSpec.latest());
+            }
+            java.util.Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> endOffsets = admin.listOffsets(requestOffsets).all().get();
+            
+            long totalLag = 0;
+            for (TopicPartition tp : groupOffsets.keySet()) {
+                long currentOffset = groupOffsets.get(tp).offset();
+                long endOffset = endOffsets.get(tp).offset();
+                if (endOffset > currentOffset) {
+                    totalLag += (endOffset - currentOffset);
+                }
+            }
+            return totalLag;
+        } catch (Exception e) {
+            logger.warn("Could not fetch lag for " + connectorName + ": " + e.getMessage());
+            return null;
+        }
+    }
+
     public java.util.List<java.util.Map<String, Object>> getPipelinesStatus() {
         try {
             String url = DEBEZIUM_URL + "?expand=status&expand=info";
@@ -1062,6 +1098,11 @@ public class DataWarehouseService {
                             if (tasks.get(0).containsKey("trace")) {
                                 pipelineInfo.put("trace", tasks.get(0).get("trace"));
                             }
+                        }
+
+                        if (name.startsWith("sink-") && "RUNNING".equals(pipelineInfo.get("task_state"))) {
+                            Long lag = getConnectorLag(name);
+                            if (lag != null) pipelineInfo.put("lag", lag);
                         }
                     } else {
                         pipelineInfo.put("state", "UNKNOWN");
