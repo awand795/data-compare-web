@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import clsx from 'clsx';
 
@@ -17,6 +17,14 @@ export const PipelineMonitor: React.FC = () => {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTrace, setSelectedTrace] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  const toggleGroup = (deployId: string) => {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [deployId]: !prev[deployId]
+    }));
+  };
 
   const fetchPipelines = async () => {
     try {
@@ -142,8 +150,16 @@ export const PipelineMonitor: React.FC = () => {
 
               return (
               <div key={deployId} className="bg-bg-main border border-border-main rounded-xl overflow-hidden">
-                <div className="bg-bg-header/50 border-b border-border-main px-4 py-3 flex items-center justify-between">
+                <div 
+                  className="bg-bg-header/50 border-b border-border-main px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-bg-header/80 transition-colors"
+                  onClick={() => toggleGroup(deployId)}
+                >
                   <div className="flex items-center gap-2">
+                    {collapsedGroups[deployId] ? (
+                      <ChevronRight className="w-4 h-4 text-text-muted" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-text-muted" />
+                    )}
                     <span className="text-xl">🗂️</span>
                     <h4 className="font-bold text-[13px] text-text-main">
                       {folderName}
@@ -155,7 +171,8 @@ export const PipelineMonitor: React.FC = () => {
                   </span>
                 </div>
                 
-                <div className="p-3 space-y-3 bg-bg-main">
+                {!collapsedGroups[deployId] && (
+                  <div className="p-3 space-y-3 bg-bg-main">
                   {groupPipelines.map(p => (
                     <div key={p.name} className="bg-bg-panel border border-border-main rounded-lg p-3 hover:border-indigo-500/30 transition-colors">
                       <div className="flex items-center justify-between mb-2">
@@ -197,7 +214,8 @@ export const PipelineMonitor: React.FC = () => {
                       </div>
                     </div>
                   ))}
-                </div>
+                  </div>
+                )}
               </div>
               );
             })}
