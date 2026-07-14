@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import clsx from 'clsx';
 
@@ -21,6 +21,16 @@ export const PipelineMonitor: React.FC = () => {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [configModalOpen, setConfigModalOpen] = useState<string | null>(null);
+  const [configData, setConfigData] = useState<string>('');
+  
+  const [peekModalOpen, setPeekModalOpen] = useState<string | null>(null);
+  const [peekData, setPeekData] = useState<any[]>([]);
+  const [isPeeking, setIsPeeking] = useState(false);
+
+  const [lagHistory, setLagHistory] = useState<Record<string, {time: string, lag: number}[]>>({});
+  const [statsModalOpen, setStatsModalOpen] = useState<Pipeline | null>(null);
+
   const filteredPipelines = pipelines.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const toggleGroup = (deployId: string) => {
@@ -36,6 +46,19 @@ export const PipelineMonitor: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         setPipelines(data);
+
+        // Update lag history
+        const now = new Date().toLocaleTimeString();
+        setLagHistory(prev => {
+          const next = { ...prev };
+          data.forEach((p: Pipeline) => {
+            if (p.lag !== undefined) {
+              if (!next[p.name]) next[p.name] = [];
+              next[p.name] = [...next[p.name].slice(-20), { time: now, lag: p.lag }];
+            }
+          });
+          return next;
+        });
       }
     } catch (error) {
       console.error('Failed to fetch pipelines', error);
@@ -49,6 +72,54 @@ export const PipelineMonitor: React.FC = () => {
     const interval = setInterval(fetchPipelines, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const openConfig = async (connectorName: string) => {
+    try {
+      const res = await fetch(`/api/dwh/pipelines/${connectorName}/config`);
+      if (res.ok) {
+        const data = await res.json();
+        setConfigData(JSON.stringify(data, null, 2));
+        setConfigModalOpen(connectorName);
+      }
+    } catch (e) {
+      addToast({ type: 'error', title: 'Error', message: 'Failed to fetch config' });
+    }
+  };
+
+  const saveConfig = async () => {
+    if (!configModalOpen) return;
+    try {
+      const parsed = JSON.parse(configData);
+      const res = await fetch(`/api/dwh/pipelines/${configModalOpen}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed)
+      });
+      if (res.ok) {
+        addToast({ type: 'success', title: 'Success', message: 'Config updated' });
+        setConfigModalOpen(null);
+      }
+    } catch (e) {
+      addToast({ type: 'error', title: 'Error', message: 'Invalid JSON or failed to update' });
+    }
+  };
+
+  const openPeek = async (connectorName: string) => {
+    setPeekModalOpen(connectorName);
+    setIsPeeking(true);
+    setPeekData([]);
+    try {
+      const res = await fetch(`/api/dwh/pipelines/${connectorName}/peek`);
+      if (res.ok) {
+        const data = await res.json();
+        setPeekData(data);
+      }
+    } catch (e) {
+      addToast({ type: 'error', title: 'Error', message: 'Failed to peek topic' });
+    } finally {
+      setIsPeeking(false);
+    }
+  };
 
   const handleAction = async (connectorName: string, action: string) => {
     try {
@@ -237,6 +308,18 @@ export const PipelineMonitor: React.FC = () => {
                           <button onClick={() => handleDelete(p.name)} className="p-1.5 rounded-md hover:bg-red-500/10 text-text-muted hover:text-red-500 tooltip" title="Delete">
                             <Trash2 className="w-4 h-4" />
                           </button>
+                          <div className="w-px h-4 bg-border-main mx-1" />
+                          <button onClick={() => openConfig(p.name)} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="Edit Config">
+                            <Settings className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => openPeek(p.name)} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="Peek Data (Kafka)">
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          {p.lag !== undefined && (
+                            <button onClick={() => setStatsModalOpen(p)} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="View Lag Stats">
+                              <BarChart2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                         
                         {p.trace && (
@@ -258,6 +341,88 @@ export const PipelineMonitor: React.FC = () => {
           </div>
         )}
       </div>
+
+      {configModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-panel w-full max-w-3xl rounded-xl shadow-2xl flex flex-col border border-border-main">
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center">
+              <h3 className="font-bold text-text-main flex items-center gap-2"><Settings className="w-5 h-5" /> Config JSON: {configModalOpen}</h3>
+              <button onClick={() => setConfigModalOpen(null)} className="text-text-muted hover:text-text-main"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4">
+              <textarea 
+                className="w-full h-[60vh] bg-[#0d1117] text-[#c9d1d9] font-mono text-sm p-4 rounded-lg border border-border-main focus:border-indigo-500 outline-none"
+                value={configData}
+                onChange={e => setConfigData(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+            <div className="px-5 py-4 border-t border-border-main flex justify-end gap-3">
+              <button onClick={() => setConfigModalOpen(null)} className="px-4 py-2 rounded-lg text-sm font-bold text-text-main hover:bg-bg-header">Cancel</button>
+              <button onClick={saveConfig} className="px-4 py-2 rounded-lg text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-500 flex items-center gap-2"><Save className="w-4 h-4" /> Save & Restart</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {peekModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-panel w-full max-w-4xl rounded-xl shadow-2xl flex flex-col border border-border-main">
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center">
+              <h3 className="font-bold text-text-main flex items-center gap-2"><Eye className="w-5 h-5" /> Topic Sampler: {peekModalOpen}</h3>
+              <button onClick={() => setPeekModalOpen(null)} className="text-text-muted hover:text-text-main"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 overflow-auto max-h-[70vh] bg-[#0d1117] text-[#c9d1d9] font-mono text-xs whitespace-pre-wrap">
+              {isPeeking ? (
+                <div className="flex items-center gap-2 text-indigo-400"><Activity className="w-4 h-4 animate-spin" /> Consuming latest messages from Kafka...</div>
+              ) : peekData.length === 0 ? (
+                <div className="text-text-muted">No messages found or topic is empty.</div>
+              ) : (
+                peekData.map((msg, i) => (
+                  <div key={i} className="mb-4 pb-4 border-b border-border-main/30 last:border-0 last:mb-0 last:pb-0 break-words">
+                    <div className="text-indigo-400 mb-1">Offset: {msg.offset} | Partition: {msg.partition} | Time: {new Date(msg.timestamp).toLocaleString()}</div>
+                    <div className="text-emerald-400">Key: {msg.key}</div>
+                    <div className="text-text-main mt-1">{msg.value && msg.value.startsWith('{') ? JSON.stringify(JSON.parse(msg.value), null, 2) : msg.value}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {statsModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-panel w-full max-w-2xl rounded-xl shadow-2xl flex flex-col border border-border-main">
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center">
+              <h3 className="font-bold text-text-main flex items-center gap-2"><BarChart2 className="w-5 h-5" /> Historical Lag: {statsModalOpen.name}</h3>
+              <button onClick={() => setStatsModalOpen(null)} className="text-text-muted hover:text-text-main"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 h-[300px] flex items-end gap-2 overflow-x-auto relative bg-bg-header/50 rounded-b-xl">
+              {(lagHistory[statsModalOpen.name] || []).length === 0 ? (
+                <div className="text-text-muted w-full text-center mb-20">Waiting for data...</div>
+              ) : (
+                (lagHistory[statsModalOpen.name] || []).map((pt, i, arr) => {
+                  const maxLag = Math.max(...arr.map(a => a.lag), 10);
+                  const hPct = Math.max(5, (pt.lag / maxLag) * 100);
+                  return (
+                    <div key={i} className="flex-1 flex flex-col justify-end items-center group relative min-w-[30px] h-full">
+                      <div className="absolute top-2 bg-bg-panel px-2 py-1 rounded text-[10px] opacity-0 group-hover:opacity-100 whitespace-nowrap z-10 border border-border-main">
+                        {pt.time} - {pt.lag.toLocaleString()} recs
+                      </div>
+                      <div 
+                        className="w-full bg-indigo-500 rounded-t-sm transition-all duration-300" 
+                        style={{ height: `${hPct}%`, opacity: pt.lag === 0 ? 0.3 : 1 }}
+                      />
+                      <div className="text-[9px] text-text-muted mt-2 truncate w-full text-center">{pt.time.split(' ')[0]}</div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedTrace && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">

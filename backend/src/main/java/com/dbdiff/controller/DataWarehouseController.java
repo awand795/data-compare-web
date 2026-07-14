@@ -69,4 +69,20 @@ public class DataWarehouseController {
         dataWarehouseService.deleteConnector(connectorName);
         return ResponseEntity.ok(java.util.Map.of("status", "deleted"));
     }
+
+    @GetMapping("/pipelines/{connectorName}/config")
+    public ResponseEntity<?> getConnectorConfig(@PathVariable String connectorName) {
+        return ResponseEntity.ok(dataWarehouseService.getConnectorConfig(connectorName));
+    }
+
+    @PutMapping("/pipelines/{connectorName}/config")
+    public ResponseEntity<?> updateConnectorConfig(@PathVariable String connectorName, @RequestBody java.util.Map<String, Object> config) {
+        dataWarehouseService.updateConnectorConfig(connectorName, config);
+        return ResponseEntity.ok(java.util.Map.of("status", "success"));
+    }
+
+    @GetMapping("/pipelines/{connectorName}/peek")
+    public ResponseEntity<?> peekTopicData(@PathVariable String connectorName) {
+        return ResponseEntity.ok(dataWarehouseService.peekTopicData(connectorName));
+    }
 }

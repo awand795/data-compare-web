@@ -1146,4 +1146,98 @@ public class DataWarehouseService {
             throw new RuntimeException("Failed to delete connector: " + e.getMessage());
         }
     }
+
+    public java.util.Map<String, Object> getConnectorConfig(String connectorName) {
+        String url = DEBEZIUM_URL + "/" + connectorName + "/config";
+        try {
+            return restTemplate.getForObject(url, java.util.Map.class);
+        } catch (Exception e) {
+            logger.error("Failed to get config for connector " + connectorName, e);
+            throw new RuntimeException("Failed to get config: " + e.getMessage());
+        }
+    }
+
+    public void updateConnectorConfig(String connectorName, java.util.Map<String, Object> config) {
+        String url = DEBEZIUM_URL + "/" + connectorName + "/config";
+        try {
+            restTemplate.put(url, config);
+        } catch (Exception e) {
+            logger.error("Failed to update config for connector " + connectorName, e);
+            throw new RuntimeException("Failed to update config: " + e.getMessage());
+        }
+    }
+
+    public java.util.List<java.util.Map<String, Object>> peekTopicData(String connectorName) {
+        try {
+            java.util.Map<String, Object> config = getConnectorConfig(connectorName);
+            String topicName = null;
+            if (config.containsKey("topics")) {
+                topicName = ((String) config.get("topics")).split(",")[0];
+            } else if (config.containsKey("topic.prefix")) {
+                // Try to find the topic via admin client
+                String prefix = (String) config.get("topic.prefix");
+                Properties props = new Properties();
+                props.put("bootstrap.servers", "kafka:9092");
+                try (AdminClient admin = AdminClient.create(props)) {
+                    java.util.Set<String> allTopics = admin.listTopics().names().get();
+                    for (String t : allTopics) {
+                        if (t.startsWith(prefix + ".")) {
+                            topicName = t;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (topicName == null) {
+                return Collections.singletonList(java.util.Map.of("error", "Could not determine topic name for this connector"));
+            }
+
+            Properties props = new Properties();
+            props.put("bootstrap.servers", "kafka:9092");
+            props.put("group.id", "peek-consumer-" + System.currentTimeMillis());
+            props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+            props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+            props.put("auto.offset.reset", "earliest");
+            props.put("max.poll.records", "10");
+
+            List<java.util.Map<String, Object>> messages = new ArrayList<>();
+            try (org.apache.kafka.clients.consumer.KafkaConsumer<String, String> consumer = new org.apache.kafka.clients.consumer.KafkaConsumer<>(props)) {
+                
+                // Get partitions and seek to end minus 10
+                java.util.List<org.apache.kafka.common.PartitionInfo> partitionInfos = consumer.partitionsFor(topicName);
+                if (partitionInfos != null) {
+                    java.util.List<TopicPartition> partitions = new ArrayList<>();
+                    for (org.apache.kafka.common.PartitionInfo pi : partitionInfos) {
+                        partitions.add(new TopicPartition(pi.topic(), pi.partition()));
+                    }
+                    consumer.assign(partitions);
+                    consumer.seekToEnd(partitions);
+                    for (TopicPartition tp : partitions) {
+                        long pos = consumer.position(tp);
+                        if (pos > 10) {
+                            consumer.seek(tp, pos - 10);
+                        } else {
+                            consumer.seek(tp, 0);
+                        }
+                    }
+                    
+                    org.apache.kafka.clients.consumer.ConsumerRecords<String, String> records = consumer.poll(java.time.Duration.ofMillis(2000));
+                    for (org.apache.kafka.clients.consumer.ConsumerRecord<String, String> record : records) {
+                        java.util.Map<String, Object> msg = new HashMap<>();
+                        msg.put("partition", record.partition());
+                        msg.put("offset", record.offset());
+                        msg.put("key", record.key());
+                        msg.put("value", record.value());
+                        msg.put("timestamp", record.timestamp());
+                        messages.add(msg);
+                    }
+                }
+            }
+            return messages;
+        } catch (Exception e) {
+            logger.error("Failed to peek topic data for connector " + connectorName, e);
+            return Collections.singletonList(java.util.Map.of("error", "Error peeking topic: " + e.getMessage()));
+        }
+    }
 }
