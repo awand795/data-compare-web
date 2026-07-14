@@ -24,6 +24,11 @@ export const PipelineMonitor: React.FC = () => {
   const [configModalOpen, setConfigModalOpen] = useState<string | null>(null);
   const [configData, setConfigData] = useState<string>('');
   
+  const [snapshotProgress, setSnapshotProgress] = useState<Record<string, any>>({});
+  const [snapshotTimes, setSnapshotTimes] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('snapshotTimes') || '{}'); } catch { return {}; }
+  });
+  
   const [peekModalOpen, setPeekModalOpen] = useState<string | null>(null);
   const [peekData, setPeekData] = useState<any[]>([]);
   const [isPeeking, setIsPeeking] = useState(false);
@@ -58,6 +63,47 @@ export const PipelineMonitor: React.FC = () => {
             }
           });
           return next;
+        });
+
+        const dIds = new Set<string>();
+        data.forEach((p: Pipeline) => {
+          const lastDash = p.name.lastIndexOf('-');
+          const tsStr = p.name.slice(lastDash + 1);
+          if (lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10) {
+             const existingKey = Array.from(dIds).find(k => Math.abs(Number(k) - Number(tsStr)) <= 2000);
+             if (existingKey) {
+                 dIds.add(existingKey);
+             } else {
+                 dIds.add(tsStr);
+             }
+          }
+        });
+
+        dIds.forEach(deployId => {
+          fetch(`/api/dwh/pipelines/progress/${deployId}`)
+            .then(r => r.json())
+            .then(res => {
+               if (!res.error) {
+                  setSnapshotProgress(prev => {
+                     if (prev[deployId] && prev[deployId].targetCount === res.targetCount && prev[deployId].percentage === res.percentage && prev[deployId].snapshotCompleted === res.snapshotCompleted) {
+                         return prev;
+                     }
+                     return { ...prev, [deployId]: res };
+                  });
+                  
+                  if (res.snapshotCompleted) {
+                     setSnapshotTimes(prev => {
+                        if (!prev[deployId]) {
+                           const updated = { ...prev, [deployId]: Date.now() };
+                           localStorage.setItem('snapshotTimes', JSON.stringify(updated));
+                           return updated;
+                        }
+                        return prev;
+                     });
+                  }
+               }
+            })
+            .catch(() => {});
         });
       }
     } catch (error) {
@@ -273,6 +319,32 @@ export const PipelineMonitor: React.FC = () => {
                 
                 {expandedGroups[deployId] && (
                   <div className="p-3 space-y-3 bg-bg-main">
+                  
+                  {snapshotProgress[deployId] && !snapshotProgress[deployId].snapshotCompleted && snapshotProgress[deployId].sourceCount !== -1 && (
+                    <div className="bg-bg-panel border border-border-main p-3 rounded-lg flex flex-col gap-2">
+                       <div className="flex justify-between items-center">
+                         <span className="text-xs font-bold text-text-main flex items-center gap-2">
+                           <Settings className="w-3 h-3 text-indigo-500 animate-spin"/> 
+                           Snapshotting Initial Data
+                         </span>
+                         <span className="text-xs font-mono text-text-muted">
+                           {snapshotProgress[deployId].targetCount?.toLocaleString() || 0} / {snapshotProgress[deployId].sourceCount > 0 ? snapshotProgress[deployId].sourceCount.toLocaleString() : '?'} records
+                         </span>
+                       </div>
+                       <div className="w-full h-1.5 bg-bg-main rounded-full overflow-hidden border border-border-main">
+                         <div className="h-full bg-indigo-500 transition-all duration-500" style={{ width: `${snapshotProgress[deployId].percentage || 0}%` }}></div>
+                       </div>
+                    </div>
+                  )}
+                  {snapshotProgress[deployId] && snapshotProgress[deployId].snapshotCompleted && (
+                    <div className="flex items-center gap-2 px-1 mb-2">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                      <span className="text-[10px] text-text-muted italic">
+                        Snapshot finished {snapshotTimes[deployId] ? `in ${Math.max(1, Math.round((snapshotTimes[deployId] - Number(deployId)) / 60000))} minutes` : `(${snapshotProgress[deployId].targetCount?.toLocaleString()} records)`}
+                      </span>
+                    </div>
+                  )}
+
                   {groupPipelines.map(p => (
                     <div key={p.name} className="bg-bg-panel border border-border-main rounded-lg p-3 hover:border-indigo-500/30 transition-colors">
                       <div className="flex items-start justify-between mb-2">

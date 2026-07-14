@@ -1240,4 +1240,99 @@ public class DataWarehouseService {
             return Collections.singletonList(java.util.Map.of("error", "Error peeking topic: " + e.getMessage()));
         }
     }
+
+    public java.util.Map<String, Object> getSnapshotProgress(String deployId) {
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        try {
+            String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+            String actualSource = null;
+            String actualSink = null;
+            if (connectors != null) {
+                for (String c : connectors) {
+                    if (c.matches("source-.*-" + deployId)) actualSource = c;
+                    if (c.matches("sink-.*-" + deployId)) actualSink = c;
+                }
+            }
+            
+            if (actualSource == null || actualSink == null) {
+                return java.util.Map.of("error", "Connectors not found for deployId: " + deployId);
+            }
+            
+            java.util.Map<String, Object> sourceConfig = getConnectorConfig(actualSource);
+            String plugin = (String) sourceConfig.get("connector.class");
+            String host = (String) sourceConfig.get("database.hostname");
+            String port = String.valueOf(sourceConfig.get("database.port"));
+            String db = (String) sourceConfig.get("database.dbname");
+            String user = (String) sourceConfig.get("database.user");
+            String pass = (String) sourceConfig.get("database.password");
+            if (pass == null) pass = "";
+            String tableInclude = (String) sourceConfig.get("table.include.list");
+            if (tableInclude == null) tableInclude = "";
+            String tableName = tableInclude.contains(".") ? tableInclude.split("\\.")[1] : tableInclude;
+            
+            String sourceUrl = "";
+            String sourceQuery = "";
+            if (plugin != null && plugin.contains("postgres")) {
+                sourceUrl = "jdbc:postgresql://" + host + ":" + port + "/" + db;
+                sourceQuery = "SELECT reltuples::bigint FROM pg_class WHERE relname = '" + tableName + "'";
+            } else if (plugin != null && plugin.contains("mysql")) {
+                sourceUrl = "jdbc:mysql://" + host + ":" + port + "/" + db;
+                sourceQuery = "SELECT table_rows FROM information_schema.tables WHERE table_name = '" + tableName + "'";
+            } else if (plugin != null && plugin.contains("sqlserver")) {
+                sourceUrl = "jdbc:sqlserver://" + host + ":" + port + ";databaseName=" + db + ";encrypt=false;";
+                sourceQuery = "SELECT sum(row_count) FROM sys.dm_db_partition_stats WHERE object_id=OBJECT_ID('" + tableName + "')";
+            }
+            
+            long sourceCount = -1;
+            if (!sourceUrl.isEmpty()) {
+                try (java.sql.Connection conn = java.sql.DriverManager.getConnection(sourceUrl, user, pass);
+                     java.sql.Statement stmt = conn.createStatement();
+                     java.sql.ResultSet rs = stmt.executeQuery(sourceQuery)) {
+                    if (rs.next()) {
+                        sourceCount = rs.getLong(1);
+                    }
+                } catch(Exception ex) {
+                    logger.warn("Could not get source count: " + ex.getMessage());
+                }
+            }
+            
+            String[] parts = actualSink.split("-");
+            StringBuilder targetTableBuilder = new StringBuilder();
+            for(int i = 2; i < parts.length - 1; i++) {
+                if(i > 2) targetTableBuilder.append("-");
+                targetTableBuilder.append(parts[i]);
+            }
+            String targetTable = targetTableBuilder.toString();
+            
+            long targetCount = -1;
+            try {
+                String chQuery = "SELECT sum(rows) FROM system.parts WHERE table = '" + targetTable + "' AND active = 1";
+                String chUrl = "http://clickhouse:8123/?query=" + java.net.URLEncoder.encode(chQuery, "UTF-8");
+                String chResponse = restTemplate.getForObject(chUrl, String.class);
+                if (chResponse != null && !chResponse.trim().isEmpty()) {
+                    targetCount = Long.parseLong(chResponse.trim());
+                } else {
+                    targetCount = 0;
+                }
+            } catch (Exception ex) {
+                logger.warn("Could not get target count: " + ex.getMessage());
+            }
+            
+            result.put("sourceCount", sourceCount);
+            result.put("targetCount", targetCount);
+            if (sourceCount > 0 && targetCount >= 0) {
+                double pct = ((double) targetCount / sourceCount) * 100.0;
+                if (pct > 100.0) pct = 100.0;
+                result.put("percentage", Math.round(pct * 100.0) / 100.0);
+            } else {
+                result.put("percentage", 0.0);
+            }
+            result.put("snapshotCompleted", (targetCount >= sourceCount && sourceCount != -1) || targetCount > 0 && sourceCount == -1);
+            
+            return result;
+        } catch (Exception e) {
+            logger.error("Failed to get snapshot progress", e);
+            return java.util.Map.of("error", e.getMessage());
+        }
+    }
 }

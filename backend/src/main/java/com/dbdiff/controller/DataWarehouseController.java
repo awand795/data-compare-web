@@ -85,4 +85,9 @@ public class DataWarehouseController {
     public ResponseEntity<?> peekTopicData(@PathVariable String connectorName) {
         return ResponseEntity.ok(dataWarehouseService.peekTopicData(connectorName));
     }
+
+    @GetMapping("/pipelines/progress/{deployId}")
+    public ResponseEntity<?> getSnapshotProgress(@PathVariable String deployId) {
+        return ResponseEntity.ok(dataWarehouseService.getSnapshotProgress(deployId));
+    }
 }
