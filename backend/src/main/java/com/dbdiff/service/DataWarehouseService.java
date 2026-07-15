@@ -559,7 +559,13 @@ public class DataWarehouseService {
             java.util.Map<String, Object> sinkConfig = new java.util.HashMap<>();
             sinkConfig.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
             sinkConfig.put("tasks.max", "1");
-            sinkConfig.put("topics.regex", topicPrefix + ".*");
+            List<String> expectedTopics = new java.util.ArrayList<>();
+            for (String t : formattedTables) {
+                String cleanTable = t.replace(".", "_");
+                expectedTopics.add(topicPrefix + cleanTable);
+            }
+            sinkConfig.put("topics", String.join(",", expectedTopics));
+            // sinkConfig.put("topics.regex", topicPrefix + ".*");
             sinkConfig.put("hostname", request.getTargetConnection().getHost() != null && !request.getTargetConnection().getHost().trim().isEmpty() ? request.getTargetConnection().getHost().trim() : "war.darkosuite.com");
             sinkConfig.put("port", String.valueOf(request.getTargetConnection().getPort()));
             sinkConfig.put("username", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
@@ -584,10 +590,14 @@ public class DataWarehouseService {
                 sendLog(emitter, "WARNING: Could not register ClickHouse Sink Connector: " + e.getMessage());
             }
 
+            // Give connectors time to initialize and start consuming before polling
+            sendLog(emitter, "Waiting for connectors to initialize (10s)...");
+            Thread.sleep(10000);
+
             // =========================================================================
             // STEP 6: Wait for Snapshot to Complete
             // =========================================================================
-            if (physicalTables.size() > 1) {
+            {
                 sendLog(emitter, "Waiting for initial snapshot to complete and populate the target table...");
                 
                 // Poll landing table row counts until they stabilize (unchanged for 3 consecutive checks)
