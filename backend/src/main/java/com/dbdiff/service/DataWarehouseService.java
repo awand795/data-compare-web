@@ -1121,7 +1121,7 @@ public class DataWarehouseService {
         String url = DEBEZIUM_URL + "/" + connectorName + "/" + action;
         try {
             if ("restart".equalsIgnoreCase(action)) {
-                restTemplate.postForLocation(url, null);
+                restTemplate.postForLocation(url + "?includeTasks=true&onlyFailed=true", null);
             } else if ("pause".equalsIgnoreCase(action) || "resume".equalsIgnoreCase(action)) {
                 restTemplate.put(url, null);
             } else {
