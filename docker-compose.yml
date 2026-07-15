@@ -91,6 +91,9 @@ services:
         published: 3888
         protocol: tcp
         mode: ingress
+    volumes:
+      - zookeeper_data:/zookeeper/data
+      - zookeeper_txns:/zookeeper/txns
     networks:
       - darkosync-network
 
@@ -105,6 +108,8 @@ services:
       - ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - HOST_NAME=kafka
+    volumes:
+      - kafka_data:/kafka/data
     networks:
       - darkosync-network
 
@@ -151,6 +156,9 @@ services:
 
 volumes:
   clickhouse_data:
+  zookeeper_data:
+  zookeeper_txns:
+  kafka_data:
 
 networks:
   darkosync-network:
