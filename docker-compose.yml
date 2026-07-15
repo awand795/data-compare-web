@@ -97,11 +97,6 @@ services:
   kafka:
     image: quay.io/debezium/kafka:2.4
     container_name: darkosync-kafka
-    ports:
-      - target: 9092
-        published: 9092
-        protocol: tcp
-        mode: ingress
     depends_on:
       - zookeeper
     environment:
