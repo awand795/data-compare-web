@@ -70,6 +70,12 @@ public class DataWarehouseController {
         return ResponseEntity.ok(java.util.Map.of("status", "deleted"));
     }
 
+    @DeleteMapping("/pipelines/group/{deployId}")
+    public ResponseEntity<?> deletePipeline(@PathVariable String deployId) {
+        dataWarehouseService.deletePipeline(deployId);
+        return ResponseEntity.ok(java.util.Map.of("status", "deleted"));
+    }
+
     @GetMapping("/pipelines/{connectorName}/config")
     public ResponseEntity<?> getConnectorConfig(@PathVariable String connectorName) {
         return ResponseEntity.ok(dataWarehouseService.getConnectorConfig(connectorName));

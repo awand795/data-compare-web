@@ -203,6 +203,28 @@ export const PipelineMonitor: React.FC = () => {
     });
   };
 
+  const handleDeletePipeline = (deployId: string, folderName: string) => {
+    showAlert({
+      title: 'Delete Pipeline',
+      message: `Are you sure you want to delete "${folderName}"? This will delete all connectors, materialized views, landing tables, and the target table. This action cannot be undone.`,
+      type: 'error',
+      confirmLabel: 'Delete Pipeline',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`/api/dwh/pipelines/group/${deployId}`, { method: 'DELETE' });
+          if (response.ok) {
+            addToast({ type: 'success', title: 'Deleted', message: `Pipeline deleted successfully.` });
+            fetchPipelines();
+          } else {
+            throw new Error('Delete failed');
+          }
+        } catch (error) {
+          addToast({ type: 'error', title: 'Delete Failed', message: 'Could not delete pipeline.' });
+        }
+      }
+    });
+  };
+
   const StatusBadge = ({ state }: { state: string }) => {
     const isRunning = state === 'RUNNING';
     const isFailed = state === 'FAILED';
@@ -312,9 +334,20 @@ export const PipelineMonitor: React.FC = () => {
                       {deployId !== 'Legacy' && <span className="text-text-muted font-normal text-[11px] ml-2 inline-block">(ID: {deployId})</span>}
                     </h4>
                   </div>
-                  <span className="text-[11px] font-bold text-text-muted bg-bg-panel px-2 py-1 rounded flex-shrink-0 mt-1">
-                    {groupPipelines.length} Connector(s)
-                  </span>
+                  <div className="flex items-center gap-2 flex-shrink-0 mt-1">
+                    <span className="text-[11px] font-bold text-text-muted bg-bg-panel px-2 py-1 rounded">
+                      {groupPipelines.length} Connector(s)
+                    </span>
+                    {deployId !== 'Legacy' && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDeletePipeline(deployId, folderName); }} 
+                        className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors tooltip"
+                        title="Delete Entire Pipeline"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 
                 {expandedGroups[deployId] && (

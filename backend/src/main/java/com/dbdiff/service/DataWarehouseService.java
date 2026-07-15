@@ -1147,6 +1147,86 @@ public class DataWarehouseService {
         }
     }
 
+    public void deletePipeline(String deployId) {
+        try {
+            String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+            if (connectors == null) return;
+            
+            java.util.List<String> toDelete = new java.util.ArrayList<>();
+            String sinkConnector = null;
+            String targetTable = null;
+            
+            for (String c : connectors) {
+                if (c.endsWith("-" + deployId)) {
+                    toDelete.add(c);
+                    if (c.startsWith("sink-clickhouse-")) {
+                        sinkConnector = c;
+                        targetTable = c.substring("sink-clickhouse-".length(), c.lastIndexOf("-" + deployId));
+                    }
+                }
+            }
+            
+            if (sinkConnector != null && targetTable != null) {
+                try {
+                    java.util.Map<String, Object> config = getConnectorConfig(sinkConnector);
+                    String hostname = (String) config.get("hostname");
+                    String port = (String) config.get("port");
+                    String db = (String) config.get("database");
+                    String username = (String) config.get("username");
+                    String password = (String) config.get("password");
+                    
+                    if (hostname != null && port != null && db != null) {
+                        ConnectionDetails chDetails = new ConnectionDetails();
+                        chDetails.setType("clickhouse");
+                        chDetails.setHost(hostname);
+                        chDetails.setPort(Integer.parseInt(port));
+                        chDetails.setDatabase(db);
+                        chDetails.setUsername(username);
+                        chDetails.setPassword(password);
+                        
+                        DataSource ds = connectionManagerService.getDataSource(chDetails);
+                        try (java.sql.Connection conn = ds.getConnection();
+                             java.sql.Statement stmt = conn.createStatement()) {
+                             
+                            stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`v_" + targetTable + "`");
+                            
+                            String findMVs = "SELECT name FROM system.tables WHERE database = '" + db + "' AND name LIKE 'mv_%'";
+                            java.util.List<String> mvsToDrop = new java.util.ArrayList<>();
+                            try (java.sql.ResultSet rs = stmt.executeQuery(findMVs)) {
+                                while (rs.next()) {
+                                    String name = rs.getString("name");
+                                    if (name.startsWith("mv_" + targetTable + "_")) {
+                                        mvsToDrop.add(name);
+                                    }
+                                }
+                            }
+                            
+                            for (String mv : mvsToDrop) {
+                                stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`" + mv + "`");
+                                String prefix = "mv_" + targetTable + "_";
+                                if (mv.startsWith(prefix)) {
+                                    String landingTable = mv.substring(prefix.length());
+                                    stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + landingTable + "`");
+                                }
+                            }
+                            
+                            stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + targetTable + "`");
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("Failed to cleanup ClickHouse tables for pipeline " + deployId, e);
+                }
+            }
+            
+            for (String c : toDelete) {
+                deleteConnector(c);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to delete pipeline " + deployId, e);
+            throw new RuntimeException("Failed to delete pipeline: " + e.getMessage());
+        }
+    }
+
     public java.util.Map<String, Object> getConnectorConfig(String connectorName) {
         String url = DEBEZIUM_URL + "/" + connectorName + "/config";
         try {
