@@ -101,6 +101,8 @@ services:
       - zookeeper
     environment:
       - ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - HOST_NAME=kafka
     networks:
       - darkosync-network
 
