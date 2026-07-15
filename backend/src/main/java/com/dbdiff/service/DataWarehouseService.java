@@ -34,12 +34,20 @@ import net.sf.jsqlparser.statement.select.FromItem;
 import net.sf.jsqlparser.statement.select.Join;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.util.TablesNamesFinder;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
 @Service
 public class DataWarehouseService {
     private static final Logger logger = LoggerFactory.getLogger(DataWarehouseService.class);
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
     private static final String DEBEZIUM_URL = "http://debezium:8083/connectors";
+
+    public DataWarehouseService() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000); // 5 seconds
+        factory.setReadTimeout(10000);   // 10 seconds
+        this.restTemplate = new RestTemplate(factory);
+    }
 
     @Autowired
     private ConnectionManagerService connectionManagerService;
