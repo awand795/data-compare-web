@@ -1275,10 +1275,24 @@ public class DataWarehouseService {
                         }
                     }
                 }
+            } else if (config.containsKey("topics.regex")) {
+                String regex = (String) config.get("topics.regex");
+                Pattern p = Pattern.compile(regex);
+                Properties props = new Properties();
+                props.put("bootstrap.servers", "kafka:9092");
+                try (AdminClient admin = AdminClient.create(props)) {
+                    java.util.Set<String> allTopics = admin.listTopics().names().get();
+                    for (String t : allTopics) {
+                        if (p.matcher(t).matches()) {
+                            topicName = t;
+                            break;
+                        }
+                    }
+                }
             }
 
             if (topicName == null) {
-                return Collections.singletonList(java.util.Map.of("error", "Could not determine topic name for this connector"));
+                return Collections.singletonList(java.util.Map.of("error", "Could not determine topic name for this connector. Ensure the connector is running and topics are created."));
             }
 
             Properties props = new Properties();
@@ -1321,6 +1335,9 @@ public class DataWarehouseService {
                         messages.add(msg);
                     }
                 }
+            }
+            if (messages.isEmpty()) {
+                messages.add(java.util.Map.of("error", "No messages found in topic: " + topicName));
             }
             return messages;
         } catch (Exception e) {
