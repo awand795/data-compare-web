@@ -67,7 +67,7 @@ public class DataWarehouseService {
             sendLog(emitter, "Deploying Data Warehouse pipeline for source " + request.getSourceConnection().getName() + " to target table " + request.getTargetTable());
             
             // Generate unique names for connectors based on a single deployment ID
-            String baseName = request.getSourceConnection().getName().replaceAll("[^a-zA-Z0-9_-]", "").toLowerCase();
+            String baseName = request.getSourceConnection().getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
             long deployId = System.currentTimeMillis();
             String sourceConnectorName = "source-" + baseName + "-" + deployId;
             String sinkConnectorName = "sink-clickhouse-" + request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "") + "-" + deployId;
