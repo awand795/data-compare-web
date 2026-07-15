@@ -1,0 +1,17 @@
+DROP VIEW IF EXISTS `v_dwh_klaim_barang`;
+DROP VIEW IF EXISTS `v_dwh_penerimaan_lain_C001`;
+DROP VIEW IF EXISTS `v_dwh_penerimaan_lain_semuacabang`;
+DROP VIEW IF EXISTS `mv_dwh_klaim_barang_cdc_demo-erp_sch_erp_inventory_trd_klaim_barang`;
+DROP VIEW IF EXISTS `mv_dwh_klaim_barang_cdc_demo-erp_sch_erp_inventory_trh_klaim_barang`;
+DROP VIEW IF EXISTS `mv_dwh_penerimaan_lain_C001_cdc_demo-erp_sch_erp_inventory_trd_penerimaan_lain`;
+DROP VIEW IF EXISTS `mv_dwh_penerimaan_lain_C001_cdc_demo-erp_sch_erp_inventory_trh_penerimaan_lain`;
+DROP VIEW IF EXISTS `mv_dwh_penerimaan_lain_semuacabang_cdc_demo-erp_sch_erp_inventory_trd_penerimaan_lain`;
+DROP VIEW IF EXISTS `mv_dwh_penerimaan_lain_semuacabang_cdc_demo-erp_sch_erp_inventory_trh_penerimaan_lain`;
+DROP TABLE IF EXISTS `cdc_demo-erp_sch_erp_inventory_trd_klaim_barang`;
+DROP TABLE IF EXISTS `cdc_demo-erp_sch_erp_inventory_trd_penerimaan_lain`;
+DROP TABLE IF EXISTS `cdc_demo-erp_sch_erp_inventory_trh_klaim_barang`;
+DROP TABLE IF EXISTS `cdc_demo-erp_sch_erp_inventory_trh_penerimaan_lain`;
+DROP TABLE IF EXISTS `dwh_klaim_barang`;
+DROP TABLE IF EXISTS `dwh_penerimaan_lain_C001`;
+DROP TABLE IF EXISTS `dwh_penerimaan_lain_semuacabang`;
+SHOW TABLES;
