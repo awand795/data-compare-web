@@ -199,13 +199,30 @@ public class DataWarehouseService {
                             if (pkCol != null) {
                                 // Match casing against target columns
                                 String matchedCol = pkCol;
+                                boolean found = false;
                                 for (ColumnInfo col : targetColumns) {
                                     if (col.name.equalsIgnoreCase(pkCol)) {
                                         matchedCol = col.name;
+                                        found = true;
                                         break;
                                     }
                                 }
-                                compositePKs.add(matchedCol);
+                                if (!found) {
+                                    // Try to find if there is an alias ending with this pkCol (e.g. b_seq for seq)
+                                    for (ColumnInfo col : targetColumns) {
+                                        if (col.name.toLowerCase().endsWith("_" + pkCol.toLowerCase())) {
+                                            matchedCol = col.name;
+                                            found = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                // Only add to compositePKs if the column actually exists in the target table
+                                if (found) {
+                                    compositePKs.add(matchedCol);
+                                } else {
+                                    logger.warn("Primary key column '" + pkCol + "' from table '" + tableName + "' was not found in the SELECT query. It will be omitted from the target ClickHouse ORDER BY clause.");
+                                }
                             }
                         }
                     }
