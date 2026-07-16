@@ -1375,7 +1375,26 @@ public class DataWarehouseService {
             // ── 6. Recreate Materialized Views with new column list ──────────────────
             sendLog(emitter, "Recreating Materialized Views with new column mapping...");
             java.util.List<String> physicalTables = extractPhysicalTables(expandedNewQuery);
-            String baseName = targetTable;
+
+            // IMPORTANT: baseName must be the same one used during the original deploy.
+            // The source connector is named "src-{baseName}-{deployId}", so we extract it from Debezium.
+            String baseName = targetTable; // fallback
+            try {
+                String[] existingConnectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+                if (existingConnectors != null) {
+                    String suffix = "-" + deployId;
+                    for (String c : existingConnectors) {
+                        if (c.startsWith("src-") && c.endsWith(suffix)) {
+                            // src-{baseName}-{deployId}  →  extract baseName
+                            baseName = c.substring("src-".length(), c.length() - suffix.length());
+                            sendLog(emitter, "Resolved baseName from connector: " + baseName);
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                sendLog(emitter, "WARNING: Could not resolve baseName from Debezium, falling back to target table name.");
+            }
 
             java.util.Map<String, java.util.Set<String>> tableToPKs = new java.util.HashMap<>();
             for (String t : physicalTables) {
