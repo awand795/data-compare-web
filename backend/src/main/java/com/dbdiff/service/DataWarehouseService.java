@@ -1773,8 +1773,23 @@ public class DataWarehouseService {
             String topicName = null;
             if (config.containsKey("topics")) {
                 topicName = ((String) config.get("topics")).split(",")[0];
+            } else if (config.containsKey("transforms.route.replacement")) {
+                // Topic is routed/renamed via RegexRouter (e.g. cdc_basename_$2_$3)
+                String replacement = (String) config.get("transforms.route.replacement");
+                String actualPrefix = replacement.substring(0, replacement.indexOf("$2"));
+                Properties props = new Properties();
+                props.put("bootstrap.servers", "kafka:9092");
+                try (AdminClient admin = AdminClient.create(props)) {
+                    java.util.Set<String> allTopics = admin.listTopics().names().get();
+                    for (String t : allTopics) {
+                        if (t.startsWith(actualPrefix)) {
+                            topicName = t;
+                            break;
+                        }
+                    }
+                }
             } else if (config.containsKey("topic.prefix")) {
-                // Try to find the topic via admin client
+                // Try to find the topic via admin client (default Debezium naming)
                 String prefix = (String) config.get("topic.prefix");
                 Properties props = new Properties();
                 props.put("bootstrap.servers", "kafka:9092");
