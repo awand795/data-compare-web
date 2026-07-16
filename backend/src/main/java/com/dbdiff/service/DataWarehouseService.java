@@ -52,6 +52,12 @@ public class DataWarehouseService {
     @Autowired
     private ConnectionManagerService connectionManagerService;
 
+    @Autowired
+    private com.dbdiff.repository.PipelineMetadataRepository pipelineMetadataRepository;
+
+    @Autowired
+    private com.dbdiff.repository.ConnectionRepository connectionRepository;
+
     private static class ColumnInfo {
         String name;
         String clickhouseType;
@@ -384,6 +390,19 @@ public class DataWarehouseService {
                 pkBuilder.append("`").append(pk).append("`");
             }
             targetDdl.append("ORDER BY (").append(pkBuilder.toString()).append(")");
+            
+            // Save the original query + connection metadata to repository
+            try {
+                pipelineMetadataRepository.savePipelineMetadata(
+                    deployId,
+                    request.getQuery(),
+                    request.getSourceConnection().getId(),
+                    request.getTargetTable(),
+                    request.getTargetConnection().getId()
+                );
+            } catch (Exception e) {
+                logger.warn("Could not save original query to metadata repository", e);
+            }
             
             sendLog(emitter, "Creating target table `" + request.getTargetTable() + "` in ClickHouse...");
             try (Connection conn = targetDs.getConnection();
@@ -1155,10 +1174,15 @@ public class DataWarehouseService {
     public void manageConnector(String connectorName, String action) {
         String url = DEBEZIUM_URL + "/" + connectorName + "/" + action;
         try {
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.set("Accept", "application/json");
+            headers.set("Content-Type", "application/json");
+            org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>("", headers);
+
             if ("restart".equalsIgnoreCase(action)) {
-                restTemplate.postForLocation(url + "?includeTasks=true&onlyFailed=true", null);
+                restTemplate.exchange(url + "?includeTasks=true&onlyFailed=true", org.springframework.http.HttpMethod.POST, entity, String.class);
             } else if ("pause".equalsIgnoreCase(action) || "resume".equalsIgnoreCase(action)) {
-                restTemplate.put(url, null);
+                restTemplate.exchange(url, org.springframework.http.HttpMethod.PUT, entity, String.class);
             } else {
                 throw new IllegalArgumentException("Invalid action: " + action);
             }
@@ -1256,9 +1280,386 @@ public class DataWarehouseService {
             for (String c : toDelete) {
                 deleteConnector(c);
             }
+            
+            // Also delete metadata
+            try {
+                pipelineMetadataRepository.deletePipelineMetadata(deployId);
+            } catch (Exception ignored) {}
+            
         } catch (Exception e) {
             logger.error("Failed to delete pipeline " + deployId, e);
             throw new RuntimeException("Failed to delete pipeline: " + e.getMessage());
+        }
+    }
+
+    public java.util.Map<String, Object> getPipelineMetadata(String deployId) {
+        return pipelineMetadataRepository.getPipelineMetadata(deployId);
+    }
+
+    public void updatePipelineQuery(String deployId, String newQuery, SseEmitter emitter) throws Exception {
+        try {
+            sendLog(emitter, "Starting query update for pipeline: " + deployId);
+
+            // ── 1. Load stored metadata ──────────────────────────────────────────────
+            java.util.Map<String, Object> meta = pipelineMetadataRepository.getPipelineMetadata(deployId);
+            if (meta == null) throw new RuntimeException("Pipeline metadata not found for deployId: " + deployId);
+
+            String oldQuery = (String) meta.get("query");
+            String targetTable = (String) meta.get("target_table");
+            String sourceConnectionId = (String) meta.get("source_connection_id");
+            String targetConnectionId = (String) meta.get("target_connection_id");
+
+            if (targetTable == null) throw new RuntimeException("Target table name not found in metadata.");
+
+            sendLog(emitter, "Target table: " + targetTable);
+
+            // ── 2. Look up ConnectionDetails from internal DB ────────────────────────
+            ConnectionDetails sourceConn = connectionRepository.findById(sourceConnectionId);
+            ConnectionDetails targetConn = connectionRepository.findById(targetConnectionId);
+            if (sourceConn == null) throw new RuntimeException("Source connection not found: " + sourceConnectionId);
+            if (targetConn == null) throw new RuntimeException("Target connection not found: " + targetConnectionId);
+
+            DataSource sourceDs = connectionManagerService.getDataSource(sourceConn);
+            DataSource targetDs = connectionManagerService.getDataSource(targetConn);
+            String chDb = targetConn.getDatabase();
+            if (chDb == null || chDb.isEmpty()) chDb = "default";
+
+            // ── 3. Run dry-run on old and new queries to get column lists ────────────
+            sendLog(emitter, "Analyzing old query schema...");
+            java.util.List<ColumnInfo> oldCols = getQueryColumns(oldQuery, sourceDs, sourceConn);
+            sendLog(emitter, "Analyzing new query schema...");
+            String expandedNewQuery = expandWildcardsAndAlias(newQuery, sourceDs, sourceConn);
+            java.util.List<ColumnInfo> newCols = getQueryColumns(expandedNewQuery, sourceDs, sourceConn);
+
+            // ── 4. Compute diff ──────────────────────────────────────────────────────
+            java.util.Set<String> oldColNames = new java.util.LinkedHashSet<>();
+            java.util.Map<String, ColumnInfo> oldColMap = new java.util.LinkedHashMap<>();
+            for (ColumnInfo c : oldCols) { oldColNames.add(c.name); oldColMap.put(c.name, c); }
+
+            java.util.Set<String> newColNames = new java.util.LinkedHashSet<>();
+            java.util.Map<String, ColumnInfo> newColMap = new java.util.LinkedHashMap<>();
+            for (ColumnInfo c : newCols) { newColNames.add(c.name); newColMap.put(c.name, c); }
+
+            java.util.List<String> addedCols = new java.util.ArrayList<>();
+            java.util.List<String> removedCols = new java.util.ArrayList<>();
+            for (String n : newColNames) { if (!oldColNames.contains(n)) addedCols.add(n); }
+            for (String o : oldColNames) { if (!newColNames.contains(o)) removedCols.add(o); }
+
+            if (addedCols.isEmpty() && removedCols.isEmpty()) {
+                sendLog(emitter, "No column changes detected. Saving updated query...");
+                pipelineMetadataRepository.updateQuery(deployId, newQuery);
+                sendLog(emitter, "Query saved successfully. No schema changes needed.");
+                emitter.complete();
+                return;
+            }
+
+            sendLog(emitter, "Columns to ADD: " + (addedCols.isEmpty() ? "none" : String.join(", ", addedCols)));
+            sendLog(emitter, "Columns to DROP: " + (removedCols.isEmpty() ? "none" : String.join(", ", removedCols)));
+
+            // ── 5. ALTER target table: add/drop columns ──────────────────────────────
+            try (java.sql.Connection conn = targetDs.getConnection();
+                 java.sql.Statement stmt = conn.createStatement()) {
+
+                for (String col : removedCols) {
+                    sendLog(emitter, "Dropping column `" + col + "` from target table...");
+                    stmt.execute("ALTER TABLE `" + chDb + "`.`" + targetTable + "` DROP COLUMN IF EXISTS `" + col + "`");
+                }
+                for (String col : addedCols) {
+                    ColumnInfo ci = newColMap.get(col);
+                    sendLog(emitter, "Adding column `" + col + "` (" + ci.clickhouseType + ") to target table...");
+                    stmt.execute("ALTER TABLE `" + chDb + "`.`" + targetTable + "` ADD COLUMN IF NOT EXISTS `" + col + "` Nullable(" + ci.clickhouseType + ")");
+                }
+            }
+            sendLog(emitter, "Target table schema updated.");
+
+            // ── 6. Recreate Materialized Views with new column list ──────────────────
+            sendLog(emitter, "Recreating Materialized Views with new column mapping...");
+            java.util.List<String> physicalTables = extractPhysicalTables(expandedNewQuery);
+            String baseName = targetTable;
+
+            java.util.Map<String, java.util.Set<String>> tableToPKs = new java.util.HashMap<>();
+            for (String t : physicalTables) {
+                java.util.Set<String> pks = new java.util.LinkedHashSet<>();
+                try (java.sql.Connection conn = sourceDs.getConnection()) {
+                    java.sql.DatabaseMetaData metaData = conn.getMetaData();
+                    String schemaName = t.contains(".") ? t.substring(0, t.indexOf('.')) : sourceConn.getSchema();
+                    String tableName = t.contains(".") ? t.substring(t.indexOf('.')+1) : t;
+                    tableName = tableName.replaceAll("[\"``]", "");
+                    if (schemaName != null) schemaName = schemaName.replaceAll("[\"``]", "");
+                    try (java.sql.ResultSet pkRs = metaData.getPrimaryKeys(null, schemaName, tableName)) {
+                        while (pkRs.next()) { String pk = pkRs.getString("COLUMN_NAME"); if (pk != null) pks.add(pk); }
+                    }
+                } catch (Exception ignored) {}
+                tableToPKs.put(t, pks);
+            }
+
+            try (java.sql.Connection conn = targetDs.getConnection();
+                 java.sql.Statement stmt = conn.createStatement()) {
+                for (String t : physicalTables) {
+                    String landingTable = getClickHouseLandingTable(t, baseName, sourceConn);
+                    String mvName = "mv_" + targetTable + "_" + landingTable;
+                    stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`");
+                    sendLog(emitter, "Dropped old MV `" + mvName + "`.");
+
+                    String rotatedSql = rotateQuery(expandedNewQuery, t);
+                    String sqlWithMeta = addMetadataColsToSelect(rotatedSql, t);
+                    String rewrittenSql;
+                    if (physicalTables.size() > 1) {
+                        String sqlWithFilters = addPKFiltersToWhere(sqlWithMeta, physicalTables, tableToPKs);
+                        rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, baseName, sourceConn, chDb);
+                        rewrittenSql = rewrittenSql.replaceAll("(?i)\\bLEFT\\s+JOIN\\b", "INNER JOIN");
+                    } else {
+                        rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, sourceConn, chDb);
+                    }
+                    String mvDdl = "CREATE MATERIALIZED VIEW IF NOT EXISTS `" + chDb + "`.`" + mvName + "`\nTO `" + chDb + "`.`" + targetTable + "`\nAS " + rewrittenSql;
+                    stmt.execute(mvDdl);
+                    sendLog(emitter, "Recreated MV `" + mvName + "`.");
+                }
+            }
+
+            // ── 7. Backfill NEW columns from source for existing rows ────────────────
+            if (!addedCols.isEmpty()) {
+                sendLog(emitter, "Starting column backfill for " + addedCols.size() + " new column(s)...");
+
+                // Build minimal SELECT: PKs + new cols only
+                java.util.Set<String> compositePKs = new java.util.LinkedHashSet<>();
+                for (java.util.Set<String> pks : tableToPKs.values()) compositePKs.addAll(pks);
+                if (compositePKs.isEmpty() && !newCols.isEmpty()) compositePKs.add(newCols.get(0).name);
+
+                java.util.List<String> selectCols = new java.util.ArrayList<>(compositePKs);
+                for (String c : addedCols) {
+                    if (!selectCols.contains(c)) selectCols.add(c);
+                }
+
+                // Run the new query on source to get PK + new-col values
+                String srcType = sourceConn.getType().toLowerCase();
+                String limitedQuery = srcType.contains("sqlserver")
+                    ? "SELECT TOP 0 * FROM (" + expandedNewQuery + ") AS tmp" // just schema check first
+                    : "SELECT * FROM (" + expandedNewQuery + ") AS tmp LIMIT 0";
+
+                // Actual data fetch: source returns full rows, we pick what we need
+                sendLog(emitter, "Fetching data from source for backfill (this may take a while for large tables)...");
+                int batchSize = 500;
+                int totalRows = 0;
+
+                try (java.sql.Connection srcConn = sourceDs.getConnection();
+                     java.sql.Statement srcStmt = srcConn.createStatement();
+                     java.sql.ResultSet rs = srcStmt.executeQuery(expandedNewQuery)) {
+
+                    java.sql.ResultSetMetaData rsMeta = rs.getMetaData();
+
+                    // Find column indices
+                    java.util.Map<String, Integer> colIndex = new java.util.LinkedHashMap<>();
+                    for (int i = 1; i <= rsMeta.getColumnCount(); i++) {
+                        colIndex.put(rsMeta.getColumnLabel(i), i);
+                    }
+
+                    // Check all requested cols exist
+                    for (String col : selectCols) {
+                        if (!colIndex.containsKey(col)) {
+                            sendLog(emitter, "WARNING: Column `" + col + "` not found in source result set. Skipping backfill for this column.");
+                            addedCols.remove(col);
+                        }
+                    }
+
+                    // Build ClickHouse batch update using ALTER TABLE UPDATE
+                    java.util.List<java.util.Map<String, Object>> batch = new java.util.ArrayList<>();
+                    while (rs.next()) {
+                        java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+                        for (String col : selectCols) {
+                            Integer idx = colIndex.get(col);
+                            if (idx != null) row.put(col, rs.getObject(idx));
+                        }
+                        batch.add(row);
+                        totalRows++;
+
+                        if (batch.size() >= batchSize) {
+                            flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, addedCols, emitter);
+                            batch.clear();
+                            sendLog(emitter, "Backfilled " + totalRows + " rows so far...");
+                        }
+                    }
+                    if (!batch.isEmpty()) {
+                        flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, addedCols, emitter);
+                    }
+                }
+                sendLog(emitter, "Backfill complete. " + totalRows + " rows processed.");
+            }
+
+            // ── 8. Update stored query ───────────────────────────────────────────────
+            pipelineMetadataRepository.updateQuery(deployId, newQuery);
+            sendLog(emitter, "✅ Query updated and saved. Schema evolution complete!");
+            emitter.complete();
+
+        } catch (Exception e) {
+            logger.error("Failed to update pipeline query " + deployId, e);
+            try { sendLog(emitter, "ERROR: " + e.getMessage()); emitter.complete(); } catch (Exception ignored) {}
+            throw e;
+        }
+    }
+
+    private java.util.List<ColumnInfo> getQueryColumns(String query, DataSource sourceDs, ConnectionDetails sourceConn) throws Exception {
+        String srcType = sourceConn.getType().toLowerCase();
+        String dryRun = srcType.contains("sqlserver")
+            ? "SELECT TOP 0 * FROM (" + query + ") AS tmp"
+            : "SELECT * FROM (" + query + ") AS tmp LIMIT 0";
+        java.util.List<ColumnInfo> cols = new java.util.ArrayList<>();
+        try (java.sql.Connection conn = sourceDs.getConnection();
+             java.sql.PreparedStatement ps = conn.prepareStatement(dryRun);
+             java.sql.ResultSet rs = ps.executeQuery()) {
+            java.sql.ResultSetMetaData meta = rs.getMetaData();
+            for (int i = 1; i <= meta.getColumnCount(); i++) {
+                ColumnInfo c = new ColumnInfo();
+                c.name = meta.getColumnLabel(i);
+                c.clickhouseType = mapJdbcTypeToClickHouse(meta.getColumnType(i), meta.getPrecision(i), meta.getScale(i), meta.getColumnTypeName(i));
+                cols.add(c);
+            }
+        }
+        return cols;
+    }
+
+    private void flushBackfillBatch(DataSource targetDs, String chDb, String targetTable,
+            java.util.List<java.util.Map<String, Object>> batch,
+            java.util.Set<String> pkCols, java.util.List<String> addedCols,
+            SseEmitter emitter) throws Exception {
+
+        if (batch.isEmpty() || addedCols.isEmpty()) return;
+
+        // We insert full rows for the new columns using an INSERT that triggers ReplacingMergeTree dedup
+        // Build INSERT with only PK + new cols (others get their stored values via FINAL)
+        StringBuilder sb = new StringBuilder();
+        sb.append("INSERT INTO `").append(chDb).append("`.`").append(targetTable).append("` (");
+
+        java.util.List<String> insertCols = new java.util.ArrayList<>(pkCols);
+        for (String c : addedCols) { if (!insertCols.contains(c)) insertCols.add(c); }
+        // Add version and is_deleted so RMT dedup works
+        insertCols.add("version");
+        insertCols.add("is_deleted");
+
+        sb.append(insertCols.stream().map(c -> "`" + c + "`").collect(java.util.stream.Collectors.joining(", ")));
+        sb.append(") VALUES ");
+
+        java.util.List<String> rowValues = new java.util.ArrayList<>();
+        for (java.util.Map<String, Object> row : batch) {
+            StringBuilder rv = new StringBuilder("(");
+            for (int i = 0; i < insertCols.size(); i++) {
+                if (i > 0) rv.append(", ");
+                String col = insertCols.get(i);
+                if ("version".equals(col)) {
+                    rv.append(System.currentTimeMillis());
+                } else if ("is_deleted".equals(col)) {
+                    rv.append("0");
+                } else {
+                    Object val = row.get(col);
+                    if (val == null) {
+                        rv.append("NULL");
+                    } else if (val instanceof Number) {
+                        rv.append(val);
+                    } else {
+                        rv.append("'").append(val.toString().replace("'", "\\'")).append("'");
+                    }
+                }
+            }
+            rv.append(")");
+            rowValues.add(rv.toString());
+        }
+        sb.append(String.join(", ", rowValues));
+
+        try (java.sql.Connection conn = targetDs.getConnection();
+             java.sql.Statement stmt = conn.createStatement()) {
+            stmt.execute(sb.toString());
+        }
+    }
+
+    public String getOriginalQuery(String deployId) {
+        return pipelineMetadataRepository.getOriginalQuery(deployId);
+    }
+
+
+    public void renamePipeline(String deployId, String newName) {
+        try {
+            String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+            String sinkConnector = null;
+            String oldTargetTable = null;
+            if (connectors != null) {
+                for (String c : connectors) {
+                    if (c.matches("sink-.*-" + deployId)) {
+                        sinkConnector = c;
+                        String[] parts = c.split("-");
+                        StringBuilder tb = new StringBuilder();
+                        for(int i=2; i<parts.length-1; i++) {
+                            if(i>2) tb.append("-");
+                            tb.append(parts[i]);
+                        }
+                        oldTargetTable = tb.toString();
+                        break;
+                    }
+                }
+            }
+            if (sinkConnector == null || oldTargetTable == null) throw new RuntimeException("Pipeline not found");
+            
+            java.util.Map<String, Object> config = getConnectorConfig(sinkConnector);
+            String host = (String) config.get("hostname");
+            String port = (String) config.get("port");
+            String db = (String) config.get("database");
+            String user = (String) config.get("username");
+            String pass = (String) config.get("password");
+            if (db == null) db = "default";
+            
+            ConnectionDetails chDetails = new ConnectionDetails();
+            chDetails.setType("clickhouse");
+            chDetails.setHost(host);
+            chDetails.setPort(Integer.parseInt(port));
+            chDetails.setDatabase(db);
+            chDetails.setUsername(user);
+            chDetails.setPassword(pass);
+            
+            javax.sql.DataSource ds = connectionManagerService.getDataSource(chDetails);
+            try (java.sql.Connection conn = ds.getConnection();
+                 java.sql.Statement stmt = conn.createStatement()) {
+                 
+                 stmt.execute("RENAME TABLE `" + db + "`.`" + oldTargetTable + "` TO `" + db + "`.`" + newName + "`");
+                 
+                 stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`v_" + oldTargetTable + "`");
+                 stmt.execute("CREATE OR REPLACE VIEW `" + db + "`.`v_" + newName + "` AS SELECT * FROM `" + db + "`.`" + newName + "` FINAL WHERE is_deleted = 0");
+                 
+                 java.util.List<String> mvs = new java.util.ArrayList<>();
+                 try (java.sql.ResultSet rs = stmt.executeQuery("SELECT name, create_table_query FROM system.tables WHERE database = '" + db + "' AND name LIKE 'mv_" + oldTargetTable + "_%'")) {
+                     while (rs.next()) {
+                         mvs.add(rs.getString("name") + "|||" + rs.getString("create_table_query"));
+                     }
+                 }
+                 
+                 for (String mvData : mvs) {
+                     String[] parts = mvData.split("\\|\\|\\|");
+                     String oldMvName = parts[0];
+                     String createSql = parts[1];
+                     
+                     stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`" + oldMvName + "`");
+                     
+                     String newMvName = oldMvName.replaceFirst("mv_" + oldTargetTable + "_", "mv_" + newName + "_");
+                     String newCreateSql = createSql
+                            .replaceAll("(?i)CREATE MATERIALIZED VIEW (`?)" + java.util.regex.Pattern.quote(db) + "(`?)\\.(`?)" + java.util.regex.Pattern.quote(oldMvName) + "(`?)", "CREATE MATERIALIZED VIEW $1" + db + "$2.$3" + newMvName + "$4")
+                            .replaceAll("(?i)TO (`?)" + java.util.regex.Pattern.quote(db) + "(`?)\\.(`?)" + java.util.regex.Pattern.quote(oldTargetTable) + "(`?)", "TO $1" + db + "$2.$3" + newName + "$4");
+                            
+                     stmt.execute(newCreateSql);
+                 }
+            }
+            
+            deleteConnector(sinkConnector);
+            String newConnectorName = "sink-clickhouse-" + newName + "-" + deployId;
+            java.util.Map<String, Object> newPayload = new java.util.HashMap<>();
+            newPayload.put("name", newConnectorName);
+            newPayload.put("config", config);
+            
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            org.springframework.http.HttpEntity<java.util.Map<String, Object>> entity = new org.springframework.http.HttpEntity<>(newPayload, headers);
+            restTemplate.postForEntity(DEBEZIUM_URL, entity, String.class);
+            
+        } catch (Exception e) {
+            logger.error("Failed to rename pipeline " + deployId, e);
+            throw new RuntimeException("Failed to rename pipeline: " + e.getMessage());
         }
     }
 
@@ -1438,9 +1839,24 @@ public class DataWarehouseService {
             
             long targetCount = -1;
             try {
+                java.util.Map<String, Object> sinkConfig = getConnectorConfig(actualSink);
+                String chUser = sinkConfig != null ? (String) sinkConfig.get("username") : null;
+                String chPass = sinkConfig != null ? (String) sinkConfig.get("password") : null;
+                
                 String chQuery = "SELECT sum(rows) FROM system.parts WHERE table = '" + targetTable + "' AND active = 1";
                 String chUrl = "http://clickhouse:8123/?query=" + java.net.URLEncoder.encode(chQuery, "UTF-8");
-                String chResponse = restTemplate.getForObject(chUrl, String.class);
+                
+                org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+                if (chUser != null && !chUser.isEmpty()) {
+                    headers.set("X-ClickHouse-User", chUser);
+                }
+                if (chPass != null && !chPass.isEmpty()) {
+                    headers.set("X-ClickHouse-Key", chPass);
+                }
+                org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);
+                org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(chUrl, org.springframework.http.HttpMethod.GET, entity, String.class);
+                String chResponse = response.getBody();
+                
                 if (chResponse != null && !chResponse.trim().isEmpty()) {
                     targetCount = Long.parseLong(chResponse.trim());
                 } else {
