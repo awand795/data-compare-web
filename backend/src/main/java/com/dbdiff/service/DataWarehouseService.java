@@ -1372,6 +1372,17 @@ public class DataWarehouseService {
             }
             sendLog(emitter, "Target table schema updated.");
 
+            // ── Recreate convenience VIEW so new/dropped columns are reflected ────────
+            try (java.sql.Connection vConn = targetDs.getConnection();
+                 java.sql.Statement vStmt = vConn.createStatement()) {
+                String viewDdl = "CREATE OR REPLACE VIEW `" + chDb + "`.`v_" + targetTable + "` AS " +
+                    "SELECT * FROM `" + chDb + "`.`" + targetTable + "` FINAL WHERE is_deleted = 0";
+                vStmt.execute(viewDdl);
+                sendLog(emitter, "View `v_" + targetTable + "` recreated with updated columns.");
+            } catch (Exception ve) {
+                sendLog(emitter, "WARNING: Could not recreate view v_" + targetTable + ": " + ve.getMessage());
+            }
+
             // ── 6. Recreate Materialized Views with new column list ──────────────────
             sendLog(emitter, "Recreating Materialized Views with new column mapping...");
             java.util.List<String> physicalTables = extractPhysicalTables(expandedNewQuery);
