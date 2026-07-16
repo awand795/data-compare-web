@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit3, Code, FileEdit } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
 
 interface Pipeline {
@@ -33,16 +34,125 @@ export const PipelineMonitor: React.FC = () => {
   const [peekData, setPeekData] = useState<any[]>([]);
   const [isPeeking, setIsPeeking] = useState(false);
 
-  const [lagHistory, setLagHistory] = useState<Record<string, {time: string, lag: number}[]>>({});
-  const [statsModalOpen, setStatsModalOpen] = useState<Pipeline | null>(null);
+  const [originalQueries, setOriginalQueries] = useState<Record<string, string>>({});
+  const [queryModalOpen, setQueryModalOpen] = useState<{deployId: string, folderName: string, query: string} | null>(null);
+  const [isFetchingQuery, setIsFetchingQuery] = useState(false);
+
+  const [editQueryModal, setEditQueryModal] = useState<{deployId: string, folderName: string, query: string, sourceConnectionId: string | null} | null>(null);
+  const [editQueryValue, setEditQueryValue] = useState('');
+  const [editQueryLogs, setEditQueryLogs] = useState<string[]>([]);
+  const [isUpdatingQuery, setIsUpdatingQuery] = useState(false);
+  const editLogEndRef = useRef<HTMLDivElement>(null);
+
+  const [renameModalOpen, setRenameModalOpen] = useState<{deployId: string, currentName: string} | null>(null);
+  const [newPipelineName, setNewPipelineName] = useState('');
+  const [isRenaming, setIsRenaming] = useState(false);
 
   const filteredPipelines = pipelines.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const toggleGroup = (deployId: string) => {
+  const toggleGroup = async (deployId: string) => {
+    const isExpanding = !expandedGroups[deployId];
     setExpandedGroups(prev => ({
       ...prev,
-      [deployId]: !prev[deployId]
+      [deployId]: isExpanding
     }));
+  };
+
+  const openQueryModal = async (deployId: string, folderName: string) => {
+    if (originalQueries[deployId]) {
+      setQueryModalOpen({ deployId, folderName, query: originalQueries[deployId] });
+      return;
+    }
+    
+    setIsFetchingQuery(true);
+    setQueryModalOpen({ deployId, folderName, query: 'Loading...' });
+    try {
+      const res = await fetch(`/api/dwh/pipelines/query/${deployId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.query) {
+          setOriginalQueries(prev => ({ ...prev, [deployId]: data.query }));
+          setQueryModalOpen({ deployId, folderName, query: data.query });
+        } else {
+          setQueryModalOpen({ deployId, folderName, query: 'No query found.' });
+        }
+      } else {
+        setQueryModalOpen({ deployId, folderName, query: 'Failed to fetch query.' });
+      }
+    } catch (e) {
+      setQueryModalOpen({ deployId, folderName, query: 'Error fetching query.' });
+    } finally {
+      setIsFetchingQuery(false);
+    }
+  };
+
+  const openEditQueryModal = async (deployId: string, folderName: string) => {
+    const query = originalQueries[deployId] || '';
+    let sourceConnectionId: string | null = null;
+    let finalQuery = query;
+
+    if (!query) {
+      try {
+        const res = await fetch(`/api/dwh/pipelines/metadata/${deployId}`);
+        if (res.ok) {
+          const meta = await res.json();
+          finalQuery = meta.query || '';
+          sourceConnectionId = meta.source_connection_id || null;
+          if (finalQuery) setOriginalQueries(prev => ({ ...prev, [deployId]: finalQuery }));
+        }
+      } catch (e) { /* ignore */ }
+    } else {
+      try {
+        const res = await fetch(`/api/dwh/pipelines/metadata/${deployId}`);
+        if (res.ok) { const meta = await res.json(); sourceConnectionId = meta.source_connection_id || null; }
+      } catch (e) { /* ignore */ }
+    }
+
+    setEditQueryValue(finalQuery);
+    setEditQueryLogs([]);
+    setEditQueryModal({ deployId, folderName, query: finalQuery, sourceConnectionId });
+  };
+
+  const handleUpdateQuery = async () => {
+    if (!editQueryModal || !editQueryValue.trim()) return;
+    setIsUpdatingQuery(true);
+    setEditQueryLogs([`[${new Date().toLocaleTimeString()}] Starting query update...`]);
+
+    try {
+      const res = await fetch(`/api/dwh/pipelines/update-query/${editQueryModal.deployId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: editQueryValue })
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No stream');
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('data:')) {
+            const msg = line.substring(5).trim();
+            if (msg) {
+              setEditQueryLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+              setTimeout(() => editLogEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+            }
+          }
+        }
+      }
+      setOriginalQueries(prev => ({ ...prev, [editQueryModal.deployId]: editQueryValue }));
+      addToast({ type: 'success', title: 'Query Updated', message: 'Pipeline schema evolution complete.' });
+    } catch (e: any) {
+      setEditQueryLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ERROR: ${e.message}`]);
+      addToast({ type: 'error', title: 'Update Failed', message: e.message });
+    } finally {
+      setIsUpdatingQuery(false);
+    }
   };
 
   const fetchPipelines = async () => {
@@ -225,6 +335,26 @@ export const PipelineMonitor: React.FC = () => {
     });
   };
 
+  const handleRename = async () => {
+    if (!renameModalOpen || !newPipelineName.trim()) return;
+    setIsRenaming(true);
+    try {
+      const res = await fetch(`/api/dwh/pipelines/rename/${renameModalOpen.deployId}?newName=${encodeURIComponent(newPipelineName.trim())}`, { method: 'POST' });
+      if (res.ok) {
+        addToast({ type: 'success', title: 'Success', message: 'Pipeline renamed successfully.' });
+        setRenameModalOpen(null);
+        fetchPipelines();
+      } else {
+        const text = await res.text();
+        addToast({ type: 'error', title: 'Rename Failed', message: text });
+      }
+    } catch (e) {
+      addToast({ type: 'error', title: 'Rename Failed', message: 'Could not rename pipeline.' });
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
   const StatusBadge = ({ state }: { state: string }) => {
     const isRunning = state === 'RUNNING';
     const isFailed = state === 'FAILED';
@@ -339,13 +469,36 @@ export const PipelineMonitor: React.FC = () => {
                       {groupPipelines.length} Connector(s)
                     </span>
                     {deployId !== 'Legacy' && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeletePipeline(deployId, folderName); }} 
-                        className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors tooltip"
-                        title="Delete Entire Pipeline"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openQueryModal(deployId, folderName); }} 
+                          className="p-1 rounded bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-colors tooltip"
+                          title="View Original Query"
+                        >
+                          <Code className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openEditQueryModal(deployId, folderName); }} 
+                          className="p-1 rounded bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition-colors tooltip"
+                          title="Edit Query & Sync Schema"
+                        >
+                          <FileEdit className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setRenameModalOpen({ deployId, currentName: folderName.replace('Pipeline: ', '') }); setNewPipelineName(''); }} 
+                          className="p-1 rounded bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-colors tooltip"
+                          title="Rename Pipeline"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeletePipeline(deployId, folderName); }} 
+                          className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors tooltip"
+                          title="Delete Entire Pipeline"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -544,6 +697,111 @@ export const PipelineMonitor: React.FC = () => {
             </div>
             <div className="p-5 overflow-auto bg-[#0d1117] font-mono text-[11px] text-red-300 whitespace-pre-wrap">
               {selectedTrace}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renameModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-panel w-full max-w-md rounded-xl shadow-2xl flex flex-col border border-border-main">
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center">
+              <h3 className="font-bold text-text-main flex items-center gap-2"><Edit3 className="w-5 h-5 text-amber-500" /> Rename Pipeline</h3>
+              <button onClick={() => setRenameModalOpen(null)} className="text-text-muted hover:text-text-main"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <p className="text-xs text-text-muted leading-relaxed">
+                Enter a new name for the pipeline. This will rename the target table, convenience views, and materialized views in ClickHouse.
+              </p>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-bold text-text-muted uppercase">New Pipeline Name</label>
+                <input
+                  type="text"
+                  className="w-full bg-bg-main border border-border-input hover:border-indigo-500/50 rounded-lg text-sm px-3 py-2 text-text-main focus:outline-none focus:border-indigo-500 transition-colors"
+                  placeholder="e.g. dwh_sales_fact_new"
+                  value={newPipelineName}
+                  onChange={(e) => setNewPipelineName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-border-main flex justify-end gap-3 bg-bg-header/50 rounded-b-xl">
+              <button onClick={() => setRenameModalOpen(null)} className="px-4 py-2 rounded-lg text-sm font-bold text-text-main hover:bg-bg-panel transition-colors" disabled={isRenaming}>Cancel</button>
+              <button onClick={handleRename} disabled={isRenaming || !newPipelineName.trim() || newPipelineName.trim() === renameModalOpen.currentName} className="px-4 py-2 rounded-lg text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 transition-colors flex items-center gap-2">
+                {isRenaming ? <Activity className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {isRenaming ? 'Renaming...' : 'Rename Pipeline'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {queryModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-panel w-full max-w-4xl rounded-xl shadow-2xl flex flex-col border border-border-main">
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-indigo-500/10">
+              <h3 className="font-bold text-indigo-400 flex items-center gap-2"><Code className="w-5 h-5" /> Original Deployment Query: {queryModalOpen.folderName}</h3>
+              <button onClick={() => setQueryModalOpen(null)} className="text-text-muted hover:text-text-main text-2xl leading-none">&times;</button>
+            </div>
+            <div className="p-5 overflow-auto bg-[#0d1117] font-mono text-[13px] text-emerald-300 whitespace-pre-wrap max-h-[70vh] custom-scrollbar relative">
+              {isFetchingQuery && queryModalOpen.query === 'Loading...' ? (
+                <div className="flex items-center gap-2 text-indigo-400">
+                  <Activity className="w-4 h-4 animate-spin" /> Fetching query...
+                </div>
+              ) : (
+                queryModalOpen.query
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editQueryModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-bg-panel w-full max-w-5xl rounded-xl shadow-2xl flex flex-col border border-border-main" style={{maxHeight: '90vh'}}>
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-purple-500/10">
+              <h3 className="font-bold text-purple-300 flex items-center gap-2"><FileEdit className="w-5 h-5" /> Edit Query & Sync Schema: <span className="text-text-main font-normal">{editQueryModal.folderName}</span></h3>
+              <button onClick={() => { if (!isUpdatingQuery) setEditQueryModal(null); }} className="text-text-muted hover:text-text-main"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="p-3 bg-amber-500/5 border-b border-amber-500/20">
+                <p className="text-xs text-amber-400 leading-relaxed">
+                  ⚡ <strong>Schema Evolution:</strong> Columns you <strong>add</strong> will be backfilled from source data. Columns you <strong>remove</strong> will be dropped from ClickHouse. Materialized Views will be automatically recreated.
+                </p>
+              </div>
+
+              <div style={{height: '280px'}} className="border-b border-border-main flex-shrink-0">
+                <SQLEditor
+                  value={editQueryValue}
+                  onChange={setEditQueryValue}
+                  connectionId={editQueryModal.sourceConnectionId}
+                  height="280px"
+                  showMaximize={false}
+                  placeholder="Edit your source query..."
+                />
+              </div>
+
+              {editQueryLogs.length > 0 && (
+                <div className="flex-1 min-h-0 overflow-y-auto bg-[#0d1117] p-4 font-mono text-[11px] custom-scrollbar">
+                  {editQueryLogs.map((log, i) => (
+                    <div key={i} className={clsx('leading-relaxed', log.includes('ERROR') ? 'text-red-400' : log.includes('✅') ? 'text-emerald-400' : log.includes('WARNING') ? 'text-amber-400' : 'text-slate-300')}>
+                      {log}
+                    </div>
+                  ))}
+                  <div ref={editLogEndRef} />
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-border-main flex justify-between items-center bg-bg-header/50 flex-shrink-0">
+              <span className="text-xs text-text-muted">Changes will be applied immediately to ClickHouse and new CDC data will follow automatically.</span>
+              <div className="flex gap-3">
+                <button onClick={() => setEditQueryModal(null)} disabled={isUpdatingQuery} className="px-4 py-2 rounded-lg text-sm font-bold text-text-main hover:bg-bg-panel transition-colors disabled:opacity-50">Cancel</button>
+                <button onClick={handleUpdateQuery} disabled={isUpdatingQuery || !editQueryValue.trim()} className="px-5 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50 transition-colors flex items-center gap-2">
+                  {isUpdatingQuery ? <><Activity className="w-4 h-4 animate-spin" /> Syncing...</> : <><Save className="w-4 h-4" /> Save & Sync Schema</>}
+                </button>
+              </div>
             </div>
           </div>
         </div>

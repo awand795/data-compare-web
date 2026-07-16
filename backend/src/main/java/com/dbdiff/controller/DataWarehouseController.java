@@ -76,6 +76,46 @@ public class DataWarehouseController {
         return ResponseEntity.ok(java.util.Map.of("status", "deleted"));
     }
 
+    @GetMapping("/pipelines/query/{deployId}")
+    public ResponseEntity<?> getOriginalQuery(@PathVariable String deployId) {
+        String query = dataWarehouseService.getOriginalQuery(deployId);
+        if (query == null) {
+            return ResponseEntity.status(404).body(java.util.Map.of("error", "Query not found"));
+        }
+        return ResponseEntity.ok(java.util.Map.of("query", query));
+    }
+
+    @GetMapping("/pipelines/metadata/{deployId}")
+    public ResponseEntity<?> getPipelineMetadata(@PathVariable String deployId) {
+        java.util.Map<String, Object> meta = dataWarehouseService.getPipelineMetadata(deployId);
+        if (meta == null) return ResponseEntity.status(404).body(java.util.Map.of("error", "Not found"));
+        return ResponseEntity.ok(meta);
+    }
+
+    @PostMapping(value = "/pipelines/update-query/{deployId}", produces = "text/event-stream")
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter updatePipelineQuery(
+            @PathVariable String deployId,
+            @RequestBody java.util.Map<String, String> body) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter = new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(1800000L);
+        String newQuery = body.get("query");
+        org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor executor = new org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor();
+        executor.initialize();
+        executor.execute(() -> {
+            try {
+                dataWarehouseService.updatePipelineQuery(deployId, newQuery, emitter);
+            } catch (Exception e) {
+                try { emitter.completeWithError(e); } catch (Exception ignored) {}
+            }
+        });
+        return emitter;
+    }
+
+    @PostMapping("/pipelines/rename/{deployId}")
+    public ResponseEntity<?> renamePipeline(@PathVariable String deployId, @RequestParam String newName) {
+        dataWarehouseService.renamePipeline(deployId, newName);
+        return ResponseEntity.ok(java.util.Map.of("status", "success", "newName", newName));
+    }
+
     @GetMapping("/pipelines/{connectorName}/config")
     public ResponseEntity<?> getConnectorConfig(@PathVariable String connectorName) {
         return ResponseEntity.ok(dataWarehouseService.getConnectorConfig(connectorName));
