@@ -41,7 +41,7 @@ services:
         order: start-first
       resources:
         limits:
-          memory: 768M
+          memory: 512M
 
   # React Frontend with Nginx
   frontend:
@@ -145,7 +145,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1024M
     depends_on:
       - kafka
     environment:
@@ -174,7 +174,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1536M
+          memory: 1024M
     environment:
       - CLICKHOUSE_DB=default
       - CLICKHOUSE_USER=default
