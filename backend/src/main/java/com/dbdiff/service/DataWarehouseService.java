@@ -1521,45 +1521,53 @@ public class DataWarehouseService {
                 int batchSize = 500;
                 int totalRows = 0;
 
-                try (java.sql.Connection srcConn = sourceDs.getConnection();
-                     java.sql.Statement srcStmt = srcConn.createStatement();
-                     java.sql.ResultSet rs = srcStmt.executeQuery(expandedNewQuery)) {
-
-                    java.sql.ResultSetMetaData rsMeta = rs.getMetaData();
-
-                    // Find column indices
-                    java.util.Map<String, Integer> colIndex = new java.util.LinkedHashMap<>();
-                    for (int i = 1; i <= rsMeta.getColumnCount(); i++) {
-                        colIndex.put(rsMeta.getColumnLabel(i), i);
-                    }
-
-                    // Check all requested cols exist
-                    for (String col : selectCols) {
-                        if (!colIndex.containsKey(col)) {
-                            sendLog(emitter, "WARNING: Column `" + col + "` not found in source result set. Skipping backfill for this column.");
-                            addedCols.remove(col);
+                try (java.sql.Connection srcConn = sourceDs.getConnection()) {
+                    srcConn.setAutoCommit(false); // Essential for streaming large results in PG/JDBC
+                    try (java.sql.Statement srcStmt = srcConn.createStatement()) {
+                        if (srcType.contains("mysql")) {
+                            srcStmt.setFetchSize(Integer.MIN_VALUE);
+                        } else {
+                            srcStmt.setFetchSize(500);
                         }
-                    }
+                        try (java.sql.ResultSet rs = srcStmt.executeQuery(expandedNewQuery)) {
 
-                    // Build ClickHouse batch update using ALTER TABLE UPDATE
-                    java.util.List<java.util.Map<String, Object>> batch = new java.util.ArrayList<>();
-                    while (rs.next()) {
-                        java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
-                        for (String col : selectCols) {
-                            Integer idx = colIndex.get(col);
-                            if (idx != null) row.put(col, rs.getObject(idx));
-                        }
-                        batch.add(row);
-                        totalRows++;
+                            java.sql.ResultSetMetaData rsMeta = rs.getMetaData();
 
-                        if (batch.size() >= batchSize) {
-                            flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, addedCols, emitter);
-                            batch.clear();
-                            sendLog(emitter, "Backfilled " + totalRows + " rows so far...");
+                            // Find column indices
+                            java.util.Map<String, Integer> colIndex = new java.util.LinkedHashMap<>();
+                            for (int i = 1; i <= rsMeta.getColumnCount(); i++) {
+                                colIndex.put(rsMeta.getColumnLabel(i), i);
+                            }
+
+                            // Check all requested cols exist
+                            for (String col : selectCols) {
+                                if (!colIndex.containsKey(col)) {
+                                    sendLog(emitter, "WARNING: Column `" + col + "` not found in source result set. Skipping backfill for this column.");
+                                    addedCols.remove(col);
+                                }
+                            }
+
+                            // Build ClickHouse batch update using ALTER TABLE UPDATE
+                            java.util.List<java.util.Map<String, Object>> batch = new java.util.ArrayList<>();
+                            while (rs.next()) {
+                                java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+                                for (String col : selectCols) {
+                                    Integer idx = colIndex.get(col);
+                                    if (idx != null) row.put(col, rs.getObject(idx));
+                                }
+                                batch.add(row);
+                                totalRows++;
+
+                                if (batch.size() >= batchSize) {
+                                    flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, addedCols, emitter);
+                                    batch.clear();
+                                    sendLog(emitter, "Backfilled " + totalRows + " rows so far...");
+                                }
+                            }
+                            if (!batch.isEmpty()) {
+                                flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, addedCols, emitter);
+                            }
                         }
-                    }
-                    if (!batch.isEmpty()) {
-                        flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, addedCols, emitter);
                     }
                 }
                 sendLog(emitter, "Backfill complete. " + totalRows + " rows processed.");
