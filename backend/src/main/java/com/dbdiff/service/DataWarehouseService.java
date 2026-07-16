@@ -1500,14 +1500,15 @@ public class DataWarehouseService {
             if (!addedCols.isEmpty()) {
                 sendLog(emitter, "Starting column backfill for " + addedCols.size() + " new column(s)...");
 
-                // Build minimal SELECT: PKs + new cols only
+                // Build FULL SELECT: Kita harus menarik SEMUA kolom karena sifat ClickHouse ReplacingMergeTree 
+                // adalah me-replace seluruh baris saat deduplikasi. Jika kolom lama tidak di-insert, akan jadi NULL/kosong.
                 java.util.Set<String> compositePKs = new java.util.LinkedHashSet<>();
                 for (java.util.Set<String> pks : tableToPKs.values()) compositePKs.addAll(pks);
                 if (compositePKs.isEmpty() && !newCols.isEmpty()) compositePKs.add(newCols.get(0).name);
 
-                java.util.List<String> selectCols = new java.util.ArrayList<>(compositePKs);
-                for (String c : addedCols) {
-                    if (!selectCols.contains(c)) selectCols.add(c);
+                java.util.List<String> selectCols = new java.util.ArrayList<>();
+                for (ColumnInfo c : newCols) {
+                    selectCols.add(c.name);
                 }
 
                 // Run the new query on source to get PK + new-col values
@@ -1559,13 +1560,13 @@ public class DataWarehouseService {
                                 totalRows++;
 
                                 if (batch.size() >= batchSize) {
-                                    flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, addedCols, emitter);
+                                    flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, selectCols, emitter);
                                     batch.clear();
                                     sendLog(emitter, "Backfilled " + totalRows + " rows so far...");
                                 }
                             }
                             if (!batch.isEmpty()) {
-                                flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, addedCols, emitter);
+                                flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, selectCols, emitter);
                             }
                         }
                     }
