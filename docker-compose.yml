@@ -8,7 +8,8 @@ services:
     container_name: darkosync-backend
     restart: unless-stopped
     environment:
-      - JAVA_OPTS=-Xmx384m -Xms256m
+      - JAVA_OPTS=-Xmx384m -Xms256m -DMALLOC_ARENA_MAX=2
+      - MALLOC_ARENA_MAX=2
       - TZ=Asia/Jakarta
       - DB_HOST=war.darkosuite.com
       - DB_PORT=8832
@@ -87,6 +88,7 @@ services:
     container_name: darkosync-zookeeper
     environment:
       - KAFKA_HEAP_OPTS=-Xmx256m -Xms256m
+      - MALLOC_ARENA_MAX=2
     deploy:
       resources:
         limits:
@@ -122,6 +124,7 @@ services:
       - zookeeper
     environment:
       - KAFKA_HEAP_OPTS=-Xmx384m -Xms256m
+      - MALLOC_ARENA_MAX=2
       - ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - HOST_NAME=kafka
@@ -147,6 +150,7 @@ services:
       - kafka
     environment:
       - JAVA_OPTS=-Xmx384m -Xms256m
+      - MALLOC_ARENA_MAX=2
       - BOOTSTRAP_SERVERS=kafka:9092
       - GROUP_ID=1
       - CONFIG_STORAGE_TOPIC=my_connect_configs
