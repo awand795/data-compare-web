@@ -36,3 +36,4 @@ Thumbs.db
 
 # Backups
 backup/
+data_setting_sync_backup.sql
