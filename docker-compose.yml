@@ -8,7 +8,7 @@ services:
     container_name: darkosync-backend
     restart: unless-stopped
     environment:
-      - JAVA_OPTS=-Xmx384m -Xms256m -DMALLOC_ARENA_MAX=2
+      - JAVA_OPTS=-Xmx256m -Xms256m -DMALLOC_ARENA_MAX=2
       - MALLOC_ARENA_MAX=2
       - TZ=Asia/Jakarta
       - DB_HOST=war.darkosuite.com
@@ -87,12 +87,12 @@ services:
     image: quay.io/debezium/zookeeper:2.4
     container_name: darkosync-zookeeper
     environment:
-      - KAFKA_HEAP_OPTS=-Xmx256m -Xms256m
+      - KAFKA_HEAP_OPTS=-Xmx128m -Xms128m
       - MALLOC_ARENA_MAX=2
     deploy:
       resources:
         limits:
-          memory: 384M
+          memory: 256M
     ports:
       - target: 2181
         published: 2181
@@ -129,6 +129,8 @@ services:
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - HOST_NAME=kafka
       - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_LOG_RETENTION_HOURS=24
+      - KAFKA_LOG_RETENTION_BYTES=1073741824
     volumes:
       - kafka_data:/kafka/data
     networks:
