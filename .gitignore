@@ -33,3 +33,6 @@ logs/
 # OS Generated
 .DS_Store
 Thumbs.db
+
+# Backups
+backup/
