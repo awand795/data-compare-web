@@ -8,12 +8,13 @@ services:
     container_name: darkosync-backend
     restart: unless-stopped
     environment:
-      TZ: Asia/Jakarta
-      DB_HOST: war.darkosuite.com
-      DB_PORT: 8832
-      DB_NAME: data_setting_sync
-      DB_USER: postgres
-      DB_PASSWORD: ${INTERNAL_DB_PASSWORD}
+      - JAVA_OPTS=-Xmx512m -Xms256m
+      - TZ=Asia/Jakarta
+      - DB_HOST=war.darkosuite.com
+      - DB_PORT=8832
+      - DB_NAME=data_setting_sync
+      - DB_USER=postgres
+      - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
     ports:
       - target: 8081
         published: 5300
@@ -37,6 +38,9 @@ services:
       rollback_config:
         parallelism: 1
         order: start-first
+      resources:
+        limits:
+          memory: 1G
 
   # React Frontend with Nginx
   frontend:
@@ -73,11 +77,20 @@ services:
       rollback_config:
         parallelism: 1
         order: start-first
+      resources:
+        limits:
+          memory: 512M
 
   # Data Warehouse Stack
   zookeeper:
     image: quay.io/debezium/zookeeper:2.4
     container_name: darkosync-zookeeper
+    environment:
+      - KAFKA_HEAP_OPTS=-Xmx256m -Xms256m
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     ports:
       - target: 2181
         published: 2181
@@ -102,9 +115,13 @@ services:
     container_name: darkosync-kafka
     deploy:
       endpoint_mode: dnsrr
+      resources:
+        limits:
+          memory: 1G
     depends_on:
       - zookeeper
     environment:
+      - KAFKA_HEAP_OPTS=-Xmx512m -Xms512m
       - ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - HOST_NAME=kafka
@@ -122,9 +139,14 @@ services:
         published: 8083
         protocol: tcp
         mode: ingress
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     depends_on:
       - kafka
     environment:
+      - JAVA_OPTS=-Xmx512m -Xms256m
       - BOOTSTRAP_SERVERS=kafka:9092
       - GROUP_ID=1
       - CONFIG_STORAGE_TOPIC=my_connect_configs
@@ -145,6 +167,10 @@ services:
         published: 9000
         protocol: tcp
         mode: ingress
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     environment:
       - CLICKHOUSE_DB=default
       - CLICKHOUSE_USER=default
