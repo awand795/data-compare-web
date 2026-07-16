@@ -449,10 +449,10 @@ export const PipelineMonitor: React.FC = () => {
               return (
               <div key={deployId} className="bg-bg-main border border-border-main rounded-xl overflow-hidden">
                 <div 
-                  className="bg-bg-header/50 border-b border-border-main px-4 py-3 flex items-start justify-between cursor-pointer hover:bg-bg-header/80 transition-colors"
+                  className="bg-bg-header/50 border-b border-border-main px-4 py-3 flex flex-col cursor-pointer hover:bg-bg-header/80 transition-colors"
                   onClick={() => toggleGroup(deployId)}
                 >
-                  <div className="flex items-start gap-2 flex-1 min-w-0 pr-3">
+                  <div className="flex items-start gap-2 w-full">
                     <div className="mt-1 flex-shrink-0">
                       {!expandedGroups[deployId] ? (
                         <ChevronRight className="w-4 h-4 text-text-muted" />
@@ -461,47 +461,50 @@ export const PipelineMonitor: React.FC = () => {
                       )}
                     </div>
                     <span className="text-xl flex-shrink-0">🗂️</span>
-                    <h4 className="font-bold text-[13px] text-text-main break-all mt-1">
-                      {folderName}
-                      {deployId !== 'Legacy' && <span className="text-text-muted font-normal text-[11px] ml-2 inline-block">(ID: {deployId})</span>}
-                    </h4>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 mt-1">
-                    <span className="text-[11px] font-bold text-text-muted bg-bg-panel px-2 py-1 rounded">
-                      {groupPipelines.length} Connector(s)
-                    </span>
-                    {deployId !== 'Legacy' && (
-                      <>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); openQueryModal(deployId, folderName); }} 
-                          className="p-1 rounded bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-colors tooltip"
-                          title="View Original Query"
-                        >
-                          <Code className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); openEditQueryModal(deployId, folderName); }} 
-                          className="p-1 rounded bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition-colors tooltip"
-                          title="Edit Query & Sync Schema"
-                        >
-                          <FileEdit className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setRenameModalOpen({ deployId, currentName: folderName.replace('Pipeline: ', '') }); setNewPipelineName(''); }} 
-                          className="p-1 rounded bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-colors tooltip"
-                          title="Rename Pipeline"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleDeletePipeline(deployId, folderName); }} 
-                          className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors tooltip"
-                          title="Delete Entire Pipeline"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </>
-                    )}
+                    
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <h4 className="font-bold text-[13px] text-text-main break-all mt-1">
+                        {folderName}
+                        {deployId !== 'Legacy' && <span className="text-text-muted font-normal text-[11px] ml-2 inline-block">(ID: {deployId})</span>}
+                      </h4>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <span className="text-[11px] font-bold text-text-muted bg-bg-panel px-2 py-1 rounded">
+                          {groupPipelines.length} Connector(s)
+                        </span>
+                        {deployId !== 'Legacy' && (
+                          <>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); openQueryModal(deployId, folderName); }} 
+                              className="p-1 rounded bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-colors tooltip"
+                              title="View Original Query"
+                            >
+                              <Code className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); openEditQueryModal(deployId, folderName); }} 
+                              className="p-1 rounded bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition-colors tooltip"
+                              title="Edit Query & Sync Schema"
+                            >
+                              <FileEdit className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setRenameModalOpen({ deployId, currentName: folderName.replace('Pipeline: ', '') }); setNewPipelineName(''); }} 
+                              className="p-1 rounded bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-colors tooltip"
+                              title="Rename Pipeline"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleDeletePipeline(deployId, folderName); }} 
+                              className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors tooltip"
+                              title="Delete Entire Pipeline"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
