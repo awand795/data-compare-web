@@ -394,7 +394,7 @@ public class DataWarehouseService {
             // Save the original query + connection metadata to repository
             try {
                 pipelineMetadataRepository.savePipelineMetadata(
-                    deployId,
+                    String.valueOf(deployId),
                     request.getQuery(),
                     request.getSourceConnection().getId(),
                     request.getTargetTable(),

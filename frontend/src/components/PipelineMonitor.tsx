@@ -48,7 +48,7 @@ export const PipelineMonitor: React.FC = () => {
   const [newPipelineName, setNewPipelineName] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
   const [lagHistory, setLagHistory] = useState<Record<string, {time: string, lag: number}[]>>({});
-  const [statsModalOpen, setStatsModalOpen] = useState<string | null>(null);
+  const [statsModalOpen, setStatsModalOpen] = useState<Pipeline | null>(null);
 
   const filteredPipelines = pipelines.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
