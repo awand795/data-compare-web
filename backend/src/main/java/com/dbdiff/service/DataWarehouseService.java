@@ -1650,12 +1650,17 @@ public class DataWarehouseService {
             String newConnectorName = "sink-clickhouse-" + newName + "-" + deployId;
             java.util.Map<String, Object> newPayload = new java.util.HashMap<>();
             newPayload.put("name", newConnectorName);
+            
+            // Remove 'name' from config if it exists, as Kafka Connect does not expect it in the config block for creation
+            config.remove("name");
             newPayload.put("config", config);
             
             org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
             headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
             org.springframework.http.HttpEntity<java.util.Map<String, Object>> entity = new org.springframework.http.HttpEntity<>(newPayload, headers);
             restTemplate.postForEntity(DEBEZIUM_URL, entity, String.class);
+            
+            pipelineMetadataRepository.updateTargetTable(deployId, newName);
             
         } catch (Exception e) {
             logger.error("Failed to rename pipeline " + deployId, e);

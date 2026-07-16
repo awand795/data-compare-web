@@ -59,6 +59,13 @@ public class PipelineMetadataRepository {
         );
     }
 
+    public void updateTargetTable(String deployId, String newTargetTable) {
+        jdbcTemplate.update(
+            "UPDATE data_warehouse_pipelines SET target_table = ? WHERE deploy_id = ?",
+            newTargetTable, deployId
+        );
+    }
+
     public void deletePipelineMetadata(String deployId) {
         jdbcTemplate.update("DELETE FROM data_warehouse_pipelines WHERE deploy_id = ?", deployId);
     }
