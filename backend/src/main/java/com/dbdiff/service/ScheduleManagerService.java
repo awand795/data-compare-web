@@ -204,6 +204,14 @@ public class ScheduleManagerService {
 
     public boolean isJobAlreadyRunning(String scheduleId) {
         try {
+            // Self-healing: if any job is stuck in RUNNING... for more than 30 minutes, 
+            // mark it as killed due to timeout/crash so it doesn't block future runs.
+            jdbcTemplate.update(
+                "UPDATE schedule_results SET error_message = 'Killed by server restart (timeout)' " +
+                "WHERE schedule_id = ? AND error_message = 'RUNNING...' AND run_time < NOW() - INTERVAL '30 minutes'",
+                scheduleId
+            );
+
             Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM schedule_results WHERE schedule_id = ? AND error_message = 'RUNNING...'", 
                 Integer.class, scheduleId
