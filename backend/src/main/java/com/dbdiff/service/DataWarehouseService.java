@@ -1366,8 +1366,22 @@ public class DataWarehouseService {
                 }
                 for (String col : addedCols) {
                     ColumnInfo ci = newColMap.get(col);
+                    
+                    // Menentukan posisi kolom (AFTER/FIRST) berdasarkan urutannya di query baru
+                    String afterClause = "";
+                    for (int i = 0; i < newCols.size(); i++) {
+                        if (newCols.get(i).name.equals(col)) {
+                            if (i == 0) {
+                                afterClause = " FIRST";
+                            } else {
+                                afterClause = " AFTER `" + newCols.get(i - 1).name + "`";
+                            }
+                            break;
+                        }
+                    }
+
                     sendLog(emitter, "Adding column `" + col + "` (" + ci.clickhouseType + ") to target table...");
-                    stmt.execute("ALTER TABLE `" + chDb + "`.`" + targetTable + "` ADD COLUMN IF NOT EXISTS `" + col + "` Nullable(" + ci.clickhouseType + ")");
+                    stmt.execute("ALTER TABLE `" + chDb + "`.`" + targetTable + "` ADD COLUMN IF NOT EXISTS `" + col + "` Nullable(" + ci.clickhouseType + ")" + afterClause);
                 }
             }
             sendLog(emitter, "Target table schema updated.");
