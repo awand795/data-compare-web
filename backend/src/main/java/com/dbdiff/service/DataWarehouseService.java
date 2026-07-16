@@ -1376,26 +1376,6 @@ public class DataWarehouseService {
             sendLog(emitter, "Recreating Materialized Views with new column mapping...");
             java.util.List<String> physicalTables = extractPhysicalTables(expandedNewQuery);
 
-            // IMPORTANT: baseName must be the same one used during the original deploy.
-            // The source connector is named "src-{baseName}-{deployId}", so we extract it from Debezium.
-            String baseName = targetTable; // fallback
-            try {
-                String[] existingConnectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
-                if (existingConnectors != null) {
-                    String suffix = "-" + deployId;
-                    for (String c : existingConnectors) {
-                        if (c.startsWith("src-") && c.endsWith(suffix)) {
-                            // src-{baseName}-{deployId}  →  extract baseName
-                            baseName = c.substring("src-".length(), c.length() - suffix.length());
-                            sendLog(emitter, "Resolved baseName from connector: " + baseName);
-                            break;
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                sendLog(emitter, "WARNING: Could not resolve baseName from Debezium, falling back to target table name.");
-            }
-
             java.util.Map<String, java.util.Set<String>> tableToPKs = new java.util.HashMap<>();
             for (String t : physicalTables) {
                 java.util.Set<String> pks = new java.util.LinkedHashSet<>();
@@ -1414,27 +1394,82 @@ public class DataWarehouseService {
 
             try (java.sql.Connection conn = targetDs.getConnection();
                  java.sql.Statement stmt = conn.createStatement()) {
+
                 for (String t : physicalTables) {
-                    String landingTable = getClickHouseLandingTable(t, baseName, sourceConn);
-                    String mvName = "mv_" + targetTable + "_" + landingTable;
+                    // ── Find the ACTUAL landing table in ClickHouse by querying system.tables ──
+                    // CDC tables are named: cdc_{baseName}_{schema}_{table}
+                    // We search for tables ending with the normalized physical table name suffix.
+                    String normalized = t.replace(".", "_").replaceAll("[^a-zA-Z0-9_]", "_");
+                    String actualLandingTable = null;
+                    String actualMvName = null;
+
+                    // First: find existing MV for this targetTable that references this physical table suffix
+                    String findMvSql = "SELECT name FROM system.tables WHERE database = '" + chDb +
+                        "' AND name LIKE 'mv_" + targetTable + "_%' AND name LIKE '%_" + normalized + "'";
+                    try (java.sql.ResultSet rs = stmt.executeQuery(findMvSql)) {
+                        if (rs.next()) {
+                            actualMvName = rs.getString("name");
+                            // Extract landing table from MV name: mv_{targetTable}_{landingTable}
+                            String prefix = "mv_" + targetTable + "_";
+                            if (actualMvName.startsWith(prefix)) {
+                                actualLandingTable = actualMvName.substring(prefix.length());
+                            }
+                            sendLog(emitter, "Found existing MV: `" + actualMvName + "` → landing table: `" + actualLandingTable + "`");
+                        }
+                    } catch (Exception e) {
+                        sendLog(emitter, "WARNING: Could not query system.tables: " + e.getMessage());
+                    }
+
+                    // Fallback: search for cdc_* table ending with the normalized name
+                    if (actualLandingTable == null) {
+                        String findCdcSql = "SELECT name FROM system.tables WHERE database = '" + chDb +
+                            "' AND name LIKE 'cdc_%' AND name LIKE '%" + normalized + "'";
+                        try (java.sql.ResultSet rs2 = stmt.executeQuery(findCdcSql)) {
+                            if (rs2.next()) {
+                                actualLandingTable = rs2.getString("name");
+                                sendLog(emitter, "Found CDC landing table via fallback search: `" + actualLandingTable + "`");
+                            }
+                        } catch (Exception e2) {
+                            sendLog(emitter, "WARNING: Fallback CDC table search failed: " + e2.getMessage());
+                        }
+                    }
+
+                    if (actualLandingTable == null) {
+                        sendLog(emitter, "ERROR: Could not find CDC landing table for physical table: " + t + ". Skipping MV recreation for this table.");
+                        continue;
+                    }
+
+                    // Drop the existing MV (use actual name found above)
+                    String mvName = "mv_" + targetTable + "_" + actualLandingTable;
                     stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`");
                     sendLog(emitter, "Dropped old MV `" + mvName + "`.");
 
+                    // Extract baseName from the actual landing table name: cdc_{baseName}_{normalized_physical_table}
+                    // landing = cdc_{baseName}_{normalized_schema}_{table}  →  baseName is everything after "cdc_" and before "_{normalized}"
+                    String cdcPrefix = "cdc_";
+                    String resolvedBaseName = targetTable; // fallback
+                    if (actualLandingTable.startsWith(cdcPrefix) && actualLandingTable.endsWith("_" + normalized)) {
+                        resolvedBaseName = actualLandingTable.substring(cdcPrefix.length(), actualLandingTable.length() - ("_" + normalized).length());
+                        sendLog(emitter, "Resolved baseName: `" + resolvedBaseName + "`");
+                    }
+
+                    // Recreate the MV using the resolved baseName
                     String rotatedSql = rotateQuery(expandedNewQuery, t);
                     String sqlWithMeta = addMetadataColsToSelect(rotatedSql, t);
                     String rewrittenSql;
                     if (physicalTables.size() > 1) {
                         String sqlWithFilters = addPKFiltersToWhere(sqlWithMeta, physicalTables, tableToPKs);
-                        rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, baseName, sourceConn, chDb);
+                        rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, resolvedBaseName, sourceConn, chDb);
                         rewrittenSql = rewrittenSql.replaceAll("(?i)\\bLEFT\\s+JOIN\\b", "INNER JOIN");
                     } else {
-                        rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, sourceConn, chDb);
+                        rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, resolvedBaseName, sourceConn, chDb);
                     }
                     String mvDdl = "CREATE MATERIALIZED VIEW IF NOT EXISTS `" + chDb + "`.`" + mvName + "`\nTO `" + chDb + "`.`" + targetTable + "`\nAS " + rewrittenSql;
                     stmt.execute(mvDdl);
-                    sendLog(emitter, "Recreated MV `" + mvName + "`.");
+                    sendLog(emitter, "Recreated MV `" + mvName + "` successfully.");
                 }
             }
+
 
             // ── 7. Backfill NEW columns from source for existing rows ────────────────
             if (!addedCols.isEmpty()) {
