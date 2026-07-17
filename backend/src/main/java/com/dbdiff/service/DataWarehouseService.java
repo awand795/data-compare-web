@@ -1266,7 +1266,7 @@ public class DataWarehouseService {
                                     String landingTable = mv.substring(prefix.length());
                                     // Cek apakah masih ada MV lain yang memakai tabel CDC/Landing ini
                                     try (java.sql.ResultSet rsDep = stmt.executeQuery(
-                                            "SELECT count() FROM system.dependencies WHERE database = '" + db + "' AND table = '" + landingTable + "'")) {
+                                            "SELECT length(dependencies_table) FROM system.tables WHERE database = '" + db + "' AND name = '" + landingTable + "'")) {
                                         if (rsDep.next() && rsDep.getInt(1) == 0) {
                                             // Tidak ada yang pakai lagi, aman untuk dihapus
                                             stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + landingTable + "`");
