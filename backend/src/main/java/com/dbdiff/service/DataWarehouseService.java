@@ -1534,15 +1534,15 @@ public class DataWarehouseService {
 
                             java.sql.ResultSetMetaData rsMeta = rs.getMetaData();
 
-                            // Find column indices
+                            // Find column indices (case-insensitive mapping)
                             java.util.Map<String, Integer> colIndex = new java.util.LinkedHashMap<>();
                             for (int i = 1; i <= rsMeta.getColumnCount(); i++) {
-                                colIndex.put(rsMeta.getColumnLabel(i), i);
+                                colIndex.put(rsMeta.getColumnLabel(i).toLowerCase(), i);
                             }
 
                             // Check all requested cols exist
                             for (String col : selectCols) {
-                                if (!colIndex.containsKey(col)) {
+                                if (!colIndex.containsKey(col.toLowerCase())) {
                                     sendLog(emitter, "WARNING: Column `" + col + "` not found in source result set. Skipping backfill for this column.");
                                     addedCols.remove(col);
                                 }
@@ -1553,7 +1553,7 @@ public class DataWarehouseService {
                             while (rs.next()) {
                                 java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
                                 for (String col : selectCols) {
-                                    Integer idx = colIndex.get(col);
+                                    Integer idx = colIndex.get(col.toLowerCase());
                                     if (idx != null) row.put(col, rs.getObject(idx));
                                 }
                                 batch.add(row);
