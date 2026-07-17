@@ -1264,7 +1264,16 @@ public class DataWarehouseService {
                                 String prefix = "mv_" + targetTable + "_";
                                 if (mv.startsWith(prefix)) {
                                     String landingTable = mv.substring(prefix.length());
-                                    stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + landingTable + "`");
+                                    // Cek apakah masih ada MV lain yang memakai tabel CDC/Landing ini
+                                    try (java.sql.ResultSet rsDep = stmt.executeQuery(
+                                            "SELECT count() FROM system.dependencies WHERE database = '" + db + "' AND table = '" + landingTable + "'")) {
+                                        if (rsDep.next() && rsDep.getInt(1) == 0) {
+                                            // Tidak ada yang pakai lagi, aman untuk dihapus
+                                            stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + landingTable + "`");
+                                        } else {
+                                            sendLog(emitter, "CDC landing table `" + landingTable + "` is still used by other pipelines. Not dropping.");
+                                        }
+                                    }
                                 }
                             }
                             
