@@ -1641,6 +1641,8 @@ public class DataWarehouseService {
                     Object val = row.get(col);
                     if (val == null) {
                         rv.append("NULL");
+                    } else if (val instanceof Boolean) {
+                        rv.append(((Boolean) val) ? "1" : "0");
                     } else if (val instanceof Number) {
                         rv.append(val);
                     } else {
