@@ -624,7 +624,7 @@ export const PipelineMonitor: React.FC = () => {
             </div>
             <div className="p-4">
               <textarea 
-                className="w-full h-[60vh] bg-[#0d1117] text-[#c9d1d9] font-mono text-sm p-4 rounded-lg border border-border-main focus:border-indigo-500 outline-none"
+                className="w-full h-[60vh] bg-bg-editor text-text-main font-mono text-sm p-4 rounded-lg border border-border-main focus:border-indigo-500 outline-none"
                 value={configData}
                 onChange={e => setConfigData(e.target.value)}
                 spellCheck={false}
