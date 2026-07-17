@@ -64,32 +64,32 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: string) => void }> = (
       border: 'border-emerald-500/30',
       glow: 'shadow-emerald-500/10',
       bg: 'from-emerald-500/10 to-emerald-500/5',
-      bar: 'bg-emerald-400',
-      text: 'text-emerald-400',
+      bar: 'bg-emerald-500 dark:bg-emerald-400',
+      text: 'text-emerald-600 dark:text-emerald-400',
     },
     error: {
       icon: AlertCircle,
       border: 'border-red-500/30',
       glow: 'shadow-red-500/10',
       bg: 'from-red-500/10 to-red-500/5',
-      bar: 'bg-red-400',
-      text: 'text-red-400',
+      bar: 'bg-red-500 dark:bg-red-400',
+      text: 'text-red-600 dark:text-red-400',
     },
     warning: {
       icon: AlertTriangle,
       border: 'border-amber-500/30',
       glow: 'shadow-amber-500/10',
       bg: 'from-amber-500/10 to-amber-500/5',
-      bar: 'bg-amber-400',
-      text: 'text-amber-400',
+      bar: 'bg-amber-500 dark:bg-amber-400',
+      text: 'text-amber-600 dark:text-amber-400',
     },
     info: {
       icon: Info,
       border: 'border-blue-500/30',
       glow: 'shadow-blue-500/10',
       bg: 'from-blue-500/10 to-blue-500/5',
-      bar: 'bg-blue-400',
-      text: 'text-blue-400',
+      bar: 'bg-blue-500 dark:bg-blue-400',
+      text: 'text-blue-600 dark:text-blue-400',
     },
   }[toast.type];
 
@@ -104,7 +104,7 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: string) => void }> = (
         config.border,
         config.glow,
         config.bg,
-        'dark:bg-gray-900/90 dark:backdrop-blur-xl',
+        'bg-white/95 dark:bg-gray-900/90 dark:backdrop-blur-xl',
         exiting ? 'opacity-0 translate-x-8 scale-95' : 'opacity-100 translate-x-0 scale-100',
       )}
     >
@@ -120,7 +120,7 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: string) => void }> = (
 
       <div className="flex items-start gap-3 p-4 pb-3.5">
         {/* Icon */}
-        <div className={clsx('w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-white/10 dark:bg-white/5', config.text)}>
+        <div className={clsx('w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-slate-100/80 dark:bg-white/5', config.text)}>
           <IconComp className="w-5 h-5" />
         </div>
 
