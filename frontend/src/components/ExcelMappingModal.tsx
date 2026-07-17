@@ -594,7 +594,7 @@ export const ExcelMappingModal: React.FC<Props> = ({ sourceTables, targetTables,
         </div>
 
         <div className="px-5 py-3.5 border-t border-border-main flex justify-end gap-2 bg-bg-header rounded-b-xl shrink-0">
-          <button onClick={onClose} className="px-4 py-2 text-xs font-medium border border-orange-500/30 bg-orange-500/15 text-orange-500 hover:bg-orange-500/25 hover:text-orange-400 rounded-md transition-colors">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 transition-colors">
             Cancel
           </button>
           <button

@@ -630,7 +630,7 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                 {testStatus === 'success' ? '✓ Connected' : testStatus === 'testing' ? 'Loading...' : 'Test Connection'}
               </button>
               <div className="flex gap-2">
-                <button onClick={onClose} className="px-4 py-1.5 text-xs font-semibold border border-orange-500/30 bg-orange-500/15 text-orange-500 hover:bg-orange-500/25 hover:text-orange-400 rounded transition-colors">
+                <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 transition-colors">
                   Cancel
                 </button>
                 <button onClick={handleSave} className="px-5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-semibold shadow-lg shadow-blue-500/20 transition-colors">
