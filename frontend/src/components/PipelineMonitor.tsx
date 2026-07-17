@@ -117,6 +117,12 @@ export const PipelineMonitor: React.FC = () => {
 
   const handleUpdateQuery = async () => {
     if (!editQueryModal || !editQueryValue.trim()) return;
+    
+    if (editQueryModal.query.trim() === editQueryValue.trim()) {
+      addToast({ type: 'warning', title: 'No Changes', message: 'Query has not been modified. Update cancelled.' });
+      return;
+    }
+
     setIsUpdatingQuery(true);
     setEditQueryLogs([`[${new Date().toLocaleTimeString()}] Starting query update...`]);
 
