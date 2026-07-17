@@ -643,17 +643,17 @@ export const PipelineMonitor: React.FC = () => {
               {isPeeking ? (
                 <div className="flex items-center gap-2 text-indigo-400"><Activity className="w-4 h-4 animate-spin" /> Consuming latest messages from Kafka...</div>
               ) : peekData.length === 0 ? (
-                <div className="text-text-muted">No messages found or topic is empty.</div>
+                <div className="text-gray-400">No messages found or topic is empty.</div>
               ) : (
                 peekData.map((msg, i) => (
-                  <div key={i} className="mb-4 pb-4 border-b border-border-main/30 last:border-0 last:mb-0 last:pb-0 break-words">
+                  <div key={i} className="mb-4 pb-4 border-b border-white/10 last:border-0 last:mb-0 last:pb-0 break-words">
                     {msg.error ? (
                       <div className="text-red-400 bg-red-950/30 p-3 rounded">{msg.error}</div>
                     ) : (
                       <>
                         <div className="text-indigo-400 mb-1">Offset: {msg.offset} | Partition: {msg.partition} | Time: {new Date(msg.timestamp).toLocaleString()}</div>
                         <div className="text-emerald-400">Key: {msg.key}</div>
-                        <div className="text-text-main mt-1">{msg.value && msg.value.startsWith('{') ? JSON.stringify(JSON.parse(msg.value), null, 2) : msg.value}</div>
+                        <div className="mt-1">{msg.value && msg.value.startsWith('{') ? JSON.stringify(JSON.parse(msg.value), null, 2) : msg.value}</div>
                       </>
                     )}
                   </div>
