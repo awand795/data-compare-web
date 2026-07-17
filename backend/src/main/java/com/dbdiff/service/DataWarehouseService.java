@@ -546,7 +546,7 @@ public class DataWarehouseService {
                     String sqlWithFilters = addPKFiltersToWhere(sqlWithMeta, physicalTables, tableToPKs);
                     rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, baseName, request.getSourceConnection(), chDb);
                     // Change LEFT JOIN -> INNER JOIN to prevent ghost rows
-                    rewrittenSql = rewrittenSql.replaceAll("(?i)\\bLEFT\\s+JOIN\\b", "INNER JOIN");
+                    rewrittenSql = rewrittenSql.replaceAll("(?i)\\b(?:LEFT|RIGHT|FULL)(?:\\s+OUTER)?\\s+JOIN\\b", "INNER JOIN");
                 } else {
                     rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
                 }
@@ -1493,7 +1493,7 @@ public class DataWarehouseService {
                     if (physicalTables.size() > 1) {
                         String sqlWithFilters = addPKFiltersToWhere(sqlWithMeta, physicalTables, tableToPKs);
                         rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, resolvedBaseName, sourceConn, chDb);
-                        rewrittenSql = rewrittenSql.replaceAll("(?i)\\bLEFT\\s+JOIN\\b", "INNER JOIN");
+                        rewrittenSql = rewrittenSql.replaceAll("(?i)\\b(?:LEFT|RIGHT|FULL)(?:\\s+OUTER)?\\s+JOIN\\b", "INNER JOIN");
                     } else {
                         rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, resolvedBaseName, sourceConn, chDb);
                     }
