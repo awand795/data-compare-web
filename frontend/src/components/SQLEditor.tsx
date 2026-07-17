@@ -113,7 +113,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   const handleFormat = () => {
     try {
       const formatted = format(value, { language: 'sql', keywordCase: 'upper' });
-      onChange(formatted);
+      onChange?.(formatted);
     } catch (err) {
       console.warn("SQL Formatting failed", err);
     }
