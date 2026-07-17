@@ -407,8 +407,7 @@ public class DataWarehouseService {
             sendLog(emitter, "Creating target table `" + request.getTargetTable() + "` in ClickHouse...");
             try (Connection conn = targetDs.getConnection();
                  Statement stmt = conn.createStatement()) {
-                // Drop view if it was previously created as a view
-                stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + request.getTargetTable() + "`");
+                // Do not drop as view, it is a regular table.
                 stmt.execute(targetDdl.toString());
                 sendLog(emitter, "Target table `" + request.getTargetTable() + "` verified/created.");
             } catch (Exception e) {
