@@ -710,7 +710,7 @@ export const PipelineMonitor: React.FC = () => {
               <h3 className="font-bold text-red-500 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Error Trace</h3>
               <button onClick={() => setSelectedTrace(null)} className="text-text-muted hover:text-text-main text-2xl leading-none">&times;</button>
             </div>
-            <div className="p-5 overflow-auto bg-[#0d1117] font-mono text-[11px] text-red-300 whitespace-pre-wrap">
+            <div className="p-5 overflow-auto bg-bg-editor font-mono text-[11px] text-red-400 whitespace-pre-wrap border-t border-border-main">
               {selectedTrace}
             </div>
           </div>
@@ -802,7 +802,7 @@ export const PipelineMonitor: React.FC = () => {
               </div>
 
               {editQueryLogs.length > 0 && (
-                <div className="flex-1 min-h-0 overflow-y-auto bg-[#0d1117] p-4 font-mono text-[11px] custom-scrollbar">
+                <div className="flex-1 min-h-0 overflow-y-auto bg-bg-editor border-t border-border-main p-4 font-mono text-[11px] custom-scrollbar">
                   {editQueryLogs.map((log, i) => (
                     <div key={i} className={clsx('leading-relaxed', log.includes('ERROR') ? 'text-red-400' : log.includes('✅') ? 'text-emerald-400' : log.includes('WARNING') ? 'text-amber-400' : 'text-slate-300')}>
                       {log}
