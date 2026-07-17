@@ -1556,6 +1556,11 @@ public class DataWarehouseService {
                                 }
                             }
 
+                            java.util.Map<String, String> colTypes = new java.util.HashMap<>();
+                            for (ColumnInfo c : newCols) {
+                                colTypes.put(c.name.toLowerCase(), c.clickhouseType);
+                            }
+
                             // Build ClickHouse batch update using ALTER TABLE UPDATE
                             java.util.List<java.util.Map<String, Object>> batch = new java.util.ArrayList<>();
                             while (rs.next()) {
@@ -1568,13 +1573,13 @@ public class DataWarehouseService {
                                 totalRows++;
 
                                 if (batch.size() >= batchSize) {
-                                    flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, selectCols, emitter);
+                                    flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, selectCols, colTypes, emitter);
                                     batch.clear();
                                     sendLog(emitter, "Backfilled " + totalRows + " rows so far...");
                                 }
                             }
                             if (!batch.isEmpty()) {
-                                flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, selectCols, emitter);
+                                flushBackfillBatch(targetDs, chDb, targetTable, batch, compositePKs, selectCols, colTypes, emitter);
                             }
                         }
                     }
@@ -1617,6 +1622,7 @@ public class DataWarehouseService {
     private void flushBackfillBatch(DataSource targetDs, String chDb, String targetTable,
             java.util.List<java.util.Map<String, Object>> batch,
             java.util.Set<String> pkCols, java.util.List<String> addedCols,
+            java.util.Map<String, String> colTypes,
             SseEmitter emitter) throws Exception {
 
         if (batch.isEmpty() || addedCols.isEmpty()) return;
@@ -1648,13 +1654,20 @@ public class DataWarehouseService {
                 } else {
                     Object val = row.get(col);
                     if (val == null) {
-                        rv.append("NULL");
+                        String type = colTypes != null ? colTypes.get(col.toLowerCase()) : null;
+                        if (type != null && (type.startsWith("Int") || type.startsWith("UInt") || type.startsWith("Float") || type.startsWith("Decimal"))) {
+                            rv.append("0");
+                        } else if (type != null && type.startsWith("Date")) {
+                            rv.append("'1970-01-01'");
+                        } else {
+                            rv.append("''");
+                        }
                     } else if (val instanceof Boolean) {
                         rv.append(((Boolean) val) ? "1" : "0");
                     } else if (val instanceof Number) {
                         rv.append(val);
                     } else {
-                        rv.append("'").append(val.toString().replace("'", "\\'")).append("'");
+                        rv.append("'").append(val.toString().replace("'", "''")).append("'");
                     }
                 }
             }
