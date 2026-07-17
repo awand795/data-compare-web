@@ -631,7 +631,7 @@ export const PipelineMonitor: React.FC = () => {
               />
             </div>
             <div className="px-5 py-4 border-t border-border-main flex justify-end gap-3">
-              <button onClick={() => setConfigModalOpen(null)} className="px-4 py-2 rounded-lg text-sm font-bold text-text-main hover:bg-bg-header">Cancel</button>
+              <button onClick={() => setConfigModalOpen(null)} className="px-4 py-2 rounded-lg text-sm font-bold bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 transition-colors">Cancel</button>
               <button onClick={saveConfig} className="px-4 py-2 rounded-lg text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-500 flex items-center gap-2"><Save className="w-4 h-4" /> Save & Restart</button>
             </div>
           </div>
@@ -741,7 +741,7 @@ export const PipelineMonitor: React.FC = () => {
               </div>
             </div>
             <div className="px-5 py-4 border-t border-border-main flex justify-end gap-3 bg-bg-header/50 rounded-b-xl">
-              <button onClick={() => setRenameModalOpen(null)} className="px-4 py-2 rounded-lg text-sm font-bold text-text-main hover:bg-bg-panel transition-colors" disabled={isRenaming}>Cancel</button>
+              <button onClick={() => setRenameModalOpen(null)} className="px-4 py-2 rounded-lg text-sm font-bold bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 transition-colors disabled:opacity-50" disabled={isRenaming}>Cancel</button>
               <button onClick={handleRename} disabled={isRenaming || !newPipelineName.trim() || newPipelineName.trim() === renameModalOpen.currentName} className="px-4 py-2 rounded-lg text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 transition-colors flex items-center gap-2">
                 {isRenaming ? <Activity className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 {isRenaming ? 'Renaming...' : 'Rename Pipeline'}
@@ -812,7 +812,7 @@ export const PipelineMonitor: React.FC = () => {
             <div className="px-5 py-4 border-t border-border-main flex justify-between items-center bg-bg-header/50 flex-shrink-0">
               <span className="text-xs text-text-muted">Changes will be applied immediately to ClickHouse and new CDC data will follow automatically.</span>
               <div className="flex gap-3">
-                <button onClick={() => setEditQueryModal(null)} disabled={isUpdatingQuery} className="px-4 py-2 rounded-lg text-sm font-bold text-text-main hover:bg-bg-panel transition-colors disabled:opacity-50">Cancel</button>
+                <button onClick={() => setEditQueryModal(null)} disabled={isUpdatingQuery} className="px-4 py-2 rounded-lg text-sm font-bold bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 transition-colors disabled:opacity-50">Cancel</button>
                 <button onClick={handleUpdateQuery} disabled={isUpdatingQuery || !editQueryValue.trim()} className="px-5 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50 transition-colors flex items-center gap-2">
                   {isUpdatingQuery ? <><Activity className="w-4 h-4 animate-spin" /> Syncing...</> : <><Save className="w-4 h-4" /> Save & Sync Schema</>}
                 </button>
