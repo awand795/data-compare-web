@@ -243,7 +243,7 @@ export const DatabaseExplorer: React.FC = () => {
     const isSelected = selectedNodeId === node.id || ((node.type === 'table' || node.type === 'view') && explorerTableName === node.name && explorerConnectionId === node.metadata?.connId);
 
     return (
-      <div key={node.id} className="flex flex-col group/node">          <div 
+      <div key={node.id} className="flex flex-col group/node w-full min-w-0">          <div 
           onClick={(e) => handleNodeClick(node, e)}
           onContextMenu={(e) => handleContextMenu(e, node.id)}
           className={clsx(
