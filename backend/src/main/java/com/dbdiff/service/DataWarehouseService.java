@@ -1271,7 +1271,7 @@ public class DataWarehouseService {
                                             // Tidak ada yang pakai lagi, aman untuk dihapus
                                             stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + landingTable + "`");
                                         } else {
-                                            sendLog(emitter, "CDC landing table `" + landingTable + "` is still used by other pipelines. Not dropping.");
+                                            logger.info("CDC landing table `" + landingTable + "` is still used by other pipelines. Not dropping.");
                                         }
                                     }
                                 }
