@@ -645,14 +645,14 @@ export const PipelineMonitor: React.FC = () => {
               <h3 className="font-bold text-text-main flex items-center gap-2"><Eye className="w-5 h-5" /> Topic Sampler: {peekModalOpen}</h3>
               <button onClick={() => setPeekModalOpen(null)} className="text-text-muted hover:text-text-main"><X className="w-5 h-5" /></button>
             </div>
-            <div className="p-5 overflow-auto max-h-[70vh] bg-bg-sub text-text-main font-mono text-xs whitespace-pre-wrap">
-              {isPeeking ? (
+            <div className="p-5 overflow-auto max-h-[70vh] bg-slate-100 dark:bg-[#0d1117] text-slate-800 dark:text-[#c9d1d9] font-mono text-xs whitespace-pre-wrap rounded-b-xl border-t border-border-main">
+              {isPeeking ?
                 <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400"><Activity className="w-4 h-4 animate-spin" /> Consuming latest messages from Kafka...</div>
-              ) : peekData.length === 0 ? (
-                <div className="text-text-muted">No messages found or topic is empty.</div>
+              : peekData.length === 0 ? (
+                <div className="text-slate-500 dark:text-gray-400">No messages found or topic is empty.</div>
               ) : (
                 peekData.map((msg, i) => (
-                  <div key={i} className="mb-4 pb-4 border-b border-border-main last:border-0 last:mb-0 last:pb-0 break-words">
+                  <div key={i} className="mb-4 pb-4 border-b border-slate-300 dark:border-white/10 last:border-0 last:mb-0 last:pb-0 break-words">
                     {msg.error ? (
                       <div className="text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-950/30 p-3 rounded">{msg.error}</div>
                     ) : (
