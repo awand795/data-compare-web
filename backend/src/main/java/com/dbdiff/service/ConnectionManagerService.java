@@ -399,7 +399,7 @@ public class ConnectionManagerService {
                 }
                 // Timeout dalam milliseconds sesuai format ClickHouse JDBC driver
                 config.addDataSourceProperty("connect_timeout", String.valueOf(timeoutMs));
-                config.addDataSourceProperty("socket_timeout", String.valueOf(timeoutMs * 2)); // 2x untuk query timeout
+                config.addDataSourceProperty("socket_timeout", "600000"); // 10 menit (cegah timeout saat DROP/ADD COLUMN)
 
                 // Fix: Docker overlay network MTU (1350) dapat menyebabkan TLS record fragmentation
                 // yang membuat Java HttpClient hang saat SSL handshake dengan ClickHouse Cloud.
