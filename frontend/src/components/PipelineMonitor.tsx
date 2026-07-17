@@ -758,13 +758,17 @@ export const PipelineMonitor: React.FC = () => {
               <h3 className="font-bold text-indigo-400 flex items-center gap-2"><Code className="w-5 h-5" /> Original Deployment Query: {queryModalOpen.folderName}</h3>
               <button onClick={() => setQueryModalOpen(null)} className="text-text-muted hover:text-text-main text-2xl leading-none">&times;</button>
             </div>
-            <div className="p-5 overflow-auto bg-[#0d1117] font-mono text-[13px] text-emerald-300 whitespace-pre-wrap max-h-[70vh] custom-scrollbar relative">
+            <div className="h-[70vh] flex flex-col bg-bg-editor rounded-b-xl overflow-hidden min-h-0 relative">
               {isFetchingQuery && queryModalOpen.query === 'Loading...' ? (
-                <div className="flex items-center gap-2 text-indigo-400">
+                <div className="flex items-center justify-center h-full gap-2 text-indigo-400 font-mono text-sm">
                   <Activity className="w-4 h-4 animate-spin" /> Fetching query...
                 </div>
               ) : (
-                queryModalOpen.query
+                <SQLEditor
+                  value={queryModalOpen.query}
+                  readOnly={true}
+                  showMaximize={false}
+                />
               )}
             </div>
           </div>

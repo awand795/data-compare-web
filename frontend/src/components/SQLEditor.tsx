@@ -15,13 +15,14 @@ import { createPortal } from 'react-dom';
 
 interface SQLEditorProps {
   value: string;
-  onChange: (value: string) => void;
+  onChange?: (value: string) => void;
   connectionId?: string | null;
   placeholder?: string;
   height?: string;
   onExecute?: () => void;
   className?: string;
   showMaximize?: boolean;
+  readOnly?: boolean;
 }
 
 const schemaCache: Record<string, { tables: string[], schema: Record<string, (string | Completion)[]> }> = {};
@@ -34,7 +35,8 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   height = "100%",
   onExecute,
   className,
-  showMaximize = true
+  showMaximize = true,
+  readOnly = false
 }) => {
   const { theme, connections } = useAppStore();
   const [loadingSchema, setLoadingSchema] = useState(false);
@@ -200,8 +202,10 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
           height="100%"
           theme={theme === 'dark' ? vscodeDark : vscodeLight}
           extensions={[sqlExtension, sqlLinter, lintGutter()]}
-          onChange={onChange}
+          onChange={onChange || (() => {})}
           placeholder={placeholder}
+          editable={!readOnly}
+          readOnly={readOnly}
           basicSetup={{
             lineNumbers: true,
             highlightActiveLine: true,
