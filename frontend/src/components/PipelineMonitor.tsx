@@ -339,6 +339,10 @@ export const PipelineMonitor: React.FC = () => {
 
   const handleRename = async () => {
     if (!renameModalOpen || !newPipelineName.trim()) return;
+    if (newPipelineName.trim() === renameModalOpen.currentName) {
+      addToast({ type: 'warning', title: 'No Changes', message: 'Pipeline name is still the same.' });
+      return;
+    }
     setIsRenaming(true);
     try {
       const res = await fetch(`/api/dwh/pipelines/rename/${renameModalOpen.deployId}?newName=${encodeURIComponent(newPipelineName.trim())}`, { method: 'POST' });
@@ -491,7 +495,7 @@ export const PipelineMonitor: React.FC = () => {
                         <FileEdit className="w-3.5 h-3.5" />
                       </button>
                       <button 
-                        onClick={(e) => { e.stopPropagation(); setRenameModalOpen({ deployId, currentName: folderName.replace('Pipeline: ', '') }); setNewPipelineName(''); }} 
+                        onClick={(e) => { e.stopPropagation(); const curName = folderName.replace('Pipeline: ', ''); setRenameModalOpen({ deployId, currentName: curName }); setNewPipelineName(curName); }} 
                         className="p-1 rounded bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-colors tooltip"
                         title="Rename Pipeline"
                       >
