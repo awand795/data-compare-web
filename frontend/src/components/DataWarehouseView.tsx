@@ -12,6 +12,7 @@ export const DataWarehouseView: React.FC = () => {
   const [targetConnId, setTargetConnId] = useState('');
   const [query, setQuery] = useState('-- Define the data to sync via Debezium\nSELECT * FROM source_schema.source_table');
   const [targetTable, setTargetTable] = useState('');
+  const [targetDatabase, setTargetDatabase] = useState('');
   const [primaryKeys, setPrimaryKeys] = useState('');
   const [isDeploying, setIsDeploying] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
@@ -39,7 +40,8 @@ export const DataWarehouseView: React.FC = () => {
           targetConnection: targetConn,
           query: query,
           targetTable: targetTable,
-          primaryKeys: primaryKeys
+          primaryKeys: primaryKeys,
+          targetDatabase: targetDatabase
         })
       });
 
