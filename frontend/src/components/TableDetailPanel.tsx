@@ -14,7 +14,7 @@ import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 type TabType = 'data' | 'columns' | 'indexes' | 'foreign_keys' | 'ddl' | 'stats';
 
 export const TableDetailPanel: React.FC = () => {
-  const { connections, explorerConnectionId, explorerTableName, explorerSchemaName, defaultRowLimit, theme } = useAppStore();
+  const { connections, explorerConnectionId, explorerTableName, explorerSchemaName, defaultRowLimit, theme, explorerRefreshKey } = useAppStore();
   const [activeTab, setActiveTab] = useState<TabType>('data');
   const [isFullscreen, setIsFullscreen] = useState(false);
   
@@ -107,7 +107,7 @@ export const TableDetailPanel: React.FC = () => {
       setColumns([]); // Reset columns on table change
       fetchData();
     }
-  }, [explorerConnectionId, explorerTableName, activeTab, limit]);
+  }, [explorerConnectionId, explorerTableName, activeTab, limit, explorerRefreshKey]);
 
   useEffect(() => {
     if (conn && explorerTableName && activeTab === 'data') {

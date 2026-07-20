@@ -208,6 +208,8 @@ type AppState = {
   setExplorerSchemaName: (schema: string | null) => void;
   explorerTableName: string | null;
   setExplorerTableName: (name: string | null) => void;
+  explorerRefreshKey: number;
+  triggerExplorerRefresh: () => void;
 
   // Max rows to keep per mapping (to prevent browser memory issues)
   maxRowsInMemory: number;
@@ -362,6 +364,8 @@ export const useAppStore = create<AppState>()(
   setExplorerSchemaName: (schema) => set({ explorerSchemaName: schema }),
   explorerTableName: null,
   setExplorerTableName: (name) => set({ explorerTableName: name }),
+  explorerRefreshKey: 0,
+  triggerExplorerRefresh: () => set((state) => ({ explorerRefreshKey: state.explorerRefreshKey + 1 })),
 
   diffResults: {},
   setDiffResult: (mappingId, result) => set((state) => ({

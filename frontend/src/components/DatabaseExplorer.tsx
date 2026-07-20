@@ -13,7 +13,7 @@ export const DatabaseExplorer: React.FC = () => {
     setExplorerConnectionId, setExplorerSchemaName, setExplorerTableName, 
     setAppMode, explorerConnectionId, explorerTableName, explorerSchemaName, 
     setCustomQuerySource, setSourceConnectionId,
-    showAlert 
+    showAlert, triggerExplorerRefresh 
   } = useAppStore();
   const { nodes, upsertNode, patchNode, removeNode, toggleExpand, setLoading, setLoaded, selectedNodeId, setSelectedNodeId } = useExplorerStore();
   
@@ -155,11 +155,20 @@ export const DatabaseExplorer: React.FC = () => {
     upsertNode({ ...node, isLoaded: false, isExpanded: true });
     
     if (node.type === 'server') await loadSchemas(node.id);
-    else if (node.type === 'schema') await loadTables(node.metadata?.connId || node.parentId, node.id, node.name);
+    else if (node.type === 'schema') {
+      await loadTables(node.metadata?.connId || node.parentId, node.id, node.name);
+      if (explorerConnectionId === (node.metadata?.connId || node.parentId) && explorerSchemaName === node.name) {
+        triggerExplorerRefresh();
+      }
+    }
     else if (node.type === 'table' || node.type === 'view') {
       const connId = node.metadata?.connId;
       const schema = node.metadata?.schema;
       if (connId && schema) await loadColumns(connId, schema, node.id, node.name);
+      
+      if (explorerConnectionId === connId && explorerTableName === node.name) {
+        triggerExplorerRefresh();
+      }
     }
   };
 
