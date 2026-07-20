@@ -89,14 +89,14 @@ public class DynamicApiController {
         if (bodyParams != null) allParams.putAll(bodyParams);
 
         // Fetch Connection
-        Optional<ConnectionDetails> optConn = connectionRepository.findById(endpoint.getConnectionId());
-        if (optConn.isEmpty()) {
+        ConnectionDetails optConn = connectionRepository.findById(endpoint.getConnectionId());
+        if (optConn == null) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Database connection configuration not found"));
         }
 
         try {
-            DataSource dataSource = connectionManagerService.getDataSource(optConn.get());
+            DataSource dataSource = connectionManagerService.getDataSource(optConn);
             NamedParameterJdbcTemplate jdbcTemplate = new NamedParameterJdbcTemplate(dataSource);
 
             String sql = endpoint.getSqlQuery();
