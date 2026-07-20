@@ -365,7 +365,7 @@ export const useAppStore = create<AppState>()(
   explorerTableName: null,
   setExplorerTableName: (name) => set({ explorerTableName: name }),
   explorerRefreshKey: 0,
-  triggerExplorerRefresh: () => set((state) => ({ explorerRefreshKey: state.explorerRefreshKey + 1 })),
+  triggerExplorerRefresh: () => set((state) => ({ explorerRefreshKey: (state.explorerRefreshKey || 0) + 1 })),
 
   diffResults: {},
   setDiffResult: (mappingId, result) => set((state) => ({
