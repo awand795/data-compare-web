@@ -142,3 +142,18 @@ ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS source_connection_
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_table VARCHAR(200);
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_connection_id VARCHAR(50);
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_database VARCHAR(100);
+
+CREATE TABLE IF NOT EXISTS api_endpoints (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    method VARCHAR(10) NOT NULL,
+    endpoint_path VARCHAR(255) NOT NULL UNIQUE,
+    connection_id VARCHAR(50) NOT NULL,
+    sql_query TEXT NOT NULL,
+    parameters TEXT,
+    enable_pagination BOOLEAN DEFAULT FALSE,
+    is_public BOOLEAN DEFAULT FALSE,
+    auth_token VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
