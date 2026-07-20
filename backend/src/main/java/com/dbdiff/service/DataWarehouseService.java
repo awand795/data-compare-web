@@ -181,60 +181,70 @@ public class DataWarehouseService {
                 throw new RuntimeException("Failed to analyze schema of source query: " + e.getMessage(), e);
             }
             
-            sendLog(emitter, "Extracting primary keys from source tables for composite sorting key...");
+            sendLog(emitter, "Determining primary keys for composite sorting key...");
             Set<String> compositePKs = new LinkedHashSet<>();
-            try (Connection conn = sourceDs.getConnection()) {
-                DatabaseMetaData metaData = conn.getMetaData();
-                for (String t : physicalTables) {
-                    String schemaName = null;
-                    String tableName = t;
-                    if (t.contains(".")) {
-                        int dotIdx = t.indexOf('.');
-                        schemaName = t.substring(0, dotIdx);
-                        tableName = t.substring(dotIdx + 1);
-                    } else {
-                        schemaName = request.getSourceConnection().getSchema();
-                    }
-                    tableName = tableName.replaceAll("[\"``]", "");
-                    if (schemaName != null) {
-                        schemaName = schemaName.replaceAll("[\"``]", "");
-                    }
-                    try (ResultSet pkRs = metaData.getPrimaryKeys(null, schemaName, tableName)) {
-                        while (pkRs.next()) {
-                            String pkCol = pkRs.getString("COLUMN_NAME");
-                            if (pkCol != null) {
-                                // Match casing against target columns
-                                String matchedCol = pkCol;
-                                boolean found = false;
-                                for (ColumnInfo col : targetColumns) {
-                                    if (col.name.equalsIgnoreCase(pkCol)) {
-                                        matchedCol = col.name;
-                                        found = true;
-                                        break;
-                                    }
-                                }
-                                if (!found) {
-                                    // Try to find if there is an alias ending with this pkCol (e.g. b_seq for seq)
+            
+            if (request.getPrimaryKeys() != null && !request.getPrimaryKeys().trim().isEmpty()) {
+                String[] pks = request.getPrimaryKeys().split(",");
+                for (String pk : pks) {
+                    if (!pk.trim().isEmpty()) compositePKs.add(pk.trim());
+                }
+                sendLog(emitter, "Using user-provided primary keys: " + String.join(", ", compositePKs));
+            } else {
+                sendLog(emitter, "No primary keys provided. Auto-detecting from source tables...");
+                try (Connection conn = sourceDs.getConnection()) {
+                    DatabaseMetaData metaData = conn.getMetaData();
+                    for (String t : physicalTables) {
+                        String schemaName = null;
+                        String tableName = t;
+                        if (t.contains(".")) {
+                            int dotIdx = t.indexOf('.');
+                            schemaName = t.substring(0, dotIdx);
+                            tableName = t.substring(dotIdx + 1);
+                        } else {
+                            schemaName = request.getSourceConnection().getSchema();
+                        }
+                        tableName = tableName.replaceAll("[\"``]", "");
+                        if (schemaName != null) {
+                            schemaName = schemaName.replaceAll("[\"``]", "");
+                        }
+                        try (ResultSet pkRs = metaData.getPrimaryKeys(null, schemaName, tableName)) {
+                            while (pkRs.next()) {
+                                String pkCol = pkRs.getString("COLUMN_NAME");
+                                if (pkCol != null) {
+                                    // Match casing against target columns
+                                    String matchedCol = pkCol;
+                                    boolean found = false;
                                     for (ColumnInfo col : targetColumns) {
-                                        if (col.name.toLowerCase().endsWith("_" + pkCol.toLowerCase())) {
+                                        if (col.name.equalsIgnoreCase(pkCol)) {
                                             matchedCol = col.name;
                                             found = true;
                                             break;
                                         }
                                     }
-                                }
-                                // Only add to compositePKs if the column actually exists in the target table
-                                if (found) {
-                                    compositePKs.add(matchedCol);
-                                } else {
-                                    logger.warn("Primary key column '" + pkCol + "' from table '" + tableName + "' was not found in the SELECT query. It will be omitted from the target ClickHouse ORDER BY clause.");
+                                    if (!found) {
+                                        // Try to find if there is an alias ending with this pkCol (e.g. b_seq for seq)
+                                        for (ColumnInfo col : targetColumns) {
+                                            if (col.name.toLowerCase().endsWith("_" + pkCol.toLowerCase())) {
+                                                matchedCol = col.name;
+                                                found = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    // Only add to compositePKs if the column actually exists in the target table
+                                    if (found) {
+                                        compositePKs.add(matchedCol);
+                                    } else {
+                                        logger.warn("Primary key column '" + pkCol + "' from table '" + tableName + "' was not found in the SELECT query. It will be omitted from the target ClickHouse ORDER BY clause.");
+                                    }
                                 }
                             }
                         }
                     }
+                } catch (Exception e) {
+                    sendLog(emitter, "WARNING: Primary key extraction failed: " + e.getMessage());
                 }
-            } catch (Exception e) {
-                sendLog(emitter, "WARNING: Primary key extraction failed: " + e.getMessage());
             }
             
             if (compositePKs.isEmpty() && !targetColumns.isEmpty()) {

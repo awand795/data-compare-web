@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Database, Play, Loader2, Table as TableIcon, Server, Cpu, Sparkles, Activity } from 'lucide-react';
+import { Database, Play, Loader2, Table as TableIcon, Server, Cpu, Sparkles, Activity, Key } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import { PipelineMonitor } from './PipelineMonitor';
 import clsx from 'clsx';
@@ -12,6 +12,7 @@ export const DataWarehouseView: React.FC = () => {
   const [targetConnId, setTargetConnId] = useState('');
   const [query, setQuery] = useState('-- Define the data to sync via Debezium\nSELECT * FROM source_schema.source_table');
   const [targetTable, setTargetTable] = useState('');
+  const [primaryKeys, setPrimaryKeys] = useState('');
   const [isDeploying, setIsDeploying] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'console' | 'monitor'>('monitor');
@@ -37,7 +38,8 @@ export const DataWarehouseView: React.FC = () => {
           sourceConnection: sourceConn,
           targetConnection: targetConn,
           query: query,
-          targetTable: targetTable
+          targetTable: targetTable,
+          primaryKeys: primaryKeys
         })
       });
 
@@ -158,6 +160,20 @@ export const DataWarehouseView: React.FC = () => {
                     </p>
                   </div>
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-2 mb-6">
+                <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-blue-500" /> Primary Keys (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. id, code"
+                  className="px-3.5 py-2.5 bg-bg-panel border border-border-input hover:border-indigo-500/50 rounded-lg text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all shadow-sm"
+                  value={primaryKeys}
+                  onChange={e => setPrimaryKeys(e.target.value)}
+                />
+                <p className="text-[10px] text-text-muted mt-0.5 ml-1">If left empty, primary keys will be auto-detected from the source table.</p>
               </div>
 
               <div className="flex-1 min-h-[300px] shadow-sm rounded-xl overflow-hidden border border-border-input">

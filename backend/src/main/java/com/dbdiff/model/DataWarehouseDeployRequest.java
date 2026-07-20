@@ -5,6 +5,15 @@ public class DataWarehouseDeployRequest {
     private ConnectionDetails targetConnection;
     private String query;
     private String targetTable;
+    private String primaryKeys;
+
+    public String getPrimaryKeys() {
+        return primaryKeys;
+    }
+
+    public void setPrimaryKeys(String primaryKeys) {
+        this.primaryKeys = primaryKeys;
+    }
 
     public ConnectionDetails getSourceConnection() {
         return sourceConnection;
