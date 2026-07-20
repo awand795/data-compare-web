@@ -12,7 +12,6 @@ export const DataWarehouseView: React.FC = () => {
   const [targetConnId, setTargetConnId] = useState('');
   const [query, setQuery] = useState('-- Define the data to sync via Debezium\nSELECT * FROM source_schema.source_table');
   const [targetTable, setTargetTable] = useState('');
-  const [targetDatabase, setTargetDatabase] = useState('');
   const [primaryKeys, setPrimaryKeys] = useState('');
   const [isDeploying, setIsDeploying] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
@@ -40,8 +39,7 @@ export const DataWarehouseView: React.FC = () => {
           targetConnection: targetConn,
           query: query,
           targetTable: targetTable,
-          primaryKeys: primaryKeys,
-          targetDatabase: targetDatabase
+          primaryKeys: primaryKeys
         })
       });
 
@@ -139,7 +137,7 @@ export const DataWarehouseView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
                 <div className="flex flex-col gap-2">
                   <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
                     <Database className="w-3.5 h-3.5 text-blue-500" /> Target Database (Optional)
@@ -165,6 +163,7 @@ export const DataWarehouseView: React.FC = () => {
                   />
                 </div>
               </div>
+              <div className="flex flex-col gap-2 mb-6">
                 <p className="text-[10px] text-text-muted mt-0.5 ml-1">Table will be automatically created in ClickHouse with composite sorting keys for JOIN queries.</p>
                 <div className="mt-2.5 p-3 rounded-lg bg-indigo-500/5 border border-indigo-500/10 flex items-start gap-2.5">
                   <div className="mt-0.5 p-1 rounded-md bg-indigo-500/10 text-indigo-500">
