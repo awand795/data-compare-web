@@ -1975,7 +1975,8 @@ public class DataWarehouseService {
                 String chPass = sinkConfig != null ? (String) sinkConfig.get("password") : null;
                 
                 String chQuery = "SELECT sum(rows) FROM system.parts WHERE table = '" + targetTable + "' AND active = 1";
-                String chUrl = "http://clickhouse:8123/?query=" + java.net.URLEncoder.encode(chQuery, "UTF-8");
+                String encodedQuery = java.net.URLEncoder.encode(chQuery, "UTF-8").replace("+", "%20");
+                java.net.URI chUri = java.net.URI.create("http://clickhouse:8123/?query=" + encodedQuery);
                 
                 org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
                 if (chUser != null && !chUser.isEmpty()) {
@@ -1985,7 +1986,7 @@ public class DataWarehouseService {
                     headers.set("X-ClickHouse-Key", chPass);
                 }
                 org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);
-                org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(chUrl, org.springframework.http.HttpMethod.GET, entity, String.class);
+                org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(chUri, org.springframework.http.HttpMethod.GET, entity, String.class);
                 String chResponse = response.getBody();
                 
                 if (chResponse != null && !chResponse.trim().isEmpty()) {
