@@ -61,9 +61,9 @@ public class ApiEndpointController {
                     offset = (page > 0 ? page - 1 : 0) * limit;
                 }
                 
-                if (conn.getDbType() != null && conn.getDbType().equalsIgnoreCase("SQLSERVER")) {
+                if (conn.getType() != null && conn.getType().equalsIgnoreCase("SQLSERVER")) {
                     sql += " OFFSET " + offset + " ROWS FETCH NEXT " + limit + " ROWS ONLY";
-                } else if (conn.getDbType() != null && conn.getDbType().equalsIgnoreCase("ORACLE")) {
+                } else if (conn.getType() != null && conn.getType().equalsIgnoreCase("ORACLE")) {
                     sql += " OFFSET " + offset + " ROWS FETCH NEXT " + limit + " ROWS ONLY";
                 } else {
                     sql += " LIMIT " + limit + " OFFSET " + offset;
