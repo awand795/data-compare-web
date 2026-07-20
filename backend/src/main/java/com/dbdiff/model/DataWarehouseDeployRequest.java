@@ -6,6 +6,15 @@ public class DataWarehouseDeployRequest {
     private String query;
     private String targetTable;
     private String primaryKeys;
+    private String targetDatabase;
+
+    public String getTargetDatabase() {
+        return targetDatabase;
+    }
+
+    public void setTargetDatabase(String targetDatabase) {
+        this.targetDatabase = targetDatabase;
+    }
 
     public String getPrimaryKeys() {
         return primaryKeys;

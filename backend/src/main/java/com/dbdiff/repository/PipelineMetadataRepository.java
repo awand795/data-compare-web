@@ -13,12 +13,12 @@ public class PipelineMetadataRepository {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    public void savePipelineMetadata(String deployId, String query, String sourceConnectionId, String targetTable, String targetConnectionId) {
+    public void savePipelineMetadata(String deployId, String query, String sourceConnectionId, String targetTable, String targetConnectionId, String targetDatabase) {
         jdbcTemplate.update(
-            "INSERT INTO data_warehouse_pipelines (deploy_id, query, source_connection_id, target_table, target_connection_id) VALUES (?, ?, ?, ?, ?) " +
+            "INSERT INTO data_warehouse_pipelines (deploy_id, query, source_connection_id, target_table, target_connection_id, target_database) VALUES (?, ?, ?, ?, ?, ?) " +
             "ON CONFLICT (deploy_id) DO UPDATE SET query = EXCLUDED.query, source_connection_id = EXCLUDED.source_connection_id, " +
-            "target_table = EXCLUDED.target_table, target_connection_id = EXCLUDED.target_connection_id",
-            deployId, query, sourceConnectionId, targetTable, targetConnectionId
+            "target_table = EXCLUDED.target_table, target_connection_id = EXCLUDED.target_connection_id, target_database = EXCLUDED.target_database",
+            deployId, query, sourceConnectionId, targetTable, targetConnectionId, targetDatabase
         );
     }
 
@@ -44,7 +44,7 @@ public class PipelineMetadataRepository {
     public Map<String, Object> getPipelineMetadata(String deployId) {
         try {
             return jdbcTemplate.queryForMap(
-                "SELECT deploy_id, query, source_connection_id, target_table, target_connection_id FROM data_warehouse_pipelines WHERE deploy_id = ?",
+                "SELECT deploy_id, query, source_connection_id, target_table, target_connection_id, target_database FROM data_warehouse_pipelines WHERE deploy_id = ?",
                 deployId
             );
         } catch (EmptyResultDataAccessException e) {

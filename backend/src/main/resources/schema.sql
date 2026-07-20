@@ -141,3 +141,4 @@ CREATE TABLE IF NOT EXISTS data_warehouse_pipelines (
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS source_connection_id VARCHAR(50);
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_table VARCHAR(200);
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_connection_id VARCHAR(50);
+ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_database VARCHAR(100);

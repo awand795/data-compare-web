@@ -255,8 +255,22 @@ public class DataWarehouseService {
             // =========================================================================
             // STEP 2: Create ClickHouse Target Table & Staging Landing Tables
             // =========================================================================
-            String chDb = request.getTargetConnection().getDatabase();
-            if (chDb == null || chDb.isEmpty()) chDb = "default";
+            String chDb = request.getTargetDatabase();
+            if (chDb == null || chDb.trim().isEmpty()) {
+                chDb = request.getTargetConnection().getDatabase();
+            }
+            if (chDb == null || chDb.trim().isEmpty()) {
+                chDb = "default";
+            }
+            chDb = chDb.trim();
+            
+            sendLog(emitter, "Ensuring target database `" + chDb + "` exists...");
+            try (Connection conn = targetDs.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("CREATE DATABASE IF NOT EXISTS `" + chDb + "`");
+            } catch (Exception e) {
+                sendLog(emitter, "WARNING: Could not execute CREATE DATABASE IF NOT EXISTS: " + e.getMessage());
+            }
             
             // 2a. Pre-create ClickHouse landing tables to avoid MV compilation errors
             sendLog(emitter, "Pre-creating ClickHouse landing tables for CDC...");
@@ -408,7 +422,8 @@ public class DataWarehouseService {
                     request.getQuery(),
                     request.getSourceConnection().getId(),
                     request.getTargetTable(),
-                    request.getTargetConnection().getId()
+                    request.getTargetConnection().getId(),
+                    chDb
                 );
             } catch (Exception e) {
                 logger.warn("Could not save original query to metadata repository", e);
@@ -1326,6 +1341,7 @@ public class DataWarehouseService {
             String targetTable = (String) meta.get("target_table");
             String sourceConnectionId = (String) meta.get("source_connection_id");
             String targetConnectionId = (String) meta.get("target_connection_id");
+            String targetDatabase = (String) meta.get("target_database");
 
             if (targetTable == null) throw new RuntimeException("Target table name not found in metadata.");
 
@@ -1339,7 +1355,8 @@ public class DataWarehouseService {
 
             DataSource sourceDs = connectionManagerService.getDataSource(sourceConn);
             DataSource targetDs = connectionManagerService.getDataSource(targetConn);
-            String chDb = targetConn.getDatabase();
+            String chDb = targetDatabase;
+            if (chDb == null || chDb.isEmpty()) chDb = targetConn.getDatabase();
             if (chDb == null || chDb.isEmpty()) chDb = "default";
 
             // ── 3. Run dry-run on old and new queries to get column lists ────────────
