@@ -107,25 +107,15 @@ export const ApiBuilderView: React.FC = () => {
 
   const handleTest = async () => {
     if (!currentApi) return;
+    
     setIsTesting(true);
     setTestResult(null);
     
-    // We simulate hitting the real dynamic endpoint. We need to construct the URL.
-    const url = `/api/data${currentApi.endpointPath}`;
-    
     try {
-      const headers: Record<string, string> = {};
-      if (!currentApi.isPublic && currentApi.authToken) {
-        headers['Authorization'] = `Bearer ${currentApi.authToken}`;
-      }
-
-      let res;
-      if (currentApi.method === 'GET') {
-        const queryParams = new URLSearchParams(testParams).toString();
-        res = await axios.get(`${url}?${queryParams}`, { headers });
-      } else {
-        res = await axios.post(url, testParams, { headers });
-      }
+      const res = await axios.post('/api/api-builder/test-query', {
+        api: currentApi,
+        params: testParams
+      });
       setTestResult({ status: res.status, data: res.data });
     } catch (err: any) {
       setTestResult({ 
