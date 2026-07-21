@@ -386,7 +386,7 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
         </div>
         
         {generatedShareUrl && (
-          <div className="max-w-5xl mx-auto w-full mb-6">
+          <div className="max-w-5xl mx-auto w-full mb-6 transform transition-all duration-500 origin-top animate-in fade-in slide-in-from-top-4">
             <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 p-6 rounded-2xl shadow-lg relative overflow-hidden">
               <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-purple-500 to-blue-500"></div>
               <div className="flex items-start justify-between gap-4">
@@ -427,8 +427,13 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
             
             {/* URL Section */}
             <div>
-              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Webhook className="w-4 h-4" /> Endpoint URL
+              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2 justify-between">
+                <span className="flex items-center gap-2"><Webhook className="w-4 h-4" /> Endpoint URL</span>
+                {currentApi.connectionId && (
+                  <span className="text-xs bg-bg-hover px-2 py-1 rounded border border-border-main text-text-muted flex items-center gap-1.5 font-normal">
+                    <Database className="w-3 h-3" /> Connection: {currentApi.connectionId}
+                  </span>
+                )}
               </h3>
               <div className="flex items-center gap-0">
                 <span className={clsx("px-4 py-3 rounded-l-lg text-sm font-black tracking-wider shadow-inner", 
@@ -536,6 +541,7 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
                           <tr className="border-t border-border-main bg-bg-panel hover:bg-bg-hover/30 transition-colors">
                             <td className="p-3">
                               <span className="font-mono text-purple-400 bg-purple-500/10 px-2 py-1 rounded text-xs">limit</span>
+                              <span className="text-[10px] text-purple-400/70 ml-1">(or size)</span>
                             </td>
                             <td className="p-3 text-text-muted capitalize text-xs font-medium">integer</td>
                             <td className="p-3">
@@ -547,13 +553,14 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
                           <tr className="border-t border-border-main bg-bg-panel hover:bg-bg-hover/30 transition-colors">
                             <td className="p-3">
                               <span className="font-mono text-purple-400 bg-purple-500/10 px-2 py-1 rounded text-xs">offset</span>
+                              <span className="text-[10px] text-purple-400/70 ml-1">(or page)</span>
                             </td>
                             <td className="p-3 text-text-muted capitalize text-xs font-medium">integer</td>
                             <td className="p-3">
                               <span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-green-500/10 text-green-500 border border-green-500/20">Optional</span>
                             </td>
                             <td className="p-3 text-text-muted font-mono text-xs">0</td>
-                            <td className="p-3 text-text-muted text-xs">Offset records</td>
+                            <td className="p-3 text-text-muted text-xs">Number of records to skip</td>
                           </tr>
                         </>
                       )}
@@ -578,7 +585,14 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
               <div className="relative group">
                 <pre className="bg-[#0d1117] border border-border-main p-4 rounded-xl overflow-x-auto shadow-inner text-sm font-mono leading-relaxed">
                   <code className="text-gray-300">
-                    <span className="text-purple-400">curl</span> -X <span className="text-blue-400">{currentApi.method}</span> <span className="text-green-400">"{fullUrl}{detectedParams.length > 0 && currentApi.method === 'GET' ? '?' + detectedParams.map(p => `${p}=value`).join('&') : ''}"</span> \
+                    <span className="text-purple-400">curl</span> -X <span className="text-blue-400">{currentApi.method}</span> <span className="text-green-400">"{fullUrl}{
+                      (detectedParams.length > 0 || currentApi.enablePagination) && currentApi.method === 'GET' 
+                        ? '?' + [
+                            ...detectedParams.map(p => `${p}=value`),
+                            ...(currentApi.enablePagination ? ['limit=100', 'offset=0'] : [])
+                          ].join('&') 
+                        : ''
+                    }"</span> \
                     <br/>  -H <span className="text-green-400">"Accept: application/json"</span>{
                       !currentApi.isPublic ? ` \\\n  -H "Authorization: Bearer ${currentApi.authToken}"` : ''
                     }{
@@ -587,6 +601,43 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
                   </code>
                 </pre>
               </div>
+            </div>
+
+            {/* Response Format */}
+            <div>
+              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+                <FileJson className="w-4 h-4" /> Response Format
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="border border-green-500/20 bg-green-500/5 rounded-xl overflow-hidden">
+                  <div className="px-4 py-2 bg-green-500/10 border-b border-green-500/20 flex items-center justify-between">
+                    <span className="text-xs font-bold text-green-500 uppercase tracking-wider">Success</span>
+                    <span className="font-mono text-xs text-green-500">200 OK</span>
+                  </div>
+                  <div className="p-4">
+                    <pre className="text-xs font-mono text-gray-300">
+{`[
+  {
+    "column1": "value1",
+    "column2": "value2"
+  }
+]`}
+                    </pre>
+                  </div>
+                </div>
+                <div className="border border-red-500/20 bg-red-500/5 rounded-xl overflow-hidden">
+                  <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20 flex items-center justify-between">
+                    <span className="text-xs font-bold text-red-500 uppercase tracking-wider">Error</span>
+                    <span className="font-mono text-xs text-red-500">4xx / 5xx</span>
+                  </div>
+                  <div className="p-4">
+                    <pre className="text-xs font-mono text-gray-300">
+{`{
+  "error": "Error message description"
+}`}
+                    </pre>
+                  </div>
+                </div>
             </div>
             
           </div>
