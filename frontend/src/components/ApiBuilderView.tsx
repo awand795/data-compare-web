@@ -195,13 +195,40 @@ export const ApiBuilderView: React.FC = () => {
     }
   };
 
+  const fallbackCopyTextToClipboard = (text: string, id: string) => {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.position = "fixed";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      setCopiedStates(prev => ({ ...prev, [id]: true }));
+      setTimeout(() => setCopiedStates(prev => ({ ...prev, [id]: false })), 2000);
+      addToast({ type: 'success', title: 'Copied', message: 'Copied to clipboard!' });
+    } catch (err) {
+      addToast({ type: 'error', title: 'Error', message: 'Failed to copy text' });
+    }
+    document.body.removeChild(textArea);
+  };
+
   const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedStates({ ...copiedStates, [id]: true });
-    setTimeout(() => {
-      setCopiedStates(prev => ({ ...prev, [id]: false }));
-    }, 2000);
-    addToast({ type: 'success', title: 'Copied', message: 'Copied to clipboard!' });
+    if (!navigator.clipboard) {
+      fallbackCopyTextToClipboard(text, id);
+      return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedStates(prev => ({ ...prev, [id]: true }));
+      setTimeout(() => {
+        setCopiedStates(prev => ({ ...prev, [id]: false }));
+      }, 2000);
+      addToast({ type: 'success', title: 'Copied', message: 'Copied to clipboard!' });
+    }).catch(err => {
+      fallbackCopyTextToClipboard(text, id);
+    });
   };
 
   const handleShare = async () => {
