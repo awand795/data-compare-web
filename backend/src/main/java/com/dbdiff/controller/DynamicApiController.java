@@ -5,6 +5,7 @@ import com.dbdiff.model.ConnectionDetails;
 import com.dbdiff.repository.ApiEndpointRepository;
 import com.dbdiff.repository.ConnectionRepository;
 import com.dbdiff.service.ConnectionManagerService;
+import com.dbdiff.service.ApiParameterValidator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,9 @@ import java.util.Optional;
 public class DynamicApiController {
 
     @Autowired
+    private ApiParameterValidator apiParameterValidator;
+
+    @Autowired
     private ApiEndpointRepository apiEndpointRepository;
 
     @Autowired
@@ -32,7 +36,7 @@ public class DynamicApiController {
     @Autowired
     private ConnectionManagerService connectionManagerService;
 
-    @RequestMapping(value = "/**", method = {RequestMethod.GET, RequestMethod.POST})
+    @RequestMapping(value = "/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE})
     public ResponseEntity<?> handleRequest(
             HttpServletRequest request,
             @RequestParam Map<String, Object> queryParams,
@@ -87,6 +91,12 @@ public class DynamicApiController {
         Map<String, Object> allParams = new HashMap<>();
         if (queryParams != null) allParams.putAll(queryParams);
         if (bodyParams != null) allParams.putAll(bodyParams);
+
+        ApiParameterValidator.ValidationResult validationResult = apiParameterValidator.validate(endpoint.getParameters(), allParams);
+        if (!validationResult.isValid()) {
+            return ResponseEntity.badRequest().body(Map.of("errors", validationResult.getErrors()));
+        }
+        allParams = validationResult.getParams();
 
         // Fetch Connection
         ConnectionDetails optConn = connectionRepository.findById(endpoint.getConnectionId());

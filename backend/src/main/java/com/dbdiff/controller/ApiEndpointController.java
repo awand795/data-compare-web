@@ -12,16 +12,26 @@ import java.util.UUID;
 import java.util.Map;
 import java.util.HashMap;
 
+import com.dbdiff.model.ApiShareToken;
+import com.dbdiff.repository.ApiShareTokenRepository;
+
 import com.dbdiff.model.ConnectionDetails;
 import com.dbdiff.repository.ConnectionRepository;
 import com.dbdiff.service.ConnectionManagerService;
+import com.dbdiff.service.ApiParameterValidator;
 
 @RestController
 @RequestMapping("/api/api-builder")
 public class ApiEndpointController {
 
     @Autowired
+    private ApiParameterValidator apiParameterValidator;
+
+    @Autowired
     private ApiEndpointRepository apiEndpointRepository;
+    
+    @Autowired
+    private ApiShareTokenRepository apiShareTokenRepository;
     
     @Autowired
     private ConnectionRepository connectionRepository;
@@ -39,6 +49,12 @@ public class ApiEndpointController {
         ApiEndpoint endpoint = request.api;
         Map<String, Object> params = request.params;
         if (params == null) params = new HashMap<>();
+
+        ApiParameterValidator.ValidationResult result = apiParameterValidator.validate(endpoint.getParameters(), params);
+        if (!result.isValid()) {
+            return ResponseEntity.badRequest().body(Map.of("errors", result.getErrors()));
+        }
+        params = result.getParams();
 
         ConnectionDetails conn = connectionRepository.findById(endpoint.getConnectionId());
         if (conn == null) {
@@ -132,6 +148,31 @@ public class ApiEndpointController {
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/share")
+    public ResponseEntity<?> share(@PathVariable String id) {
+        Optional<ApiEndpoint> endpointOpt = apiEndpointRepository.findById(id);
+        if (endpointOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        ApiShareToken shareToken = new ApiShareToken();
+        String tokenId = UUID.randomUUID().toString();
+        shareToken.setId(tokenId);
+        shareToken.setApiEndpointId(id);
+        shareToken.setToken(tokenId);
+        shareToken.setUsed(false);
+        
+        try {
+            apiShareTokenRepository.insert(shareToken);
+            Map<String, String> response = new HashMap<>();
+            response.put("token", tokenId);
+            response.put("shareUrl", "/api/share/" + tokenId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 }
