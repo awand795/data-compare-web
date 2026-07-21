@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
-import { Webhook, Plus, Save, ArrowLeft, Play, ShieldCheck, ShieldAlert, FileJson, Pencil, Trash2, Copy, Check, Share2, Activity, Database, Server, Settings2 } from 'lucide-react';
+import { Webhook, Plus, Save, ArrowLeft, Play, ShieldCheck, ShieldAlert, FileJson, Pencil, Trash2, Copy, Check, Share2, Activity, Database, Server, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
 
@@ -161,7 +161,7 @@ export const ApiBuilderView: React.FC = () => {
           if (existing) return existing;
           return {
             name,
-            type: 'string',
+            type: 'string' as const,
             required: true,
             defaultValue: '',
             description: ''
@@ -208,7 +208,7 @@ export const ApiBuilderView: React.FC = () => {
     if (!currentApi?.id) return;
     try {
       const res = await axios.post(`/api/api-builder/${currentApi.id}/share`);
-      const { token, shareUrl } = res.data;
+      const { shareUrl } = res.data;
       const fullUrl = `${window.location.origin}${shareUrl}`;
       handleCopy(fullUrl, 'share-link');
       addToast({ type: 'success', title: 'Share Link Generated', message: 'One-time link copied to clipboard!' });
@@ -533,6 +533,7 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
 
   if (viewMode === 'edit' && currentApi) {
     const paramsList = detectParams(currentApi.sqlQuery);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const fullUrlPreview = `${window.location.origin}/api/data${currentApi.endpointPath}${paramsList.length > 0 && currentApi.method === 'GET' ? '?' + paramsList.map(p => `${p}={${p}}`).join('&') : ''}`;
     
     return (
