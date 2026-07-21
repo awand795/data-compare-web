@@ -595,7 +595,30 @@ ${!currentApi.isPublic ? `\nauth:bearer {\n  token: ${currentApi.authToken}\n}` 
                   </table>
                   </div>
                   {currentApi.enablePagination && (
-                    <p className="text-xs text-text-muted mt-2">* Note: Use either `limit` or `size` to control page size, and either `offset` or `page` to control position — if both of a pair are supplied, `limit`/`offset` take precedence.</p>
+                    <div className="mt-4 bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+                      <h4 className="text-sm font-bold text-blue-400 mb-2 flex items-center gap-2">
+                        <Settings2 className="w-4 h-4" /> How to use Pagination
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-text-muted mt-3">
+                        <div className="bg-bg-panel/50 p-3 rounded-lg border border-border-main">
+                          <p className="font-bold text-text-main mb-1">Style 1: limit & offset (Database Style)</p>
+                          <p className="mb-2 text-[11px]">Best for fetching a chunk of data and skipping records directly.</p>
+                          <ul className="space-y-1 font-mono text-[11px] text-blue-300">
+                            <li>?limit=20&offset=0  <span className="text-text-muted font-sans ml-1">(first 20)</span></li>
+                            <li>?limit=20&offset=20 <span className="text-text-muted font-sans ml-1">(next 20)</span></li>
+                          </ul>
+                        </div>
+                        <div className="bg-bg-panel/50 p-3 rounded-lg border border-border-main">
+                          <p className="font-bold text-text-main mb-1">Style 2: size & page (UI Table Style)</p>
+                          <p className="mb-2 text-[11px]">Best for UI tables. <code>page</code> is 1-indexed.</p>
+                          <ul className="space-y-1 font-mono text-[11px] text-orange-300">
+                            <li>?size=20&page=1 <span className="text-text-muted font-sans ml-1">(page 1, skips 0)</span></li>
+                            <li>?size=20&page=2 <span className="text-text-muted font-sans ml-1">(page 2, skips 20)</span></li>
+                          </ul>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-text-muted/80 mt-3 italic">* Priority: If mixed, `limit` overrides `size`, and `offset` overrides `page`.</p>
+                    </div>
                   )}
                 </>
               )}
