@@ -52,6 +52,7 @@ export const ApiBuilderView: React.FC = () => {
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
   const [isTestConsoleOpen, setIsTestConsoleOpen] = useState(false);
   const [paramCount, setParamCount] = useState(0);
+  const [generatedShareUrl, setGeneratedShareUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetchEndpoints();
@@ -237,9 +238,9 @@ export const ApiBuilderView: React.FC = () => {
       const res = await axios.post(`/api/api-builder/${currentApi.id}/share`);
       const { shareUrl } = res.data;
       const fullUrl = `${window.location.origin}${shareUrl}`;
-      handleCopy(fullUrl, 'share-link');
-      addToast({ type: 'success', title: 'Share Link Generated', message: 'One-time link copied to clipboard!' });
-    } catch (err: any) {
+      setGeneratedShareUrl(fullUrl);
+      addToast({ type: 'success', title: 'Share Link Generated', message: 'One-time link generated successfully!' });
+    } catch {
       addToast({ type: 'error', title: 'Error', message: 'Failed to generate share link.' });
     }
   };
@@ -379,10 +380,46 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
             onClick={handleShare}
             className="px-4 py-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white rounded-lg flex items-center gap-2 font-medium shadow-lg shadow-purple-500/20 transition-all hover:scale-105"
           >
-            {copiedStates['share-link'] ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+            <Share2 className="w-4 h-4" />
             Share One-Time Link
           </button>
         </div>
+        
+        {generatedShareUrl && (
+          <div className="max-w-5xl mx-auto w-full mb-6">
+            <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 p-6 rounded-2xl shadow-lg relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-purple-500 to-blue-500"></div>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <Check className="w-4 h-4" /> One-Time Link Generated!
+                  </h3>
+                  <p className="text-text-muted text-sm mb-4">
+                    This link can only be viewed once. Copy it below to share the API specification.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="bg-bg-input px-4 py-3 rounded-lg flex-1 font-mono text-sm border border-border-main text-text-main break-all">
+                      {generatedShareUrl}
+                    </code>
+                    <button
+                      onClick={() => handleCopy(generatedShareUrl, 'share-link')}
+                      className="px-4 py-3 bg-bg-panel hover:bg-bg-hover border border-border-main rounded-lg text-text-main transition-colors flex items-center gap-2 shrink-0"
+                    >
+                      {copiedStates['share-link'] ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                      {copiedStates['share-link'] ? 'Copied!' : 'Copy Link'}
+                    </button>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setGeneratedShareUrl(null)}
+                  className="p-2 text-text-muted hover:text-text-main hover:bg-bg-hover rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         
         <div className="max-w-5xl mx-auto w-full space-y-6">
           <div className="bg-bg-panel border border-border-main p-8 rounded-2xl shadow-xl space-y-8 relative overflow-hidden">
