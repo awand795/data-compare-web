@@ -53,6 +53,7 @@ export const ApiBuilderView: React.FC = () => {
   const [isTestConsoleOpen, setIsTestConsoleOpen] = useState(false);
   const [paramCount, setParamCount] = useState(0);
   const [generatedShareUrl, setGeneratedShareUrl] = useState<string | null>(null);
+  const [activeSpecTab, setActiveSpecTab] = useState<'curl' | 'postman' | 'bruno'>('curl');
 
   useEffect(() => {
     fetchEndpoints();
@@ -354,13 +355,34 @@ export const ApiBuilderView: React.FC = () => {
       parsedParams = JSON.parse(currentApi.parameters || '[]');
     } catch(e) {}
     
-    const curlExample = `curl -X ${currentApi.method} "${fullUrl}${detectedParams.length > 0 && currentApi.method === 'GET' ? '?' + detectedParams.map(p => `${p}=value`).join('&') : ''}" \\
+    const qs = (detectedParams.length > 0 || currentApi.enablePagination) && currentApi.method === 'GET'
+      ? '?' + [...detectedParams.map(p => `${p}=value`), ...(currentApi.enablePagination ? ['limit=100', 'offset=0'] : [])].join('&')
+      : '';
+      
+    const curlExample = `curl -X ${currentApi.method} "${fullUrl}${qs}" \\
   -H "Accept: application/json" ${!currentApi.isPublic ? `\\
   -H "Authorization: Bearer ${currentApi.authToken}"` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? ` \\
   -H "Content-Type: application/json" \\
   -d '{
 ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
   }'` : ''}`;
+
+    const postmanExample = `${currentApi.method} ${fullUrl}${qs} HTTP/1.1
+Host: ${window.location.host}
+Accept: application/json${!currentApi.isPublic ? `\nAuthorization: Bearer ${currentApi.authToken}` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? `\nContent-Type: application/json\n\n{\n${detectedParams.map(p => `  "${p}": "value"`).join(',\n')}\n}` : ''}`;
+
+    const brunoExample = `meta {
+  name: ${currentApi.name}
+  type: http
+  seq: 1
+}
+
+${currentApi.method.toLowerCase()} {
+  url: ${fullUrl}${qs}
+  body: ${currentApi.method !== 'GET' && detectedParams.length > 0 ? 'json' : 'none'}
+  auth: ${!currentApi.isPublic ? 'bearer' : 'none'}
+}
+${!currentApi.isPublic ? `\nauth:bearer {\n  token: ${currentApi.authToken}\n}` : ''}${(detectedParams.length > 0 || currentApi.enablePagination) && currentApi.method === 'GET' ? `\nquery {\n${detectedParams.map(p => `  ${p}: value`).join('\n')}${currentApi.enablePagination ? '\n  limit: 100\n  offset: 0' : ''}\n}` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? `\nbody:json {\n  {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }\n}` : ''}`;
     
     return (
       <div className="h-full flex flex-col p-6 overflow-y-auto">
@@ -579,34 +601,44 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
               )}
             </div>
             
-            {/* cURL Example */}
+            {/* API Examples */}
             <div>
-              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center justify-between">
-                <span className="flex items-center gap-2"><Activity className="w-4 h-4" /> cURL Example</span>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1 bg-bg-editor/50 p-1 rounded-lg border border-border-main">
+                  <button 
+                    onClick={() => setActiveSpecTab('curl')}
+                    className={clsx("px-3 py-1.5 rounded-md text-xs font-bold transition-colors", activeSpecTab === 'curl' ? "bg-bg-panel text-blue-400 shadow-sm border border-border-main" : "text-text-muted hover:text-text-main")}
+                  >
+                    cURL
+                  </button>
+                  <button 
+                    onClick={() => setActiveSpecTab('postman')}
+                    className={clsx("px-3 py-1.5 rounded-md text-xs font-bold transition-colors", activeSpecTab === 'postman' ? "bg-bg-panel text-orange-400 shadow-sm border border-border-main" : "text-text-muted hover:text-text-main")}
+                  >
+                    Postman (HTTP)
+                  </button>
+                  <button 
+                    onClick={() => setActiveSpecTab('bruno')}
+                    className={clsx("px-3 py-1.5 rounded-md text-xs font-bold transition-colors", activeSpecTab === 'bruno' ? "bg-bg-panel text-yellow-400 shadow-sm border border-border-main" : "text-text-muted hover:text-text-main")}
+                  >
+                    Bruno (.bru)
+                  </button>
+                </div>
                 <button 
-                  onClick={() => handleCopy(curlExample, 'curl')}
+                  onClick={() => {
+                    const text = activeSpecTab === 'curl' ? curlExample : activeSpecTab === 'postman' ? postmanExample : brunoExample;
+                    handleCopy(text, `${activeSpecTab}-example`);
+                  }}
                   className="text-xs flex items-center gap-1.5 text-blue-400 hover:text-blue-300 transition-colors"
                 >
-                  {copiedStates['curl'] ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedStates[`${activeSpecTab}-example`] ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                   Copy Code
                 </button>
-              </h3>
+              </div>
               <div className="relative group">
                 <pre className="bg-[#0d1117] border border-border-main p-4 rounded-xl overflow-x-auto shadow-inner text-sm font-mono leading-relaxed">
-                  <code className="text-gray-300">
-                    <span className="text-purple-400">curl</span> -X <span className="text-blue-400">{currentApi.method}</span> <span className="text-green-400">"{fullUrl}{
-                      (detectedParams.length > 0 || currentApi.enablePagination) && currentApi.method === 'GET' 
-                        ? '?' + [
-                            ...detectedParams.map(p => `${p}=value`),
-                            ...(currentApi.enablePagination ? ['limit=100', 'offset=0'] : [])
-                          ].join('&') 
-                        : ''
-                    }"</span> \
-                    <br/>  -H <span className="text-green-400">"Accept: application/json"</span>{
-                      !currentApi.isPublic ? ` \\\n  -H "Authorization: Bearer ${currentApi.authToken}"` : ''
-                    }{
-                      currentApi.method !== 'GET' && detectedParams.length > 0 ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '{\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }'` : ''
-                    }
+                  <code className="text-gray-300 whitespace-pre">
+                    {activeSpecTab === 'curl' ? curlExample : activeSpecTab === 'postman' ? postmanExample : brunoExample}
                   </code>
                 </pre>
               </div>
