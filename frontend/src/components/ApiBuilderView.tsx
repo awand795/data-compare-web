@@ -209,7 +209,7 @@ export const ApiBuilderView: React.FC = () => {
       setCopiedStates(prev => ({ ...prev, [id]: true }));
       setTimeout(() => setCopiedStates(prev => ({ ...prev, [id]: false })), 2000);
       addToast({ type: 'success', title: 'Copied', message: 'Copied to clipboard!' });
-    } catch (err) {
+    } catch {
       addToast({ type: 'error', title: 'Error', message: 'Failed to copy text' });
     }
     document.body.removeChild(textArea);
@@ -226,7 +226,7 @@ export const ApiBuilderView: React.FC = () => {
         setCopiedStates(prev => ({ ...prev, [id]: false }));
       }, 2000);
       addToast({ type: 'success', title: 'Copied', message: 'Copied to clipboard!' });
-    }).catch(err => {
+    }).catch(() => {
       fallbackCopyTextToClipboard(text, id);
     });
   };
