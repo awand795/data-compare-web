@@ -533,8 +533,6 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
 
   if (viewMode === 'edit' && currentApi) {
     const paramsList = detectParams(currentApi.sqlQuery);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const fullUrlPreview = `${window.location.origin}/api/data${currentApi.endpointPath}${paramsList.length > 0 && currentApi.method === 'GET' ? '?' + paramsList.map(p => `${p}={${p}}`).join('&') : ''}`;
     
     return (
       <div className="h-full flex flex-col overflow-hidden bg-bg-editor">
