@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
-import { Webhook, Plus, Save, ArrowLeft, Play, ShieldCheck, ShieldAlert, FileJson, Pencil, Trash2, Copy, Check, Share2, Activity, Database, Server, Settings2, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Webhook, Plus, Save, ArrowLeft, Play, ShieldCheck, ShieldAlert, FileJson, Pencil, Trash2, Copy, Check, Share2, Database, Server, Settings2, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
 
