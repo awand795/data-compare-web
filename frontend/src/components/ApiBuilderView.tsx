@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
-import { Webhook, Plus, Save, ArrowLeft, Play, ShieldCheck, ShieldAlert, FileJson, Pencil, Trash2, Copy, Check, Share2, Activity, Database, Server, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Webhook, Plus, Save, ArrowLeft, Play, ShieldCheck, ShieldAlert, FileJson, Pencil, Trash2, Copy, Check, Share2, Activity, Database, Server, Settings2, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
 
@@ -615,7 +615,7 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
                     <span className="font-mono text-xs text-green-500">200 OK</span>
                   </div>
                   <div className="p-4">
-                    <pre className="text-xs font-mono text-gray-300">
+                    <pre className="text-xs font-mono text-text-muted">
 {`[
   {
     "column1": "value1",
@@ -631,13 +631,14 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
                     <span className="font-mono text-xs text-red-500">4xx / 5xx</span>
                   </div>
                   <div className="p-4">
-                    <pre className="text-xs font-mono text-gray-300">
+                    <pre className="text-xs font-mono text-text-muted">
 {`{
   "error": "Error message description"
 }`}
                     </pre>
                   </div>
                 </div>
+              </div>
             </div>
             
           </div>

@@ -160,7 +160,7 @@ public class ApiShareController {
             paramsRows.append("<td class='capitalize'>integer</td>");
             paramsRows.append("<td><span class='req-badge optional'>Optional</span></td>");
             paramsRows.append("<td class='mono text-muted'>100</td>");
-            paramsRows.append("<td class='text-muted'>Number of records to return</td>");
+            paramsRows.append("<td class='text-muted'>Number of records to return (or items per page if using <code>size</code>).</td>");
             paramsRows.append("</tr>");
             
             paramsRows.append("<tr class='pagination-row'>");
@@ -168,7 +168,7 @@ public class ApiShareController {
             paramsRows.append("<td class='capitalize'>integer</td>");
             paramsRows.append("<td><span class='req-badge optional'>Optional</span></td>");
             paramsRows.append("<td class='mono text-muted'>0</td>");
-            paramsRows.append("<td class='text-muted'>Number of records to skip</td>");
+            paramsRows.append("<td class='text-muted'>Number of records to skip (or page number starting from 1 if using <code>page</code>).</td>");
             paramsRows.append("</tr>");
             
             paginationHtml = """
@@ -176,7 +176,14 @@ public class ApiShareController {
                     <div class="info-icon">📄</div>
                     <div>
                         <h4>Pagination Enabled</h4>
-                        <p>This endpoint supports automatic pagination. Use the <code>limit</code> and <code>offset</code> parameters to control the result set.</p>
+                        <p style="margin-bottom: 0.75rem;">This endpoint supports automatic pagination. You can control the result set using two methods:</p>
+                        <ul style="margin: 0; padding-left: 1.5rem; color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">
+                            <li><strong>Limit/Offset:</strong> Use <code>limit</code> (max items to return) and <code>offset</code> (exact number of items to skip).</li>
+                            <li><strong>Page/Size:</strong> Use <code>page</code> (page number starting from 1) and <code>size</code> (items per page).</li>
+                        </ul>
+                        <p style="margin-top: 0.75rem; margin-bottom: 0; color: var(--text-muted); font-size: 0.9rem;">
+                            <em>Example: <code>?page=2&size=50</code> will return items 51 to 100.</em>
+                        </p>
                     </div>
                 </div>
             """;
