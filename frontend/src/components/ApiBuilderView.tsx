@@ -50,7 +50,7 @@ export const ApiBuilderView: React.FC = () => {
   const [testParams, setTestParams] = useState<Record<string, string>>({});
   const [isTesting, setIsTesting] = useState(false);
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
-  const [isTestConsoleOpen, setIsTestConsoleOpen] = useState(true);
+  const [isTestConsoleOpen, setIsTestConsoleOpen] = useState(false);
   const [paramCount, setParamCount] = useState(0);
 
   useEffect(() => {
@@ -819,7 +819,7 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
               className="h-12 border-b border-border-main/50 flex items-center justify-between px-4 cursor-pointer hover:bg-white/5 transition-colors"
               onClick={() => setIsTestConsoleOpen(!isTestConsoleOpen)}
             >
-              <div className="flex items-center gap-2 text-sm font-bold text-text-main">
+              <div className="flex items-center gap-2 text-sm font-bold text-white">
                 <Play className="w-4 h-4 text-green-400" /> Test Console
               </div>
               <div className="flex items-center gap-3">
@@ -833,7 +833,7 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
                     {isTesting ? 'Running...' : 'Run Test'}
                   </button>
                 )}
-                <div className="text-text-muted hover:text-white transition-colors p-1">
+                <div className="text-slate-400 hover:text-white transition-colors p-1">
                   {isTestConsoleOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
                 </div>
               </div>
@@ -844,9 +844,9 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
               <div className="flex-1 flex overflow-hidden">
                 {/* Test Inputs */}
                 <div className="w-1/3 border-r border-border-main/50 p-4 overflow-y-auto bg-black/20">
-                  <h4 className="text-[10px] uppercase font-bold text-text-muted tracking-wider mb-3">Variables</h4>
+                  <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-3">Variables</h4>
                   {paramsList.length === 0 ? (
-                    <p className="text-xs text-text-muted italic">No variables required.</p>
+                    <p className="text-xs text-slate-400 italic">No variables required.</p>
                   ) : (
                     <div className="space-y-3">
                       {paramsList.map(p => (
@@ -882,7 +882,7 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
                 {/* Response Viewer */}
                 <div className="flex-1 flex flex-col bg-[#0b0f19] relative">
                   <div className="h-8 border-b border-border-main/30 flex items-center justify-between px-4 bg-black/40 shrink-0">
-                    <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Response</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Response</span>
                     {testResult && (
                       <span className={clsx("text-[10px] font-bold px-2 py-0.5 rounded-full", 
                         testResult.status >= 400 ? "bg-red-500/20 text-red-400 border border-red-500/20" : "bg-green-500/20 text-green-400 border border-green-500/20"
