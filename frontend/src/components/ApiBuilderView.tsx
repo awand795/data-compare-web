@@ -162,11 +162,11 @@ export const ApiBuilderView: React.FC = () => {
           if (existing) return existing;
           return {
             name,
-            type: 'string' as const,
+            type: 'string',
             required: true,
             defaultValue: '',
             description: ''
-          };
+          } as ApiParameter;
         });
         const isSame = prev.length === next.length && next.every((n, i) => n === prev[i]);
         return isSame ? prev : next;
@@ -502,8 +502,9 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
                   <p className="text-sm text-text-muted">No parameters required for this endpoint.</p>
                 </div>
               ) : (
-                <div className="border border-border-main rounded-xl overflow-hidden shadow-sm">
-                  <table className="w-full text-left text-sm">
+                <>
+                  <div className="border border-border-main rounded-xl overflow-hidden shadow-sm">
+                    <table className="w-full text-left text-sm">
                     <thead className="bg-bg-editor/80">
                       <tr>
                         <th className="p-3 border-b border-border-main font-semibold text-text-main text-xs uppercase tracking-wider">Name</th>
@@ -538,35 +539,43 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
                       })}
                       {currentApi.enablePagination && (
                         <>
-                          <tr className="border-t border-border-main bg-bg-panel hover:bg-bg-hover/30 transition-colors">
-                            <td className="p-3">
-                              <span className="font-mono text-purple-400 bg-purple-500/10 px-2 py-1 rounded text-xs">limit</span>
-                              <span className="text-[10px] text-purple-400/70 ml-1">(or size)</span>
-                            </td>
-                            <td className="p-3 text-text-muted capitalize text-xs font-medium">integer</td>
-                            <td className="p-3">
-                              <span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-green-500/10 text-green-500 border border-green-500/20">Optional</span>
-                            </td>
-                            <td className="p-3 text-text-muted font-mono text-xs">100</td>
-                            <td className="p-3 text-text-muted text-xs">Number of records to return</td>
+                          <tr>
+                            <td className="p-2 font-mono text-blue-400">limit</td>
+                            <td className="p-2 text-text-muted capitalize">integer</td>
+                            <td className="p-2"><span className="px-2 py-1 rounded text-xs font-bold bg-green-500/20 text-green-500">Optional</span></td>
+                            <td className="p-2 text-text-muted font-mono text-xs">100</td>
+                            <td className="p-2 text-text-muted">Max number of records to return. Example: <code>?limit=20</code></td>
                           </tr>
-                          <tr className="border-t border-border-main bg-bg-panel hover:bg-bg-hover/30 transition-colors">
-                            <td className="p-3">
-                              <span className="font-mono text-purple-400 bg-purple-500/10 px-2 py-1 rounded text-xs">offset</span>
-                              <span className="text-[10px] text-purple-400/70 ml-1">(or page)</span>
-                            </td>
-                            <td className="p-3 text-text-muted capitalize text-xs font-medium">integer</td>
-                            <td className="p-3">
-                              <span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-green-500/10 text-green-500 border border-green-500/20">Optional</span>
-                            </td>
-                            <td className="p-3 text-text-muted font-mono text-xs">0</td>
-                            <td className="p-3 text-text-muted text-xs">Number of records to skip</td>
+                          <tr>
+                            <td className="p-2 font-mono text-blue-400">size</td>
+                            <td className="p-2 text-text-muted capitalize">integer</td>
+                            <td className="p-2"><span className="px-2 py-1 rounded text-xs font-bold bg-green-500/20 text-green-500">Optional</span></td>
+                            <td className="p-2 text-text-muted font-mono text-xs">100</td>
+                            <td className="p-2 text-text-muted">Alias for <code>limit</code>. Ignored if <code>limit</code> is also provided. Example: <code>?size=20</code></td>
+                          </tr>
+                          <tr>
+                            <td className="p-2 font-mono text-blue-400">offset</td>
+                            <td className="p-2 text-text-muted capitalize">integer</td>
+                            <td className="p-2"><span className="px-2 py-1 rounded text-xs font-bold bg-green-500/20 text-green-500">Optional</span></td>
+                            <td className="p-2 text-text-muted font-mono text-xs">0</td>
+                            <td className="p-2 text-text-muted">Number of records to skip. Example: <code>?offset=40</code></td>
+                          </tr>
+                          <tr>
+                            <td className="p-2 font-mono text-blue-400">page</td>
+                            <td className="p-2 text-text-muted capitalize">integer</td>
+                            <td className="p-2"><span className="px-2 py-1 rounded text-xs font-bold bg-green-500/20 text-green-500">Optional</span></td>
+                            <td className="p-2 text-text-muted font-mono text-xs">1</td>
+                            <td className="p-2 text-text-muted">1-indexed page number (converted to <code>offset = (page-1) × limit</code>). Ignored if <code>offset</code> is also provided. Example: <code>?page=3</code></td>
                           </tr>
                         </>
                       )}
                     </tbody>
                   </table>
-                </div>
+                  </div>
+                  {currentApi.enablePagination && (
+                    <p className="text-xs text-text-muted mt-2">* Note: Use either `limit` or `size` to control page size, and either `offset` or `page` to control position — if both of a pair are supplied, `limit`/`offset` take precedence.</p>
+                  )}
+                </>
               )}
             </div>
             
@@ -986,9 +995,19 @@ ${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
                           <input 
                             type="text"
                             className="w-full bg-[#1e293b] border border-[#334155] rounded px-3 py-2 text-xs outline-none focus:border-purple-500 text-white shadow-inner font-mono transition-colors"
-                            placeholder="100"
+                            placeholder="e.g. 20 (default 100)"
                             value={testParams['limit'] || ''}
                             onChange={e => setTestParams({...testParams, 'limit': e.target.value})}
+                          />
+                        </div>
+                       <div>
+                          <label className="block text-xs font-mono text-purple-400 mb-1">offset</label>
+                          <input 
+                            type="text"
+                            className="w-full bg-[#1e293b] border border-[#334155] rounded px-3 py-2 text-xs outline-none focus:border-purple-500 text-white shadow-inner font-mono transition-colors"
+                            placeholder="e.g. 0 (default 0)"
+                            value={testParams['offset'] || ''}
+                            onChange={e => setTestParams({...testParams, 'offset': e.target.value})}
                           />
                         </div>
                     </div>

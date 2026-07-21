@@ -68,12 +68,24 @@ public class ApiEndpointController {
             if (endpoint.isEnablePagination()) {
                 int limit = 100;
                 int offset = 0;
-                if (params.containsKey("limit")) limit = Integer.parseInt(params.get("limit").toString());
-                else if (params.containsKey("size")) limit = Integer.parseInt(params.get("size").toString());
+                if (params.containsKey("limit")) {
+                    String val = params.get("limit").toString();
+                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'limit' must be a valid integer")));
+                    limit = Integer.parseInt(val);
+                } else if (params.containsKey("size")) {
+                    String val = params.get("size").toString();
+                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'size' must be a valid integer")));
+                    limit = Integer.parseInt(val);
+                }
                 
-                if (params.containsKey("offset")) offset = Integer.parseInt(params.get("offset").toString());
-                else if (params.containsKey("page")) {
-                    int page = Integer.parseInt(params.get("page").toString());
+                if (params.containsKey("offset")) {
+                    String val = params.get("offset").toString();
+                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'offset' must be a valid integer")));
+                    offset = Integer.parseInt(val);
+                } else if (params.containsKey("page")) {
+                    String val = params.get("page").toString();
+                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'page' must be a valid integer")));
+                    int page = Integer.parseInt(val);
                     offset = (page > 0 ? page - 1 : 0) * limit;
                 }
                 

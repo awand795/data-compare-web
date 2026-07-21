@@ -116,15 +116,23 @@ public class DynamicApiController {
                 int limit = 100;
                 int offset = 0;
                 if (allParams.containsKey("limit")) {
-                    limit = Integer.parseInt(allParams.get("limit").toString());
+                    String val = allParams.get("limit").toString();
+                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'limit' must be a valid integer")));
+                    limit = Integer.parseInt(val);
                 } else if (allParams.containsKey("size")) {
-                    limit = Integer.parseInt(allParams.get("size").toString());
+                    String val = allParams.get("size").toString();
+                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'size' must be a valid integer")));
+                    limit = Integer.parseInt(val);
                 }
                 
                 if (allParams.containsKey("offset")) {
-                    offset = Integer.parseInt(allParams.get("offset").toString());
+                    String val = allParams.get("offset").toString();
+                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'offset' must be a valid integer")));
+                    offset = Integer.parseInt(val);
                 } else if (allParams.containsKey("page")) {
-                    int page = Integer.parseInt(allParams.get("page").toString());
+                    String val = allParams.get("page").toString();
+                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'page' must be a valid integer")));
+                    int page = Integer.parseInt(val);
                     offset = (page > 0 ? page - 1 : 0) * limit;
                 }
 
