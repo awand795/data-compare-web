@@ -326,11 +326,13 @@ export const ApiBuilderView: React.FC = () => {
       parsedParams = JSON.parse(currentApi.parameters || '[]');
     } catch(e) {}
     
-    const curlExample = `curl -X ${currentApi.method} "${fullUrl}${detectedParams.length > 0 && currentApi.method === 'GET' ? '?' + detectedParams.map(p => \`\${p}=value\`).join('&') : ''}" \\
-  -H "Accept: application/json" ${!currentApi.isPublic ? \`\\
-  -H "Authorization: Bearer \${currentApi.authToken}"\` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? \` \\
+    const curlExample = `curl -X ${currentApi.method} "${fullUrl}${detectedParams.length > 0 && currentApi.method === 'GET' ? '?' + detectedParams.map(p => `${p}=value`).join('&') : ''}" \\
+  -H "Accept: application/json" ${!currentApi.isPublic ? `\\
+  -H "Authorization: Bearer ${currentApi.authToken}"` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? ` \\
   -H "Content-Type: application/json" \\
-  -d '{\n${detectedParams.map(p => \`    "\${p}": "value"\`).join(',\n')}\n  }'\` : ''}`;
+  -d '{
+${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}
+  }'` : ''}`;
     
     return (
       <div className="h-full flex flex-col p-6 overflow-y-auto">
