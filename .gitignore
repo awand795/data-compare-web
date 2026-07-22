@@ -37,3 +37,9 @@ Thumbs.db
 # Backups
 backup/
 data_setting_sync_backup.sql
+
+# ERP Guidance Backups & Configs
+erp-docker-compose.yml
+erp_guidance_backup.sql
+erp_guidance_full_backup.tar.gz
+default.conf

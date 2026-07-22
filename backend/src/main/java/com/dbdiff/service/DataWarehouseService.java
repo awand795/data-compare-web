@@ -40,7 +40,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 public class DataWarehouseService {
     private static final Logger logger = LoggerFactory.getLogger(DataWarehouseService.class);
     private final RestTemplate restTemplate;
-    private static final String DEBEZIUM_URL = "http://debezium:8083/connectors";
+    private static final String DEBEZIUM_BASE_URL = "http://debezium:8083";
+    private static final String DEBEZIUM_URL = DEBEZIUM_BASE_URL + "/connectors";
 
     public DataWarehouseService() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -71,10 +72,92 @@ public class DataWarehouseService {
         emitter.send(SseEmitter.event().data(message));
     }
 
+    /**
+     * Waits until the Debezium Kafka Connect REST API is up AND connected to the Kafka
+     * cluster. During a Kafka/Zookeeper crash-loop the REST port may accept connections
+     * while the worker is still failing, which caused deploys to hang with "Read timed out".
+     * We probe GET /connectors (a cheap call that only succeeds once the herder is running)
+     * and retry with backoff until the API responds or the timeout elapses.
+     *
+     * @return true if Debezium became ready, false otherwise.
+     */
+    private boolean waitForDebeziumReady(SseEmitter emitter, int maxWaitSeconds) throws IOException {
+        long deadline = System.currentTimeMillis() + (maxWaitSeconds * 1000L);
+        int attempt = 0;
+        Exception lastError = null;
+        while (System.currentTimeMillis() < deadline) {
+            attempt++;
+            try {
+                // GET /connectors returns 200 only when the Connect herder is fully started
+                // and able to reach Kafka. If Kafka is unreachable this call fails fast/times out.
+                restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+                sendLog(emitter, "Debezium is ready (attempt " + attempt + ").");
+                return true;
+            } catch (Exception e) {
+                lastError = e;
+                sendLog(emitter, "Waiting for Debezium to become ready (attempt " + attempt + "): " + e.getMessage());
+                try {
+                    Thread.sleep(5000); // 5s backoff between probes
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+        }
+        sendLog(emitter, "Debezium did not become ready within " + maxWaitSeconds + "s"
+                + (lastError != null ? ": " + lastError.getMessage() : "") + ".");
+        return false;
+    }
+
+    /**
+     * Registers a connector via POST /connectors, retrying on transient failures
+     * (I/O errors, read timeouts, 5xx) that happen while Kafka/Debezium are still
+     * stabilising. Non-retryable client errors (e.g. 4xx bad config) are thrown immediately.
+     */
+    private org.springframework.http.ResponseEntity<String> registerConnectorWithRetry(
+            SseEmitter emitter,
+            String connectorName,
+            org.springframework.http.HttpEntity<java.util.Map<String, Object>> entity,
+            int maxAttempts) throws Exception {
+        Exception lastError = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return restTemplate.postForEntity(DEBEZIUM_URL, entity, String.class);
+            } catch (org.springframework.web.client.HttpClientErrorException e) {
+                // 4xx: bad config or already-exists conflict handled by caller — do not retry.
+                throw e;
+            } catch (Exception e) {
+                lastError = e;
+                sendLog(emitter, "Attempt " + attempt + "/" + maxAttempts
+                        + " to register connector '" + connectorName + "' failed: " + e.getMessage());
+                if (attempt < maxAttempts) {
+                    try {
+                        Thread.sleep(5000); // 5s backoff before retrying
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw ie;
+                    }
+                }
+            }
+        }
+        throw lastError;
+    }
+
     public void deployPipeline(DataWarehouseDeployRequest request, SseEmitter emitter) {
         try {
             sendLog(emitter, "Deploying Data Warehouse pipeline for source " + request.getSourceConnection().getName() + " to target table " + request.getTargetTable());
-            
+
+            // =========================================================================
+            // STEP 0: Ensure Debezium (Kafka Connect) is up and connected to Kafka.
+            // If Kafka/Zookeeper are crash-looping, the REST API may be half-up and
+            // POST /connectors would hang until "Read timed out". Gate the deploy here.
+            // =========================================================================
+            sendLog(emitter, "Checking Debezium availability before deploying...");
+            if (!waitForDebeziumReady(emitter, 120)) {
+                throw new RuntimeException("Debezium is not ready (Kafka/Debezium may be restarting on the server). "
+                        + "Please wait a moment and try again.");
+            }
+
             // Generate unique names for connectors based on a single deployment ID
             String baseName = request.getSourceConnection().getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
             long deployId = System.currentTimeMillis();
@@ -563,11 +646,11 @@ public class DataWarehouseService {
             
             try {
                 org.springframework.http.HttpEntity<java.util.Map<String, Object>> sourceEntity = new org.springframework.http.HttpEntity<>(sourcePayload, headers);
-                org.springframework.http.ResponseEntity<String> sourceResponse = restTemplate.postForEntity(DEBEZIUM_URL, sourceEntity, String.class);
+                org.springframework.http.ResponseEntity<String> sourceResponse = registerConnectorWithRetry(emitter, sourceConnectorName, sourceEntity, 3);
                 sendLog(emitter, "Source connector registered successfully: " + sourceResponse.getStatusCode());
             } catch (Exception e) {
                 sendLog(emitter, "ERROR: Could not register source connector in Debezium: " + e.getMessage());
-                throw e; 
+                throw e;
             }
 
             // STEP 3.5: Wait for Kafka topics to initialize
@@ -647,7 +730,7 @@ public class DataWarehouseService {
             
             try {
                 org.springframework.http.HttpEntity<java.util.Map<String, Object>> sinkEntity = new org.springframework.http.HttpEntity<>(sinkPayload, headers);
-                org.springframework.http.ResponseEntity<String> sinkResponse = restTemplate.postForEntity(DEBEZIUM_URL, sinkEntity, String.class);
+                org.springframework.http.ResponseEntity<String> sinkResponse = registerConnectorWithRetry(emitter, sinkConnectorName, sinkEntity, 3);
                 sendLog(emitter, "Sink connector registered successfully: " + sinkResponse.getStatusCode());
             } catch (Exception e) {
                 sendLog(emitter, "WARNING: Could not register ClickHouse Sink Connector: " + e.getMessage());
