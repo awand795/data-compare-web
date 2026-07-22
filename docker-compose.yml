@@ -116,7 +116,6 @@ services:
     image: quay.io/debezium/kafka:2.4
     container_name: darkosync-kafka
     deploy:
-      endpoint_mode: dnsrr
       resources:
         limits:
           memory: 768M
@@ -126,6 +125,7 @@ services:
       - KAFKA_HEAP_OPTS=-Xmx384m -Xms256m
       - MALLOC_ARENA_MAX=2
       - ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - HOST_NAME=kafka
       - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
