@@ -58,6 +58,9 @@ public class DataWarehouseService {
     @Autowired
     private com.dbdiff.repository.ConnectionRepository connectionRepository;
 
+    @Autowired
+    private SshTunnelService sshTunnelService;
+
     private static class ColumnInfo {
         String name;
         String clickhouseType;
@@ -484,8 +487,23 @@ public class DataWarehouseService {
             }
             
             sourceConfig.put("tasks.max", "1");
-            sourceConfig.put("database.hostname", request.getSourceConnection().getHost() != null ? request.getSourceConnection().getHost().trim() : "");
-            sourceConfig.put("database.port", String.valueOf(request.getSourceConnection().getPort()));
+            
+            String dbHost = request.getSourceConnection().getHost() != null ? request.getSourceConnection().getHost().trim() : "";
+            String dbPort = String.valueOf(request.getSourceConnection().getPort());
+            if (request.getSourceConnection().isUseSsh()) {
+                try {
+                    int tunnelPort = sshTunnelService.getOrOpenTunnel(request.getSourceConnection(), String.valueOf(request.getSourceConnection().getId()));
+                    dbHost = "backend";
+                    dbPort = String.valueOf(tunnelPort);
+                    sendLog(emitter, "Source connection uses SSH tunnel. Routing Debezium through backend:" + tunnelPort);
+                } catch (Exception ex) {
+                    logger.error("Failed to establish SSH tunnel for Debezium source connector", ex);
+                    sendLog(emitter, "WARNING: Failed to open SSH tunnel for Debezium: " + ex.getMessage());
+                }
+            }
+
+            sourceConfig.put("database.hostname", dbHost);
+            sourceConfig.put("database.port", dbPort);
             sourceConfig.put("database.user", request.getSourceConnection().getUsername() != null ? request.getSourceConnection().getUsername().trim() : "");
             sourceConfig.put("database.password", request.getSourceConnection().getPassword());
             sourceConfig.put("database.dbname", request.getSourceConnection().getDatabase() != null ? request.getSourceConnection().getDatabase().trim() : "");

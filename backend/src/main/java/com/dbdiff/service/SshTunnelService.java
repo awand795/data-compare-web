@@ -68,7 +68,7 @@ public class SshTunnelService implements DisposableBean {
             logger.info("Opening SSH tunnel to {}@{}:{}", details.getSshUsername(), details.getSshHost(), sshPort);
             session.connect(60000);  // naik dari 30s → 60s untuk koneksi lambat
 
-            int assignedLocalPort = session.setPortForwardingL("127.0.0.1", 0, details.getHost(), details.getPort());
+            int assignedLocalPort = session.setPortForwardingL("0.0.0.0", 0, details.getHost(), details.getPort());
             
             activeSessions.put(connId, session);
             localPorts.put(connId, assignedLocalPort);
