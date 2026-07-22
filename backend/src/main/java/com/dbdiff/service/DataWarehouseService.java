@@ -75,8 +75,9 @@ public class DataWarehouseService {
             // Generate unique names for connectors based on a single deployment ID
             String baseName = request.getSourceConnection().getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
             long deployId = System.currentTimeMillis();
-            String sourceConnectorName = "source-" + baseName + "-" + deployId;
-            String sinkConnectorName = "sink-clickhouse-" + request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "") + "-" + deployId;
+            String cleanTarget = request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "");
+            String sourceConnectorName = "source-" + baseName + "-" + cleanTarget + "-" + deployId;
+            String sinkConnectorName = "sink-clickhouse-" + cleanTarget + "-" + deployId;
             
             org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
             headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
@@ -91,8 +92,8 @@ public class DataWarehouseService {
                 if (connectors != null) {
                     for (String cName : connectors) {
                         // Check if it belongs to this pipeline target or source
-                        if (cName.startsWith("source-" + baseName) || 
-                            cName.startsWith("sink-clickhouse-" + request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", ""))) {
+                        if (cName.startsWith("source-" + baseName + "-" + cleanTarget) || 
+                            cName.startsWith("sink-clickhouse-" + cleanTarget)) {
                             sendLog(emitter, "Deleting old connector: " + cName);
                             try {
                                 restTemplate.delete(DEBEZIUM_URL + "/" + cName);
@@ -110,7 +111,8 @@ public class DataWarehouseService {
             DataSource sourceDsForCleanup = connectionManagerService.getDataSource(request.getSourceConnection());
             try (Connection pgConn = sourceDsForCleanup.getConnection();
                  Statement pgStmt = pgConn.createStatement()) {
-                String findSlotsSql = "SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name LIKE '%" + baseName.replaceAll("-", "_") + "%'";
+                String slotSearch = (baseName + "_" + cleanTarget).replaceAll("[^a-z0-9_]", "_").toLowerCase();
+                String findSlotsSql = "SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name LIKE '%" + slotSearch + "%'";
                 List<Map<String, Object>> activeSlots = new ArrayList<>();
                 try (ResultSet rs = pgStmt.executeQuery(findSlotsSql)) {
                     while (rs.next()) {
