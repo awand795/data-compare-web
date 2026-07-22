@@ -59,17 +59,6 @@ const getMethodBadgeClass = (method: string) => {
   }
 };
 
-const getMethodColor = (method: string) => {
-  switch (method) {
-    case 'GET': return 'green';
-    case 'POST': return 'blue';
-    case 'PUT': return 'amber';
-    case 'PATCH': return 'purple';
-    case 'DELETE': return 'red';
-    default: return 'gray';
-  }
-};
-
 export const ApiBuilderView: React.FC = () => {
   const { connections, addToast, showAlert } = useAppStore();
   
@@ -92,7 +81,6 @@ export const ApiBuilderView: React.FC = () => {
   const [activeSpecTab, setActiveSpecTab] = useState<'curl' | 'postman' | 'bruno'>('curl');
   const [showTemplates, setShowTemplates] = useState(false);
   const [isPrettyPrint, setIsPrettyPrint] = useState(true);
-  const [responseFormat, setResponseFormat] = useState<'json' | 'text'>('json');
 
   const editInitialRef = useRef<string>('');
 
