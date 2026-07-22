@@ -1848,14 +1848,20 @@ public class DataWarehouseService {
                 // Topic is routed/renamed via RegexRouter (e.g. cdc_basename_$2_$3)
                 String replacement = (String) config.get("transforms.route.replacement");
                 String actualPrefix = replacement.substring(0, replacement.indexOf("$2"));
-                Properties props = new Properties();
-                props.put("bootstrap.servers", "kafka:9092");
-                try (AdminClient admin = AdminClient.create(props)) {
-                    java.util.Set<String> allTopics = admin.listTopics().names().get();
-                    for (String t : allTopics) {
-                        if (t.startsWith(actualPrefix)) {
-                            topicName = t;
-                            break;
+                String tableIncludeList = (String) config.get("table.include.list");
+                if (tableIncludeList != null && !tableIncludeList.isEmpty()) {
+                    String firstTable = tableIncludeList.split(",")[0];
+                    topicName = actualPrefix + firstTable.replace(".", "_");
+                } else {
+                    Properties props = new Properties();
+                    props.put("bootstrap.servers", "kafka:9092");
+                    try (AdminClient admin = AdminClient.create(props)) {
+                        java.util.Set<String> allTopics = admin.listTopics().names().get();
+                        for (String t : allTopics) {
+                            if (t.startsWith(actualPrefix)) {
+                                topicName = t;
+                                break;
+                            }
                         }
                     }
                 }
