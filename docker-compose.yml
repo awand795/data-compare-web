@@ -115,7 +115,7 @@ services:
         window: 180s
       update_config:
         parallelism: 1
-        delay: 10s
+        delay: 25s
         order: stop-first
         failure_action: rollback
         monitor: 30s
