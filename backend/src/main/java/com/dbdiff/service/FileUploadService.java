@@ -8,7 +8,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import jakarta.annotation.PostConstruct;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -28,7 +27,6 @@ public class FileUploadService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    @PostConstruct
     public void initSchema() {
         try {
             jdbcTemplate.execute("CREATE SCHEMA IF NOT EXISTS sch_excel;");
