@@ -9,5 +9,8 @@ export $(grep -v '^#' .env | xargs) && sudo -E docker stack deploy --with-regist
 sudo docker service update --image awandadarkotech/darkosync-frontend:latest --force darkosync_frontend
 sudo docker service update --image awandadarkotech/darkosync-backend:latest --force darkosync_backend
 
+echo "🧹 Menjalankan Safe Docker Prune setelah deploy..."
+bash ./safe_docker_prune.sh
+
 echo "✅ Deploy dikirim & Service berhasil diperbarui!"
 echo "Pantau statusnya dengan perintah: watch -n 2 sudo docker stack ps darkosync"
