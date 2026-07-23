@@ -117,7 +117,7 @@ services:
         parallelism: 1
         delay: 25s
         order: stop-first
-        failure_action: rollback
+        failure_action: continue
         monitor: 30s
     depends_on:
       - zookeeper
