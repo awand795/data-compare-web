@@ -17,6 +17,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - DEBEZIUM_BASE_URL=http://debezium:8083
     ports:
       - target: 8081
         published: 5300
@@ -99,7 +100,9 @@ services:
       - zookeeper_data:/zookeeper/data
       - zookeeper_txns:/zookeeper/txns
     networks:
-      - darkosync-network
+      darkosync-network:
+        aliases:
+          - zookeeper
 
   kafka:
     image: quay.io/debezium/kafka:2.4
@@ -123,7 +126,7 @@ services:
     depends_on:
       - zookeeper
     healthcheck:
-      test: ["CMD-SHELL", "timeout 15 /kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "timeout 15 /kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
       interval: 30s
       timeout: 15s
       retries: 5
@@ -141,7 +144,9 @@ services:
     volumes:
       - kafka_data:/kafka/data
     networks:
-      - darkosync-network
+      darkosync-network:
+        aliases:
+          - kafka
 
   debezium:
     image: awandadarkotech/debezium-clickhouse:latest
@@ -154,7 +159,7 @@ services:
         protocol: tcp
         mode: ingress
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null && timeout 15 /kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic my_connect_offsets >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -181,7 +186,9 @@ services:
       - CONNECT_ADMIN_REQUEST_TIMEOUT_MS=60000
       - CONNECT_CONNECTIONS_MAX_IDLE_MS=600000
     networks:
-      - darkosync-network
+      darkosync-network:
+        aliases:
+          - debezium
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest

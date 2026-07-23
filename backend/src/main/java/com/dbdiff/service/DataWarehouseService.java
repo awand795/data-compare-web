@@ -41,7 +41,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 public class DataWarehouseService {
     private static final Logger logger = LoggerFactory.getLogger(DataWarehouseService.class);
     private final RestTemplate restTemplate;
-    private static final String DEBEZIUM_BASE_URL = "http://debezium:8083";
+    private static final String DEBEZIUM_BASE_URL = System.getenv()
+            .getOrDefault("DEBEZIUM_BASE_URL", "http://debezium:8083");
     private static final String DEBEZIUM_URL = DEBEZIUM_BASE_URL + "/connectors";
     private static final String KAFKA_BOOTSTRAP_SERVERS = System.getenv()
             .getOrDefault("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092");
