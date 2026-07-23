@@ -5,7 +5,7 @@ import { useAppStore } from '../store/useAppStore';
 import {
   UploadCloud, FileSpreadsheet, FileText, Database, Trash2, Eye,
   RefreshCw, Search, CheckCircle2, AlertCircle, Loader2, Table,
-  X, ChevronLeft, ChevronRight, FileCode, Layers, Info, Download, Edit2
+  X, ChevronLeft, ChevronRight, FileCode, Layers, Info, Download, Edit2, Code2
 } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToCSV } from '../utils/exportUtils';
@@ -30,7 +30,15 @@ type TablePreviewData = {
 };
 
 export const FileUploadView: React.FC = () => {
-  const { addToast, showAlert } = useAppStore();
+  const { 
+    addToast, 
+    showAlert, 
+    connections, 
+    setConnections, 
+    setTargetConnectionId, 
+    setCustomQueryTarget, 
+    setAppMode 
+  } = useAppStore();
 
   const [tables, setTables] = useState<UploadedTable[]>([]);
   const [loadingTables, setLoadingTables] = useState<boolean>(false);
@@ -297,6 +305,57 @@ export const FileUploadView: React.FC = () => {
       });
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  // Open in Query Workspace
+  const handleOpenInQueryWorkspace = async (targetTableName: string) => {
+    try {
+      let excelConn = connections.find((c: any) => 
+        c.database === 'data_setting_sync' || 
+        c.name?.toLowerCase().includes('sch_excel') ||
+        c.name?.toLowerCase().includes('upload') ||
+        c.name?.toLowerCase().includes('excel')
+      );
+
+      if (!excelConn) {
+        const newConnPayload = {
+          id: String(Date.now()),
+          name: 'DB Upload File (sch_excel)',
+          type: 'postgresql',
+          host: 'war.darkosuite.com',
+          port: 8832,
+          database: 'data_setting_sync',
+          username: 'postgres',
+          password: 'dataAnalyticW2024',
+          schema: 'sch_excel'
+        };
+
+        try {
+          const res = await axios.post('/api/connections', newConnPayload);
+          excelConn = res.data || newConnPayload;
+        } catch (e) {
+          excelConn = newConnPayload;
+        }
+        setConnections([...connections, excelConn]);
+      }
+
+      setTargetConnectionId(excelConn.id);
+      setCustomQueryTarget(`SELECT * FROM sch_excel."${targetTableName}";`);
+      setAppMode('query');
+
+      addToast?.({
+        type: 'success',
+        title: 'Buka di Workspace',
+        message: `Tabel sch_excel."${targetTableName}" dibuka sebagai Target DB di Query Workspace!`
+      });
+    } catch (err: any) {
+      console.error('Failed to open in Query Workspace:', err);
+      showAlert?.({
+        title: 'Error',
+        message: 'Gagal membuka tabel di Query Workspace: ' + (err.message || err),
+        type: 'error'
+      });
     }
   };
 
@@ -576,6 +635,14 @@ export const FileUploadView: React.FC = () => {
                       </button>
 
                       <button
+                        onClick={() => handleOpenInQueryWorkspace(t.table_name)}
+                        className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20 rounded-lg transition-colors"
+                        title="Buka & Query di Query Workspace (Target DB)"
+                      >
+                        <Code2 className="w-4 h-4" />
+                      </button>
+
+                      <button
                         onClick={() => handleOpenEditModal(t)}
                         className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 rounded-lg transition-colors"
                         title="Edit Nama Tabel & Deskripsi"
@@ -617,6 +684,18 @@ export const FileUploadView: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setPreviewModalOpen(false);
+                    handleOpenInQueryWorkspace(activePreviewTable);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg transition-colors"
+                  title="Lompat ke Query Workspace dan jadikan Target DB"
+                >
+                  <Code2 className="w-3.5 h-3.5" />
+                  <span>Buka di Query Workspace</span>
+                </button>
+
                 <button
                   onClick={() => handleExportData('excel')}
                   disabled={isExporting || loadingPreview || !previewData || previewData.rows.length === 0}
