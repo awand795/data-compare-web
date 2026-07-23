@@ -111,6 +111,7 @@ services:
       - "kafka:127.0.0.1"
       - "darkosync_kafka:127.0.0.1"
     deploy:
+      endpoint_mode: dnsrr
       resources:
         limits:
           memory: 768M
