@@ -133,7 +133,7 @@ services:
       - ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://tasks.darkosync_kafka:9092
-      - HOST_NAME=kafka
+      - HOST_NAME=tasks.darkosync_kafka
       - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
       - KAFKA_LOG_RETENTION_HOURS=24
       - KAFKA_LOG_RETENTION_BYTES=1073741824
