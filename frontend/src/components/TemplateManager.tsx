@@ -13,7 +13,7 @@ export const TemplateManager: React.FC<Props> = ({ appMode, children }) => {
     templates, addTemplate, updateTemplate, removeTemplate,
     activeTemplateId, setActiveTemplateId,
     sourceConnectionId, targetConnectionId, tableMappings,
-    customQuerySource, customQueryTarget, queryPrimaryKeys, setSourceConnectionId, setTargetConnectionId,
+    customQuerySource, customQueryTarget, queryPrimaryKeys,
     clearTableMappings, addTableMapping, setCustomQuerySource, setCustomQueryTarget, setQueryPrimaryKeys,
     clearDiffResults, triggerWorkspaceReset, showAlert
   } = useAppStore();
