@@ -90,6 +90,7 @@ services:
       - KAFKA_HEAP_OPTS=-Xmx128m -Xms128m
       - MALLOC_ARENA_MAX=2
     deploy:
+      endpoint_mode: dnsrr
       resources:
         limits:
           memory: 256M
@@ -116,6 +117,7 @@ services:
     image: quay.io/debezium/kafka:2.4
     container_name: darkosync-kafka
     deploy:
+      endpoint_mode: dnsrr
       resources:
         limits:
           memory: 768M
