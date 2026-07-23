@@ -107,6 +107,9 @@ services:
   kafka:
     image: quay.io/debezium/kafka:2.4
     container_name: darkosync-kafka
+    extra_hosts:
+      - "kafka:127.0.0.1"
+      - "darkosync_kafka:127.0.0.1"
     deploy:
       resources:
         limits:
