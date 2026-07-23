@@ -17,7 +17,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
-      - DEBEZIUM_BASE_URL=http://darkosync_debezium:8083
+      - DEBEZIUM_BASE_URL=http://debezium:8083
     ports:
       - target: 8081
         published: 5300
@@ -124,18 +124,22 @@ services:
     depends_on:
       - zookeeper
     healthcheck:
-      test: ["CMD-SHELL", "timeout 15 /kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "nc -z localhost 9092 || exit 1"]
       interval: 30s
-      timeout: 15s
-      retries: 5
-      start_period: 180s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
     environment:
       - KAFKA_HEAP_OPTS=-Xmx384m -Xms256m
       - MALLOC_ARENA_MAX=2
       - ZOOKEEPER_CONNECT=zookeeper-node:2181
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka-broker:9092
       - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
       - KAFKA_LOG_RETENTION_HOURS=24
       - KAFKA_LOG_RETENTION_BYTES=1073741824
+    dns_search:
+      - .
     volumes:
       - kafka_data:/kafka/data
     networks:
@@ -184,6 +188,8 @@ services:
       - STATUS_STORAGE_TOPIC=my_connect_statuses
       - CONNECT_ADMIN_REQUEST_TIMEOUT_MS=60000
       - CONNECT_CONNECTIONS_MAX_IDLE_MS=600000
+    dns_search:
+      - .
     networks:
       darkosync-network:
         aliases:
