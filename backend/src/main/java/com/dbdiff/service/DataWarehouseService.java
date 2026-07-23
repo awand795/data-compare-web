@@ -1044,14 +1044,15 @@ public class DataWarehouseService {
         for (String t : physicalTables) {
             String landingTable = getClickHouseLandingTable(t, baseName, sourceConn);
             String escapedLanding = "`" + chDb + "`.`" + landingTable + "`";
+            String shortTable = t.contains(".") ? t.substring(t.indexOf('.') + 1) : t;
+            String replacementWithAlias = escapedLanding + " AS `" + shortTable + "`";
             
             String patternStrWithSchema = "\\b" + Pattern.quote(t) + "\\b";
-            rewrittenSql = rewrittenSql.replaceAll("(?i)" + patternStrWithSchema, escapedLanding);
+            rewrittenSql = rewrittenSql.replaceAll("(?i)" + patternStrWithSchema, replacementWithAlias);
             
             if (t.contains(".")) {
-                String shortTable = t.substring(t.indexOf('.') + 1);
-                String patternStrShort = "\\b" + Pattern.quote(shortTable) + "\\b";
-                rewrittenSql = rewrittenSql.replaceAll("(?i)(?<!\\.)" + patternStrShort + "(?!\\.)", escapedLanding);
+                String patternStrShort = "(?i)\\b(FROM|JOIN)\\s+`?" + Pattern.quote(shortTable) + "`?\\b";
+                rewrittenSql = rewrittenSql.replaceAll(patternStrShort, "$1 " + replacementWithAlias);
             }
         }
         return rewrittenSql;
@@ -1061,6 +1062,7 @@ public class DataWarehouseService {
         String rewrittenSql = sql;
         for (String t : physicalTables) {
             String landingTable = getClickHouseLandingTable(t, baseName, sourceConn);
+            String shortTable = t.contains(".") ? t.substring(t.indexOf('.') + 1) : t;
             java.util.Set<String> pks = tableToPKs.get(t);
             StringBuilder pkFilters = new StringBuilder();
             if (pks != null) {
@@ -1068,15 +1070,14 @@ public class DataWarehouseService {
                     pkFilters.append(" AND not(isNull(`").append(pk).append("`)) AND toString(`").append(pk).append("`) != ''");
                 }
             }
-            String subquery = "(SELECT * FROM `" + chDb + "`.`" + landingTable + "` FINAL WHERE is_deleted = 0" + pkFilters.toString() + ")";
+            String subquery = "(SELECT * FROM `" + chDb + "`.`" + landingTable + "` FINAL WHERE is_deleted = 0" + pkFilters.toString() + ") AS `" + shortTable + "`";
             
             String patternStrWithSchema = "\\b" + Pattern.quote(t) + "\\b";
             rewrittenSql = rewrittenSql.replaceAll("(?i)" + patternStrWithSchema, subquery);
             
             if (t.contains(".")) {
-                String shortTable = t.substring(t.indexOf('.') + 1);
-                String patternStrShort = "\\b" + Pattern.quote(shortTable) + "\\b";
-                rewrittenSql = rewrittenSql.replaceAll("(?i)(?<!\\.)" + patternStrShort + "(?!\\.)", subquery);
+                String patternStrShort = "(?i)\\b(FROM|JOIN)\\s+`?" + Pattern.quote(shortTable) + "`?\\b";
+                rewrittenSql = rewrittenSql.replaceAll(patternStrShort, "$1 " + subquery);
             }
         }
         return rewrittenSql;
