@@ -51,7 +51,7 @@ public class DataWarehouseService {
     public DataWarehouseService() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10000); // 10 seconds
-        factory.setReadTimeout(60000);   // 60 seconds
+        factory.setReadTimeout(180000);   // 180 seconds (Debezium connector registration can take >60s)
         this.restTemplate = new RestTemplate(factory);
     }
 
@@ -634,6 +634,8 @@ public class DataWarehouseService {
             sourceConfig.put("database.user", request.getSourceConnection().getUsername() != null ? request.getSourceConnection().getUsername().trim() : "");
             sourceConfig.put("database.password", request.getSourceConnection().getPassword());
             sourceConfig.put("database.dbname", request.getSourceConnection().getDatabase() != null ? request.getSourceConnection().getDatabase().trim() : "");
+            // Add connection timeout to Debezium PostgreSQL connector
+            sourceConfig.put("database.connect.timeout.ms", "30000");
             sourceConfig.put("database.server.name", sourceConnectorName);
             sourceConfig.put("topic.prefix", sourceConnectorName); // Compatibility with Debezium 2.x
 
