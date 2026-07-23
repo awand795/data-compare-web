@@ -17,7 +17,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
       - KAFKA_BOOTSTRAP_SERVERS=darkosync_kafka:9092
-      - DEBEZIUM_BASE_URL=http://debezium:8083
+      - DEBEZIUM_BASE_URL=http://darkosync_debezium:8083
     ports:
       - target: 8081
         published: 5300
@@ -136,7 +136,7 @@ services:
     environment:
       - KAFKA_HEAP_OPTS=-Xmx384m -Xms256m
       - MALLOC_ARENA_MAX=2
-      - ZOOKEEPER_CONNECT=zookeeper:2181
+      - ZOOKEEPER_CONNECT=darkosync_zookeeper:2181
       - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://darkosync_kafka:9092
       - HOST_NAME=kafka
