@@ -124,14 +124,20 @@ services:
         delay: 15s
         max_attempts: 5
         window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
     depends_on:
       - zookeeper
     healthcheck:
-      test: ["CMD-SHELL", "cat /proc/net/tcp | grep -q 1F90 || exit 1"]
+      test: ["CMD-SHELL", "cat /proc/net/tcp | grep -q 2384 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 120s
     environment:
       - KAFKA_HEAP_OPTS=-Xmx384m -Xms256m
       - MALLOC_ARENA_MAX=2
