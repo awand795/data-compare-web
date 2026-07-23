@@ -16,7 +16,7 @@ services:
       - DB_NAME=data_setting_sync
       - DB_USER=postgres
       - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - DEBEZIUM_BASE_URL=http://debezium:8083
     ports:
       - target: 8081
@@ -99,15 +99,11 @@ services:
       - zookeeper_data:/zookeeper/data
       - zookeeper_txns:/zookeeper/txns
     networks:
-      darkosync-network:
-        aliases:
-          - zookeeper
-          - zookeeper-node
+      - darkosync-network
 
   kafka:
     image: quay.io/debezium/kafka:2.4
     deploy:
-      endpoint_mode: dnsrr
       resources:
         limits:
           memory: 768M
@@ -133,21 +129,16 @@ services:
     environment:
       - KAFKA_HEAP_OPTS=-Xmx384m -Xms256m
       - MALLOC_ARENA_MAX=2
-      - ZOOKEEPER_CONNECT=zookeeper-node:2181
+      - ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka-broker:9092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
       - KAFKA_LOG_RETENTION_HOURS=24
       - KAFKA_LOG_RETENTION_BYTES=1073741824
-    dns_search:
-      - .
     volumes:
       - kafka_data:/kafka/data
     networks:
-      darkosync-network:
-        aliases:
-          - kafka
-          - kafka-broker
+      - darkosync-network
 
   debezium:
     image: awandadarkotech/debezium-clickhouse:latest
@@ -182,19 +173,15 @@ services:
     environment:
       - JAVA_OPTS=-Xmx512m -Xms256m
       - MALLOC_ARENA_MAX=2
-      - BOOTSTRAP_SERVERS=kafka-broker:9092
+      - BOOTSTRAP_SERVERS=kafka:9092
       - GROUP_ID=1
       - CONFIG_STORAGE_TOPIC=my_connect_configs
       - OFFSET_STORAGE_TOPIC=my_connect_offsets
       - STATUS_STORAGE_TOPIC=my_connect_statuses
       - CONNECT_ADMIN_REQUEST_TIMEOUT_MS=60000
       - CONNECT_CONNECTIONS_MAX_IDLE_MS=600000
-    dns_search:
-      - .
     networks:
-      darkosync-network:
-        aliases:
-          - debezium
+      - darkosync-network
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
