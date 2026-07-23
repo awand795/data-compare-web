@@ -99,10 +99,14 @@ services:
       - zookeeper_data:/zookeeper/data
       - zookeeper_txns:/zookeeper/txns
     networks:
-      - darkosync-network
+      darkosync-network:
+        aliases:
+          - zookeeper
 
   kafka:
     image: quay.io/debezium/kafka:2.4
+    extra_hosts:
+      - "kafka:127.0.0.1"
     deploy:
       resources:
         limits:
@@ -132,13 +136,17 @@ services:
       - ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS=6000
+      - KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS=6000
       - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
       - KAFKA_LOG_RETENTION_HOURS=24
       - KAFKA_LOG_RETENTION_BYTES=1073741824
     volumes:
       - kafka_data:/kafka/data
     networks:
-      - darkosync-network
+      darkosync-network:
+        aliases:
+          - kafka
 
   debezium:
     image: awandadarkotech/debezium-clickhouse:latest
@@ -181,7 +189,9 @@ services:
       - CONNECT_ADMIN_REQUEST_TIMEOUT_MS=60000
       - CONNECT_CONNECTIONS_MAX_IDLE_MS=600000
     networks:
-      - darkosync-network
+      darkosync-network:
+        aliases:
+          - debezium
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
