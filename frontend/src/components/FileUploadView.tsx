@@ -5,9 +5,10 @@ import { useAppStore } from '../store/useAppStore';
 import {
   UploadCloud, FileSpreadsheet, FileText, Database, Trash2, Eye,
   RefreshCw, Search, CheckCircle2, AlertCircle, Loader2, Table,
-  X, ChevronLeft, ChevronRight, FileCode, Layers, Info
+  X, ChevronLeft, ChevronRight, FileCode, Layers, Info, Download
 } from 'lucide-react';
 import clsx from 'clsx';
+import { exportToExcel, exportToCSV } from '../utils/exportUtils';
 
 type UploadedTable = {
   table_name: string;
@@ -51,6 +52,7 @@ export const FileUploadView: React.FC = () => {
   const [activePreviewTable, setActivePreviewTable] = useState<string | null>(null);
   const [previewPage, setPreviewPage] = useState<number>(1);
   const [previewPageSize] = useState<number>(50);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
 
   // Helper to format date string to YYYYMMDD
   const getFormattedDateCode = () => {
@@ -239,6 +241,56 @@ export const FileUploadView: React.FC = () => {
         }
       }
     });
+  };
+
+  // Export table data to Excel or CSV
+  const handleExportData = async (format: 'excel' | 'csv') => {
+    if (!activePreviewTable || !previewData) return;
+    setIsExporting(true);
+    try {
+      let exportRows = previewData.rows;
+      if (previewData.totalRows > previewData.rows.length) {
+        const res = await axios.get(`/api/file-upload/tables/${activePreviewTable}/preview`, {
+          params: { page: 1, pageSize: 100000 }
+        });
+        if (res.data && res.data.rows) {
+          exportRows = res.data.rows;
+        }
+      }
+
+      const filename = `${activePreviewTable}_export`;
+
+      if (format === 'excel') {
+        await exportToExcel({
+          fileName: `${filename}.xlsx`,
+          title: `Export Tabel: sch_excel."${activePreviewTable}"`,
+          subtitle: `Total ${exportRows.length} baris — Di-export pada ${new Date().toLocaleString('id-ID')}`,
+          columns: previewData.columns,
+          data: exportRows
+        });
+      } else {
+        exportToCSV({
+          fileName: `${filename}.csv`,
+          columns: previewData.columns,
+          data: exportRows
+        });
+      }
+
+      addToast?.({
+        type: 'success',
+        title: 'Export Berhasil!',
+        message: `Tabel "${activePreviewTable}" (${exportRows.length} baris) berhasil di-export ke ${format.toUpperCase()}`
+      });
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      addToast?.({
+        type: 'error',
+        title: 'Export Gagal',
+        message: err.response?.data?.error || 'Gagal mengeksport data tabel'
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const filteredTables = tables.filter(t => 
@@ -510,12 +562,42 @@ export const FileUploadView: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setPreviewModalOpen(false)}
-                className="p-1 text-text-muted hover:text-text-main rounded-lg hover:bg-bg-hover transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleExportData('excel')}
+                  disabled={isExporting || loadingPreview || !previewData || previewData.rows.length === 0}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition-colors disabled:opacity-40"
+                  title="Export Seluruh Data Tabel ke File Excel (.xlsx)"
+                >
+                  {isExporting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                  )}
+                  <span>Export Excel</span>
+                </button>
+
+                <button
+                  onClick={() => handleExportData('csv')}
+                  disabled={isExporting || loadingPreview || !previewData || previewData.rows.length === 0}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg transition-colors disabled:opacity-40"
+                  title="Export Seluruh Data Tabel ke File CSV (.csv)"
+                >
+                  {isExporting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5" />
+                  )}
+                  <span>Export CSV</span>
+                </button>
+
+                <button
+                  onClick={() => setPreviewModalOpen(false)}
+                  className="p-1 text-text-muted hover:text-text-main rounded-lg hover:bg-bg-hover transition-colors ml-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Content */}

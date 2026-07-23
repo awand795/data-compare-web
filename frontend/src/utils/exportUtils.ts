@@ -195,4 +195,26 @@ export const exportToPDF = (options: ExportOptions) => {
   doc.save(options.fileName.endsWith('.pdf') ? options.fileName : `${options.fileName}.pdf`);
 };
 
+export const exportToCSV = (options: { fileName: string; columns: string[]; data: any[] }) => {
+  const { fileName, columns, data } = options;
+  let csvContent = '';
+  
+  // Header row
+  const header = columns.map(col => `"${String(col).replace(/"/g, '""')}"`).join(',');
+  csvContent += header + '\r\n';
+  
+  // Data rows
+  data.forEach(row => {
+    const rowStr = columns.map(col => {
+      const val = row[col];
+      const strVal = val !== null && val !== undefined ? (typeof val === 'object' ? JSON.stringify(val) : String(val)) : '';
+      return `"${strVal.replace(/"/g, '""')}"`;
+    }).join(',');
+    csvContent += rowStr + '\r\n';
+  });
+  
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  saveAs(blob, fileName.endsWith('.csv') ? fileName : `${fileName}.csv`);
+};
+
 
