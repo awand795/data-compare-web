@@ -184,7 +184,7 @@ services:
     environment:
       - JAVA_OPTS=-Xmx512m -Xms256m
       - MALLOC_ARENA_MAX=2
-      - BOOTSTRAP_SERVERS=tasks.darkosync_kafka:9092
+      - BOOTSTRAP_SERVERS=kafka:9092
       - GROUP_ID=1
       - CONFIG_STORAGE_TOPIC=my_connect_configs
       - OFFSET_STORAGE_TOPIC=my_connect_offsets
