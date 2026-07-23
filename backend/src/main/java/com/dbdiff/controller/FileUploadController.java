@@ -63,4 +63,19 @@ public class FileUploadController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Gagal menghapus tabel"));
         }
     }
+
+    @PutMapping("/tables/{tableName}")
+    public ResponseEntity<?> updateUploadedTable(
+            @PathVariable String tableName,
+            @RequestBody Map<String, String> body) {
+        try {
+            String newTableName = body.get("newTableName");
+            if (newTableName == null) newTableName = body.get("tableName");
+            String description = body.get("description");
+            Map<String, Object> result = fileUploadService.updateUploadedTable(tableName, newTableName, description);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Gagal memperbarui tabel"));
+        }
+    }
 }

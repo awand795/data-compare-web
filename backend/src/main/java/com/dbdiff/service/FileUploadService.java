@@ -228,6 +228,55 @@ public class FileUploadService {
         logger.info("Deleted table sch_excel.\"{}\" and its metadata.", sanitized);
     }
 
+    public Map<String, Object> updateUploadedTable(String oldTableName, String newTableName, String description) {
+        initSchema();
+        String oldSanitized = sanitizeIdentifier(oldTableName);
+        if ("_file_uploads".equalsIgnoreCase(oldSanitized)) {
+            throw new IllegalArgumentException("Tidak dapat mengubah tabel metadata internal");
+        }
+
+        String targetNewName = (newTableName != null && !newTableName.trim().isEmpty()) 
+                ? sanitizeIdentifier(newTableName) 
+                : oldSanitized;
+
+        if ("_file_uploads".equalsIgnoreCase(targetNewName)) {
+            throw new IllegalArgumentException("Nama tabel tidak boleh menggunakan nama metadata internal");
+        }
+
+        String desc = description != null ? description.trim() : "";
+
+        if (!targetNewName.equalsIgnoreCase(oldSanitized)) {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sch_excel._file_uploads WHERE table_name = ?;",
+                Integer.class,
+                targetNewName
+            );
+            if (count != null && count > 0) {
+                throw new IllegalArgumentException("Tabel dengan nama '" + targetNewName + "' sudah ada di schema sch_excel");
+            }
+
+            jdbcTemplate.execute("ALTER TABLE sch_excel.\"" + oldSanitized + "\" RENAME TO \"" + targetNewName + "\";");
+
+            jdbcTemplate.update(
+                "UPDATE sch_excel._file_uploads SET table_name = ?, description = ? WHERE table_name = ?;",
+                targetNewName, desc, oldSanitized
+            );
+            logger.info("Renamed table sch_excel.\"{}\" to sch_excel.\"{}\" and updated description.", oldSanitized, targetNewName);
+        } else {
+            jdbcTemplate.update(
+                "UPDATE sch_excel._file_uploads SET description = ? WHERE table_name = ?;",
+                desc, oldSanitized
+            );
+            logger.info("Updated description for table sch_excel.\"{}\"", oldSanitized);
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("tableName", targetNewName);
+        result.put("description", desc);
+        return result;
+    }
+
     private static class ParsedData {
         List<String> columns;
         List<Object[]> rows;

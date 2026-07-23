@@ -5,7 +5,7 @@ import { useAppStore } from '../store/useAppStore';
 import {
   UploadCloud, FileSpreadsheet, FileText, Database, Trash2, Eye,
   RefreshCw, Search, CheckCircle2, AlertCircle, Loader2, Table,
-  X, ChevronLeft, ChevronRight, FileCode, Layers, Info, Download
+  X, ChevronLeft, ChevronRight, FileCode, Layers, Info, Download, Edit2
 } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToCSV } from '../utils/exportUtils';
@@ -53,6 +53,13 @@ export const FileUploadView: React.FC = () => {
   const [previewPage, setPreviewPage] = useState<number>(1);
   const [previewPageSize] = useState<number>(50);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  // Edit Table Modal state
+  const [editModalOpen, setEditModalOpen] = useState<boolean>(false);
+  const [editingTable, setEditingTable] = useState<UploadedTable | null>(null);
+  const [editTableName, setEditTableName] = useState<string>('');
+  const [editDescription, setEditDescription] = useState<string>('');
+  const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
 
   // Helper to format date string to YYYYMMDD
   const getFormattedDateCode = () => {
@@ -293,6 +300,47 @@ export const FileUploadView: React.FC = () => {
     }
   };
 
+  // Open Edit Modal
+  const handleOpenEditModal = (t: UploadedTable) => {
+    setEditingTable(t);
+    setEditTableName(t.table_name);
+    setEditDescription(t.description || '');
+    setEditModalOpen(true);
+  };
+
+  // Save Edit Table & Description
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTable || !editTableName.trim()) return;
+
+    setIsSavingEdit(true);
+    try {
+      const res = await axios.put(`/api/file-upload/tables/${editingTable.table_name}`, {
+        newTableName: editTableName.trim(),
+        description: editDescription.trim()
+      });
+
+      addToast?.({
+        type: 'success',
+        title: 'Perubahan Disimpan!',
+        message: `Tabel sch_excel."${res.data.tableName}" berhasil diperbarui`
+      });
+
+      setEditModalOpen(false);
+      setEditingTable(null);
+      fetchUploadedTables();
+    } catch (err: any) {
+      console.error('Failed to update table:', err);
+      addToast?.({
+        type: 'error',
+        title: 'Gagal Memperbarui Tabel',
+        message: err.response?.data?.error || 'Gagal menyimpan perubahan nama/deskripsi tabel'
+      });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   const filteredTables = tables.filter(t => 
     t.table_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (t.description && t.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -528,6 +576,14 @@ export const FileUploadView: React.FC = () => {
                       </button>
 
                       <button
+                        onClick={() => handleOpenEditModal(t)}
+                        className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 rounded-lg transition-colors"
+                        title="Edit Nama Tabel & Deskripsi"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+
+                      <button
                         onClick={() => handleDeleteTable(t.table_name)}
                         className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded-lg transition-colors"
                         title="Hapus Tabel"
@@ -666,6 +722,87 @@ export const FileUploadView: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit Tabel & Deskripsi */}
+      {editModalOpen && editingTable && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-bg-panel border border-border-main rounded-2xl w-full max-w-md flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border-main bg-bg-editor">
+              <div className="flex items-center gap-2">
+                <Edit2 className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-sm font-bold text-text-main">
+                  Edit Nama Tabel & Deskripsi
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditModalOpen(false)}
+                className="p-1 text-text-muted hover:text-text-main rounded-lg hover:bg-bg-hover transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-text-muted mb-1.5">
+                  Nama Tabel Database (<code className="text-emerald-400 font-mono">sch_excel.&lt;nama_tabel&gt;</code>)
+                </label>
+                <input
+                  type="text"
+                  value={editTableName}
+                  onChange={(e) => setEditTableName(e.target.value)}
+                  placeholder="Contoh: data_penjualan_20260723"
+                  className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500 text-text-main placeholder-text-muted/50"
+                  required
+                />
+                <p className="text-[11px] text-text-muted mt-1">
+                  * Mengubah nama tabel akan memperbarui identifier fisik tabel di database PostgreSQL.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-text-muted mb-1.5">
+                  Deskripsi Tabel
+                </label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Keterangan singkat mengenai isi tabel..."
+                  rows={3}
+                  className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-emerald-500 text-text-main placeholder-text-muted/50 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-main">
+                <button
+                  type="button"
+                  onClick={() => setEditModalOpen(false)}
+                  className="px-3 py-2 text-xs font-medium text-text-muted hover:text-text-main hover:bg-bg-hover rounded-lg transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit || !editTableName.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {isSavingEdit ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Simpan Perubahan
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
