@@ -94,19 +94,6 @@ services:
       resources:
         limits:
           memory: 256M
-    ports:
-      - target: 2181
-        published: 2181
-        protocol: tcp
-        mode: ingress
-      - target: 2888
-        published: 2888
-        protocol: tcp
-        mode: ingress
-      - target: 3888
-        published: 3888
-        protocol: tcp
-        mode: ingress
     volumes:
       - zookeeper_data:/zookeeper/data
       - zookeeper_txns:/zookeeper/txns
