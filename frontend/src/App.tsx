@@ -6,7 +6,7 @@ import { DataCompareView } from './components/DataCompareView';
 import { SchemaCompareView } from './components/SchemaCompareView';
 import { QueryWorkspace } from './components/QueryWorkspace';
 import { TableDetailPanel } from './components/TableDetailPanel';
-import { ExcelCompareView } from './components/ExcelCompareView';
+import { FileUploadView } from './components/FileUploadView';
 import { ScheduleManagerView } from './components/ScheduleManagerView';
 import { DataWarehouseView } from './components/DataWarehouseView';
 import { ApiBuilderView } from './components/ApiBuilderView';
@@ -84,7 +84,7 @@ function App() {
     { id: 'data' as const, label: 'Data Compare', icon: GitCompareArrows, desc: 'Compare row data between databases' },
     { id: 'schema' as const, label: 'Schema Compare', icon: Table2, desc: 'Compare table structures' },
     { id: 'query' as const, label: 'Query Workspace', icon: Code2, desc: 'Run custom SQL queries and compare results' },
-    { id: 'excel' as const, label: 'Excel Compare', icon: FileSpreadsheet, desc: 'Compare DB table against an uploaded Excel file' },
+    { id: 'file_upload' as const, label: 'Upload File', icon: FileSpreadsheet, desc: 'Upload Excel & CSV files to database (sch_excel schema)' },
     { id: 'schedule' as const, label: 'Scheduled Jobs', icon: CalendarClock, desc: 'Automated data comparison tasks' },
     { id: 'dwh' as const, label: 'Data Warehouse', icon: Database, desc: 'Configure ClickHouse replication via Debezium & Kafka' },
     { id: 'api_builder' as const, label: 'API Builder', icon: Webhook, desc: 'Build and deploy dynamic APIs from SQL queries' },
@@ -220,8 +220,8 @@ function App() {
             <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'query' && "hidden")}>
               <QueryWorkspace />
             </div>
-            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'excel' && "hidden")}>
-              <ExcelCompareView />
+            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'file_upload' && "hidden")}>
+              <FileUploadView />
             </div>
             <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'schedule' && "hidden")}>
               <ScheduleManagerView />
@@ -259,8 +259,8 @@ function App() {
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'query' && "hidden")}>
                   <QueryWorkspace />
                 </div>
-                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'excel' && "hidden")}>
-                  <ExcelCompareView />
+                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'file_upload' && "hidden")}>
+                  <FileUploadView />
                 </div>
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'schedule' && "hidden")}>
                   <ScheduleManagerView />
