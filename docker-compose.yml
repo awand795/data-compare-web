@@ -17,7 +17,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
       - KAFKA_BOOTSTRAP_SERVERS=tasks.kafka:9092
-      - DEBEZIUM_BASE_URL=http://debezium:8083
+      - DEBEZIUM_BASE_URL=http://tasks.debezium:8083
     ports:
       - target: 8081
         published: 5300
