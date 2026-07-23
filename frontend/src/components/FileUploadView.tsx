@@ -504,11 +504,9 @@ export const FileUploadView: React.FC = () => {
                         </h3>
                       </div>
 
-                      {t.description && (
-                        <p className="text-xs text-text-main/80 mt-1 line-clamp-1">
-                          {t.description}
-                        </p>
-                      )}
+                      <p className="text-xs text-text-main/70 mt-1.5 line-clamp-2 leading-relaxed">
+                        {t.description || <span className="italic text-text-muted/50">Tidak ada deskripsi</span>}
+                      </p>
 
                       <div className="flex items-center gap-3 text-[11px] text-text-muted mt-1.5">
                         <span>File: <strong className="text-text-main/70">{t.original_filename || '-'}</strong></span>
