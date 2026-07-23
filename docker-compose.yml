@@ -122,7 +122,7 @@ services:
     depends_on:
       - zookeeper
     healthcheck:
-      test: ["CMD-SHELL", "/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9092' || exit 1"]
       interval: 30s
       timeout: 15s
       retries: 5
