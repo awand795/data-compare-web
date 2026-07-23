@@ -19,7 +19,7 @@ ENTRYPOINT ["sh", "-c", "exec java \
   -XX:+UseContainerSupport \
   -XX:MaxRAMPercentage=40.0 \
   -XX:InitialRAMPercentage=15.0 \
-  -XX:MaxMetaspaceSize=70m \
+  -XX:MaxMetaspaceSize=256m \
   -XX:+UseG1GC \
   -XX:G1HeapRegionSize=1m \
   -XX:MaxGCPauseMillis=150 \
