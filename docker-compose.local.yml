@@ -14,6 +14,7 @@ services:
       DB_NAME: data_setting_sync
       DB_USER: postgres
       DB_PASSWORD: ${INTERNAL_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     ports:
       - target: 8081
         published: 5300
@@ -108,6 +109,9 @@ services:
       - zookeeper
     environment:
       - ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - HOST_NAME=kafka
     volumes:
       - kafka_data:/var/lib/kafka/data
     networks:
@@ -117,7 +121,9 @@ services:
         condition: on-failure
 
   debezium:
-    image: quay.io/debezium/connect:2.4
+    image: awandadarkotech/debezium-clickhouse:latest
+    build:
+      context: ./debezium-custom
     container_name: darkosync-debezium
     ports:
       - target: 8083

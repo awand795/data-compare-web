@@ -13,6 +13,7 @@ import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import javax.sql.DataSource;
@@ -42,6 +43,9 @@ public class DataWarehouseService {
     private final RestTemplate restTemplate;
     private static final String DEBEZIUM_BASE_URL = "http://debezium:8083";
     private static final String DEBEZIUM_URL = DEBEZIUM_BASE_URL + "/connectors";
+    private static final String KAFKA_BOOTSTRAP_SERVERS = System.getenv()
+            .getOrDefault("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092");
+    private static final String KAFKA_CONNECT_OFFSET_TOPIC = "my_connect_offsets";
 
     public DataWarehouseService() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -76,8 +80,8 @@ public class DataWarehouseService {
      * Waits until the Debezium Kafka Connect REST API is up AND connected to the Kafka
      * cluster. During a Kafka/Zookeeper crash-loop the REST port may accept connections
      * while the worker is still failing, which caused deploys to hang with "Read timed out".
-     * We probe GET /connectors (a cheap call that only succeeds once the herder is running)
-     * and retry with backoff until the API responds or the timeout elapses.
+     * The Connect REST listener can return 200 before its herder can use Kafka, so this
+     * verifies the internal offset topic with Kafka's AdminClient as well.
      *
      * @return true if Debezium became ready, false otherwise.
      */
@@ -88,9 +92,8 @@ public class DataWarehouseService {
         while (System.currentTimeMillis() < deadline) {
             attempt++;
             try {
-                // GET /connectors returns 200 only when the Connect herder is fully started
-                // and able to reach Kafka. If Kafka is unreachable this call fails fast/times out.
                 restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+                verifyKafkaConnectStorage();
                 sendLog(emitter, "Debezium is ready (attempt " + attempt + ").");
                 return true;
             } catch (Exception e) {
@@ -107,6 +110,27 @@ public class DataWarehouseService {
         sendLog(emitter, "Debezium did not become ready within " + maxWaitSeconds + "s"
                 + (lastError != null ? ": " + lastError.getMessage() : "") + ".");
         return false;
+    }
+
+    private void verifyKafkaConnectStorage() throws Exception {
+        Properties properties = new Properties();
+        properties.put("bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS);
+        properties.put("request.timeout.ms", "5000");
+        properties.put("default.api.timeout.ms", "10000");
+        properties.put("retries", "0");
+
+        try (AdminClient admin = AdminClient.create(properties)) {
+            Set<String> topics = admin.listTopics().names().get(10, TimeUnit.SECONDS);
+            if (!topics.contains(KAFKA_CONNECT_OFFSET_TOPIC)) {
+                throw new IllegalStateException("Kafka Connect offset topic '"
+                        + KAFKA_CONNECT_OFFSET_TOPIC + "' is not ready");
+            }
+
+            TopicPartition offsetPartition = new TopicPartition(KAFKA_CONNECT_OFFSET_TOPIC, 0);
+            admin.listOffsets(Map.of(offsetPartition, OffsetSpec.latest()))
+                    .all()
+                    .get(10, TimeUnit.SECONDS);
+        }
     }
 
     /**

@@ -16,6 +16,7 @@ services:
       - DB_NAME=data_setting_sync
       - DB_USER=postgres
       - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     ports:
       - target: 8081
         published: 5300
@@ -122,7 +123,7 @@ services:
     depends_on:
       - zookeeper
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9092' || exit 1"]
+      test: ["CMD-SHELL", "timeout 15 /kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1"]
       interval: 30s
       timeout: 15s
       retries: 5
@@ -132,8 +133,8 @@ services:
       - MALLOC_ARENA_MAX=2
       - ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://tasks.darkosync_kafka:9092
-      - HOST_NAME=tasks.darkosync_kafka
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - HOST_NAME=kafka
       - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
       - KAFKA_LOG_RETENTION_HOURS=24
       - KAFKA_LOG_RETENTION_BYTES=1073741824
@@ -144,6 +145,8 @@ services:
 
   debezium:
     image: awandadarkotech/debezium-clickhouse:latest
+    build:
+      context: ./debezium-custom
     container_name: darkosync-debezium
     ports:
       - target: 8083
@@ -151,7 +154,7 @@ services:
         protocol: tcp
         mode: ingress
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null && timeout 15 /kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic my_connect_offsets >/dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -170,7 +173,7 @@ services:
     environment:
       - JAVA_OPTS=-Xmx512m -Xms256m
       - MALLOC_ARENA_MAX=2
-      - BOOTSTRAP_SERVERS=tasks.darkosync_kafka:9092
+      - BOOTSTRAP_SERVERS=kafka:9092
       - GROUP_ID=1
       - CONFIG_STORAGE_TOPIC=my_connect_configs
       - OFFSET_STORAGE_TOPIC=my_connect_offsets
