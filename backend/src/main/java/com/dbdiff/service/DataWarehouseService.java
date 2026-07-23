@@ -563,6 +563,14 @@ public class DataWarehouseService {
                 // Force a fresh snapshot by using a unique slot name for every deployment
                 String safeSlotName = sourceConnectorName.replaceAll("[^a-z0-9_]", "_").toLowerCase();
                 sourceConfig.put("slot.name", safeSlotName);
+                sourceConfig.put("publication.name", "pub_" + safeSlotName);
+                sourceConfig.put("publication.autocreate.mode", "filtered");
+                String sslMode = request.getSourceConnection().getSslMode();
+                if (sslMode != null && !sslMode.trim().isEmpty()) {
+                    sourceConfig.put("database.sslmode", sslMode.trim());
+                } else {
+                    sourceConfig.put("database.sslmode", "disable");
+                }
             } else if ("mysql".equalsIgnoreCase(request.getSourceConnection().getType())) {
                 sourceConfig.put("connector.class", "io.debezium.connector.mysql.MySqlConnector");
             } else {
