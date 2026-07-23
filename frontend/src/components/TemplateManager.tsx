@@ -34,31 +34,44 @@ export const TemplateManager: React.FC<Props> = ({ appMode, children }) => {
 
   const handleLoad = (t: Template) => {
     setActiveTemplateId(t.id);
-    setSourceConnectionId(t.sourceConnectionId);
-    setTargetConnectionId(t.targetConnectionId);
+    const srcConnId = t.sourceConnectionId ?? (t as any).source_connection_id ?? null;
+    const tgtConnId = t.targetConnectionId ?? (t as any).target_connection_id ?? null;
+    
+    useAppStore.setState({
+      sourceConnectionId: srcConnId,
+      targetConnectionId: tgtConnId,
+      focusedMappingId: null,
+    });
     
     if (appMode === 'data') {
       clearTableMappings();
       clearDiffResults();
-      if (t.tableMappings) {
-        t.tableMappings.forEach(mapping => {
+      const mappings = t.tableMappings || (t as any).table_mappings;
+      if (mappings && Array.isArray(mappings)) {
+        mappings.forEach(mapping => {
           if (!mapping.id) mapping.id = 'mapping_' + Date.now() + Math.random().toString(36).substring(2, 9);
           addTableMapping(mapping);
         });
       }
     } else if (appMode === 'query') {
-      useAppStore.setState({ focusedMappingId: null });
-      setCustomQuerySource(t.customQuerySource || '');
-      setCustomQueryTarget(t.customQueryTarget || '');
-      let pks = t.queryPrimaryKeys || '';
-      if (!pks && t.customQuerySource) {
-        const autoPks = detectPrimaryKeysFromQuery(t.customQuerySource);
+      const srcQuery = t.customQuerySource ?? (t as any).custom_query_source ?? '';
+      const tgtQuery = t.customQueryTarget ?? (t as any).custom_query_target ?? '';
+      let pks = t.queryPrimaryKeys ?? (t as any).query_primary_keys ?? '';
+
+      if (!pks && srcQuery) {
+        const autoPks = detectPrimaryKeysFromQuery(srcQuery);
         if (autoPks && autoPks.length > 0) {
           pks = autoPks.join(', ');
         }
       }
-      setQueryPrimaryKeys(pks);
+
+      useAppStore.setState({
+        customQuerySource: srcQuery,
+        customQueryTarget: tgtQuery,
+        queryPrimaryKeys: pks
+      });
     }
+
     triggerWorkspaceReset();
     setShowLoadModal(false);
     useAppStore.getState().addToast({ type: 'success', title: 'Template Loaded', message: `Loaded template: ${t.name}` });

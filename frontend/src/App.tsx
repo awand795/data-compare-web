@@ -61,10 +61,19 @@ function App() {
         if (res.data && Array.isArray(res.data)) {
           const parsed = res.data.map((t: any) => {
             let parsedMappings = undefined;
-            if (t.tableMappings) {
-              try { parsedMappings = JSON.parse(t.tableMappings); } catch(e) {}
+            const mappingsRaw = t.tableMappings || t.table_mappings;
+            if (mappingsRaw) {
+              try { parsedMappings = typeof mappingsRaw === 'string' ? JSON.parse(mappingsRaw) : mappingsRaw; } catch(e) {}
             }
-            return { ...t, tableMappings: parsedMappings };
+            return { 
+              ...t, 
+              sourceConnectionId: t.sourceConnectionId ?? t.source_connection_id ?? null,
+              targetConnectionId: t.targetConnectionId ?? t.target_connection_id ?? null,
+              tableMappings: parsedMappings,
+              customQuerySource: t.customQuerySource ?? t.custom_query_source ?? '',
+              customQueryTarget: t.customQueryTarget ?? t.custom_query_target ?? '',
+              queryPrimaryKeys: t.queryPrimaryKeys ?? t.query_primary_keys ?? '',
+            };
           });
           useAppStore.getState().setTemplates(parsed);
         }
