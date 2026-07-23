@@ -16,8 +16,8 @@ services:
       - DB_NAME=data_setting_sync
       - DB_USER=postgres
       - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - DEBEZIUM_BASE_URL=http://debezium:8083
+      - KAFKA_BOOTSTRAP_SERVERS=tasks.kafka:9092
+      - DEBEZIUM_BASE_URL=http://tasks.debezium:8083
     ports:
       - target: 8081
         published: 5300
@@ -105,8 +105,6 @@ services:
 
   kafka:
     image: quay.io/debezium/kafka:2.4
-    extra_hosts:
-      - "kafka:127.0.0.1"
     deploy:
       resources:
         limits:
@@ -135,7 +133,7 @@ services:
       - MALLOC_ARENA_MAX=2
       - ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://tasks.kafka:9092
       - KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS=6000
       - KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS=6000
       - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
@@ -156,9 +154,6 @@ services:
     build:
       context: ./debezium-custom
     container_name: darkosync-debezium
-    extra_hosts:
-      - "debezium:127.0.0.1"
-      - "darkosync_debezium:127.0.0.1"
     ports:
       - target: 8083
         published: 8083
@@ -184,7 +179,7 @@ services:
     environment:
       - JAVA_OPTS=-Xmx512m -Xms256m
       - MALLOC_ARENA_MAX=2
-      - BOOTSTRAP_SERVERS=kafka:9092
+      - BOOTSTRAP_SERVERS=tasks.kafka:9092
       - GROUP_ID=1
       - CONFIG_STORAGE_TOPIC=my_connect_configs
       - OFFSET_STORAGE_TOPIC=my_connect_offsets
