@@ -121,9 +121,9 @@ services:
           memory: 768M
       restart_policy:
         condition: any
-        delay: 15s
-        max_attempts: 5
-        window: 120s
+        delay: 20s
+        max_attempts: 10
+        window: 180s
       update_config:
         parallelism: 1
         delay: 10s
@@ -133,11 +133,11 @@ services:
     depends_on:
       - zookeeper
     healthcheck:
-      test: ["CMD-SHELL", "cat /proc/net/tcp | grep -q 2384 || exit 1"]
+      test: ["CMD-SHELL", "/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1"]
       interval: 30s
-      timeout: 10s
+      timeout: 15s
       retries: 5
-      start_period: 120s
+      start_period: 180s
     environment:
       - KAFKA_HEAP_OPTS=-Xmx384m -Xms256m
       - MALLOC_ARENA_MAX=2
@@ -173,9 +173,9 @@ services:
           memory: 1024M
       restart_policy:
         condition: any
-        delay: 30s
-        max_attempts: 10
-        window: 300s
+        delay: 20s
+        max_attempts: 20
+        window: 600s
     depends_on:
       - kafka
     environment:
