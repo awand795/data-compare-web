@@ -106,11 +106,7 @@ services:
 
   kafka:
     image: quay.io/debezium/kafka:2.4
-    container_name: darkosync-kafka
-    extra_hosts:
-      - "kafka-broker:127.0.0.1"
     deploy:
-      endpoint_mode: dnsrr
       resources:
         limits:
           memory: 768M
