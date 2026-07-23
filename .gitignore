@@ -43,3 +43,6 @@ erp-docker-compose.yml
 erp_guidance_backup.sql
 erp_guidance_full_backup.tar.gz
 default.conf
+
+# Custom scripts
+script.md
