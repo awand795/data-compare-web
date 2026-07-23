@@ -116,11 +116,23 @@ services:
     image: quay.io/debezium/kafka:2.4
     container_name: darkosync-kafka
     deploy:
+      endpoint_mode: dnsrr
       resources:
         limits:
           memory: 768M
+      restart_policy:
+        condition: any
+        delay: 15s
+        max_attempts: 5
+        window: 120s
     depends_on:
       - zookeeper
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/net/tcp | grep -q 1F90 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     environment:
       - KAFKA_HEAP_OPTS=-Xmx384m -Xms256m
       - MALLOC_ARENA_MAX=2
@@ -144,20 +156,33 @@ services:
         published: 8083
         protocol: tcp
         mode: ingress
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
     deploy:
       resources:
         limits:
           memory: 1024M
+      restart_policy:
+        condition: any
+        delay: 30s
+        max_attempts: 10
+        window: 300s
     depends_on:
       - kafka
     environment:
-      - JAVA_OPTS=-Xmx384m -Xms256m
+      - JAVA_OPTS=-Xmx512m -Xms256m
       - MALLOC_ARENA_MAX=2
       - BOOTSTRAP_SERVERS=kafka:9092
       - GROUP_ID=1
       - CONFIG_STORAGE_TOPIC=my_connect_configs
       - OFFSET_STORAGE_TOPIC=my_connect_offsets
       - STATUS_STORAGE_TOPIC=my_connect_statuses
+      - CONNECT_ADMIN_REQUEST_TIMEOUT_MS=60000
+      - CONNECT_CONNECTIONS_MAX_IDLE_MS=600000
     networks:
       - darkosync-network
 
