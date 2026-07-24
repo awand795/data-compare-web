@@ -286,13 +286,13 @@ public class ApiShareController {
             </div>
         """;
 
-        return """
+        String htmlTemplate = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Spec - %s</title>
+    <title>API Spec - {{TITLE_NAME}}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -306,7 +306,7 @@ public class ApiShareController {
             --text-muted: #94a3b8;
             --primary: #3b82f6;
             --primary-glow: rgba(59, 130, 246, 0.15);
-            --method-color: %s;
+            --method-color: {{METHOD_COLOR}};
         }
         
         body {
@@ -316,29 +316,36 @@ public class ApiShareController {
             margin: 0;
             padding: 0;
             line-height: 1.6;
-            -webkit-font-smoothing: antialiased;
         }
         
         .container {
             max-width: 900px;
             margin: 0 auto;
-            padding: 2rem;
+            padding: 3rem 1.5rem;
         }
         
-        /* Header */
+        .banner {
+            background: rgba(234, 179, 8, 0.1);
+            border: 1px solid rgba(234, 179, 8, 0.2);
+            color: #fde047;
+            padding: 1rem 1.25rem;
+            border-radius: 12px;
+            margin-bottom: 2.5rem;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
         .header {
             margin-bottom: 3rem;
-            padding-bottom: 2rem;
-            border-bottom: 1px solid var(--border);
         }
         
         .header h1 {
-            font-size: 2.5rem;
+            font-size: 2.25rem;
             font-weight: 800;
             margin: 0 0 0.5rem 0;
-            background: linear-gradient(to right, #fff, #94a3b8);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.025em;
         }
         
         .header p {
@@ -347,288 +354,358 @@ public class ApiShareController {
             font-size: 1.1rem;
         }
         
-        /* Warning Banner */
-        .banner {
-            background-color: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.2);
-            color: #fcd34d;
-            padding: 1rem 1.5rem;
-            border-radius: 8px;
-            margin-bottom: 2rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            font-size: 0.95rem;
-        }
-        
         .section {
             background-color: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: 16px;
             padding: 2rem;
             margin-bottom: 2rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
         }
         
         .section h2 {
-            margin-top: 0;
-            font-size: 1.5rem;
+            font-size: 1.1rem;
             font-weight: 700;
-            margin-bottom: 1.5rem;
+            margin: 0 0 1.25rem 0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: 0.5rem;
         }
         
-        /* URL Display */
         .url-box {
             display: flex;
             align-items: center;
-            background: #000;
+            background-color: #0b1120;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 10px;
             overflow: hidden;
         }
         
         .method {
             background-color: var(--method-color);
-            color: white;
-            font-weight: 700;
-            padding: 1rem 1.5rem;
-            font-size: 0.9rem;
+            color: #ffffff;
+            font-weight: 800;
+            font-size: 0.85rem;
+            padding: 0.75rem 1.25rem;
             letter-spacing: 0.05em;
         }
         
         .url {
             font-family: 'JetBrains Mono', monospace;
-            padding: 1rem 1.5rem;
-            flex: 1;
-            color: #e2e8f0;
+            font-size: 0.95rem;
+            padding: 0.75rem 1.25rem;
+            flex-grow: 1;
             overflow-x: auto;
+            white-space: nowrap;
+            color: #38bdf8;
+        }
+        
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.35rem 0.85rem;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+        
+        .badge.public {
+            background-color: rgba(34, 197, 94, 0.1);
+            color: #4ade80;
+            border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+        
+        .badge.auth {
+            background-color: rgba(245, 158, 11, 0.1);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+        
+        .auth-card {
+            background-color: rgba(245, 158, 11, 0.05);
+            border: 1px solid rgba(245, 158, 11, 0.15);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        
+        .auth-card p {
+            margin: 0 0 1rem 0;
+            font-size: 0.9rem;
+            color: #fbbf24;
+        }
+        
+        .auth-code {
+            display: flex;
+            align-items: center;
+            background-color: #0b1120;
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .auth-code code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            padding: 0.75rem 1rem;
+            color: #fde047;
+            flex-grow: 1;
+            overflow-x: auto;
+        }
+        
+        button {
+            background-color: #1e293b;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
             white-space: nowrap;
         }
         
-        /* Buttons */
-        button {
-            background: var(--bg-card-hover);
-            border: 1px solid var(--border);
-            color: var(--text-main);
-            cursor: pointer;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            font-family: 'Inter', sans-serif;
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-        
         button:hover {
-            background: #2dd4bf;
-            color: #000;
-            border-color: #2dd4bf;
+            background-color: #334155;
+            border-color: #475569;
         }
         
-        .url-box button {
-            border: none;
-            border-left: 1px solid var(--border);
-            border-radius: 0;
-            padding: 1rem 1.5rem;
-            height: 100%;
-            background: transparent;
-        }
-        
-        .url-box button:hover {
-            background: rgba(255,255,255,0.1);
-            color: white;
-        }
-        
-        /* Tables */
         .table-container {
-            overflow-x: auto;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
+            overflow: hidden;
         }
         
         table {
             width: 100%;
             border-collapse: collapse;
             text-align: left;
-        }
-        
-        th, td {
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
         }
         
         th {
-            background: rgba(0,0,0,0.2);
+            background-color: #0b1120;
+            padding: 0.85rem 1.25rem;
             font-weight: 600;
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
             color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+        
+        td {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
         }
         
         tr:last-child td {
             border-bottom: none;
         }
         
-        tr.pagination-row {
-            background: rgba(168, 85, 247, 0.05);
+        td code {
+            font-family: 'JetBrains Mono', monospace;
+            color: #38bdf8;
+            background-color: rgba(56, 189, 248, 0.1);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
         }
         
-        /* Badges */
         .req-badge {
-            font-size: 0.75rem;
-            padding: 0.25rem 0.6rem;
-            border-radius: 999px;
-            font-weight: 600;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
             text-transform: uppercase;
         }
         
         .req-badge.required {
-            background: rgba(245, 158, 11, 0.1);
-            color: #fbbf24;
-            border: 1px solid rgba(245, 158, 11, 0.2);
+            background-color: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.2);
         }
         
         .req-badge.optional {
-            background: rgba(34, 197, 94, 0.1);
+            background-color: rgba(34, 197, 94, 0.1);
             color: #4ade80;
             border: 1px solid rgba(34, 197, 94, 0.2);
         }
         
-        .badge {
-            display: inline-block;
-            padding: 0.35rem 1rem;
-            border-radius: 9999px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
-        }
-        
-        .badge.public { background: rgba(34, 197, 94, 0.1); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.2); }
-        .badge.auth { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.2); }
-        
-        /* Code & Pre */
-        pre {
-            background-color: #000;
-            padding: 1.5rem;
-            border-radius: 8px;
-            overflow-x: auto;
-            margin: 0;
-            border: 1px solid var(--border);
-        }
-        
-        code {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9rem;
-        }
-        
-        .copy-box {
-            display: flex;
-            align-items: center;
-            background: #000;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 0.5rem 0.5rem 0.5rem 1rem;
-            justify-content: space-between;
-        }
-        
-        .copy-box code { color: #f59e0b; }
-        
-        /* Info Cards */
-        .info-card {
-            display: flex;
-            gap: 1.25rem;
-            padding: 1.5rem;
-            border-radius: 8px;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--border);
-            margin-bottom: 1.5rem;
-        }
-        
-        .info-card.warning { border-color: rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.05); }
-        .info-card.success { border-color: rgba(34, 197, 94, 0.3); background: rgba(34, 197, 94, 0.05); }
-        
-        .info-card h4 { margin: 0 0 0.5rem 0; font-size: 1.1rem; }
-        .info-card p { margin: 0; color: var(--text-muted); }
-        .info-icon { font-size: 1.5rem; }
-        
-        /* Response Cards */
-        .response-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
-        .res-card { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-        .res-header { padding: 0.75rem 1rem; background: var(--bg-card-hover); border-bottom: 1px solid var(--border); }
-        .status-code { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 700; color: #4ade80; }
-        .status-code.err { color: #f87171; }
-        .res-card pre { border: none; border-radius: 0; }
-        
-        @media (max-width: 768px) {
-            .response-cards { grid-template-columns: 1fr; }
-            .url-box { flex-direction: column; align-items: stretch; }
-            .url-box button { border-left: none; border-top: 1px solid var(--border); }
-        }
-        
         .capitalize { text-transform: capitalize; }
         .mono { font-family: 'JetBrains Mono', monospace; }
-        .alias { color: #a855f7; font-size: 0.8rem; }
-        .w-full { width: 100%; }
-        .mt-3 { margin-top: 0.75rem; }
+        .text-muted { color: var(--text-muted); }
+        
+        .pagination-row {
+            background-color: rgba(59, 130, 246, 0.03);
+        }
+        
+        .pagination-row td code {
+            color: #a855f7;
+            background-color: rgba(168, 85, 247, 0.1);
+        }
+        
+        .alias {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        
+        .info-card {
+            background-color: rgba(59, 130, 246, 0.05);
+            border: 1px solid rgba(59, 130, 246, 0.15);
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+        
+        .info-icon {
+            font-size: 1.5rem;
+            line-height: 1;
+        }
+        
+        .info-card h4 {
+            margin: 0 0 0.5rem 0;
+            color: #60a5fa;
+            font-size: 0.95rem;
+        }
+        
+        pre {
+            background-color: #0b1120;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin: 0;
+            overflow-x: auto;
+        }
+        
+        pre code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: #e2e8f0;
+        }
+        
+        .response-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            .response-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .response-box {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .response-header {
+            padding: 0.75rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .response-box.success .response-header {
+            background-color: rgba(34, 197, 94, 0.1);
+            color: #4ade80;
+            border-bottom: 1px solid rgba(34, 197, 94, 0.2);
+        }
+        
+        .response-box.error .response-header {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+        }
+        
+        .response-body {
+            padding: 1rem;
+            background-color: #0b1120;
+        }
+        
+        .response-body pre {
+            border: none;
+            padding: 0;
+            background: transparent;
+        }
         
         .toast {
             position: fixed;
             bottom: 2rem;
             right: 2rem;
-            background: #22c55e;
-            color: #000;
-            padding: 1rem 2rem;
-            border-radius: 8px;
+            background-color: #3b82f6;
+            color: #ffffff;
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            font-size: 0.9rem;
             font-weight: 600;
-            transform: translateY(150%);
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 50;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5);
+            opacity: 0;
+            transform: translateY(100%);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
         }
         
-        .toast.show { transform: translateY(0); }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .w-full { width: 100%; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="banner">
             <div>⚠️</div>
-            <div><strong>One-time share link.</strong> This documentation will expire and become inaccessible once you close or refresh this page. Save any necessary information now.</div>
+            <div><strong>One-time share link.</strong> This documentation link is for single-use and will expire once opened. Save any necessary information now.</div>
         </div>
         
         <div class="header">
-            <h1>%s</h1>
+            <h1>{{TITLE_NAME}}</h1>
             <p>API Specification Documentation</p>
         </div>
         
         <div class="section">
-            %s
+            {{AUTH_BADGE}}
             <h2>Endpoint Configuration</h2>
             <div class="url-box">
-                <div class="method">%s</div>
-                <div class="url" id="endpointUrl">%s</div>
+                <div class="method">{{METHOD_NAME}}</div>
+                <div class="url" id="endpointUrl">{{FULL_URL}}</div>
                 <button onclick="copyText('endpointUrl')">Copy URL</button>
             </div>
         </div>
         
         <div class="section">
             <h2>Authentication</h2>
-            %s
+            {{AUTH_HTML}}
         </div>
         
         <div class="section">
             <h2>Parameters</h2>
-            %s
-            %s
+            {{PARAMS_TABLE_HTML}}
+            {{PAGINATION_HTML}}
         </div>
         
         <div class="section">
             <h2>cURL Example</h2>
             <div style="position: relative;">
-                <pre><code id="curlCode">%s</code></pre>
+                <pre><code id="curlCode">{{CURL_CODE}}</code></pre>
                 <button onclick="copyText('curlCode')" style="position: absolute; top: 1rem; right: 1rem;">Copy</button>
             </div>
         </div>
@@ -636,7 +713,7 @@ public class ApiShareController {
         <div class="section">
             <h2>Response Format</h2>
             <p style="color: var(--text-muted); margin-bottom: 1.5rem;">The API responds with <code>application/json</code> payloads.</p>
-            %s
+            {{RESPONSE_HTML}}
         </div>
     </div>
 
@@ -645,11 +722,7 @@ public class ApiShareController {
     <script>
         function copyText(elementId) {
             const text = document.getElementById(elementId).innerText;
-            navigator.clipboard.writeText(text).then(() => {
-                const toast = document.getElementById('toast');
-                toast.classList.add('show');
-                setTimeout(() => toast.classList.remove('show'), 3000);
-            }).catch(err => {
+            if (!navigator.clipboard) {
                 const textArea = document.createElement("textarea");
                 textArea.value = text;
                 document.body.appendChild(textArea);
@@ -663,22 +736,31 @@ public class ApiShareController {
                     console.error('Failed to copy', e);
                 }
                 document.body.removeChild(textArea);
+                return;
+            }
+            navigator.clipboard.writeText(text).then(() => {
+                const toast = document.getElementById('toast');
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 3000);
+            }).catch(err => {
+                console.error('Failed to copy', err);
             });
         }
     </script>
 </body>
 </html>
-""".formatted(
-            endpoint.getName(),
-            methodColor,
-            authBadge,
-            endpoint.getMethod(),
-            fullUrl,
-            authHtml,
-            paginationHtml,
-            paramsTableHtml,
-            curlCmd.toString(),
-            responseHtml
-        );
+""";
+
+        return htmlTemplate
+                .replace("{{TITLE_NAME}}", endpoint.getName())
+                .replace("{{METHOD_COLOR}}", methodColor)
+                .replace("{{AUTH_BADGE}}", authBadge)
+                .replace("{{METHOD_NAME}}", endpoint.getMethod())
+                .replace("{{FULL_URL}}", fullUrl)
+                .replace("{{AUTH_HTML}}", authHtml)
+                .replace("{{PARAMS_TABLE_HTML}}", paramsTableHtml)
+                .replace("{{PAGINATION_HTML}}", paginationHtml)
+                .replace("{{CURL_CODE}}", curlCmd.toString())
+                .replace("{{RESPONSE_HTML}}", responseHtml);
     }
 }
