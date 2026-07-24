@@ -929,20 +929,21 @@ public class DataWarehouseService {
                 Select select = (Select) stmt;
                 net.sf.jsqlparser.statement.select.PlainSelect plain = select.getPlainSelect();
                 if (plain != null) {
-                    Map<String, String> aliasToTable = new HashMap<>();
-                    String defaultTable = null;
+                    Map<String, String> aliasToTable = new LinkedHashMap<>();
+                    List<String> orderedAliases = new ArrayList<>();
+
                     if (plain.getFromItem() instanceof net.sf.jsqlparser.schema.Table) {
                         net.sf.jsqlparser.schema.Table t = (net.sf.jsqlparser.schema.Table) plain.getFromItem();
                         String tableName = t.getName();
                         if (t.getSchemaName() != null) {
                             tableName = t.getSchemaName() + "." + tableName;
                         }
-                        defaultTable = tableName;
-                        if (t.getAlias() != null) {
-                            aliasToTable.put(t.getAlias().getName().toLowerCase(), tableName);
-                        } else {
-                            aliasToTable.put(t.getName().toLowerCase(), tableName);
+                        String aliasName = t.getAlias() != null ? t.getAlias().getName() : t.getName();
+                        aliasToTable.put(aliasName.toLowerCase(), tableName);
+                        if (t.getSchemaName() != null) {
+                            aliasToTable.put(t.getFullyQualifiedName().toLowerCase(), tableName);
                         }
+                        orderedAliases.add(aliasName);
                     }
                     if (plain.getJoins() != null) {
                         for (Join j : plain.getJoins()) {
@@ -952,11 +953,13 @@ public class DataWarehouseService {
                                 if (t.getSchemaName() != null) {
                                     tableName = t.getSchemaName() + "." + tableName;
                                 }
-                                if (defaultTable == null) defaultTable = tableName;
-                                if (t.getAlias() != null) {
-                                    aliasToTable.put(t.getAlias().getName().toLowerCase(), tableName);
-                                } else {
-                                    aliasToTable.put(t.getName().toLowerCase(), tableName);
+                                String aliasName = t.getAlias() != null ? t.getAlias().getName() : t.getName();
+                                aliasToTable.put(aliasName.toLowerCase(), tableName);
+                                if (t.getSchemaName() != null) {
+                                    aliasToTable.put(t.getFullyQualifiedName().toLowerCase(), tableName);
+                                }
+                                if (!orderedAliases.contains(aliasName)) {
+                                    orderedAliases.add(aliasName);
                                 }
                             }
                         }
@@ -968,14 +971,17 @@ public class DataWarehouseService {
                     for (net.sf.jsqlparser.statement.select.SelectItem item : plain.getSelectItems()) {
                         if (item.getExpression() instanceof net.sf.jsqlparser.statement.select.AllTableColumns) {
                             net.sf.jsqlparser.statement.select.AllTableColumns atc = (net.sf.jsqlparser.statement.select.AllTableColumns) item.getExpression();
-                            String alias = atc.getTable().getName();
+                            String alias = atc.getTable().getFullyQualifiedName();
                             String physicalTable = aliasToTable.get(alias.toLowerCase());
+                            if (physicalTable == null) {
+                                physicalTable = aliasToTable.get(atc.getTable().getName().toLowerCase());
+                            }
                             if (physicalTable != null) {
                                 List<String> cols = getColumnsForTable(conn, physicalTable, sourceConn);
                                 if (!cols.isEmpty()) {
                                     for (String col : cols) {
                                         net.sf.jsqlparser.statement.select.SelectItem newItem = new net.sf.jsqlparser.statement.select.SelectItem();
-                                        net.sf.jsqlparser.schema.Column c = new net.sf.jsqlparser.schema.Column(new net.sf.jsqlparser.schema.Table(alias), col);
+                                        net.sf.jsqlparser.schema.Column c = new net.sf.jsqlparser.schema.Column(new net.sf.jsqlparser.schema.Table(atc.getTable().getName()), col);
                                         newItem.setExpression(c);
                                         // Use lowercase alias to match the JDBC driver output for target table schema
                                         newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col.toLowerCase()));
@@ -987,18 +993,19 @@ public class DataWarehouseService {
                             }
                         } else if (item.getExpression() instanceof net.sf.jsqlparser.statement.select.AllColumns) {
                             boolean expandedAny = false;
-                            for (Map.Entry<String, String> entry : aliasToTable.entrySet()) {
-                                String aliasOrTable = entry.getKey();
-                                String physicalTable = entry.getValue();
-                                List<String> cols = getColumnsForTable(conn, physicalTable, sourceConn);
-                                for (String col : cols) {
-                                    net.sf.jsqlparser.statement.select.SelectItem newItem = new net.sf.jsqlparser.statement.select.SelectItem();
-                                    net.sf.jsqlparser.schema.Column c = new net.sf.jsqlparser.schema.Column(new net.sf.jsqlparser.schema.Table(aliasOrTable), col);
-                                    newItem.setExpression(c);
-                                    // Use lowercase alias to match the JDBC driver output for target table schema
-                                    newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col.toLowerCase()));
-                                    newItems.add(newItem);
-                                    expandedAny = true;
+                            for (String aliasName : orderedAliases) {
+                                String physicalTable = aliasToTable.get(aliasName.toLowerCase());
+                                if (physicalTable != null) {
+                                    List<String> cols = getColumnsForTable(conn, physicalTable, sourceConn);
+                                    for (String col : cols) {
+                                        net.sf.jsqlparser.statement.select.SelectItem newItem = new net.sf.jsqlparser.statement.select.SelectItem();
+                                        net.sf.jsqlparser.schema.Column c = new net.sf.jsqlparser.schema.Column(new net.sf.jsqlparser.schema.Table(aliasName), col);
+                                        newItem.setExpression(c);
+                                        // Use lowercase alias to match the JDBC driver output for target table schema
+                                        newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col.toLowerCase()));
+                                        newItems.add(newItem);
+                                        expandedAny = true;
+                                    }
                                 }
                             }
                             if (expandedAny) {
@@ -1040,22 +1047,88 @@ public class DataWarehouseService {
     }
 
     private String rewriteQueryForClickHouse(String sql, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb) {
+        try {
+            net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
+            if (stmt instanceof Select) {
+                Select select = (Select) stmt;
+                PlainSelect plain = select.getPlainSelect();
+                if (plain != null) {
+                    rewriteFromItemForClickHouse(plain.getFromItem(), physicalTables, baseName, sourceConn, chDb);
+                    if (plain.getJoins() != null) {
+                        for (Join join : plain.getJoins()) {
+                            rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb);
+                        }
+                    }
+                    return select.toString();
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to rewrite query using JSqlParser, falling back to regex: " + e.getMessage());
+        }
+
         String rewrittenSql = sql;
         for (String t : physicalTables) {
             String landingTable = getClickHouseLandingTable(t, baseName, sourceConn);
             String escapedLanding = "`" + chDb + "`.`" + landingTable + "`";
             String shortTable = t.contains(".") ? t.substring(t.indexOf('.') + 1) : t;
-            String replacementWithAlias = escapedLanding + " AS `" + shortTable + "`";
-            
-            String patternStrWithSchema = "\\b" + Pattern.quote(t) + "\\b";
-            rewrittenSql = rewrittenSql.replaceAll("(?i)" + patternStrWithSchema, replacementWithAlias);
-            
+
+            String patternStrWithSchema = "(?i)\\b" + Pattern.quote(t) + "\\b(\\s+(?:AS\\s+)?([a-zA-Z0-9_]+))?";
+            Pattern p = Pattern.compile(patternStrWithSchema);
+            Matcher m = p.matcher(rewrittenSql);
+            StringBuffer sb = new StringBuffer();
+            while (m.find()) {
+                String existingAlias = m.group(2);
+                if (existingAlias != null && !existingAlias.isEmpty()) {
+                    m.appendReplacement(sb, escapedLanding + " AS `" + existingAlias + "`");
+                } else {
+                    m.appendReplacement(sb, escapedLanding + " AS `" + shortTable + "`");
+                }
+            }
+            m.appendTail(sb);
+            rewrittenSql = sb.toString();
+
             if (t.contains(".")) {
-                String patternStrShort = "(?i)\\b(FROM|JOIN)\\s+`?" + Pattern.quote(shortTable) + "`?\\b";
-                rewrittenSql = rewrittenSql.replaceAll(patternStrShort, "$1 " + replacementWithAlias);
+                String patternStrShort = "(?i)\\b(FROM|JOIN)\\s+`?" + Pattern.quote(shortTable) + "`?\\b(\\s+(?:AS\\s+)?([a-zA-Z0-9_]+))?";
+                Pattern pShort = Pattern.compile(patternStrShort);
+                Matcher mShort = pShort.matcher(rewrittenSql);
+                StringBuffer sbShort = new StringBuffer();
+                while (mShort.find()) {
+                    String prefix = mShort.group(1);
+                    String existingAlias = mShort.group(3);
+                    if (existingAlias != null && !existingAlias.isEmpty()) {
+                        mShort.appendReplacement(sbShort, prefix + " " + escapedLanding + " AS `" + existingAlias + "`");
+                    } else {
+                        mShort.appendReplacement(sbShort, prefix + " " + escapedLanding + " AS `" + shortTable + "`");
+                    }
+                }
+                mShort.appendTail(sbShort);
+                rewrittenSql = sbShort.toString();
             }
         }
         return rewrittenSql;
+    }
+
+    private void rewriteFromItemForClickHouse(FromItem item, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb) {
+        if (item instanceof Table) {
+            Table t = (Table) item;
+            String matchedPhysicalTable = null;
+            for (String pt : physicalTables) {
+                if (isTableMatch(t, pt)) {
+                    matchedPhysicalTable = pt;
+                    break;
+                }
+            }
+            if (matchedPhysicalTable != null) {
+                String landingTable = getClickHouseLandingTable(matchedPhysicalTable, baseName, sourceConn);
+                String shortTable = matchedPhysicalTable.contains(".") ? matchedPhysicalTable.substring(matchedPhysicalTable.indexOf('.') + 1) : matchedPhysicalTable;
+
+                if (t.getAlias() == null) {
+                    t.setAlias(new net.sf.jsqlparser.expression.Alias("`" + shortTable + "`"));
+                }
+                t.setSchemaName("`" + chDb + "`");
+                t.setName("`" + landingTable + "`");
+            }
+        }
     }
 
     private String rewriteQueryForClickHouseView(String sql, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb, java.util.Map<String, java.util.Set<String>> tableToPKs) {
@@ -1070,13 +1143,15 @@ public class DataWarehouseService {
                     pkFilters.append(" AND not(isNull(`").append(pk).append("`)) AND toString(`").append(pk).append("`) != ''");
                 }
             }
-            String subquery = "(SELECT * FROM `" + chDb + "`.`" + landingTable + "` FINAL WHERE is_deleted = 0" + pkFilters.toString() + ") AS `" + shortTable + "`";
+            String existingAlias = getTableAlias(sql, t);
+            String aliasToUse = (existingAlias != null && !existingAlias.isEmpty()) ? existingAlias : ("`" + shortTable + "`");
+            String subquery = "(SELECT * FROM `" + chDb + "`.`" + landingTable + "` FINAL WHERE is_deleted = 0" + pkFilters.toString() + ") AS " + aliasToUse;
             
-            String patternStrWithSchema = "\\b" + Pattern.quote(t) + "\\b";
-            rewrittenSql = rewrittenSql.replaceAll("(?i)" + patternStrWithSchema, subquery);
+            String patternStrWithSchema = "(?i)\\b" + Pattern.quote(t) + "\\b(\\s+(?:AS\\s+)?([a-zA-Z0-9_]+))?";
+            rewrittenSql = rewrittenSql.replaceAll(patternStrWithSchema, subquery);
             
             if (t.contains(".")) {
-                String patternStrShort = "(?i)\\b(FROM|JOIN)\\s+`?" + Pattern.quote(shortTable) + "`?\\b";
+                String patternStrShort = "(?i)\\b(FROM|JOIN)\\s+`?" + Pattern.quote(shortTable) + "`?\\b(\\s+(?:AS\\s+)?([a-zA-Z0-9_]+))?";
                 rewrittenSql = rewrittenSql.replaceAll(patternStrShort, "$1 " + subquery);
             }
         }
