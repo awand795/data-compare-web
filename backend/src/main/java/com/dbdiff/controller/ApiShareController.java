@@ -209,11 +209,11 @@ public class ApiShareController {
                         </tr>
                     </thead>
                     <tbody>
-                        %s
+                        {{PARAMS_ROWS}}
                     </tbody>
                 </table>
             </div>
-        """.formatted(paramsRows.toString()) : "<p class='text-muted'>No parameters required for this endpoint.</p>";
+        """.replace("{{PARAMS_ROWS}}", paramsRows.toString()) : "<p class='text-muted'>No parameters required for this endpoint.</p>";
 
         // Auth Docs
         String authHtml = endpoint.isPublic() ? """
@@ -231,12 +231,12 @@ public class ApiShareController {
                     <h4>Protected Endpoint</h4>
                     <p>Include the following header in your HTTP requests:</p>
                     <div class="copy-box mt-3">
-                        <code id="authHeader">Authorization: Bearer %s</code>
+                        <code id="authHeader">Authorization: Bearer {{AUTH_TOKEN}}</code>
                         <button onclick="copyText('authHeader')">Copy</button>
                     </div>
                 </div>
             </div>
-        """.formatted(endpoint.getAuthToken());
+        """.replace("{{AUTH_TOKEN}}", endpoint.getAuthToken() != null ? endpoint.getAuthToken() : "");
 
         // cURL builder
         StringBuilder curlCmd = new StringBuilder("curl -X " + endpoint.getMethod() + " ");
