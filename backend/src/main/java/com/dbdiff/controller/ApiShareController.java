@@ -122,6 +122,7 @@ public class ApiShareController {
         };
         
         String fullUrl = baseUrl + "/api/data" + endpoint.getEndpointPath();
+        String domain = baseUrl.replace("http://", "").replace("https://", "");
         
         String authBadge = endpoint.isPublic() 
             ? "<span class='badge public'>Public Access</span>" 
@@ -264,8 +265,12 @@ public class ApiShareController {
                     <h4>Protected Endpoint</h4>
                     <p>Include the following header in your HTTP requests:</p>
                     <div class="copy-box mt-3">
-            """;
-        }
+                        <code id="authHeader">Authorization: Bearer {{AUTH_TOKEN}}</code>
+                        <button onclick="copyText('authHeader')">Copy</button>
+                    </div>
+                </div>
+            </div>
+        """.replace("{{AUTH_TOKEN}}", endpoint.getAuthToken() != null ? endpoint.getAuthToken() : "");
 
         // Code Snippets Builder
         boolean hasParams = paramsRows.length() > 0;
