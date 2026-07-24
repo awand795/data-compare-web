@@ -264,35 +264,46 @@ public class ApiShareController {
                     <h4>Protected Endpoint</h4>
                     <p>Include the following header in your HTTP requests:</p>
                     <div class="copy-box mt-3">
-                        <code id="authHeader">Authorization: Bearer {{AUTH_TOKEN}}</code>
-                        <button onclick="copyText('authHeader')">Copy</button>
-                    </div>
-                </div>
-            </div>
-        """.replace("{{AUTH_TOKEN}}", endpoint.getAuthToken() != null ? endpoint.getAuthToken() : "");
+            """;
+        }
 
-        // cURL builder
-        StringBuilder curlCmd = new StringBuilder("curl -X " + endpoint.getMethod() + " ");
-        
-        // Build URL with query params for GET
+        // Code Snippets Builder
         boolean hasParams = paramsRows.length() > 0;
-        String finalUrl = fullUrl;
-        
-        if (endpoint.getMethod().equalsIgnoreCase("GET") && hasParams) {
-            finalUrl += "?param=value";
-            if (endpoint.isEnablePagination()) finalUrl += "&limit=100&offset=0";
+        String qs = "";
+        if (endpoint.getMethod().equalsIgnoreCase("GET")) {
+            if (hasParams || endpoint.isEnablePagination()) {
+                qs = "?";
+                if (hasParams) qs += "param=value";
+                if (endpoint.isEnablePagination()) {
+                    if (hasParams) qs += "&";
+                    qs += "limit=10&page=1";
+                }
+            }
         }
-        
-        curlCmd.append("\"").append(finalUrl).append("\" \\\n");
+        String snippetUrl = fullUrl + qs;
+        String authHeaderLine = !endpoint.isPublic() && endpoint.getAuthToken() != null ? "  -H \"Authorization: Bearer " + endpoint.getAuthToken() + "\"" : "";
+        String postmanAuthLine = !endpoint.isPublic() && endpoint.getAuthToken() != null ? "\nAuthorization: Bearer " + endpoint.getAuthToken() : "";
+        String jsAuthLine = !endpoint.isPublic() && endpoint.getAuthToken() != null ? "\n    \"Authorization\": \"Bearer " + endpoint.getAuthToken() + "\"," : "";
+        String pythonAuthLine = !endpoint.isPublic() && endpoint.getAuthToken() != null ? "\n    \"Authorization\": \"Bearer " + endpoint.getAuthToken() + "\"," : "";
+
+        StringBuilder curlCmd = new StringBuilder();
+        curlCmd.append("curl -X ").append(endpoint.getMethod()).append(" \"").append(snippetUrl).append("\" \\\n");
         curlCmd.append("  -H \"Accept: application/json\"");
-        
-        if (!endpoint.isPublic()) {
-            curlCmd.append(" \\\n  -H \"Authorization: Bearer ").append(endpoint.getAuthToken()).append("\"");
-        }
-        
+        if (!authHeaderLine.isEmpty()) curlCmd.append(" \\\n").append(authHeaderLine);
         if (!endpoint.getMethod().equalsIgnoreCase("GET") && hasParams) {
             curlCmd.append(" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"param\": \"value\"\n  }'");
         }
+
+        String postmanCmd = endpoint.getMethod() + " " + snippetUrl + " HTTP/1.1\nHost: " + domain + "\nAccept: application/json" + postmanAuthLine +
+                (!endpoint.getMethod().equalsIgnoreCase("GET") ? "\nContent-Type: application/json\n\n{\n  \"param\": \"value\"\n}" : "");
+
+        String jsCmd = "const response = await fetch(\"" + snippetUrl + "\", {\n  method: \"" + endpoint.getMethod() + "\",\n  headers: {\n    \"Accept\": \"application/json\"," + jsAuthLine +
+                (!endpoint.getMethod().equalsIgnoreCase("GET") ? "\n    \"Content-Type\": \"application/json\"\n  },\n  body: JSON.stringify({\n    \"param\": \"value\"\n  })" : "\n  }") +
+                "\n});\nconst data = await response.json();";
+
+        String pythonCmd = "import requests\n\nurl = \"" + snippetUrl + "\"\nheaders = {\n    \"Accept\": \"application/json\"," + pythonAuthLine +
+                (!endpoint.getMethod().equalsIgnoreCase("GET") ? "\n    \"Content-Type\": \"application/json\"\n}\npayload = {\n    \"param\": \"value\"\n}\nresponse = requests." + endpoint.getMethod().toLowerCase() + "(url, headers=headers, json=payload)" : "\n}\nresponse = requests." + endpoint.getMethod().toLowerCase() + "(url, headers=headers)") +
+                "\nprint(response.json())";
 
         // Response format
         String responseHtml = """
