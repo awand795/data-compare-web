@@ -153,7 +153,7 @@ public class ApiShareController {
                         paramsRows.append("<td class='capitalize'>").append(type).append("</td>");
                         paramsRows.append("<td>").append(requiredBadge).append("</td>");
                         paramsRows.append("<td class='mono text-muted'>").append(defaultValue).append("</td>");
-                        paramsRows.append("<td class='text-muted'>").append(desc).append("</td>");
+                        paramsRows.append("<td class='text-muted desc-cell'>").append(desc).append("</td>");
                         paramsRows.append("</tr>");
                     }
                 }
@@ -590,6 +590,7 @@ public class ApiShareController {
         .capitalize { text-transform: capitalize; }
         .mono { font-family: 'JetBrains Mono', monospace; }
         .text-muted { color: var(--text-muted); }
+        .desc-cell { word-break: break-word; white-space: normal; line-height: 1.5; min-width: 200px; max-width: 400px; }
         
         .pagination-row {
             background-color: rgba(59, 130, 246, 0.03);

@@ -1061,7 +1061,7 @@ export const ApiBuilderView: React.FC = () => {
                   <p className="text-sm text-text-muted">No custom parameters required for this endpoint.</p>
                 </div>
               ) : (
-                <div className="border border-border-main rounded-2xl overflow-hidden shadow-sm">
+                <div className="border border-border-main rounded-2xl overflow-x-auto shadow-sm">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-bg-editor">
                       <tr>
@@ -1069,7 +1069,7 @@ export const ApiBuilderView: React.FC = () => {
                         <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider">Type</th>
                         <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider">Required</th>
                         <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider">Default</th>
-                        <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider">Description</th>
+                        <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider min-w-[250px]">Description</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1092,7 +1092,7 @@ export const ApiBuilderView: React.FC = () => {
                               )}
                             </td>
                             <td className="p-3.5 text-text-muted font-mono text-xs">{meta.defaultValue || <span className="opacity-30">—</span>}</td>
-                            <td className="p-3.5 text-text-muted text-xs font-medium">{paramDesc}</td>
+                            <td className="p-3.5 text-text-muted text-xs font-medium whitespace-normal break-words leading-relaxed max-w-[400px]">{paramDesc}</td>
                           </tr>
                         );
                       })}
@@ -1520,7 +1520,7 @@ export const ApiBuilderView: React.FC = () => {
                         </p>
                       </div>
                     ) : (
-                      <div className="border border-border-main rounded-2xl overflow-hidden shadow-sm">
+                      <div className="border border-border-main rounded-2xl overflow-x-auto shadow-sm">
                         <table className="w-full text-left">
                           <thead className="bg-bg-editor">
                             <tr>
@@ -1528,7 +1528,7 @@ export const ApiBuilderView: React.FC = () => {
                               <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Type</th>
                               <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase text-center">Req</th>
                               <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Default</th>
-                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Description / Keterangan</th>
+                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase min-w-[280px]">Description / Keterangan</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1591,10 +1591,10 @@ export const ApiBuilderView: React.FC = () => {
                                       }}
                                     />
                                   </td>
-                                  <td className="p-3">
+                                  <td className="p-3 min-w-[280px]">
                                     <input 
                                       type="text"
-                                      className="w-full min-w-[200px] bg-bg-editor border border-border-main rounded-lg text-xs p-1.5 outline-none focus:border-blue-500 shadow-inner text-text-main"
+                                      className="w-full bg-bg-editor border border-border-main rounded-lg text-xs p-1.5 outline-none focus:border-blue-500 shadow-inner text-text-main"
                                       placeholder="Keterangan manual (opsional, auto-generate jika kosong)..."
                                       value={meta.description || ''}
                                       onChange={e => {
