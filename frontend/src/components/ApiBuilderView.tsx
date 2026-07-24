@@ -292,13 +292,17 @@ export const ApiBuilderView: React.FC = () => {
     try {
       const apiToSave = { ...currentApi, parameters: JSON.stringify(parameterMeta) };
       if (apiToSave.id) {
-        await axios.put(`/api/api-builder/${apiToSave.id}`, apiToSave);
-        addToast({ type: 'success', title: 'API Updated', message: `Endpoint "${apiToSave.name}" updated successfully.` });
+        const res = await axios.put(`/api/api-builder/${apiToSave.id}`, apiToSave);
+        const updated = res.data;
+        setEndpoints(prev => prev.map(item => item.id === updated.id ? updated : item));
+        addToast({ type: 'success', title: 'API Updated', message: `Endpoint "${updated.name}" updated successfully.` });
       } else {
-        await axios.post('/api/api-builder', apiToSave);
-        addToast({ type: 'success', title: 'API Created', message: `Endpoint "${apiToSave.name}" created successfully.` });
+        const res = await axios.post('/api/api-builder', apiToSave);
+        const created = res.data;
+        setEndpoints(prev => [created, ...prev]);
+        addToast({ type: 'success', title: 'API Created', message: `Endpoint "${created.name}" created successfully.` });
       }
-      fetchEndpoints();
+      await fetchEndpoints();
       setIsDirty(false);
       setViewMode('list');
     } catch (err: any) {
@@ -1472,7 +1476,14 @@ export const ApiBuilderView: React.FC = () => {
                                     <select 
                                       className="bg-bg-editor border border-border-main rounded-lg text-xs p-1.5 outline-none focus:border-blue-500 font-semibold shadow-inner"
                                       value={meta.type}
-                                      onChange={e => setParameterMeta(prev => prev.map(m => m.name === p ? { ...m, type: e.target.value as any } : m))}
+                                      onChange={e => {
+                                        const newType = e.target.value as any;
+                                        setParameterMeta(prev => {
+                                          const exists = prev.some(m => m.name === p);
+                                          if (exists) return prev.map(m => m.name === p ? { ...m, type: newType } : m);
+                                          return [...prev, { name: p, type: newType, required: true, defaultValue: '', description: '' }];
+                                        });
+                                      }}
                                     >
                                       <option value="string">String</option>
                                       <option value="integer">Integer</option>
@@ -1486,7 +1497,14 @@ export const ApiBuilderView: React.FC = () => {
                                       type="checkbox"
                                       className="w-4 h-4 rounded border-border-main text-blue-600 focus:ring-blue-500"
                                       checked={meta.required}
-                                      onChange={e => setParameterMeta(prev => prev.map(m => m.name === p ? { ...m, required: e.target.checked } : m))}
+                                      onChange={e => {
+                                        const isReq = e.target.checked;
+                                        setParameterMeta(prev => {
+                                          const exists = prev.some(m => m.name === p);
+                                          if (exists) return prev.map(m => m.name === p ? { ...m, required: isReq } : m);
+                                          return [...prev, { name: p, type: 'string', required: isReq, defaultValue: '', description: '' }];
+                                        });
+                                      }}
                                     />
                                   </td>
                                   <td className="p-3">
@@ -1496,7 +1514,14 @@ export const ApiBuilderView: React.FC = () => {
                                       placeholder="default..."
                                       disabled={meta.required}
                                       value={meta.defaultValue}
-                                      onChange={e => setParameterMeta(prev => prev.map(m => m.name === p ? { ...m, defaultValue: e.target.value } : m))}
+                                      onChange={e => {
+                                        const defVal = e.target.value;
+                                        setParameterMeta(prev => {
+                                          const exists = prev.some(m => m.name === p);
+                                          if (exists) return prev.map(m => m.name === p ? { ...m, defaultValue: defVal } : m);
+                                          return [...prev, { name: p, type: 'string', required: false, defaultValue: defVal, description: '' }];
+                                        });
+                                      }}
                                     />
                                   </td>
                                 </tr>
