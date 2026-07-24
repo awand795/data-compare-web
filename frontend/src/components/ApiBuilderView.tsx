@@ -290,15 +290,27 @@ export const ApiBuilderView: React.FC = () => {
     
     setIsSaving(true);
     try {
-      const apiToSave = { ...currentApi, parameters: JSON.stringify(parameterMeta) };
+      const isPublicVal = Boolean(currentApi.isPublic);
+      const apiToSave = { 
+        ...currentApi, 
+        isPublic: isPublicVal,
+        public: isPublicVal,
+        parameters: JSON.stringify(parameterMeta) 
+      };
       if (apiToSave.id) {
         const res = await axios.put(`/api/api-builder/${apiToSave.id}`, apiToSave);
-        const updated = res.data;
+        const updated = {
+          ...res.data,
+          isPublic: res.data.isPublic !== undefined ? Boolean(res.data.isPublic) : (res.data.public !== undefined ? Boolean(res.data.public) : isPublicVal)
+        };
         setEndpoints(prev => prev.map(item => item.id === updated.id ? updated : item));
         addToast({ type: 'success', title: 'API Updated', message: `Endpoint "${updated.name}" updated successfully.` });
       } else {
         const res = await axios.post('/api/api-builder', apiToSave);
-        const created = res.data;
+        const created = {
+          ...res.data,
+          isPublic: res.data.isPublic !== undefined ? Boolean(res.data.isPublic) : (res.data.public !== undefined ? Boolean(res.data.public) : isPublicVal)
+        };
         setEndpoints(prev => [created, ...prev]);
         addToast({ type: 'success', title: 'API Created', message: `Endpoint "${created.name}" created successfully.` });
       }

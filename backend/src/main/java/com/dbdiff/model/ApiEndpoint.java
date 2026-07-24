@@ -1,5 +1,7 @@
 package com.dbdiff.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDateTime;
 
 public class ApiEndpoint {
@@ -11,7 +13,11 @@ public class ApiEndpoint {
     private String sqlQuery;
     private String parameters;
     private boolean enablePagination;
+    
+    @JsonProperty("isPublic")
+    @JsonAlias({"public", "isPublic"})
     private boolean isPublic;
+
     private String authToken;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -40,7 +46,10 @@ public class ApiEndpoint {
     public boolean isEnablePagination() { return enablePagination; }
     public void setEnablePagination(boolean enablePagination) { this.enablePagination = enablePagination; }
 
+    @JsonProperty("isPublic")
     public boolean isPublic() { return isPublic; }
+
+    @JsonProperty("isPublic")
     public void setPublic(boolean aPublic) { isPublic = aPublic; }
 
     public String getAuthToken() { return authToken; }
