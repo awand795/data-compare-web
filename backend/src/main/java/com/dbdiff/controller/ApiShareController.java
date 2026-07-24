@@ -29,20 +29,11 @@ public class ApiShareController {
     public ResponseEntity<String> getSharePage(@PathVariable String token, HttpServletRequest request) {
         Optional<ApiShareToken> tokenOpt = apiShareTokenRepository.findByToken(token);
         
-        if (tokenOpt.isEmpty()) {
+        if (tokenOpt.isEmpty() || tokenOpt.get().isUsed()) {
             return ResponseEntity.ok(getExpiredHtml());
         }
         
         ApiShareToken shareToken = tokenOpt.get();
-        
-        // Expiration check: Valid for 24 hours from creation
-        boolean isExpired = shareToken.getCreatedAt() != null && 
-                            shareToken.getCreatedAt().isBefore(java.time.LocalDateTime.now().minusHours(24));
-                            
-        if (shareToken.isUsed() || isExpired) {
-            return ResponseEntity.ok(getExpiredHtml());
-        }
-        
         Optional<ApiEndpoint> endpointOpt = apiEndpointRepository.findById(shareToken.getApiEndpointId());
         
         if (endpointOpt.isEmpty()) {
@@ -51,8 +42,15 @@ public class ApiShareController {
         
         ApiEndpoint endpoint = endpointOpt.get();
         
-        // Record view timestamp without invalidating the 24-hour window
-        apiShareTokenRepository.recordView(token);
+        // Ignore browser pre-fetch / pre-render background requests so the user's actual view is preserved
+        String prefetchHeader = request.getHeader("Sec-Purpose");
+        if (prefetchHeader == null) prefetchHeader = request.getHeader("Purpose");
+        boolean isPrefetch = prefetchHeader != null && (prefetchHeader.contains("prefetch") || prefetchHeader.contains("prerender"));
+        
+        if (!isPrefetch) {
+            // Mark as USED immediately on first real human view!
+            apiShareTokenRepository.markAsUsed(token);
+        }
         
         String baseUrl = request.getScheme() + "://" + request.getServerName() + 
                          (request.getServerPort() != 80 && request.getServerPort() != 443 ? ":" + request.getServerPort() : "");
