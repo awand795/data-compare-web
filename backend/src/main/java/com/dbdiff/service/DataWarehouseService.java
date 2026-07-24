@@ -260,6 +260,29 @@ public class DataWarehouseService {
                 logger.warn("Failed to clean up old replication slots in Postgres", ex);
             }
 
+            // Cleanup old Kafka topics for this baseName to ensure snapshot starts on empty topics
+            try {
+                Properties kProps = new Properties();
+                kProps.put("bootstrap.servers", "kafka:9092");
+                try (AdminClient adminClient = AdminClient.create(kProps)) {
+                    String topicSearch = "cdc_" + baseName + "_";
+                    Set<String> topics = adminClient.listTopics().names().get();
+                    List<String> topicsToDelete = new ArrayList<>();
+                    for (String top : topics) {
+                        if (top.startsWith(topicSearch)) {
+                            topicsToDelete.add(top);
+                        }
+                    }
+                    if (!topicsToDelete.isEmpty()) {
+                        sendLog(emitter, "Cleaning up old Kafka topics: " + String.join(", ", topicsToDelete));
+                        adminClient.deleteTopics(topicsToDelete).all().get();
+                        Thread.sleep(2000);
+                    }
+                }
+            } catch (Exception ex) {
+                logger.warn("Could not cleanup old Kafka topics: " + ex.getMessage());
+            }
+
             // =========================================================================
             // STEP 1: Parse Query, Introspect Schema and PKs
             // =========================================================================
