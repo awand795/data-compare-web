@@ -287,7 +287,7 @@ public class DataWarehouseService {
                         }
                     }
                     if (!topicsToDelete.isEmpty()) {
-                        sendLog(emitter, "Cleaning up old Kafka topics for target tables: " + String.join(", ", topicsToDelete));
+                        sendLog(emitter, "Cleaning up specific Kafka topic(s) by exact name: " + String.join(", ", topicsToDelete));
                         adminClient.deleteTopics(topicsToDelete).all().get();
                         Thread.sleep(2000);
                     }
