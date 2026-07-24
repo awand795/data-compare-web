@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
 import { 
@@ -6,7 +6,8 @@ import {
   FileJson, Pencil, Trash2, Copy, Check, Share2, Database, Server, 
   Settings2, ChevronDown, ChevronUp, X, AlertCircle, Loader2, 
   Search, Filter, Eraser, Code2, BookTemplate, 
-  ListRestart, Bug, SquareTerminal, CopyPlus, FileCode
+  ListRestart, Bug, SquareTerminal, CopyPlus, FileCode,
+  LayoutGrid, List, Clock, Lock, Unlock, Layers
 } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -38,24 +39,24 @@ type ValidationError = {
 };
 
 const QUERY_TEMPLATES = [
-  { name: 'Get All', sql: 'SELECT * FROM my_table LIMIT 100', icon: Search },
-  { name: 'Get By ID', sql: 'SELECT * FROM my_table WHERE id = :id', icon: Filter },
-  { name: 'Search', sql: 'SELECT * FROM my_table WHERE name ILIKE :search_term\nORDER BY name\nLIMIT :limit\nOFFSET :offset', icon: Search },
-  { name: 'Aggregate', sql: 'SELECT category, COUNT(*) as count, AVG(price) as avg_price\nFROM my_table\nGROUP BY category\nORDER BY count DESC', icon: Code2 },
-  { name: 'Pagination', sql: 'SELECT * FROM my_table\nORDER BY id\nLIMIT :limit\nOFFSET :offset', icon: ListRestart },
-  { name: 'Insert', sql: 'INSERT INTO my_table (column1, column2)\nVALUES (:value1, :value2)\nRETURNING *', icon: Plus },
-  { name: 'Update', sql: 'UPDATE my_table\nSET column1 = :value1, column2 = :value2\nWHERE id = :id\nRETURNING *', icon: Pencil },
-  { name: 'Delete', sql: 'DELETE FROM my_table\nWHERE id = :id\nRETURNING *', icon: Trash2 },
+  { name: 'Get All Records', sql: 'SELECT * FROM my_table LIMIT 100', icon: Search, desc: 'Fetch top 100 rows from target table' },
+  { name: 'Find By ID', sql: 'SELECT * FROM my_table WHERE id = :id', icon: Filter, desc: 'Query single record matching primary ID' },
+  { name: 'Search & Filter', sql: 'SELECT * FROM my_table WHERE name ILIKE :search_term\nORDER BY id DESC\nLIMIT :limit\nOFFSET :offset', icon: Search, desc: 'Case-insensitive search with pagination' },
+  { name: 'Aggregated Metrics', sql: 'SELECT category, COUNT(*) as total_count, AVG(price) as avg_price\nFROM my_table\nGROUP BY category\nORDER BY total_count DESC', icon: Code2, desc: 'Group by categories with stats' },
+  { name: 'Paginated Feed', sql: 'SELECT * FROM my_table\nORDER BY created_at DESC\nLIMIT :limit\nOFFSET :offset', icon: ListRestart, desc: 'Standard offset-based pagination query' },
+  { name: 'Insert Record', sql: 'INSERT INTO my_table (name, status)\nVALUES (:name, :status)\nRETURNING *', icon: Plus, desc: 'Create new entry and return new object' },
+  { name: 'Update Record', sql: 'UPDATE my_table\nSET name = :name, status = :status\nWHERE id = :id\nRETURNING *', icon: Pencil, desc: 'Update existing record by ID' },
+  { name: 'Soft Delete Record', sql: 'UPDATE my_table\nSET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP\nWHERE id = :id\nRETURNING *', icon: Trash2, desc: 'Mark record as deleted' },
 ];
 
 const getMethodBadgeClass = (method: string) => {
   switch (method) {
-    case 'GET': return 'bg-green-500/20 text-green-500 border border-green-500/20';
-    case 'POST': return 'bg-blue-500/20 text-blue-500 border border-blue-500/20';
-    case 'PUT': return 'bg-amber-500/20 text-amber-500 border border-amber-500/20';
-    case 'PATCH': return 'bg-purple-500/20 text-purple-500 border border-purple-500/20';
-    case 'DELETE': return 'bg-red-500/20 text-red-500 border border-red-500/20';
-    default: return 'bg-gray-500/20 text-gray-500 border border-gray-500/20';
+    case 'GET': return 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+    case 'POST': return 'bg-blue-500/15 text-blue-400 border border-blue-500/30';
+    case 'PUT': return 'bg-amber-500/15 text-amber-400 border border-amber-500/30';
+    case 'PATCH': return 'bg-purple-500/15 text-purple-400 border border-purple-500/30';
+    case 'DELETE': return 'bg-rose-500/15 text-rose-400 border border-rose-500/30';
+    default: return 'bg-slate-500/15 text-slate-400 border border-slate-500/30';
   }
 };
 
@@ -71,6 +72,14 @@ export const ApiBuilderView: React.FC = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   
+  // Display & Filtering States
+  const [displayMode, setDisplayMode] = useState<'grid' | 'table'>('grid');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [methodFilter, setMethodFilter] = useState<string>('ALL');
+  const [securityFilter, setSecurityFilter] = useState<string>('ALL');
+  const [activeTab, setActiveTab] = useState<'general' | 'params' | 'security' | 'preview'>('general');
+  
+  // Testing States
   const [testResult, setTestResult] = useState<any>(null);
   const [testParams, setTestParams] = useState<Record<string, string>>({});
   const [isTesting, setIsTesting] = useState(false);
@@ -78,9 +87,10 @@ export const ApiBuilderView: React.FC = () => {
   const [isTestConsoleOpen, setIsTestConsoleOpen] = useState(false);
   const [paramCount, setParamCount] = useState(0);
   const [generatedShareUrl, setGeneratedShareUrl] = useState<string | null>(null);
-  const [activeSpecTab, setActiveSpecTab] = useState<'curl' | 'postman' | 'bruno'>('curl');
+  const [activeSpecTab, setActiveSpecTab] = useState<'curl' | 'postman' | 'bruno' | 'js' | 'python'>('curl');
   const [showTemplates, setShowTemplates] = useState(false);
   const [isPrettyPrint, setIsPrettyPrint] = useState(true);
+  const [testExecutionTime, setTestExecutionTime] = useState<number | null>(null);
 
   const editInitialRef = useRef<string>('');
 
@@ -135,10 +145,10 @@ export const ApiBuilderView: React.FC = () => {
           if (isDirty) {
             showAlert({
               title: 'Unsaved Changes',
-              message: 'You have unsaved changes. Are you sure you want to go back?',
+              message: 'You have unsaved changes. Are you sure you want to exit without saving?',
               type: 'warning',
-              confirmLabel: 'Leave',
-              cancelLabel: 'Stay',
+              confirmLabel: 'Discard & Exit',
+              cancelLabel: 'Keep Editing',
               onConfirm: () => {
                 setViewMode('list');
                 setIsDirty(false);
@@ -160,7 +170,7 @@ export const ApiBuilderView: React.FC = () => {
       const res = await axios.get('/api/api-builder');
       setEndpoints(res.data);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Error', message: 'Failed to fetch APIs' });
+      addToast({ type: 'error', title: 'Error Loading APIs', message: err.message || 'Failed to fetch API endpoints' });
     } finally {
       setIsLoadingList(false);
     }
@@ -170,16 +180,16 @@ export const ApiBuilderView: React.FC = () => {
     const errors: ValidationError[] = [];
     if (!currentApi) return errors;
     if (!currentApi.name.trim()) {
-      errors.push({ field: 'name', message: 'API name is required' });
+      errors.push({ field: 'name', message: 'API Name is required' });
     }
     if (!currentApi.connectionId) {
-      errors.push({ field: 'connectionId', message: 'Database connection is required' });
+      errors.push({ field: 'connectionId', message: 'Target Database Connection is required' });
     }
     if (!currentApi.sqlQuery.trim()) {
-      errors.push({ field: 'sqlQuery', message: 'SQL query is required' });
+      errors.push({ field: 'sqlQuery', message: 'SQL Query cannot be empty' });
     }
     if (!currentApi.endpointPath.trim() || currentApi.endpointPath === '/') {
-      errors.push({ field: 'endpointPath', message: 'Endpoint path is required' });
+      errors.push({ field: 'endpointPath', message: 'Endpoint Path is required (e.g. /users)' });
     }
     // Check for duplicate paths
     if (currentApi.endpointPath.trim() && currentApi.endpointPath !== '/') {
@@ -187,7 +197,7 @@ export const ApiBuilderView: React.FC = () => {
         e.endpointPath === currentApi.endpointPath && e.id !== currentApi.id
       );
       if (duplicate) {
-        errors.push({ field: 'endpointPath', message: `Endpoint path "${currentApi.endpointPath}" already exists` });
+        errors.push({ field: 'endpointPath', message: `Endpoint path "${currentApi.endpointPath}" is already used by another API` });
       }
     }
     return errors;
@@ -199,11 +209,11 @@ export const ApiBuilderView: React.FC = () => {
       method: 'GET',
       endpointPath: '',
       connectionId: connections[0]?.id || '',
-      sqlQuery: '',
+      sqlQuery: 'SELECT * FROM my_table LIMIT 100;',
       parameters: '[]',
       enablePagination: false,
       isPublic: true,
-      authToken: ''
+      authToken: generateToken()
     };
     setCurrentApi(newApi);
     setTestParams({});
@@ -211,8 +221,13 @@ export const ApiBuilderView: React.FC = () => {
     setParameterMeta([]);
     setValidationErrors([]);
     setIsDirty(false);
+    setActiveTab('general');
     editInitialRef.current = JSON.stringify({ api: newApi, params: [] });
     setViewMode('edit');
+  };
+
+  const generateToken = () => {
+    return 'sk_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   };
 
   const handleEdit = (api: ApiEndpoint) => {
@@ -228,6 +243,7 @@ export const ApiBuilderView: React.FC = () => {
     setParameterMeta(parsed);
     setValidationErrors([]);
     setIsDirty(false);
+    setActiveTab('general');
     editInitialRef.current = JSON.stringify({ api, params: parsed });
     setViewMode('edit');
   };
@@ -238,7 +254,12 @@ export const ApiBuilderView: React.FC = () => {
   };
 
   const handleClone = (api: ApiEndpoint) => {
-    const clone = { ...api, id: undefined, name: `${api.name} (Copy)` };
+    const clone = { 
+      ...api, 
+      id: undefined, 
+      name: `${api.name} (Copy)`,
+      endpointPath: api.endpointPath ? `${api.endpointPath}-copy` : '/copy'
+    };
     setCurrentApi(clone);
     setTestParams({});
     setTestResult(null);
@@ -251,9 +272,10 @@ export const ApiBuilderView: React.FC = () => {
     setParameterMeta(parsed);
     setValidationErrors([]);
     setIsDirty(false);
+    setActiveTab('general');
     editInitialRef.current = JSON.stringify({ api: clone, params: parsed });
     setViewMode('edit');
-    addToast({ type: 'info', title: 'Cloned', message: `"${api.name}" duplicated as "${clone.name}"` });
+    addToast({ type: 'info', title: 'API Cloned', message: `Duplicated "${api.name}" into temporary workspace.` });
   };
 
   const handleSave = async () => {
@@ -262,7 +284,7 @@ export const ApiBuilderView: React.FC = () => {
     const errors = validate();
     setValidationErrors(errors);
     if (errors.length > 0) {
-      addToast({ type: 'error', title: 'Validation Failed', message: `Please fix ${errors.length} error(s) before saving.` });
+      addToast({ type: 'error', title: 'Validation Required', message: `Please fix ${errors.length} error(s) before saving.` });
       return;
     }
     
@@ -271,16 +293,16 @@ export const ApiBuilderView: React.FC = () => {
       const apiToSave = { ...currentApi, parameters: JSON.stringify(parameterMeta) };
       if (apiToSave.id) {
         await axios.put(`/api/api-builder/${apiToSave.id}`, apiToSave);
-        addToast({ type: 'success', title: 'Success', message: 'API Updated' });
+        addToast({ type: 'success', title: 'API Updated', message: `Endpoint "${apiToSave.name}" updated successfully.` });
       } else {
         await axios.post('/api/api-builder', apiToSave);
-        addToast({ type: 'success', title: 'Success', message: 'API Created' });
+        addToast({ type: 'success', title: 'API Created', message: `Endpoint "${apiToSave.name}" created successfully.` });
       }
       fetchEndpoints();
       setIsDirty(false);
       setViewMode('list');
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Error', message: 'Error saving API: ' + (err.response?.data?.error || err.message) });
+      addToast({ type: 'error', title: 'Save Failed', message: err.response?.data?.error || err.message });
     } finally {
       setIsSaving(false);
     }
@@ -289,10 +311,10 @@ export const ApiBuilderView: React.FC = () => {
   const handleDeleteClick = (api: ApiEndpoint) => {
     if (!api.id) return;
     showAlert({
-      title: 'Delete API?',
-      message: `Are you sure you want to delete "${api.name}"? This action cannot be undone.`,
+      title: `Delete "${api.name}"?`,
+      message: `Are you sure you want to permanently delete this endpoint? Any active consumers calling /api/data${api.endpointPath} will be disconnected.`,
       type: 'error',
-      confirmLabel: 'Delete',
+      confirmLabel: 'Delete Endpoint',
       onConfirm: () => handleDelete(api.id!)
     });
   };
@@ -300,10 +322,10 @@ export const ApiBuilderView: React.FC = () => {
   const handleDelete = async (id: string) => {
     try {
       await axios.delete(`/api/api-builder/${id}`);
-      addToast({ type: 'success', title: 'Success', message: 'API Deleted' });
+      addToast({ type: 'success', title: 'API Deleted', message: 'Endpoint removed permanently.' });
       fetchEndpoints();
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Error', message: 'Error deleting API' });
+      addToast({ type: 'error', title: 'Error', message: 'Failed to delete API endpoint.' });
     }
   };
 
@@ -311,10 +333,10 @@ export const ApiBuilderView: React.FC = () => {
     if (isDirty) {
       showAlert({
         title: 'Unsaved Changes',
-        message: 'You have unsaved changes. Are you sure you want to go back?',
+        message: 'You have unsaved modifications in this API. Are you sure you want to exit?',
         type: 'warning',
-        confirmLabel: 'Leave',
-        cancelLabel: 'Stay',
+        confirmLabel: 'Leave Without Saving',
+        cancelLabel: 'Continue Editing',
         onConfirm: () => {
           setViewMode('list');
           setIsDirty(false);
@@ -344,7 +366,7 @@ export const ApiBuilderView: React.FC = () => {
             type: 'string',
             required: true,
             defaultValue: '',
-            description: ''
+            description: `Auto-detected parameter from SQL query`
           } as ApiParameter;
         });
         const isSame = prev.length === next.length && next.every((n, i) => n === prev[i]);
@@ -358,14 +380,20 @@ export const ApiBuilderView: React.FC = () => {
     
     setIsTesting(true);
     setTestResult(null);
+    setTestExecutionTime(null);
+    const startTime = performance.now();
     
     try {
       const res = await axios.post('/api/api-builder/test-query', {
         api: currentApi,
         params: testParams
       });
+      const endTime = performance.now();
+      setTestExecutionTime(Math.round(endTime - startTime));
       setTestResult({ status: res.status, data: res.data });
     } catch (err: any) {
+      const endTime = performance.now();
+      setTestExecutionTime(Math.round(endTime - startTime));
       const errorData = err.response?.data;
       setTestResult({ 
         status: err.response?.status || 500, 
@@ -420,7 +448,7 @@ export const ApiBuilderView: React.FC = () => {
       const { shareUrl } = res.data;
       const fullUrl = `${window.location.origin}${shareUrl}`;
       setGeneratedShareUrl(fullUrl);
-      addToast({ type: 'success', title: 'Share Link Generated', message: 'One-time link generated successfully!' });
+      addToast({ type: 'success', title: 'Share Link Created', message: 'One-time spec link generated.' });
     } catch {
       addToast({ type: 'error', title: 'Error', message: 'Failed to generate share link.' });
     }
@@ -430,6 +458,7 @@ export const ApiBuilderView: React.FC = () => {
     if (!currentApi) return;
     setCurrentApi({ ...currentApi, sqlQuery: template.sql });
     setShowTemplates(false);
+    addToast({ type: 'info', title: 'Template Applied', message: `Inserted "${template.name}" query.` });
   };
 
   const getConnectionName = (connectionId: string): string => {
@@ -437,95 +466,344 @@ export const ApiBuilderView: React.FC = () => {
     return conn ? `${conn.name} (${conn.type})` : connectionId;
   };
 
+  // Filtered Endpoints List
+  const filteredEndpoints = useMemo(() => {
+    return endpoints.filter(api => {
+      const matchesSearch = 
+        api.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        api.endpointPath.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        api.sqlQuery.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesMethod = methodFilter === 'ALL' || api.method === methodFilter;
+      const matchesSecurity = 
+        securityFilter === 'ALL' || 
+        (securityFilter === 'PUBLIC' && api.isPublic) ||
+        (securityFilter === 'PROTECTED' && !api.isPublic);
+
+      return matchesSearch && matchesMethod && matchesSecurity;
+    });
+  }, [endpoints, searchQuery, methodFilter, securityFilter]);
+
+  // Method Counts
+  const methodStats = useMemo(() => {
+    const stats: Record<string, number> = { GET: 0, POST: 0, PUT: 0, PATCH: 0, DELETE: 0, PUBLIC: 0, PROTECTED: 0 };
+    endpoints.forEach(e => {
+      if (stats[e.method] !== undefined) stats[e.method]++;
+      if (e.isPublic) stats.PUBLIC++;
+      else stats.PROTECTED++;
+    });
+    return stats;
+  }, [endpoints]);
+
   // ─────────────────────────────────────────────
-  // LIST VIEW
+  // 1. DASHBOARD & LIST VIEW
   // ─────────────────────────────────────────────
   if (viewMode === 'list') {
     return (
-      <div className="h-full flex flex-col p-6 overflow-y-auto">
-        <div className="flex justify-between items-center mb-8">
+      <div className="h-full flex flex-col p-6 overflow-y-auto bg-bg-main">
+        {/* HEADER & METRIC BANNER */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
           <div>
-            <h1 className="text-3xl font-extrabold text-text-main flex items-center gap-3">
-              <div className="bg-blue-500/10 p-2 rounded-xl">
-                <Webhook className="w-8 h-8 text-blue-500" />
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl shadow-lg shadow-blue-500/20 text-white">
+                <Webhook className="w-7 h-7 animate-pulse" />
               </div>
-              API Builder
-              <span className="ml-2 text-sm font-normal bg-bg-panel border border-border-main px-3 py-1 rounded-full text-text-muted">
-                {endpoints.length} endpoint{endpoints.length !== 1 ? 's' : ''}
-              </span>
-            </h1>
-            <p className="text-text-muted mt-2 text-sm max-w-xl leading-relaxed">
-              Design, test, and deploy database-backed JSON APIs instantly. Turn complex queries into production-ready endpoints.
-            </p>
-            <div className="flex items-center gap-2 mt-2 text-[11px] text-text-muted">
-              <kbd className="px-1.5 py-0.5 bg-bg-panel border border-border-main rounded text-[10px] font-mono">⌘S</kbd>
-              <span>Save &middot;</span>
-              <kbd className="px-1.5 py-0.5 bg-bg-panel border border-border-main rounded text-[10px] font-mono">⌘⏎</kbd>
-              <span>Run Test &middot;</span>
-              <kbd className="px-1.5 py-0.5 bg-bg-panel border border-border-main rounded text-[10px] font-mono">Esc</kbd>
-              <span>Back</span>
+              <div>
+                <h1 className="text-3xl font-black text-text-main tracking-tight flex items-center gap-3">
+                  API Builder Studio
+                  <span className="text-xs font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1 rounded-full uppercase tracking-wider">
+                    v2.0 Realtime
+                  </span>
+                </h1>
+                <p className="text-text-muted text-sm mt-1 max-w-xl leading-relaxed">
+                  Design, test, and expose instant database-backed HTTP endpoints with automated security &amp; pagination.
+                </p>
+              </div>
             </div>
           </div>
-          <button 
-            onClick={handleCreateNew}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 font-medium transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 active:scale-[0.97]"
-            aria-label="Create new API endpoint"
-          >
-            <Plus className="w-5 h-5" /> Create API
-          </button>
+
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleCreateNew}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl flex items-center gap-2.5 font-bold transition-all shadow-xl shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98]"
+              aria-label="Create new API endpoint"
+            >
+              <Plus className="w-5 h-5 stroke-[2.5]" /> Create New Endpoint
+            </button>
+          </div>
         </div>
 
-        <div className="bg-bg-panel border border-border-main rounded-xl shadow-xl overflow-hidden">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-bg-editor/50 text-text-muted font-semibold border-b border-border-main">
-              <tr>
-                <th className="p-4 uppercase tracking-wider text-xs">Name</th>
-                <th className="p-4 uppercase tracking-wider text-xs">Method &amp; Endpoint</th>
-                <th className="p-4 uppercase tracking-wider text-xs">Security</th>
-                <th className="p-4 text-right uppercase tracking-wider text-xs">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoadingList ? (
-                <tr>
-                  <td colSpan={4} className="p-12 text-center text-text-muted">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="animate-pulse">Loading APIs...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : endpoints.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="p-16 text-center text-text-muted">
-                    <div className="flex flex-col items-center justify-center gap-4">
-                      <div className="w-16 h-16 bg-bg-editor rounded-full flex items-center justify-center border border-border-main">
-                        <Server className="w-8 h-8 text-text-muted/50" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-medium text-text-main">No APIs created yet</p>
-                        <p className="text-sm">Get started — click <strong>"Create API"</strong> to design your first endpoint.</p>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
+        {/* METRICS STATS CARDS */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-bg-panel border border-border-main p-4 rounded-2xl shadow-sm hover:border-blue-500/30 transition-all">
+            <div className="flex items-center justify-between text-text-muted mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider">Total APIs</span>
+              <Layers className="w-4 h-4 text-blue-500" />
+            </div>
+            <div className="text-2xl font-black text-text-main">{endpoints.length}</div>
+            <div className="text-[11px] text-text-muted mt-1 font-medium">Registered Endpoints</div>
+          </div>
+
+          <div className="bg-bg-panel border border-border-main p-4 rounded-2xl shadow-sm hover:border-emerald-500/30 transition-all">
+            <div className="flex items-center justify-between text-text-muted mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider">Public Access</span>
+              <Unlock className="w-4 h-4 text-emerald-500" />
+            </div>
+            <div className="text-2xl font-black text-emerald-400">{methodStats.PUBLIC}</div>
+            <div className="text-[11px] text-text-muted mt-1 font-medium">Unauthenticated Endpoints</div>
+          </div>
+
+          <div className="bg-bg-panel border border-border-main p-4 rounded-2xl shadow-sm hover:border-amber-500/30 transition-all">
+            <div className="flex items-center justify-between text-text-muted mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider">Protected</span>
+              <Lock className="w-4 h-4 text-amber-500" />
+            </div>
+            <div className="text-2xl font-black text-amber-400">{methodStats.PROTECTED}</div>
+            <div className="text-[11px] text-text-muted mt-1 font-medium">Bearer Token Secured</div>
+          </div>
+
+          <div className="bg-bg-panel border border-border-main p-4 rounded-2xl shadow-sm hover:border-purple-500/30 transition-all">
+            <div className="flex items-center justify-between text-text-muted mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider">Connections</span>
+              <Database className="w-4 h-4 text-purple-500" />
+            </div>
+            <div className="text-2xl font-black text-purple-400">{connections.length}</div>
+            <div className="text-[11px] text-text-muted mt-1 font-medium">Active Target Databases</div>
+          </div>
+        </div>
+
+        {/* SEARCH, FILTER & VIEW CONTROLS */}
+        <div className="bg-bg-panel border border-border-main p-4 rounded-2xl shadow-lg mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-1 items-center gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-text-muted pointer-events-none" />
+              <input 
+                type="text"
+                className="w-full bg-bg-editor border border-border-main rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-text-main transition-all shadow-inner"
+                placeholder="Search endpoints by name, route path, or SQL..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-3 text-text-muted hover:text-text-main"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Method Filter Pills */}
+            <div className="hidden lg:flex items-center gap-1 bg-bg-editor p-1 rounded-xl border border-border-main">
+              {['ALL', 'GET', 'POST', 'PUT', 'DELETE'].map(method => (
+                <button
+                  key={method}
+                  onClick={() => setMethodFilter(method)}
+                  className={clsx(
+                    "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                    methodFilter === method 
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" 
+                      : "text-text-muted hover:text-text-main hover:bg-bg-hover"
+                  )}
+                >
+                  {method} {method !== 'ALL' && methodStats[method] !== undefined ? `(${methodStats[method]})` : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between md:justify-end gap-3 border-t md:border-t-0 pt-3 md:pt-0 border-border-main">
+            {/* Security Selector */}
+            <select
+              className="bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-xs font-bold text-text-main outline-none focus:border-blue-500 shadow-inner"
+              value={securityFilter}
+              onChange={e => setSecurityFilter(e.target.value)}
+            >
+              <option value="ALL">All Security Types</option>
+              <option value="PUBLIC">Public Access Only</option>
+              <option value="PROTECTED">Protected Only</option>
+            </select>
+
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-xl border border-border-main">
+              <button 
+                onClick={() => setDisplayMode('grid')}
+                className={clsx("p-2 rounded-lg transition-all", displayMode === 'grid' ? "bg-bg-panel text-blue-400 shadow-sm border border-border-main" : "text-text-muted hover:text-text-main")}
+                title="Grid View"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setDisplayMode('table')}
+                className={clsx("p-2 rounded-lg transition-all", displayMode === 'table' ? "bg-bg-panel text-blue-400 shadow-sm border border-border-main" : "text-text-muted hover:text-text-main")}
+                title="Table View"
+              >
+                <List className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* CONTENT DISPLAY AREA */}
+        {isLoadingList ? (
+          <div className="p-20 text-center text-text-muted bg-bg-panel border border-border-main rounded-2xl shadow-xl">
+            <div className="flex flex-col items-center justify-center gap-4">
+              <div className="w-10 h-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-sm font-semibold animate-pulse">Loading API Endpoints...</span>
+            </div>
+          </div>
+        ) : filteredEndpoints.length === 0 ? (
+          <div className="p-16 text-center text-text-muted bg-bg-panel border border-border-main rounded-2xl shadow-xl">
+            <div className="flex flex-col items-center justify-center gap-4 max-w-md mx-auto">
+              <div className="w-20 h-20 bg-blue-500/10 rounded-3xl flex items-center justify-center border border-blue-500/20 text-blue-500 shadow-inner">
+                <Server className="w-10 h-10" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-text-main">
+                  {searchQuery || methodFilter !== 'ALL' || securityFilter !== 'ALL' ? 'No matching endpoints found' : 'No API Endpoints Yet'}
+                </h3>
+                <p className="text-sm text-text-muted mt-1 leading-relaxed">
+                  {searchQuery || methodFilter !== 'ALL' || securityFilter !== 'ALL'
+                    ? 'Try adjusting your search query or reset filters to view all APIs.'
+                    : 'Get started by creating your first database-backed API endpoint.'}
+                </p>
+              </div>
+              {searchQuery || methodFilter !== 'ALL' || securityFilter !== 'ALL' ? (
+                <button
+                  onClick={() => { setSearchQuery(''); setMethodFilter('ALL'); setSecurityFilter('ALL'); }}
+                  className="px-4 py-2 bg-bg-editor hover:bg-bg-hover border border-border-main text-text-main rounded-xl text-xs font-bold transition-all"
+                >
+                  Clear Filters
+                </button>
               ) : (
-                endpoints.map(api => (
-                  <tr key={api.id} className="border-b border-border-main hover:bg-bg-hover/50 transition-colors group">
+                <button 
+                  onClick={handleCreateNew}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 transition-all hover:scale-105"
+                >
+                  <Plus className="w-4 h-4 inline mr-1.5" /> Create First API
+                </button>
+              )}
+            </div>
+          </div>
+        ) : displayMode === 'grid' ? (
+          /* GRID VIEW */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredEndpoints.map(api => (
+              <div 
+                key={api.id}
+                className="bg-bg-panel border border-border-main hover:border-blue-500/40 rounded-2xl p-5 shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between group relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                
+                <div>
+                  {/* Card Top Header */}
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className={clsx("px-2.5 py-1 rounded-lg text-[10px] font-black tracking-widest uppercase shadow-sm", getMethodBadgeClass(api.method))}>
+                        {api.method}
+                      </span>
+                      {api.enablePagination && (
+                        <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full font-mono border border-blue-500/20" title="Auto-pagination enabled">
+                          Paginated
+                        </span>
+                      )}
+                    </div>
+
+                    {api.isPublic ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Public
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full">
+                        <ShieldAlert className="w-3.5 h-3.5" /> Protected
+                      </span>
+                    )}
+                  </div>
+
+                  {/* API Title & Route */}
+                  <h3 className="text-lg font-bold text-text-main group-hover:text-blue-400 transition-colors truncate">
+                    {api.name}
+                  </h3>
+                  <code className="text-xs font-mono text-text-muted mt-1 block truncate bg-bg-editor px-2.5 py-1 rounded-lg border border-border-main shadow-inner">
+                    /api/data{api.endpointPath}
+                  </code>
+
+                  {/* SQL Preview Snippet */}
+                  <div className="mt-4 bg-[#0d1117] p-3 rounded-xl border border-border-main/50 font-mono text-[11px] text-slate-300 max-h-24 overflow-hidden relative group/code">
+                    <p className="line-clamp-3 text-slate-400 leading-relaxed whitespace-pre-wrap">{api.sqlQuery}</p>
+                    <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[#0d1117] to-transparent"></div>
+                  </div>
+                </div>
+
+                {/* Card Footer Actions */}
+                <div className="mt-5 pt-4 border-t border-border-main/60 flex items-center justify-between">
+                  <span className="text-[11px] text-text-muted font-medium truncate max-w-[140px]" title={getConnectionName(api.connectionId)}>
+                    <Database className="w-3.5 h-3.5 inline mr-1 text-purple-400" />
+                    {getConnectionName(api.connectionId).split(' ')[0]}
+                  </span>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleViewSpec(api)}
+                      className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-all"
+                      title="View Documentation & Spec"
+                    >
+                      <FileJson className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleClone(api)}
+                      className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-all"
+                      title="Duplicate Endpoint"
+                    >
+                      <CopyPlus className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleEdit(api)}
+                      className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
+                      title="Edit Endpoint"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteClick(api)}
+                      className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
+                      title="Delete Endpoint"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* TABLE VIEW */
+          <div className="bg-bg-panel border border-border-main rounded-2xl shadow-xl overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-bg-editor text-text-muted font-bold border-b border-border-main">
+                <tr>
+                  <th className="p-4 uppercase tracking-wider text-xs">Name</th>
+                  <th className="p-4 uppercase tracking-wider text-xs">Method &amp; Path</th>
+                  <th className="p-4 uppercase tracking-wider text-xs">Database Connection</th>
+                  <th className="p-4 uppercase tracking-wider text-xs">Security</th>
+                  <th className="p-4 text-right uppercase tracking-wider text-xs">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEndpoints.map(api => (
+                  <tr key={api.id} className="border-b border-border-main hover:bg-bg-hover/40 transition-colors group">
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-text-main">{api.name}</span>
+                        <span className="font-bold text-text-main group-hover:text-blue-400 transition-colors">{api.name}</span>
                         {api.enablePagination && (
-                          <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded font-mono" title="Pagination enabled">Pg</span>
+                          <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded font-mono border border-blue-500/20">Pg</span>
                         )}
                       </div>
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        <span className={clsx("px-2.5 py-1 rounded-md text-[10px] font-black tracking-widest flex items-center gap-1", 
-                          getMethodBadgeClass(api.method)
-                        )}>
-                          <span className="sr-only">HTTP method: </span>
+                        <span className={clsx("px-2.5 py-1 rounded-md text-[10px] font-black tracking-widest uppercase", getMethodBadgeClass(api.method))}>
                           {api.method}
                         </span>
                         <code className="font-mono text-xs text-text-muted group-hover:text-blue-400 transition-colors">
@@ -533,65 +811,49 @@ export const ApiBuilderView: React.FC = () => {
                         </code>
                       </div>
                     </td>
+                    <td className="p-4 text-text-muted text-xs font-medium">
+                      <Database className="w-3.5 h-3.5 inline mr-1.5 text-purple-400" />
+                      {getConnectionName(api.connectionId)}
+                    </td>
                     <td className="p-4">
                       {api.isPublic ? (
-                        <span className="inline-flex items-center gap-1.5 text-green-500 text-xs font-medium bg-green-500/10 px-2 py-1 rounded-full">
-                          <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true"/> Public
+                        <span className="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                          <ShieldCheck className="w-3.5 h-3.5" /> Public
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 text-orange-500 text-xs font-medium bg-orange-500/10 px-2 py-1 rounded-full">
-                          <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true"/> Protected
+                        <span className="inline-flex items-center gap-1.5 text-amber-400 text-xs font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
+                          <ShieldAlert className="w-3.5 h-3.5" /> Protected
                         </span>
                       )}
                     </td>
                     <td className="p-4">
                       <div className="flex items-center justify-end gap-1">
-                        <button 
-                          onClick={() => handleViewSpec(api)} 
-                          className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
-                          title="View Spec"
-                          aria-label={`View specification for ${api.name}`}
-                        >
-                          <FileJson className="w-4 h-4"/>
+                        <button onClick={() => handleViewSpec(api)} className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors" title="View Spec">
+                          <FileJson className="w-4 h-4" />
                         </button>
-                        <button 
-                          onClick={() => handleClone(api)} 
-                          className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors"
-                          title="Clone API"
-                          aria-label={`Clone ${api.name}`}
-                        >
-                          <CopyPlus className="w-4 h-4"/>
+                        <button onClick={() => handleClone(api)} className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors" title="Clone API">
+                          <CopyPlus className="w-4 h-4" />
                         </button>
-                        <button 
-                          onClick={() => handleEdit(api)} 
-                          className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
-                          title="Edit API"
-                          aria-label={`Edit ${api.name}`}
-                        >
-                          <Pencil className="w-4 h-4"/>
+                        <button onClick={() => handleEdit(api)} className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit API">
+                          <Pencil className="w-4 h-4" />
                         </button>
-                        <button 
-                          onClick={() => handleDeleteClick(api)} 
-                          className="p-2 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                          title="Delete API"
-                          aria-label={`Delete ${api.name}`}
-                        >
-                          <Trash2 className="w-4 h-4"/>
+                        <button onClick={() => handleDeleteClick(api)} className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors" title="Delete API">
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     );
   }
 
   // ─────────────────────────────────────────────
-  // SPEC VIEW
+  // 2. SPECIFICATION & DOCS VIEW
   // ─────────────────────────────────────────────
   if (viewMode === 'spec' && currentApi) {
     const fullUrl = `${window.location.origin}/api/data${currentApi.endpointPath}`;
@@ -612,64 +874,66 @@ export const ApiBuilderView: React.FC = () => {
 
     const brunoExample = `meta {\n  name: ${currentApi.name}\n  type: http\n  seq: 1\n}\n\n${currentApi.method.toLowerCase()} {\n  url: ${fullUrl}${qs}\n  body: ${currentApi.method !== 'GET' && detectedParams.length > 0 ? 'json' : 'none'}\n  auth: ${!currentApi.isPublic ? 'bearer' : 'none'}\n}\n${!currentApi.isPublic ? `\nauth:bearer {\n  token: ${currentApi.authToken}\n}` : ''}${(detectedParams.length > 0 || currentApi.enablePagination) && currentApi.method === 'GET' ? `\nquery {\n${detectedParams.map(p => `  ${p}: value`).join('\n')}${currentApi.enablePagination ? '\n  limit: 100\n  offset: 0' : ''}\n}` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? `\nbody:json {\n  {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }\n}` : ''}`;
     
+    const jsExample = `const response = await fetch("${fullUrl}${qs}", {\n  method: "${currentApi.method}",\n  headers: {\n    "Accept": "application/json",\n    ${!currentApi.isPublic ? `"Authorization": "Bearer ${currentApi.authToken}",\n    ` : ''}${currentApi.method !== 'GET' ? `"Content-Type": "application/json"\n  },\n  body: JSON.stringify({\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  })` : '\n  }'}\n});\nconst data = await response.json();`;
+
+    const pythonExample = `import requests\n\nurl = "${fullUrl}${qs}"\nheaders = {\n    "Accept": "application/json",\n    ${!currentApi.isPublic ? `"Authorization": "Bearer ${currentApi.authToken}",\n    ` : ''}${currentApi.method !== 'GET' ? `"Content-Type": "application/json"` : ''}\n}\n${currentApi.method !== 'GET' && detectedParams.length > 0 ? `payload = {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n}\nresponse = requests.${currentApi.method.toLowerCase()}(url, headers=headers, json=payload)` : `response = requests.${currentApi.method.toLowerCase()}(url, headers=headers)`}\nprint(response.json())`;
+
     return (
-      <div className="h-full flex flex-col p-6 overflow-y-auto">
+      <div className="h-full flex flex-col p-6 overflow-y-auto bg-bg-main">
         <div className="flex items-center justify-between mb-8 max-w-5xl mx-auto w-full">
-          <div className="flex items-center gap-4">              <button 
+          <div className="flex items-center gap-4">
+            <button 
               onClick={() => setViewMode('list')} 
-              className="p-2.5 hover:bg-bg-hover bg-bg-panel border border-border-main rounded-xl text-text-muted shadow-sm transition-all hover:scale-105"
+              className="p-3 hover:bg-bg-hover bg-bg-panel border border-border-main rounded-2xl text-text-muted shadow-md transition-all hover:scale-105"
               aria-label="Back to API list"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-3xl font-extrabold text-text-main flex items-center gap-3">
-                <FileJson className="w-7 h-7 text-purple-500" />
-                API Specification
+              <h1 className="text-3xl font-black text-text-main flex items-center gap-3">
+                <FileJson className="w-8 h-8 text-purple-500" />
+                API Specification &amp; Docs
               </h1>
               <p className="text-text-muted text-sm mt-1 font-medium">{currentApi.name}</p>
             </div>
           </div>
+
           <button 
             onClick={handleShare}
-            className="px-4 py-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white rounded-lg flex items-center gap-2 font-medium shadow-lg shadow-purple-500/20 transition-all hover:scale-105 active:scale-[0.97]"
-            aria-label="Generate one-time share link"
+            className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl flex items-center gap-2 font-bold shadow-lg shadow-purple-500/20 transition-all hover:scale-105 active:scale-[0.98]"
           >
-            <Share2 className="w-4 h-4" />
-            Share One-Time Link
+            <Share2 className="w-4 h-4" /> Share One-Time Link
           </button>
         </div>
         
         {generatedShareUrl && (
           <div className="max-w-5xl mx-auto w-full mb-6">
-            <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 p-6 rounded-2xl shadow-lg relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-purple-500 to-blue-500"></div>
+            <div className="bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/30 p-6 rounded-2xl shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-purple-500 to-indigo-500"></div>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-                    <Check className="w-4 h-4" /> One-Time Link Generated!
+                    <Check className="w-4 h-4" /> One-Time Shareable Link Active!
                   </h3>
                   <p className="text-text-muted text-sm mb-4">
-                    This link can only be viewed once. Copy it below to share the API specification.
+                    This single-use security link can be shared with clients or developers to view this API spec without logging in.
                   </p>
                   <div className="flex items-center gap-2">
-                    <code className="bg-bg-input px-4 py-3 rounded-lg flex-1 font-mono text-sm border border-border-main text-text-main break-all">
+                    <code className="bg-bg-input px-4 py-3 rounded-xl flex-1 font-mono text-sm border border-border-main text-text-main break-all shadow-inner">
                       {generatedShareUrl}
                     </code>
                     <button
                       onClick={() => handleCopy(generatedShareUrl, 'share-link')}
-                      className="px-4 py-3 bg-bg-panel hover:bg-bg-hover border border-border-main rounded-lg text-text-main transition-colors flex items-center gap-2 shrink-0"
-                      aria-label="Copy share link"
+                      className="px-5 py-3 bg-bg-panel hover:bg-bg-hover border border-border-main rounded-xl text-text-main transition-colors flex items-center gap-2 shrink-0 font-bold text-sm shadow-md"
                     >
-                      {copiedStates['share-link'] ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                      {copiedStates['share-link'] ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                       {copiedStates['share-link'] ? 'Copied!' : 'Copy Link'}
                     </button>
                   </div>
                 </div>
                 <button 
                   onClick={() => setGeneratedShareUrl(null)}
-                  className="p-2 text-text-muted hover:text-text-main hover:bg-bg-hover rounded-lg transition-colors"
-                  aria-label="Close share link banner"
+                  className="p-2 text-text-muted hover:text-text-main hover:bg-bg-hover rounded-xl transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -679,284 +943,229 @@ export const ApiBuilderView: React.FC = () => {
         )}
         
         <div className="max-w-5xl mx-auto w-full space-y-6">
-          <div className="bg-bg-panel border border-border-main p-8 rounded-2xl shadow-xl space-y-8 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-green-500 opacity-50"></div>
+          <div className="bg-bg-panel border border-border-main p-8 rounded-3xl shadow-xl space-y-8 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"></div>
             
-            {/* URL Section */}
+            {/* Endpoint URL Card */}
             <div>
-              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2 justify-between">
-                <span className="flex items-center gap-2"><Webhook className="w-4 h-4" /> Endpoint URL</span>
+              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center justify-between">
+                <span className="flex items-center gap-2"><Webhook className="w-4 h-4 text-blue-500" /> Live Endpoint Route</span>
                 {currentApi.connectionId && (
-                  <span className="text-xs bg-bg-hover px-2 py-1 rounded border border-border-main text-text-muted flex items-center gap-1.5 font-normal">
-                    <Database className="w-3 h-3" /> Connection: {connName}
+                  <span className="text-xs bg-bg-editor px-3 py-1 rounded-full border border-border-main text-text-muted font-mono flex items-center gap-1.5">
+                    <Database className="w-3.5 h-3.5 text-purple-400" /> DB: {connName}
                   </span>
                 )}
               </h3>
-              <div className="flex items-center gap-0">
-                <span className={clsx("px-4 py-3 rounded-l-lg text-sm font-black tracking-wider shadow-inner flex items-center gap-1.5", 
-                    getMethodBadgeClass(currentApi.method)
-                  )}>
-                    <span aria-hidden="true" className="w-2 h-2 rounded-full bg-current"></span>
-                    {currentApi.method}
+              <div className="flex items-center gap-0 shadow-inner rounded-xl overflow-hidden border border-border-main">
+                <span className={clsx("px-5 py-3.5 text-sm font-black tracking-wider shadow-inner flex items-center gap-2 shrink-0", getMethodBadgeClass(currentApi.method))}>
+                  <span className="w-2.5 h-2.5 rounded-full bg-current"></span>
+                  {currentApi.method}
                 </span>
-                <code className="bg-bg-editor px-4 py-3 border-y border-border-main text-text-main font-mono flex-1 text-sm overflow-x-auto whitespace-nowrap shadow-inner">
+                <code className="bg-[#0d1117] px-4 py-3.5 text-slate-200 font-mono flex-1 text-sm overflow-x-auto whitespace-nowrap">
                   {fullUrl}
                 </code>
                 <button 
                   onClick={() => handleCopy(fullUrl, 'url')}
-                  className="bg-bg-hover hover:bg-blue-500/10 hover:text-blue-400 border-y border-r border-border-main px-4 py-3 rounded-r-lg text-text-muted transition-colors flex items-center justify-center shadow-inner"
-                  title="Copy URL"
-                  aria-label="Copy endpoint URL"
+                  className="bg-bg-editor hover:bg-blue-500/10 hover:text-blue-400 border-l border-border-main px-5 py-3.5 text-text-muted transition-colors flex items-center justify-center font-bold text-xs"
                 >
-                  {copiedStates['url'] ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  {copiedStates['url'] ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                 </button>
               </div>
             </div>
             
-            {/* Auth Section */}
+            {/* Security Section */}
             <div>
-              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4" /> Authentication
+              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-indigo-500" /> Authorization &amp; Access
               </h3>
               {currentApi.isPublic ? (
-                <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-xl flex items-center gap-3">
-                  <ShieldCheck className="w-6 h-6 text-green-500" aria-hidden="true" />
+                <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-2xl flex items-center gap-4">
+                  <ShieldCheck className="w-7 h-7 text-emerald-400 shrink-0" />
                   <div>
-                    <p className="text-sm font-bold text-green-500">Public Access</p>
-                    <p className="text-xs text-green-500/80 mt-0.5">This API can be accessed without any authorization headers.</p>
+                    <p className="text-sm font-bold text-emerald-400">Public Access Endpoint</p>
+                    <p className="text-xs text-emerald-400/80 mt-0.5">This API can be called directly without bearer tokens or credentials.</p>
                   </div>
                 </div>
               ) : (
-                <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl">
+                <div className="bg-amber-500/10 border border-amber-500/20 p-5 rounded-2xl">
                   <div className="flex items-center gap-3 mb-3">
-                    <ShieldAlert className="w-6 h-6 text-orange-500" aria-hidden="true" />
+                    <ShieldAlert className="w-6 h-6 text-amber-400 shrink-0" />
                     <div>
-                      <p className="text-sm font-bold text-orange-500">Protected Endpoint</p>
-                      <p className="text-xs text-orange-500/80 mt-0.5">Include this header in your HTTP requests.</p>
+                      <p className="text-sm font-bold text-amber-400">Protected Bearer Token Endpoint</p>
+                      <p className="text-xs text-amber-400/80 mt-0.5">Pass the Authorization header below in all consumer HTTP requests.</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-0">
-                    <code className="flex-1 bg-bg-editor/50 border border-orange-500/20 px-4 py-2.5 rounded-l-lg text-orange-300 font-mono text-sm overflow-x-auto shadow-inner">
+                  <div className="flex items-center gap-0 border border-amber-500/30 rounded-xl overflow-hidden">
+                    <code className="flex-1 bg-[#0d1117] px-4 py-3 text-amber-300 font-mono text-sm overflow-x-auto">
                       Authorization: Bearer {currentApi.authToken}
                     </code>
                     <button 
                       onClick={() => handleCopy(currentApi.authToken, 'token')}
-                      className="bg-orange-500/20 hover:bg-orange-500/30 border-y border-r border-orange-500/20 px-4 py-2.5 rounded-r-lg text-orange-400 transition-colors flex items-center justify-center shadow-inner"
-                      title="Copy Token"
-                      aria-label="Copy authorization token"
+                      className="bg-amber-500/20 hover:bg-amber-500/30 border-l border-amber-500/30 px-5 py-3 text-amber-400 transition-colors font-bold text-xs flex items-center gap-1.5"
                     >
-                      {copiedStates['token'] ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                      {copiedStates['token'] ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedStates['token'] ? 'Copied' : 'Copy Token'}
                     </button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Parameters Section */}
+            {/* Parameter Schema Table */}
             <div>
-              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Settings2 className="w-4 h-4" /> Parameters
+              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Settings2 className="w-4 h-4 text-blue-500" /> Expected Request Parameters
               </h3>
               {detectedParams.length === 0 && !currentApi.enablePagination ? (
-                <div className="bg-bg-editor/50 border border-border-main p-8 rounded-xl text-center">
-                  <p className="text-sm text-text-muted">No parameters required for this endpoint.</p>
+                <div className="bg-bg-editor border border-border-main p-8 rounded-2xl text-center">
+                  <p className="text-sm text-text-muted">No custom parameters required for this endpoint.</p>
                 </div>
               ) : (
-                <>
-                  <div className="border border-border-main rounded-xl overflow-hidden shadow-sm">
-                    <table className="w-full text-left text-sm">
-                    <thead className="bg-bg-editor/80">
+                <div className="border border-border-main rounded-2xl overflow-hidden shadow-sm">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-bg-editor">
                       <tr>
-                        <th className="p-3 border-b border-border-main font-semibold text-text-main text-xs uppercase tracking-wider">Name</th>
-                        <th className="p-3 border-b border-border-main font-semibold text-text-main text-xs uppercase tracking-wider">Type</th>
-                        <th className="p-3 border-b border-border-main font-semibold text-text-main text-xs uppercase tracking-wider">Required</th>
-                        <th className="p-3 border-b border-border-main font-semibold text-text-main text-xs uppercase tracking-wider">Default</th>
-                        <th className="p-3 border-b border-border-main font-semibold text-text-main text-xs uppercase tracking-wider">Description</th>
+                        <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider">Parameter</th>
+                        <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider">Type</th>
+                        <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider">Required</th>
+                        <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider">Default</th>
+                        <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider">Description</th>
                       </tr>
                     </thead>
                     <tbody>
                       {detectedParams.map(p => {
                         const meta = parsedParams.find(m => m.name === p) || {
-                          name: p, type: 'string', required: true, defaultValue: '', description: `Extracted from SQL :${p}`
+                          name: p, type: 'string', required: true, defaultValue: '', description: `Query parameter :${p}`
                         };
                         return (
-                          <tr key={p} className="border-b border-border-main last:border-0 bg-bg-panel hover:bg-bg-hover/30 transition-colors">
-                            <td className="p-3">
-                              <span className="font-mono text-blue-400 bg-blue-500/10 px-2 py-1 rounded text-xs">{p}</span>
+                          <tr key={p} className="border-b border-border-main last:border-0 hover:bg-bg-hover/30 transition-colors">
+                            <td className="p-3.5">
+                              <span className="font-mono text-blue-400 bg-blue-500/10 px-2 py-1 rounded-lg text-xs font-bold">:{p}</span>
                             </td>
-                            <td className="p-3 text-text-muted capitalize text-xs font-medium">{meta.type}</td>
-                            <td className="p-3">
+                            <td className="p-3.5 text-text-muted capitalize text-xs font-semibold">{meta.type}</td>
+                            <td className="p-3.5">
                               {meta.required ? (
-                                <span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-orange-500/10 text-orange-500 border border-orange-500/20">Required</span>
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-extrabold bg-amber-500/10 text-amber-400 border border-amber-500/20">Required</span>
                               ) : (
-                                <span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-green-500/10 text-green-500 border border-green-500/20">Optional</span>
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Optional</span>
                               )}
                             </td>
-                            <td className="p-3 text-text-muted font-mono text-xs">{meta.defaultValue || <span className="opacity-30">—</span>}</td>
-                            <td className="p-3 text-text-muted text-xs max-w-xs truncate" title={meta.description}>{meta.description || <span className="opacity-30">—</span>}</td>
+                            <td className="p-3.5 text-text-muted font-mono text-xs">{meta.defaultValue || <span className="opacity-30">—</span>}</td>
+                            <td className="p-3.5 text-text-muted text-xs">{meta.description || <span className="opacity-30">—</span>}</td>
                           </tr>
                         );
                       })}
                       {currentApi.enablePagination && (
                         <>
                           <tr className="border-b border-border-main bg-blue-500/5">
-                            <td className="p-3 font-mono text-blue-400">limit</td>
-                            <td className="p-3 text-text-muted capitalize text-xs">integer</td>
-                            <td className="p-3"><span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-green-500/20 text-green-500">Optional</span></td>
-                            <td className="p-3 text-text-muted font-mono text-xs">100</td>
-                            <td className="p-3 text-text-muted text-xs">Max records to return. Example: <code className="font-mono">?limit=20</code></td>
+                            <td className="p-3.5 font-mono text-blue-400 font-bold">limit</td>
+                            <td className="p-3.5 text-text-muted text-xs font-semibold">integer</td>
+                            <td className="p-3.5"><span className="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Optional</span></td>
+                            <td className="p-3.5 text-text-muted font-mono text-xs">100</td>
+                            <td className="p-3.5 text-text-muted text-xs">Max rows to fetch (Database style). Example: <code className="font-mono">?limit=50</code></td>
                           </tr>
                           <tr className="border-b border-border-main bg-blue-500/5">
-                            <td className="p-3 font-mono text-blue-400">size</td>
-                            <td className="p-3 text-text-muted capitalize text-xs">integer</td>
-                            <td className="p-3"><span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-green-500/20 text-green-500">Optional</span></td>
-                            <td className="p-3 text-text-muted font-mono text-xs">100</td>
-                            <td className="p-3 text-text-muted text-xs">Alias for <code className="font-mono">limit</code>. Example: <code className="font-mono">?size=20</code></td>
-                          </tr>
-                          <tr className="border-b border-border-main bg-blue-500/5">
-                            <td className="p-3 font-mono text-blue-400">offset</td>
-                            <td className="p-3 text-text-muted capitalize text-xs">integer</td>
-                            <td className="p-3"><span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-green-500/20 text-green-500">Optional</span></td>
-                            <td className="p-3 text-text-muted font-mono text-xs">0</td>
-                            <td className="p-3 text-text-muted text-xs">Records to skip. Example: <code className="font-mono">?offset=40</code></td>
+                            <td className="p-3.5 font-mono text-blue-400 font-bold">offset</td>
+                            <td className="p-3.5 text-text-muted text-xs font-semibold">integer</td>
+                            <td className="p-3.5"><span className="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Optional</span></td>
+                            <td className="p-3.5 text-text-muted font-mono text-xs">0</td>
+                            <td className="p-3.5 text-text-muted text-xs">Rows to skip. Example: <code className="font-mono">?offset=100</code></td>
                           </tr>
                           <tr className="bg-blue-500/5">
-                            <td className="p-3 font-mono text-blue-400">page</td>
-                            <td className="p-3 text-text-muted capitalize text-xs">integer</td>
-                            <td className="p-3"><span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-green-500/20 text-green-500">Optional</span></td>
-                            <td className="p-3 text-text-muted font-mono text-xs">1</td>
-                            <td className="p-3 text-text-muted text-xs">1-indexed page. Converts to <code className="font-mono">offset = (page-1) × limit</code>. Example: <code className="font-mono">?page=3</code></td>
+                            <td className="p-3.5 font-mono text-purple-400 font-bold">page</td>
+                            <td className="p-3.5 text-text-muted text-xs font-semibold">integer</td>
+                            <td className="p-3.5"><span className="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Optional</span></td>
+                            <td className="p-3.5 text-text-muted font-mono text-xs">1</td>
+                            <td className="p-3.5 text-text-muted text-xs">Page number (1-indexed UI style). Example: <code className="font-mono">?page=2</code></td>
                           </tr>
                         </>
                       )}
                     </tbody>
                   </table>
-                  </div>
-                  {currentApi.enablePagination && (
-                    <div className="mt-4 bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
-                      <h4 className="text-sm font-bold text-blue-400 mb-2 flex items-center gap-2">
-                        <Settings2 className="w-4 h-4" /> How to use Pagination
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-text-muted mt-3">
-                        <div className="bg-bg-panel/50 p-3 rounded-lg border border-border-main">
-                          <p className="font-bold text-text-main mb-1">Style 1: limit &amp; offset (Database Style)</p>
-                          <p className="mb-2 text-[11px]">Best for fetching a chunk of data and skipping records directly.</p>
-                          <ul className="space-y-1 font-mono text-[11px] text-blue-300">
-                            <li>?limit=20&amp;offset=0  <span className="text-text-muted font-sans ml-1">(first 20)</span></li>
-                            <li>?limit=20&amp;offset=20 <span className="text-text-muted font-sans ml-1">(next 20)</span></li>
-                          </ul>
-                        </div>
-                        <div className="bg-bg-panel/50 p-3 rounded-lg border border-border-main">
-                          <p className="font-bold text-text-main mb-1">Style 2: size &amp; page (UI Table Style)</p>
-                          <p className="mb-2 text-[11px]">Best for UI tables. <code className="font-mono">page</code> is 1-indexed.</p>
-                          <ul className="space-y-1 font-mono text-[11px] text-orange-300">
-                            <li>?size=20&amp;page=1 <span className="text-text-muted font-sans ml-1">(page 1, skips 0)</span></li>
-                            <li>?size=20&amp;page=2 <span className="text-text-muted font-sans ml-1">(page 2, skips 20)</span></li>
-                          </ul>
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-text-muted/80 mt-3 italic">* Priority: If mixed, <code className="font-mono">limit</code> overrides <code className="font-mono">size</code>, and <code className="font-mono">offset</code> overrides <code className="font-mono">page</code>.</p>
-                    </div>
-                  )}
-                </>
+                </div>
               )}
             </div>
-            
-            {/* API Examples */}
+
+            {/* Multi-language Code Generator Snippets */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-1 bg-bg-editor/50 p-1 rounded-lg border border-border-main" role="tablist" aria-label="Code example format">
-                  <button 
-                    onClick={() => setActiveSpecTab('curl')}
-                    className={clsx("px-3 py-1.5 rounded-md text-xs font-bold transition-colors", activeSpecTab === 'curl' ? "bg-bg-panel text-blue-400 shadow-sm border border-border-main" : "text-text-muted hover:text-text-main")}
-                    role="tab"
-                    aria-selected={activeSpecTab === 'curl'}
-                    aria-label="cURL example"
-                  >
-                    cURL
-                  </button>
-                  <button 
-                    onClick={() => setActiveSpecTab('postman')}
-                    className={clsx("px-3 py-1.5 rounded-md text-xs font-bold transition-colors", activeSpecTab === 'postman' ? "bg-bg-panel text-orange-400 shadow-sm border border-border-main" : "text-text-muted hover:text-text-main")}
-                    role="tab"
-                    aria-selected={activeSpecTab === 'postman'}
-                    aria-label="Postman HTTP example"
-                  >
-                    Postman (HTTP)
-                  </button>
-                  <button 
-                    onClick={() => setActiveSpecTab('bruno')}
-                    className={clsx("px-3 py-1.5 rounded-md text-xs font-bold transition-colors", activeSpecTab === 'bruno' ? "bg-bg-panel text-yellow-400 shadow-sm border border-border-main" : "text-text-muted hover:text-text-main")}
-                    role="tab"
-                    aria-selected={activeSpecTab === 'bruno'}
-                    aria-label="Bruno API client example"
-                  >
-                    Bruno (.bru)
-                  </button>
+                <div className="flex items-center gap-1 bg-bg-editor p-1.5 rounded-xl border border-border-main">
+                  {(['curl', 'postman', 'bruno', 'js', 'python'] as const).map(tab => (
+                    <button 
+                      key={tab}
+                      onClick={() => setActiveSpecTab(tab)}
+                      className={clsx(
+                        "px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all", 
+                        activeSpecTab === tab 
+                          ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" 
+                          : "text-text-muted hover:text-text-main"
+                      )}
+                    >
+                      {tab === 'curl' ? 'cURL' : tab === 'postman' ? 'Postman' : tab === 'bruno' ? 'Bruno' : tab === 'js' ? 'JavaScript' : 'Python'}
+                    </button>
+                  ))}
                 </div>
                 <button 
                   onClick={() => {
-                    const text = activeSpecTab === 'curl' ? curlExample : activeSpecTab === 'postman' ? postmanExample : brunoExample;
-                    handleCopy(text, `${activeSpecTab}-example`);
+                    const snippetMap = { curl: curlExample, postman: postmanExample, bruno: brunoExample, js: jsExample, python: pythonExample };
+                    handleCopy(snippetMap[activeSpecTab], `${activeSpecTab}-code`);
                   }}
-                  className="text-xs flex items-center gap-1.5 text-blue-400 hover:text-blue-300 transition-colors"
-                  aria-label="Copy code example"
+                  className="text-xs flex items-center gap-1.5 text-blue-400 hover:text-blue-300 transition-colors font-bold"
                 >
-                  {copiedStates[`${activeSpecTab}-example`] ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  Copy Code
+                  {copiedStates[`${activeSpecTab}-code`] ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  Copy Code Snippet
                 </button>
               </div>
-              <div className="relative group">
-                <pre className="bg-[#0d1117] border border-border-main p-4 rounded-xl overflow-x-auto shadow-inner text-sm font-mono leading-relaxed">
-                  <code className="text-gray-300 whitespace-pre">
-                    {activeSpecTab === 'curl' ? curlExample : activeSpecTab === 'postman' ? postmanExample : brunoExample}
-                  </code>
-                </pre>
-              </div>
+              <pre className="bg-[#0d1117] border border-border-main p-5 rounded-2xl overflow-x-auto shadow-inner text-sm font-mono leading-relaxed">
+                <code className="text-slate-200 whitespace-pre">
+                  {activeSpecTab === 'curl' ? curlExample : activeSpecTab === 'postman' ? postmanExample : activeSpecTab === 'bruno' ? brunoExample : activeSpecTab === 'js' ? jsExample : pythonExample}
+                </code>
+              </pre>
             </div>
 
-            {/* Response Format */}
+            {/* Response Format Specs */}
             <div>
-              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
-                <FileJson className="w-4 h-4" /> Response Format
+              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+                <FileJson className="w-4 h-4 text-indigo-500" /> Response Schema Standard
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="border border-green-500/20 bg-green-500/5 rounded-xl overflow-hidden">
-                  <div className="px-4 py-2 bg-green-500/10 border-b border-green-500/20 flex items-center justify-between">
-                    <span className="text-xs font-bold text-green-500 uppercase tracking-wider flex items-center gap-1.5">
-                      <Check className="w-3 h-3" /> Success
+                <div className="border border-emerald-500/20 bg-emerald-500/5 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-2.5 bg-emerald-500/10 border-b border-emerald-500/20 flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5" /> Success Payload
                     </span>
-                    <span className="font-mono text-xs text-green-500">200 OK</span>
+                    <span className="font-mono text-xs text-emerald-400 font-bold">200 OK</span>
                   </div>
-                  <div className="p-4">
-                    <pre className="text-xs font-mono text-text-muted">
+                  <div className="p-4 bg-[#0d1117]">
+                    <pre className="text-xs font-mono text-slate-300">
 {`[
   {
-    "column1": "value1",
-    "column2": "value2"
+    "id": 101,
+    "name": "Sample Record",
+    "created_at": "2026-07-24T08:00:00Z"
   }
 ]`}
                     </pre>
                   </div>
                 </div>
-                <div className="border border-red-500/20 bg-red-500/5 rounded-xl overflow-hidden">
-                  <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20 flex items-center justify-between">
-                    <span className="text-xs font-bold text-red-500 uppercase tracking-wider flex items-center gap-1.5">
-                      <AlertCircle className="w-3 h-3" /> Error
+                <div className="border border-rose-500/20 bg-rose-500/5 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-2.5 bg-rose-500/10 border-b border-rose-500/20 flex items-center justify-between">
+                    <span className="text-xs font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5" /> Error Payload
                     </span>
-                    <span className="font-mono text-xs text-red-500">4xx / 5xx</span>
+                    <span className="font-mono text-xs text-rose-400 font-bold">4xx / 5xx</span>
                   </div>
-                  <div className="p-4">
-                    <pre className="text-xs font-mono text-text-muted">
+                  <div className="p-4 bg-[#0d1117]">
+                    <pre className="text-xs font-mono text-slate-300">
 {`{
-  "error": "Error message description"
+  "error": "Detailed validation or execution message",
+  "status": 400
 }`}
                     </pre>
                   </div>
                 </div>
               </div>
             </div>
-            
           </div>
         </div>
       </div>
@@ -964,7 +1173,7 @@ export const ApiBuilderView: React.FC = () => {
   }
 
   // ─────────────────────────────────────────────
-  // EDIT VIEW
+  // 3. EDIT & STUDIO VIEW
   // ─────────────────────────────────────────────
   if (viewMode === 'edit' && currentApi) {
     const paramsList = detectParams(currentApi.sqlQuery);
@@ -972,29 +1181,30 @@ export const ApiBuilderView: React.FC = () => {
     
     return (
       <div className="h-full flex flex-col overflow-hidden bg-bg-editor">
-        {/* TOP BAR */}
-        <div className="bg-bg-panel border-b border-border-main p-3 flex items-center justify-between shrink-0 shadow-sm z-10">
+        {/* STUDIO TOP HEADER */}
+        <div className="bg-bg-panel border-b border-border-main px-5 py-3 flex items-center justify-between shrink-0 shadow-md z-10">
           <div className="flex items-center gap-4 flex-1">
             <button 
               onClick={handleBackToList} 
-              className="p-2 hover:bg-bg-hover rounded-lg text-text-muted transition-colors relative"
+              className="p-2.5 hover:bg-bg-hover rounded-xl text-text-muted transition-colors relative border border-border-main bg-bg-editor"
               aria-label="Back to API list"
             >
               <ArrowLeft className="w-5 h-5" />
               {isDirty && (
-                <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-yellow-500 rounded-full animate-pulse" title="Unsaved changes"></span>
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-400 rounded-full animate-pulse"></span>
               )}
             </button>
+            
             <div className="h-6 w-px bg-border-main hidden md:block"></div>
             
-            {/* Live URL Preview */}
-            <div className="hidden md:flex items-center gap-0 text-sm font-mono flex-1 max-w-3xl overflow-hidden rounded-md border border-border-main shadow-inner opacity-80 hover:opacity-100 transition-opacity">
-              <span className={clsx("px-3 py-1.5 font-bold tracking-wide shrink-0 flex items-center gap-1", getMethodBadgeClass(currentApi.method))}>
-                <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true"></span>
+            {/* Live Endpoint Route Badge */}
+            <div className="hidden md:flex items-center gap-0 text-sm font-mono flex-1 max-w-2xl overflow-hidden rounded-xl border border-border-main shadow-inner">
+              <span className={clsx("px-3.5 py-1.5 font-black tracking-wider shrink-0 flex items-center gap-1.5", getMethodBadgeClass(currentApi.method))}>
+                <span className="w-2 h-2 rounded-full bg-current"></span>
                 {currentApi.method}
               </span>
-              <span className="px-3 py-1.5 bg-bg-editor text-text-muted truncate flex-1 flex items-center gap-1">
-                <span className="opacity-50">{window.location.origin}/api/data</span>
+              <span className="px-3 py-1.5 bg-[#0d1117] text-slate-300 truncate flex-1 flex items-center gap-1">
+                <span className="opacity-40">{window.location.origin}/api/data</span>
                 <span className="text-blue-400 font-bold">{currentApi.endpointPath || <span className="opacity-30 italic">/your-path</span>}</span>
                 {paramsList.length > 0 && currentApi.method === 'GET' && (
                   <span className="text-purple-400">?{paramsList.map(p => `${p}={${p}}`).join('&')}</span>
@@ -1002,20 +1212,20 @@ export const ApiBuilderView: React.FC = () => {
               </span>
             </div>
 
-            {/* Dirty state indicator for wider screens */}
+            {/* Dirty State Tag */}
             {isDirty && (
-              <div className="hidden md:flex items-center gap-1.5 text-[10px] font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded-full border border-yellow-500/20 animate-in fade-in">
-                <span className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></span>
-                Unsaved
+              <div className="hidden md:flex items-center gap-1.5 text-xs font-bold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+                <span className="w-2 h-2 bg-amber-400 rounded-full animate-ping"></span>
+                Unsaved Changes
               </div>
             )}
           </div>
+
           <div className="flex items-center gap-3">
             <button 
               onClick={handleSave}
               disabled={isSaving}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 text-sm font-semibold transition-colors shadow-lg shadow-blue-500/20 active:scale-[0.97]"
-              aria-label="Save API endpoint"
+              className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center gap-2 text-sm font-bold transition-all shadow-lg shadow-blue-500/25 active:scale-[0.97]"
             >
               {isSaving ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -1023,62 +1233,62 @@ export const ApiBuilderView: React.FC = () => {
                 <Save className="w-4 h-4" />
               )}
               {isSaving ? 'Saving...' : 'Save API'}
-              <kbd className="hidden md:inline-flex ml-1 px-1.5 py-0.5 bg-blue-800/50 rounded text-[9px] font-mono border border-blue-400/30">⌘S</kbd>
+              <kbd className="hidden lg:inline-flex ml-1.5 px-1.5 py-0.5 bg-blue-800/40 rounded text-[10px] font-mono border border-blue-400/30">⌘S</kbd>
             </button>
           </div>
         </div>
 
-        {/* MAIN CONTENT AREA - Using grid rows for proper layout */}
+        {/* MAIN STUDIO WORKSPACE */}
         <div className="flex-1 overflow-hidden flex flex-col relative">
-          <div className="flex-1 min-h-0 flex overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
             
-            {/* LEFT: SQL Editor */}
-            <div className="flex-1 lg:w-3/5 flex flex-col border-r border-border-main min-w-0">
-              <div className="bg-bg-panel border-b border-border-main p-3 px-4 flex justify-between items-center shrink-0">
-                <div className="flex items-center gap-2 text-sm font-bold text-text-main">
-                  <Database className="w-4 h-4 text-blue-500" /> SQL Query
+            {/* LEFT PANE: SQL Editor */}
+            <div className="flex-1 lg:w-3/5 flex flex-col border-r border-border-main min-w-0 bg-[#080e1a]">
+              <div className="bg-bg-panel border-b border-border-main px-4 py-3 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-2.5 text-sm font-bold text-text-main">
+                  <Database className="w-4 h-4 text-blue-500" /> SQL Query Studio
                 </div>
+
                 <div className="flex items-center gap-2">
                   <div className="relative">
                     <button
                       onClick={() => setShowTemplates(!showTemplates)}
-                      className="text-[11px] font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 px-2.5 py-1 rounded-full border border-purple-500/20 flex items-center gap-1.5 transition-colors"
-                      aria-label="SQL templates"
+                      className="text-xs font-bold text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 px-3 py-1.5 rounded-xl border border-purple-500/20 flex items-center gap-1.5 transition-colors"
                     >
-                      <BookTemplate className="w-3 h-3" /> Templates
+                      <BookTemplate className="w-3.5 h-3.5" /> Templates
                     </button>
+
                     {showTemplates && (
-                      <div className="absolute top-full right-0 mt-1 w-64 bg-bg-panel border border-border-main rounded-xl shadow-2xl z-30 overflow-hidden">
-                        <div className="p-2 border-b border-border-main/50">
-                          <p className="text-[10px] uppercase font-bold text-text-muted tracking-wider px-2">Query Templates</p>
+                      <div className="absolute top-full right-0 mt-2 w-72 bg-bg-panel border border-border-main rounded-2xl shadow-2xl z-30 overflow-hidden">
+                        <div className="p-3 border-b border-border-main bg-bg-editor">
+                          <p className="text-xs uppercase font-extrabold text-text-muted tracking-wider">Quick SQL Templates</p>
                         </div>
-                        <div className="p-1 max-h-64 overflow-y-auto">
+                        <div className="p-1.5 max-h-72 overflow-y-auto">
                           {QUERY_TEMPLATES.map((template, i) => (
                             <button
                               key={i}
                               onClick={() => applyTemplate(template)}
-                              className="w-full text-left px-3 py-2.5 hover:bg-bg-hover rounded-lg transition-colors flex items-center gap-3 group"
+                              className="w-full text-left p-3 hover:bg-bg-hover rounded-xl transition-colors flex items-start gap-3 group"
                             >
-                              <template.icon className="w-4 h-4 text-text-muted group-hover:text-blue-400 shrink-0" />
+                              <template.icon className="w-4 h-4 text-text-muted group-hover:text-blue-400 shrink-0 mt-0.5" />
                               <div>
-                                <span className="text-sm font-medium text-text-main">{template.name}</span>
-                                <p className="text-[10px] font-mono text-text-muted truncate max-w-[180px]">{template.sql.split('\n')[0]}</p>
+                                <span className="text-xs font-bold text-text-main block">{template.name}</span>
+                                <span className="text-[11px] text-text-muted block mt-0.5">{template.desc}</span>
                               </div>
                             </button>
                           ))}
                         </div>
-                        <div className="p-2 border-t border-border-main/50 bg-bg-editor/30">
-                          <p className="text-[9px] text-text-muted text-center">Click to replace current query</p>
-                        </div>
                       </div>
                     )}
                   </div>
-                  <div className="text-[11px] font-medium text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">
-                    Use <code className="font-mono font-bold text-blue-300">:param</code> for variables
+
+                  <div className="text-xs font-bold text-blue-400 bg-blue-500/10 px-3 py-1.5 rounded-xl border border-blue-500/20 font-mono">
+                    Use <code className="text-blue-300 font-bold">:param</code> for parameters
                   </div>
                 </div>
               </div>
-              <div className="flex-1 min-h-0 relative bg-bg-editor">
+
+              <div className="flex-1 min-h-0 relative">
                 <SQLEditor 
                   key={currentApi.connectionId}
                   value={currentApi.sqlQuery}
@@ -1088,173 +1298,181 @@ export const ApiBuilderView: React.FC = () => {
               </div>
             </div>
 
-            {/* RIGHT: Config Panel */}
+            {/* RIGHT PANE: Configuration Tabs */}
             <div className="flex-1 lg:w-2/5 flex flex-col bg-bg-panel overflow-y-auto min-w-0">
-              <div className="p-5 space-y-6">
+              
+              {/* TAB NAVIGATION HEADER */}
+              <div className="border-b border-border-main bg-bg-editor p-2 flex items-center justify-around shrink-0">
+                <button
+                  onClick={() => setActiveTab('general')}
+                  className={clsx(
+                    "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                    activeTab === 'general' ? "bg-bg-panel text-blue-400 shadow-md border border-border-main" : "text-text-muted hover:text-text-main"
+                  )}
+                >
+                  <Settings2 className="w-4 h-4" /> Config
+                </button>
+                <button
+                  onClick={() => setActiveTab('params')}
+                  className={clsx(
+                    "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 relative",
+                    activeTab === 'params' ? "bg-bg-panel text-blue-400 shadow-md border border-border-main" : "text-text-muted hover:text-text-main"
+                  )}
+                >
+                  <Database className="w-4 h-4" /> Parameters
+                  {paramCount > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-blue-500 absolute top-1 right-1"></span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('security')}
+                  className={clsx(
+                    "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                    activeTab === 'security' ? "bg-bg-panel text-blue-400 shadow-md border border-border-main" : "text-text-muted hover:text-text-main"
+                  )}
+                >
+                  <ShieldCheck className="w-4 h-4" /> Security
+                </button>
+              </div>
+
+              {/* TAB CONTENT BODY */}
+              <div className="p-6 space-y-6">
                 
-                {/* Validation Errors Banner */}
+                {/* Validation Banner */}
                 {validationErrors.length > 0 && (
-                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 animate-in fade-in">
+                  <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 animate-in fade-in">
                     <div className="flex items-center gap-2 mb-2">
-                      <AlertCircle className="w-4 h-4 text-red-500" />
-                      <span className="text-xs font-bold text-red-500 uppercase tracking-wider">Please fix {validationErrors.length} error(s)</span>
+                      <AlertCircle className="w-4 h-4 text-rose-400" />
+                      <span className="text-xs font-bold text-rose-400 uppercase tracking-wider">Fix {validationErrors.length} Validation Errors</span>
                     </div>
                     <ul className="space-y-1">
                       {validationErrors.map((err, i) => (
-                        <li key={i} className="text-xs text-red-400 flex items-center gap-2 pl-6">
-                          <span className="w-1 h-1 bg-red-500 rounded-full" /> {err.message}
+                        <li key={i} className="text-xs text-rose-300 flex items-center gap-2 pl-4">
+                          <span className="w-1.5 h-1.5 bg-rose-400 rounded-full" /> {err.message}
                         </li>
                       ))}
                     </ul>
                   </div>
                 )}
                 
-                {/* Basic Info Section */}
-                <section>
-                  <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <Settings2 className="w-4 h-4" /> Endpoint Configuration
-                  </h3>
-                  <div className="space-y-4">
+                {/* TAB 1: GENERAL CONFIG */}
+                {activeTab === 'general' && (
+                  <div className="space-y-5">
                     <div>
-                      <label className="block text-xs font-medium text-text-muted mb-1.5 flex items-center gap-1.5">
-                        API Name
-                        {getError('name') && <span className="text-red-500 text-[10px]">— {getError('name')?.message}</span>}
+                      <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+                        API Endpoint Name
                       </label>
                       <input 
-                        className={clsx("w-full bg-bg-editor border rounded-lg p-2.5 text-sm focus:ring-1 outline-none transition-all shadow-inner",
-                          getError('name') 
-                            ? "border-red-500 focus:border-red-500 focus:ring-red-500" 
-                            : "border-border-main focus:border-blue-500 focus:ring-blue-500"
+                        className={clsx("w-full bg-bg-editor border rounded-xl p-3 text-sm focus:ring-1 outline-none text-text-main transition-all shadow-inner font-medium",
+                          getError('name') ? "border-rose-500 focus:border-rose-500 focus:ring-rose-500" : "border-border-main focus:border-blue-500 focus:ring-blue-500"
                         )}
                         value={currentApi.name}
                         onChange={e => setCurrentApi({...currentApi, name: e.target.value})}
-                        placeholder="e.g. Get User by ID"
-                        aria-label="API name"
+                        placeholder="e.g. Fetch Active Customers List"
                       />
                     </div>
 
-                    <div className="flex gap-3">
-                      <div className="w-1/3">
-                        <label className="block text-xs font-medium text-text-muted mb-1.5">Method</label>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">HTTP Method</label>
                         <div className="relative">
                           <select 
-                            className="w-full bg-bg-editor border border-border-main rounded-lg p-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all shadow-inner appearance-none font-bold"
+                            className="w-full bg-bg-editor border border-border-main rounded-xl p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-black appearance-none shadow-inner"
                             value={currentApi.method}
                             onChange={e => setCurrentApi({...currentApi, method: e.target.value})}
-                            aria-label="HTTP method"
                           >
                             {['GET','POST','PUT','PATCH','DELETE'].map(m => (
                               <option key={m} value={m}>{m}</option>
                             ))}
                           </select>
-                          <ChevronDown className="w-4 h-4 absolute right-3 top-3 text-text-muted pointer-events-none" />
+                          <ChevronDown className="w-4 h-4 absolute right-3 top-3.5 text-text-muted pointer-events-none" />
                         </div>
                       </div>
-                      <div className="flex-1">
-                        <label className="block text-xs font-medium text-text-muted mb-1.5 flex items-center gap-1.5">
-                          Endpoint Path
-                          {getError('endpointPath') && <span className="text-red-500 text-[10px]">— {getError('endpointPath')?.message}</span>}
-                        </label>
-                        <div className={clsx("flex items-center shadow-inner rounded-lg border transition-all overflow-hidden",
-                          getError('endpointPath') 
-                            ? "border-red-500 focus-within:border-red-500 focus-within:ring-1 focus-within:ring-red-500" 
-                            : "border-border-main focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500"
+
+                      <div className="col-span-2">
+                        <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Route Path</label>
+                        <div className={clsx("flex items-center shadow-inner rounded-xl border overflow-hidden",
+                          getError('endpointPath') ? "border-rose-500" : "border-border-main focus-within:border-blue-500"
                         )}>
-                          <span className="bg-bg-panel px-3 py-2.5 text-sm text-text-muted/70 font-mono border-r border-border-main">
+                          <span className="bg-bg-editor px-3 py-3 text-xs text-text-muted font-mono border-r border-border-main shrink-0">
                             /api/data
                           </span>
                           <input 
-                            className="w-full bg-bg-editor p-2.5 text-sm outline-none font-mono text-blue-400"
+                            className="w-full bg-bg-editor p-3 text-sm outline-none font-mono text-blue-400 font-bold"
                             value={currentApi.endpointPath}
                             onChange={e => {
                               let val = e.target.value;
                               if (val && !val.startsWith('/')) val = '/' + val;
                               setCurrentApi({...currentApi, endpointPath: val});
                             }}
-                            placeholder="/users"
-                            aria-label="Endpoint path"
+                            placeholder="/customers"
                           />
                         </div>
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-text-muted mb-1.5 flex items-center gap-1.5">
-                        Database Connection
-                        {getError('connectionId') && <span className="text-red-500 text-[10px]">— {getError('connectionId')?.message}</span>}
+                      <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+                        Target Database Connection
                       </label>
-                      <div className={clsx("relative",
-                        getError('connectionId') && "text-red-500"
-                      )}>
+                      <div className="relative">
                         <select 
-                          className={clsx("w-full bg-bg-editor border rounded-lg p-2.5 text-sm focus:ring-1 outline-none transition-all shadow-inner appearance-none",
-                            getError('connectionId') 
-                              ? "border-red-500 focus:border-red-500 focus:ring-red-500" 
-                              : "border-border-main focus:border-blue-500 focus:ring-blue-500"
-                          )}
+                          className="w-full bg-bg-editor border border-border-main rounded-xl p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none appearance-none shadow-inner text-text-main font-semibold"
                           value={currentApi.connectionId}
                           onChange={e => setCurrentApi({...currentApi, connectionId: e.target.value})}
-                          aria-label="Database connection"
                         >
                           <option value="" disabled>Select a connection...</option>
                           {connections.map(c => (
                             <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
                           ))}
                         </select>
-                        <ChevronDown className="w-4 h-4 absolute right-3 top-3 text-text-muted pointer-events-none" />
+                        <ChevronDown className="w-4 h-4 absolute right-3 top-3.5 text-text-muted pointer-events-none" />
                       </div>
                     </div>
                   </div>
-                </section>
+                )}
 
-                {/* Parameter Configuration - COMPACT TABLE LAYOUT */}
-                <section>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider flex items-center gap-2">
-                      <Database className="w-4 h-4" /> Parameters
-                    </h3>
-                    <div className={clsx("text-[10px] font-bold px-2 py-0.5 rounded-full transition-all", 
-                      paramCount > 0 ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-bg-editor text-text-muted"
-                    )}>
-                      {paramCount} Detected
+                {/* TAB 2: PARAMETERS SCHEMA */}
+                {activeTab === 'params' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider">Detected Parameters</h4>
+                      <span className="text-xs font-bold text-blue-400 bg-blue-500/10 px-2.5 py-0.5 rounded-full border border-blue-500/20">
+                        {paramCount} Detected
+                      </span>
                     </div>
-                  </div>
-                  
-                  {paramsList.length === 0 ? (
-                    <div className="bg-bg-editor/50 border border-border-main border-dashed rounded-xl p-6 text-center">
-                      <p className="text-xs text-text-muted">
-                        Type <code className="font-mono text-blue-400 bg-blue-500/10 px-1 rounded">:param_name</code> in the SQL editor to automatically detect parameters.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="border border-border-main rounded-xl overflow-hidden shadow-sm">
-                      <table className="w-full text-left">
-                        <thead className="bg-bg-editor/80">
-                          <tr>
-                            <th className="p-2.5 border-b border-border-main font-semibold text-text-main text-[10px] uppercase tracking-wider">Parameter</th>
-                            <th className="p-2.5 border-b border-border-main font-semibold text-text-main text-[10px] uppercase tracking-wider">Type</th>
-                            <th className="p-2.5 border-b border-border-main font-semibold text-text-main text-[10px] uppercase tracking-wider text-center">Req</th>
-                            <th className="p-2.5 border-b border-border-main font-semibold text-text-main text-[10px] uppercase tracking-wider">Default</th>
-                            <th className="p-2.5 border-b border-border-main font-semibold text-text-main text-[10px] uppercase tracking-wider">Description</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {paramsList.map(p => {
-                            const meta = parameterMeta.find(m => m.name === p) || {
-                              name: p, type: 'string', required: true, defaultValue: '', description: ''
-                            };
-                            return (
-                              <tr key={p} className="border-b border-border-main last:border-0 hover:bg-bg-hover/30 transition-colors">
-                                <td className="p-2.5">
-                                  <span className="font-mono text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded text-[11px]">:{p}</span>
-                                </td>
-                                <td className="p-2.5">
-                                  <div className="relative w-24">
+
+                    {paramsList.length === 0 ? (
+                      <div className="bg-bg-editor border border-border-main border-dashed rounded-2xl p-8 text-center">
+                        <Code2 className="w-8 h-8 text-text-muted/30 mx-auto mb-2" />
+                        <p className="text-xs text-text-muted">
+                          Write variables in SQL as <code className="font-mono text-blue-400 font-bold bg-blue-500/10 px-1 rounded">:parameter_name</code> to automatically extract parameters here.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="border border-border-main rounded-2xl overflow-hidden shadow-sm">
+                        <table className="w-full text-left">
+                          <thead className="bg-bg-editor">
+                            <tr>
+                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Param</th>
+                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Type</th>
+                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase text-center">Req</th>
+                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Default</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paramsList.map(p => {
+                              const meta = parameterMeta.find(m => m.name === p) || {
+                                name: p, type: 'string', required: true, defaultValue: '', description: ''
+                              };
+                              return (
+                                <tr key={p} className="border-b border-border-main last:border-0 hover:bg-bg-hover/30 transition-colors">
+                                  <td className="p-3 font-mono text-xs text-blue-400 font-bold">:{p}</td>
+                                  <td className="p-3">
                                     <select 
-                                      className="w-full bg-bg-panel border border-border-main rounded text-[11px] p-1 outline-none focus:border-blue-500 appearance-none shadow-inner"
+                                      className="bg-bg-editor border border-border-main rounded-lg text-xs p-1.5 outline-none focus:border-blue-500 font-semibold shadow-inner"
                                       value={meta.type}
                                       onChange={e => setParameterMeta(prev => prev.map(m => m.name === p ? { ...m, type: e.target.value as any } : m))}
-                                      aria-label={`Type for ${p}`}
                                     >
                                       <option value="string">String</option>
                                       <option value="integer">Integer</option>
@@ -1262,241 +1480,227 @@ export const ApiBuilderView: React.FC = () => {
                                       <option value="boolean">Boolean</option>
                                       <option value="date">Date</option>
                                     </select>
-                                    <ChevronDown className="w-2.5 h-2.5 absolute right-1.5 top-1.5 text-text-muted pointer-events-none" />
-                                  </div>
-                                </td>
-                                <td className="p-2.5 text-center">
-                                  <label className="inline-flex items-center cursor-pointer" aria-label={`${p} required`}>
+                                  </td>
+                                  <td className="p-3 text-center">
                                     <input 
-                                      type="checkbox" 
-                                      className="sr-only peer"
+                                      type="checkbox"
+                                      className="w-4 h-4 rounded border-border-main text-blue-600 focus:ring-blue-500"
                                       checked={meta.required}
                                       onChange={e => setParameterMeta(prev => prev.map(m => m.name === p ? { ...m, required: e.target.checked } : m))}
                                     />
-                                    <div className={clsx(
-                                      "w-7 h-3.5 rounded-full relative transition-colors duration-200 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500",
-                                      meta.required ? "bg-blue-500" : "bg-bg-panel border border-border-main"
-                                    )}>
-                                      <div className={clsx(
-                                        "w-2.5 h-2.5 rounded-full absolute top-0.5 transition-all duration-200",
-                                        meta.required ? "bg-white left-4" : "bg-text-muted left-0.5"
-                                      )} />
-                                    </div>
-                                  </label>
-                                </td>
-                                <td className="p-2.5">
-                                  <input 
-                                    type="text"
-                                    className="w-20 bg-bg-panel border border-border-main rounded text-[11px] p-1 outline-none focus:border-blue-500 shadow-inner"
-                                    placeholder={meta.required ? "—" : "empty"}
-                                    disabled={meta.required}
-                                    value={meta.defaultValue}
-                                    onChange={e => setParameterMeta(prev => prev.map(m => m.name === p ? { ...m, defaultValue: e.target.value } : m))}
-                                    aria-label={`Default value for ${p}`}
-                                  />
-                                </td>
-                                <td className="p-2.5">
-                                  <input 
-                                    type="text"
-                                    className="w-full min-w-[80px] bg-bg-panel border border-border-main rounded text-[11px] p-1 outline-none focus:border-blue-500 shadow-inner"
-                                    placeholder="Description..."
-                                    value={meta.description}
-                                    onChange={e => setParameterMeta(prev => prev.map(m => m.name === p ? { ...m, description: e.target.value } : m))}
-                                    aria-label={`Description for ${p}`}
-                                  />
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </section>
+                                  </td>
+                                  <td className="p-3">
+                                    <input 
+                                      type="text"
+                                      className="w-20 bg-bg-editor border border-border-main rounded-lg text-xs p-1.5 outline-none focus:border-blue-500 shadow-inner font-mono"
+                                      placeholder="default..."
+                                      disabled={meta.required}
+                                      value={meta.defaultValue}
+                                      onChange={e => setParameterMeta(prev => prev.map(m => m.name === p ? { ...m, defaultValue: e.target.value } : m))}
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                {/* Security & Features */}
-                <section>
-                  <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4" /> Security &amp; Features
-                  </h3>
-                  <div className="space-y-3">
-                    <div className={clsx("border rounded-xl p-4 transition-colors", currentApi.isPublic ? "bg-green-500/5 border-green-500/20" : "bg-bg-editor border-border-main")}>
+                {/* TAB 3: SECURITY & FEATURES */}
+                {activeTab === 'security' && (
+                  <div className="space-y-5">
+                    {/* Public vs Protected */}
+                    <div className={clsx("border rounded-2xl p-5 transition-all shadow-sm", currentApi.isPublic ? "bg-emerald-500/10 border-emerald-500/30" : "bg-bg-editor border-border-main")}>
                       <label className="flex items-start gap-3 cursor-pointer">
                         <input 
                           type="checkbox" 
-                          className="mt-1 w-4 h-4 rounded border-border-main text-green-500 focus:ring-green-500 focus:ring-offset-bg-panel bg-bg-panel"
+                          className="mt-1 w-5 h-5 rounded border-border-main text-emerald-500 focus:ring-emerald-500"
                           checked={currentApi.isPublic} 
                           onChange={e => setCurrentApi({...currentApi, isPublic: e.target.checked})} 
-                          aria-label="Public API toggle"
                         />
                         <div>
-                          <span className={clsx("text-sm font-bold", currentApi.isPublic ? "text-green-500" : "text-text-main")}>Public API</span>
-                          <p className="text-xs text-text-muted mt-0.5">Allow anyone to access this endpoint without authentication.</p>
+                          <span className={clsx("text-sm font-bold block", currentApi.isPublic ? "text-emerald-400" : "text-text-main")}>
+                            Public Endpoint Access
+                          </span>
+                          <span className="text-xs text-text-muted block mt-1">
+                            Allow external callers to access this endpoint without Authorization headers.
+                          </span>
                         </div>
                       </label>
                     </div>
 
                     {!currentApi.isPublic && (
-                      <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 animate-in fade-in slide-in-from-top-2">
-                        <label className="block text-xs font-bold text-orange-500 uppercase tracking-wider mb-2">Bearer Token Required</label>
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-amber-400 uppercase tracking-wider">Required Bearer Auth Token</label>
+                          <button
+                            onClick={() => setCurrentApi({ ...currentApi, authToken: generateToken() })}
+                            className="text-xs text-amber-400 hover:underline font-semibold"
+                          >
+                            Generate New Token
+                          </button>
+                        </div>
                         <input 
                           type="text"
-                          className="w-full bg-bg-panel border border-orange-500/30 rounded-lg p-2.5 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none text-orange-400 font-mono shadow-inner"
+                          className="w-full bg-[#0d1117] border border-amber-500/30 rounded-xl p-3 text-sm outline-none text-amber-300 font-mono font-bold shadow-inner"
                           value={currentApi.authToken}
                           onChange={e => setCurrentApi({...currentApi, authToken: e.target.value})}
-                          placeholder="e.g. secret-token-123"
-                          aria-label="Auth token"
+                          placeholder="e.g. sk_secret_token..."
                         />
                       </div>
                     )}
 
-                    <div className={clsx("border rounded-xl p-4 transition-colors", currentApi.enablePagination ? "bg-blue-500/5 border-blue-500/20" : "bg-bg-editor border-border-main")}>
+                    {/* Pagination Settings */}
+                    <div className={clsx("border rounded-2xl p-5 transition-all shadow-sm", currentApi.enablePagination ? "bg-blue-500/10 border-blue-500/30" : "bg-bg-editor border-border-main")}>
                       <label className="flex items-start gap-3 cursor-pointer">
                         <input 
                           type="checkbox" 
-                          className="mt-1 w-4 h-4 rounded border-border-main text-blue-500 focus:ring-blue-500 focus:ring-offset-bg-panel bg-bg-panel"
+                          className="mt-1 w-5 h-5 rounded border-border-main text-blue-500 focus:ring-blue-500"
                           checked={currentApi.enablePagination} 
                           onChange={e => setCurrentApi({...currentApi, enablePagination: e.target.checked})} 
-                          aria-label="Enable auto-pagination"
                         />
                         <div>
-                          <span className={clsx("text-sm font-bold", currentApi.enablePagination ? "text-blue-500" : "text-text-main")}>Enable Auto-Pagination</span>
-                          <p className="text-xs text-text-muted mt-0.5">Automatically appends LIMIT and OFFSET based on <code className="font-mono">limit</code> and <code className="font-mono">page</code> request parameters.</p>
+                          <span className={clsx("text-sm font-bold block", currentApi.enablePagination ? "text-blue-400" : "text-text-main")}>
+                            Enable Automatic SQL Pagination
+                          </span>
+                          <span className="text-xs text-text-muted block mt-1 leading-relaxed">
+                            Automatically parses request query params (<code className="font-mono text-blue-400 font-bold">limit</code>, <code className="font-mono text-blue-400 font-bold">offset</code>, <code className="font-mono text-blue-400 font-bold">page</code>) and injects LIMIT/OFFSET clauses.
+                          </span>
                         </div>
                       </label>
                     </div>
                   </div>
-                </section>
+                )}
               </div>
             </div>
           </div>
           
-          {/* BOTTOM PANEL: Test Console — using flex-1 overflow instead of absolute */}
+          {/* FLOATING TEST CONSOLE DRAWER */}
           <div className={clsx(
-            "border-t border-border-main bg-[#0f141f] shadow-2xl transition-all duration-300 ease-in-out flex flex-col shrink-0",
-            isTestConsoleOpen ? "flex-1 min-h-[250px] max-h-[50%]" : "h-11"
+            "border-t border-border-main bg-[#0b0f19] shadow-2xl transition-all duration-300 ease-in-out flex flex-col shrink-0 z-20",
+            isTestConsoleOpen ? "h-72" : "h-12"
           )}>
-            {/* Header */}
+            {/* Drawer Toggle Header */}
             <div 
-              className="h-11 border-b border-border-main/50 flex items-center justify-between px-4 cursor-pointer hover:bg-white/[0.03] transition-colors shrink-0"
+              className="h-12 border-b border-border-main/50 flex items-center justify-between px-5 cursor-pointer hover:bg-white/[0.04] transition-colors shrink-0"
               onClick={() => setIsTestConsoleOpen(!isTestConsoleOpen)}
-              role="button"
-              tabIndex={0}
-              aria-label={isTestConsoleOpen ? "Close test console" : "Open test console"}
-              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsTestConsoleOpen(!isTestConsoleOpen); }}}
             >
-              <div className="flex items-center gap-2.5">
-                <SquareTerminal className="w-4 h-4 text-green-400" />
-                <span className="text-sm font-bold text-white">Test Console</span>
-                {isTestConsoleOpen && paramCount > 0 && (
-                  <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full border border-blue-500/20">{paramCount} param{paramCount > 1 ? 's' : ''}</span>
+              <div className="flex items-center gap-3">
+                <SquareTerminal className="w-4 h-4 text-emerald-400" />
+                <span className="text-sm font-bold text-white">Interactive Test Console</span>
+                {paramCount > 0 && (
+                  <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20 font-mono">
+                    {paramCount} Var{paramCount > 1 ? 's' : ''}
+                  </span>
                 )}
               </div>
+
               <div className="flex items-center gap-3">
                 {isTestConsoleOpen && (
                   <button 
                     onClick={(e) => { e.stopPropagation(); handleTest(); }}
                     disabled={isTesting}
-                    className="px-4 py-1.5 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md text-xs font-bold flex items-center gap-2 transition-colors shadow-lg shadow-green-600/20 active:scale-[0.97]"
-                    aria-label="Run test query"
+                    className="px-5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-emerald-600/20 active:scale-[0.97]"
                   >
-                    {isTesting ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Play className="w-3 h-3" />
-                    )}
-                    {isTesting ? 'Running...' : 'Run Test'}
-                    <kbd className="hidden md:inline-flex ml-1 px-1 py-0.5 bg-green-800/40 rounded text-[8px] font-mono border border-green-400/30">⌘⏎</kbd>
+                    {isTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                    {isTesting ? 'Executing...' : 'Run Test'}
+                    <kbd className="hidden md:inline-flex ml-1 px-1.5 py-0.5 bg-emerald-800/40 rounded text-[9px] font-mono border border-emerald-400/30">⌘⏎</kbd>
                   </button>
                 )}
                 <div className="text-slate-400 hover:text-white transition-colors p-1">
-                  {isTestConsoleOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                  {isTestConsoleOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
                 </div>
               </div>
             </div>
             
-            {/* Body */}
+            {/* Drawer Body */}
             {isTestConsoleOpen && (
               <div className="flex-1 flex overflow-hidden min-h-0">
-                {/* Test Inputs */}
-                <div className="w-1/4 min-w-[160px] border-r border-border-main/50 p-3 overflow-y-auto bg-black/20">
-                  <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-3">Variables</h4>
+                {/* Input Variables Panel */}
+                <div className="w-72 border-r border-border-main/50 p-4 overflow-y-auto bg-black/20 shrink-0">
+                  <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-3">Query Variables</h4>
                   {paramsList.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic">No variables required.</p>
+                    <p className="text-xs text-slate-400 italic font-mono">// No query variables detected.</p>
                   ) : (
-                    <div className="space-y-2.5">
+                    <div className="space-y-3">
                       {paramsList.map(p => (
                         <div key={p}>
-                          <label className="block text-[10px] font-mono text-blue-400 mb-0.5">:{p}</label>
+                          <label className="block text-xs font-mono text-blue-400 font-bold mb-1">:{p}</label>
                           <input 
                             type="text"
-                            className="w-full bg-[#1e293b] border border-[#334155] rounded px-2 py-1.5 text-[11px] outline-none focus:border-blue-500 text-white shadow-inner font-mono transition-colors"
+                            className="w-full bg-[#161f30] border border-[#2b3a55] rounded-xl px-3 py-1.5 text-xs outline-none focus:border-blue-500 text-white shadow-inner font-mono"
                             placeholder="value..."
                             value={testParams[p] || ''}
                             onChange={e => setTestParams({...testParams, [p]: e.target.value})}
-                            aria-label={`Test value for ${p}`}
                           />
                         </div>
                       ))}
                     </div>
                   )}
+
                   {currentApi.enablePagination && (
-                    <div className="mt-3 pt-3 border-t border-border-main/30 space-y-2.5">
-                      <p className="text-[9px] uppercase font-bold text-purple-400 tracking-wider">Pagination</p>
-                      <div>
-                        <label className="block text-[10px] font-mono text-purple-400 mb-0.5">limit</label>
-                        <input 
-                          type="text"
-                          className="w-full bg-[#1e293b] border border-[#334155] rounded px-2 py-1.5 text-[11px] outline-none focus:border-purple-500 text-white shadow-inner font-mono transition-colors"
-                          placeholder="e.g. 20"
-                          value={testParams['limit'] || ''}
-                          onChange={e => setTestParams({...testParams, 'limit': e.target.value})}
-                          aria-label="Pagination limit"
-                        />
-                      </div>
-                     <div>
-                        <label className="block text-[10px] font-mono text-purple-400 mb-0.5">offset</label>
-                        <input 
-                          type="text"
-                          className="w-full bg-[#1e293b] border border-[#334155] rounded px-2 py-1.5 text-[11px] outline-none focus:border-purple-500 text-white shadow-inner font-mono transition-colors"
-                          placeholder="e.g. 0"
-                          value={testParams['offset'] || ''}
-                          onChange={e => setTestParams({...testParams, 'offset': e.target.value})}
-                          aria-label="Pagination offset"
-                        />
+                    <div className="mt-4 pt-3 border-t border-border-main/30 space-y-2">
+                      <p className="text-[10px] uppercase font-bold text-purple-400 tracking-wider">Pagination Params</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-mono text-purple-400 mb-1">limit</label>
+                          <input 
+                            type="text"
+                            className="w-full bg-[#161f30] border border-[#2b3a55] rounded-lg px-2 py-1 text-xs outline-none focus:border-purple-500 text-white font-mono"
+                            placeholder="100"
+                            value={testParams['limit'] || ''}
+                            onChange={e => setTestParams({...testParams, 'limit': e.target.value})}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-purple-400 mb-1">offset</label>
+                          <input 
+                            type="text"
+                            className="w-full bg-[#161f30] border border-[#2b3a55] rounded-lg px-2 py-1 text-xs outline-none focus:border-purple-500 text-white font-mono"
+                            placeholder="0"
+                            value={testParams['offset'] || ''}
+                            onChange={e => setTestParams({...testParams, 'offset': e.target.value})}
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
-                  {/* Clear params button */}
+
                   {Object.keys(testParams).length > 0 && (
                     <button
                       onClick={() => setTestParams({})}
-                      className="mt-3 text-[10px] text-text-muted hover:text-red-400 flex items-center gap-1 transition-colors"
-                      aria-label="Clear test parameters"
+                      className="mt-4 text-xs text-slate-400 hover:text-rose-400 flex items-center gap-1.5 font-bold transition-colors"
                     >
-                      <Eraser className="w-3 h-3" /> Clear
+                      <Eraser className="w-3.5 h-3.5" /> Clear Values
                     </button>
                   )}
                 </div>
                 
-                {/* Response Viewer */}
-                <div className="flex-1 flex flex-col bg-[#0b0f19] relative min-w-0">
-                  <div className="h-8 border-b border-border-main/30 flex items-center justify-between px-3 bg-black/40 shrink-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Response</span>
-                      {/* Pretty-print toggle */}
+                {/* JSON Response Panel */}
+                <div className="flex-1 flex flex-col bg-[#080c14] relative min-w-0">
+                  <div className="h-9 border-b border-border-main/30 flex items-center justify-between px-4 bg-black/40 shrink-0">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">HTTP Response Payload</span>
                       {testResult && !testResult.error && (
                         <button
                           onClick={() => setIsPrettyPrint(!isPrettyPrint)}
-                          className="text-[9px] text-blue-400 hover:text-blue-300 flex items-center gap-1 bg-blue-500/10 px-1.5 py-0.5 rounded transition-colors"
-                          aria-label="Toggle JSON formatting"
+                          className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20"
                         >
-                          <FileCode className="w-2.5 h-2.5" />
-                          {isPrettyPrint ? 'Pretty' : 'Minified'}
+                          <FileCode className="w-3 h-3" />
+                          {isPrettyPrint ? 'Pretty JSON' : 'Minified'}
                         </button>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+
+                    <div className="flex items-center gap-3">
+                      {testExecutionTime !== null && (
+                        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-500" /> {testExecutionTime}ms
+                        </span>
+                      )}
                       {testResult && (
                         <>
                           <button
@@ -1504,34 +1708,33 @@ export const ApiBuilderView: React.FC = () => {
                               const content = testResult.data ? JSON.stringify(testResult.data, null, isPrettyPrint ? 2 : 0) : testResult.error;
                               handleCopy(content, 'response');
                             }}
-                            className="text-[9px] text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
-                            aria-label="Copy response"
+                            className="text-[11px] font-bold text-slate-300 hover:text-white flex items-center gap-1 transition-colors"
                           >
-                            <Copy className="w-2.5 h-2.5" /> Copy
+                            <Copy className="w-3.5 h-3.5" /> Copy JSON
                           </button>
-                          <span className={clsx("text-[10px] font-bold px-1.5 py-0.5 rounded-full", 
-                            testResult.status >= 400 ? "bg-red-500/20 text-red-400 border border-red-500/20" : "bg-green-500/20 text-green-400 border border-green-500/20"
+                          <span className={clsx("text-xs font-black px-2.5 py-0.5 rounded-full", 
+                            testResult.status >= 400 ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                           )}>
-                            {testResult.status}
-                            {testResult.status === 200 ? ' OK' : ''}
+                            {testResult.status} {testResult.status === 200 ? 'OK' : 'Error'}
                           </span>
                         </>
                       )}
                     </div>
                   </div>
-                  <div className="flex-1 overflow-auto p-3 relative">
+
+                  <div className="flex-1 overflow-auto p-4 relative">
                     {isTesting && (
-                      <div className="absolute inset-0 bg-[#0b0f19]/80 backdrop-blur-sm flex items-center justify-center z-10">
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="w-7 h-7 border-[3px] border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                          <span className="text-[10px] text-blue-400 font-mono animate-pulse">Executing query...</span>
+                      <div className="absolute inset-0 bg-[#080c14]/90 backdrop-blur-sm flex items-center justify-center z-10">
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-xs text-emerald-400 font-mono font-bold animate-pulse">Executing SQL Query on Database...</span>
                         </div>
                       </div>
                     )}
                     {testResult ? (
-                      <>
-                        <pre className={clsx("font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all", 
-                          testResult.status >= 400 ? "text-red-300" : "text-green-300"
+                      <div>
+                        <pre className={clsx("font-mono text-xs leading-relaxed whitespace-pre-wrap break-all", 
+                          testResult.status >= 400 ? "text-rose-300" : "text-emerald-300"
                         )}>
                           {testResult.data 
                             ? JSON.stringify(testResult.data, null, isPrettyPrint ? 2 : 0)
@@ -1540,19 +1743,12 @@ export const ApiBuilderView: React.FC = () => {
                               : JSON.stringify(testResult.error, null, 2)
                           }
                         </pre>
-                        {testResult.detail && (
-                          <details className="mt-3 border border-border-main/30 rounded-lg overflow-hidden">
-                            <summary className="text-[10px] text-text-muted cursor-pointer px-2 py-1 hover:bg-white/5 transition-colors">Error details</summary>
-                            <pre className="p-2 text-[10px] font-mono text-red-400/70 bg-black/40 whitespace-pre-wrap">{testResult.detail}</pre>
-                          </details>
-                        )}
-                      </>
+                      </div>
                     ) : (
                       <div className="h-full flex items-center justify-center">
                         <div className="text-center">
-                          <Bug className="w-6 h-6 text-text-muted/20 mx-auto mb-2" />
-                          <p className="text-text-muted/30 text-xs italic font-mono">// Response will appear here</p>
-                          <p className="text-text-muted/20 text-[10px] mt-1">Enter test values and click Run Test</p>
+                          <Bug className="w-8 h-8 text-slate-700 mx-auto mb-2" />
+                          <p className="text-slate-500 text-xs font-mono">// Click "Run Test" to execute query and view live JSON response.</p>
                         </div>
                       </div>
                     )}
