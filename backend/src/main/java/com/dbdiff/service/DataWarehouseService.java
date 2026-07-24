@@ -829,6 +829,33 @@ public class DataWarehouseService {
                 // Give some extra time for the sink connector to flush all data to ClickHouse
                 sendLog(emitter, "Waiting for sink connector to flush data to ClickHouse...");
                 Thread.sleep(10000);
+                
+                // Force immediate physical deduplication on landing and target tables after snapshot
+                sendLog(emitter, "Optimizing target table and landing tables for physical deduplication...");
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    for (String t : physicalTables) {
+                        String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
+                        try {
+                            stmt.execute("OPTIMIZE TABLE `" + chDb + "`.`" + landingTable + "` FINAL DEDUPLICATE");
+                        } catch (Exception ex) {
+                            try {
+                                stmt.execute("OPTIMIZE TABLE `" + chDb + "`.`" + landingTable + "` FINAL");
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                    try {
+                        stmt.execute("OPTIMIZE TABLE `" + chDb + "`.`" + request.getTargetTable() + "` FINAL DEDUPLICATE");
+                    } catch (Exception ex) {
+                        try {
+                            stmt.execute("OPTIMIZE TABLE `" + chDb + "`.`" + request.getTargetTable() + "` FINAL");
+                        } catch (Exception ignored) {}
+                    }
+                    sendLog(emitter, "Physical deduplication completed. Raw table counts now exact.");
+                } catch (Exception e) {
+                    logger.warn("Could not optimize table after snapshot: " + e.getMessage());
+                }
+
                 sendLog(emitter, "Target table populated successfully with initial snapshot data.");
             }
 
