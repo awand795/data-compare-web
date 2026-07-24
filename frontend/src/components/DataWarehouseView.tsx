@@ -9,6 +9,8 @@ import { Panel, Group, Separator } from 'react-resizable-panels';
 export const DataWarehouseView: React.FC = () => {
   const { connections, addToast } = useAppStore();
   const [sourceConnId, setSourceConnId] = useState('');
+  const [sourceConnIds, setSourceConnIds] = useState<string[]>([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [targetConnId, setTargetConnId] = useState('');
   const [query, setQuery] = useState('-- Define the data to sync via Debezium\nSELECT * FROM source_schema.source_table');
   const [targetTable, setTargetTable] = useState('');
@@ -18,8 +20,19 @@ export const DataWarehouseView: React.FC = () => {
   const [logs, setLogs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'console' | 'monitor'>('monitor');
 
+  const toggleSourceConn = (id: string) => {
+    setSourceConnIds(prev => {
+      const next = prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id];
+      setSourceConnId(next[0] || '');
+      return next;
+    });
+  };
+
   const handleDeploy = async () => {
-    if (!sourceConnId || !targetConnId || !query || !targetTable) {
+    const selectedSourceConns = connections.filter(c => sourceConnIds.includes(c.id));
+    const legacySourceConn = selectedSourceConns[0] || connections.find(c => c.id === sourceConnId);
+
+    if ((sourceConnIds.length === 0 && !sourceConnId) || !targetConnId || !query || !targetTable) {
       addToast({ type: 'warning', title: 'Missing Fields', message: 'Please fill in all required fields' });
       return;
     }
@@ -29,14 +42,14 @@ export const DataWarehouseView: React.FC = () => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Initializing Data Warehouse pipeline...`]);
     
     try {
-      const sourceConn = connections.find(c => c.id === sourceConnId);
       const targetConn = connections.find(c => c.id === targetConnId);
       
       const response = await fetch('/api/dwh/deploy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sourceConnection: sourceConn,
+          sourceConnection: legacySourceConn,
+          sourceConnections: selectedSourceConns.length > 0 ? selectedSourceConns : (legacySourceConn ? [legacySourceConn] : []),
           targetConnection: targetConn,
           query: query,
           targetTable: targetTable,
@@ -96,7 +109,7 @@ export const DataWarehouseView: React.FC = () => {
         </div>
         <button
           onClick={handleDeploy}
-          disabled={isDeploying || !sourceConnId || !targetConnId || !targetTable}
+          disabled={isDeploying || (sourceConnIds.length === 0 && !sourceConnId) || !targetConnId || !targetTable}
           className="group relative overflow-hidden px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg text-[13px] font-bold disabled:opacity-50 transition-all flex items-center gap-1.5 shadow-md shadow-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/50 hover:-translate-y-0.5 active:translate-y-0 duration-300 whitespace-nowrap"
         >
           <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -112,17 +125,55 @@ export const DataWarehouseView: React.FC = () => {
               
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
                 <div className="flex flex-col gap-2">
-                  <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
-                    <Database className="w-3.5 h-3.5 text-blue-500" /> Source Database
+                  <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center justify-between">
+                    <span className="flex items-center gap-1.5"><Database className="w-3.5 h-3.5 text-blue-500" /> Source Database(s)</span>
+                    {sourceConnIds.length > 0 && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/10 text-blue-500 font-medium">
+                        {sourceConnIds.length} selected
+                      </span>
+                    )}
                   </label>
-                  <select
-                    className="px-3.5 py-2.5 bg-bg-panel border border-border-input hover:border-indigo-500/50 rounded-lg text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all shadow-sm cursor-pointer"
-                    value={sourceConnId}
-                    onChange={e => setSourceConnId(e.target.value)}
-                  >
-                    <option value="">Select source database...</option>
-                    {connections.filter(c => c.enableDataWarehouse).map(c => <option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
-                  </select>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                      className="w-full px-3.5 py-2.5 bg-bg-panel border border-border-input hover:border-indigo-500/50 rounded-lg text-sm flex items-center justify-between text-left focus:border-indigo-500 outline-none transition-all shadow-sm cursor-pointer"
+                    >
+                      <span className={clsx("truncate", sourceConnIds.length === 0 && "text-text-muted")}>
+                        {sourceConnIds.length === 0 
+                          ? "Select source database(s)..." 
+                          : connections
+                              .filter(c => sourceConnIds.includes(c.id))
+                              .map(c => c.name)
+                              .join(", ")}
+                      </span>
+                      <span className="text-xs text-text-muted">▼</span>
+                    </button>
+
+                    {isDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-bg-panel border border-border-input rounded-lg shadow-xl p-2 max-h-56 overflow-y-auto flex flex-col gap-1">
+                        {connections.filter(c => c.enableDataWarehouse).length === 0 ? (
+                          <div className="text-xs text-text-muted p-2">No database with Data Warehouse enabled.</div>
+                        ) : (
+                          connections.filter(c => c.enableDataWarehouse).map(c => (
+                            <label
+                              key={c.id}
+                              className="flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-indigo-500/10 cursor-pointer text-sm transition-colors"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={sourceConnIds.includes(c.id)}
+                                onChange={() => toggleSourceConn(c.id)}
+                                className="w-4 h-4 rounded border-border-input text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                              />
+                              <span className="font-medium text-text-main">{c.name}</span>
+                              <span className="text-xs text-text-muted ml-auto">({c.type})</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">

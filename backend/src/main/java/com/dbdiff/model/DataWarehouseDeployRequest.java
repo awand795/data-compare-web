@@ -2,11 +2,29 @@ package com.dbdiff.model;
 
 public class DataWarehouseDeployRequest {
     private ConnectionDetails sourceConnection;
+    private java.util.List<ConnectionDetails> sourceConnections;
     private ConnectionDetails targetConnection;
     private String query;
     private String targetTable;
     private String primaryKeys;
     private String targetDatabase;
+
+    public java.util.List<ConnectionDetails> getSourceConnections() {
+        if (sourceConnections == null || sourceConnections.isEmpty()) {
+            if (sourceConnection != null) {
+                return java.util.Collections.singletonList(sourceConnection);
+            }
+            return java.util.Collections.emptyList();
+        }
+        return sourceConnections;
+    }
+
+    public void setSourceConnections(java.util.List<ConnectionDetails> sourceConnections) {
+        this.sourceConnections = sourceConnections;
+        if (sourceConnections != null && !sourceConnections.isEmpty() && this.sourceConnection == null) {
+            this.sourceConnection = sourceConnections.get(0);
+        }
+    }
 
     public String getTargetDatabase() {
         return targetDatabase;
@@ -25,6 +43,9 @@ public class DataWarehouseDeployRequest {
     }
 
     public ConnectionDetails getSourceConnection() {
+        if (sourceConnection == null && sourceConnections != null && !sourceConnections.isEmpty()) {
+            return sourceConnections.get(0);
+        }
         return sourceConnection;
     }
 
