@@ -770,6 +770,11 @@ public class DataWarehouseService {
             sinkConfig.put("value.converter.schemas.enable", "false");
             sinkConfig.put("errors.tolerance", "all"); // Skip poison pill messages from previous failed runs
             
+            // Force immediate consumer offset commits to prevent re-reading snapshot batch upon Debezium partition rebalance
+            sinkConfig.put("consumer.override.auto.offset.reset", "earliest");
+            sinkConfig.put("consumer.override.enable.auto.commit", "true");
+            sinkConfig.put("consumer.override.auto.commit.interval.ms", "1000");
+            
             java.util.Map<String, Object> sinkPayload = new java.util.HashMap<>();
             sinkPayload.put("name", sinkConnectorName);
             sinkPayload.put("config", sinkConfig);
