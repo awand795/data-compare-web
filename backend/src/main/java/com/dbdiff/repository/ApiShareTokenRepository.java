@@ -54,6 +54,12 @@ public class ApiShareTokenRepository {
                 token);
     }
 
+    public int recordView(String token) {
+        return jdbcTemplate.update(
+                "UPDATE api_share_tokens SET used_at = CURRENT_TIMESTAMP WHERE token = ?",
+                token);
+    }
+
     public int deleteByApiEndpointId(String apiEndpointId) {
         return jdbcTemplate.update("DELETE FROM api_share_tokens WHERE api_endpoint_id = ?", apiEndpointId);
     }

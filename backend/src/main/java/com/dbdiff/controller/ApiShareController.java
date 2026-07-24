@@ -29,11 +29,20 @@ public class ApiShareController {
     public ResponseEntity<String> getSharePage(@PathVariable String token, HttpServletRequest request) {
         Optional<ApiShareToken> tokenOpt = apiShareTokenRepository.findByToken(token);
         
-        if (tokenOpt.isEmpty() || tokenOpt.get().isUsed()) {
+        if (tokenOpt.isEmpty()) {
             return ResponseEntity.ok(getExpiredHtml());
         }
         
         ApiShareToken shareToken = tokenOpt.get();
+        
+        // Expiration check: Valid for 24 hours from creation
+        boolean isExpired = shareToken.getCreatedAt() != null && 
+                            shareToken.getCreatedAt().isBefore(java.time.LocalDateTime.now().minusHours(24));
+                            
+        if (shareToken.isUsed() || isExpired) {
+            return ResponseEntity.ok(getExpiredHtml());
+        }
+        
         Optional<ApiEndpoint> endpointOpt = apiEndpointRepository.findById(shareToken.getApiEndpointId());
         
         if (endpointOpt.isEmpty()) {
@@ -42,8 +51,8 @@ public class ApiShareController {
         
         ApiEndpoint endpoint = endpointOpt.get();
         
-        // Mark as used
-        apiShareTokenRepository.markAsUsed(token);
+        // Record view timestamp without invalidating the 24-hour window
+        apiShareTokenRepository.recordView(token);
         
         String baseUrl = request.getScheme() + "://" + request.getServerName() + 
                          (request.getServerPort() != 80 && request.getServerPort() != 443 ? ":" + request.getServerPort() : "");
