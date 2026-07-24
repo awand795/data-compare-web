@@ -1100,6 +1100,35 @@ export const ApiBuilderView: React.FC = () => {
                   </table>
                 </div>
               )}
+
+              {currentApi.enablePagination && (
+                <div className="mt-4 bg-blue-500/10 border border-blue-500/20 p-5 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-bold text-blue-400">
+                    <ListRestart className="w-5 h-5 text-blue-400" />
+                    <span>Cara Penggunaan Pagination (Query Parameters)</span>
+                  </div>
+                  <p className="text-xs text-text-muted leading-relaxed">
+                    Endpoint ini memiliki fitur <strong>Pagination</strong> aktif. Anda dapat mengontrol halaman dan jumlah baris data secara langsung melalui URL:
+                  </p>
+                  <div className="bg-[#0d1117] border border-border-main p-4 rounded-xl font-mono text-xs text-slate-200 space-y-2">
+                    <div className="flex items-center justify-between text-blue-300 font-bold border-b border-border-main/50 pb-2">
+                      <span>📌 Contoh URL Siap Pakai:</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <span className="text-emerald-400">• Halaman 1 (10 Data):</span>
+                      <code className="text-purple-300 select-all">{fullUrl}?limit=10&amp;page=1</code>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-emerald-400">• Halaman 2 (10 Data):</span>
+                      <code className="text-purple-300 select-all">{fullUrl}?limit=10&amp;page=2</code>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-emerald-400">• Custom (50 Data/Halaman):</span>
+                      <code className="text-purple-300 select-all">{fullUrl}?limit=50&amp;page=3</code>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Multi-language Code Generator Snippets */}

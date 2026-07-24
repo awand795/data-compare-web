@@ -179,21 +179,54 @@ public class ApiShareController {
             paramsRows.append("</tr>");
             
             paginationHtml = """
-                <div class="info-card">
-                    <div class="info-icon">📄</div>
-                    <div>
-                        <h4>Pagination Enabled</h4>
-                        <p style="margin-bottom: 0.75rem;">This endpoint supports automatic pagination. You can control the result set using two methods:</p>
-                        <ul style="margin: 0; padding-left: 1.5rem; color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">
-                            <li><strong>Limit/Offset:</strong> Use <code>limit</code> (max items to return) and <code>offset</code> (exact number of items to skip).</li>
-                            <li><strong>Page/Size:</strong> Use <code>page</code> (page number starting from 1) and <code>size</code> (items per page).</li>
-                        </ul>
-                        <p style="margin-top: 0.75rem; margin-bottom: 0; color: var(--text-muted); font-size: 0.9rem;">
-                            <em>Example: <code>?page=2&size=50</code> will return items 51 to 100.</em>
-                        </p>
+                <div class="info-card" style="margin-top: 1.5rem; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 1rem; padding: 1.25rem;">
+                    <div style="display: flex; align-items: flex-start; gap: 1rem;">
+                        <div style="font-size: 1.5rem;">⚡</div>
+                        <div style="width: 100%;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: #60a5fa; font-size: 1rem; font-weight: 700;">Cara Penggunaan Pagination (Query Parameters)</h4>
+                            <p style="margin: 0 0 1rem 0; color: var(--text-muted); font-size: 0.9rem; line-height: 1.5;">
+                                Endpoint ini mendukung fitur <strong>Pagination</strong> otomatis. Anda dapat menambahkan parameter <code>limit</code> dan <code>page</code> pada URL:
+                            </p>
+                            
+                            <div class="table-container" style="margin-bottom: 1rem;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                                    <thead>
+                                        <tr style="border-b: 1px solid var(--border-color); text-align: left;">
+                                            <th style="padding: 0.5rem; color: #93c5fd;">Parameter</th>
+                                            <th style="padding: 0.5rem; color: #93c5fd;">Default</th>
+                                            <th style="padding: 0.5rem; color: #93c5fd;">Penjelasan & Cara Kerja</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="border-b: 1px solid var(--border-color);">
+                                            <td style="padding: 0.5rem; font-family: monospace; color: #60a5fa; font-weight: bold;">limit</td>
+                                            <td style="padding: 0.5rem; font-family: monospace;">100</td>
+                                            <td style="padding: 0.5rem;">Jumlah baris data maksimal yang diambil per request. Misal: <code>?limit=10</code> untuk 10 data per halaman (Maksimal: 1000).</td>
+                                        </tr>
+                                        <tr style="border-b: 1px solid var(--border-color);">
+                                            <td style="padding: 0.5rem; font-family: monospace; color: #60a5fa; font-weight: bold;">page</td>
+                                            <td style="padding: 0.5rem; font-family: monospace;">1</td>
+                                            <td style="padding: 0.5rem;">Nomor halaman yang ingin diambil (dimulai dari 1). Misal: <code>?page=1</code> (data 1-10), <code>?page=2</code> (data 11-20).</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 0.5rem; font-family: monospace; color: #60a5fa; font-weight: bold;">offset</td>
+                                            <td style="padding: 0.5rem; font-family: monospace;">0</td>
+                                            <td style="padding: 0.5rem;">Alternatif pengganti <code>page</code>. Menentukan berapa baris data yang diloncati dari awal. Misal: <code>?offset=20&limit=10</code>.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div style="background: rgba(0, 0, 0, 0.3); border-radius: 0.75rem; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.1); font-family: monospace; font-size: 0.85rem; color: #93c5fd; line-height: 1.8;">
+                                <div style="color: #38bdf8; font-weight: bold; margin-bottom: 0.25rem;">📌 Contoh URL Siap Pakai:</div>
+                                <div>• Halaman 1 (10 Data): <code style="color: #f472b6;">{{FULL_URL}}?limit=10&page=1</code></div>
+                                <div>• Halaman 2 (10 Data): <code style="color: #f472b6;">{{FULL_URL}}?limit=10&page=2</code></div>
+                                <div>• Halaman 3 (50 Data): <code style="color: #f472b6;">{{FULL_URL}}?limit=50&page=3</code></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            """;
+            """.replace("{{FULL_URL}}", fullUrl);
         }
 
         String paramsTableHtml = paramsRows.length() > 0 ? """
