@@ -276,6 +276,16 @@ public class DataWarehouseService {
                         "ON CONFLICT(id) DO NOTHING"
                     );
                     sendLog(emitter, "Heartbeat table public._dbz_heartbeat ensured in source DB.");
+                    // Auto-apply WAL disk safety limit to the source PostgreSQL database from backend code:
+                    // max_slot_wal_keep_size = 500MB: Limits total WAL storage on disk to max 500MB per slot.
+                    // This is 100% safe and DOES NOT close or interrupt any DBeaver sessions or active users.
+                    try {
+                        pgStmt.execute("ALTER SYSTEM SET max_slot_wal_keep_size = '500MB'");
+                        pgStmt.execute("SELECT pg_reload_conf()");
+                        sendLog(emitter, "Applied Postgres WAL disk safety limit (max_slot_wal_keep_size=500MB) via backend.");
+                    } catch (Exception sysEx) {
+                        logger.warn("Could not auto-apply Postgres WAL safety setting (requires superuser): {}", sysEx.getMessage());
+                    }
                 } catch (Exception ex) {
                     logger.warn("Could not create heartbeat table in source DB: {}", ex.getMessage());
                 }
