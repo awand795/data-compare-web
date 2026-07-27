@@ -498,6 +498,14 @@ export const PipelineMonitor: React.FC = () => {
           <div className="space-y-4">
             {Object.entries(
               filteredPipelines.reduce((acc, p) => {
+                if (p.name.endsWith('-shared')) {
+                  const dbName = p.name.replace(/^source-/, '').replace(/-shared$/, '');
+                  const sharedKey = `Shared:${dbName}`;
+                  if (!acc[sharedKey]) acc[sharedKey] = [];
+                  acc[sharedKey].push(p);
+                  return acc;
+                }
+                
                 const lastDash = p.name.lastIndexOf('-');
                 const tsStr = p.name.slice(lastDash + 1);
                 const isTimestamp = lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10;
@@ -505,7 +513,7 @@ export const PipelineMonitor: React.FC = () => {
                 if (isTimestamp) {
                   const ts = Number(tsStr);
                   // Find if there is an existing group within 2 seconds (to handle legacy connectors)
-                  const existingKey = Object.keys(acc).find(k => k !== 'Legacy' && Math.abs(Number(k) - ts) <= 2000);
+                  const existingKey = Object.keys(acc).find(k => !k.startsWith('Shared:') && k !== 'Legacy' && Math.abs(Number(k) - ts) <= 2000);
                   const deployId = existingKey ? existingKey : tsStr;
                   
                   if (!acc[deployId]) acc[deployId] = [];
@@ -520,13 +528,20 @@ export const PipelineMonitor: React.FC = () => {
               // Try to find target table name from sink connector
               const sink = groupPipelines.find(p => p.name.startsWith('sink-clickhouse-'));
               let folderName = `Deployment ID: ${deployId}`;
-              if (sink) {
+              let icon = "🗂️";
+              if (deployId.startsWith('Shared:')) {
+                const dbName = deployId.replace('Shared:', '');
+                folderName = `Shared DB Source Connector (${dbName})`;
+                icon = "⚡";
+              } else if (sink) {
                 const parts = sink.name.split('-');
                 if (parts.length >= 3) {
                   const targetTable = parts.slice(2, -1).join('-');
                   folderName = `Pipeline: ${targetTable}`;
                 }
               }
+
+              const isSpecialGroup = deployId === 'Legacy' || deployId.startsWith('Shared:');
 
               return (
               <div key={deployId} className="bg-bg-main border border-border-main rounded-xl overflow-hidden">
@@ -543,20 +558,20 @@ export const PipelineMonitor: React.FC = () => {
                           <ChevronDown className="w-4 h-4 text-text-muted" />
                         )}
                       </div>
-                      <span className="text-xl flex-shrink-0">🗂️</span>
+                      <span className="text-xl flex-shrink-0">{icon}</span>
                       <h4 className="font-bold text-[13px] text-text-main break-all mt-1">
                         {folderName}
-                        {deployId !== 'Legacy' && <span className="text-text-muted font-normal text-[11px] ml-2 inline-block">(ID: {deployId})</span>}
+                        {!isSpecialGroup && <span className="text-text-muted font-normal text-[11px] ml-2 inline-block">(ID: {deployId})</span>}
                       </h4>
                     </div>
                     <div className="flex-shrink-0 mt-1">
                       <span className="text-[11px] font-bold text-text-muted bg-bg-panel px-2 py-1 rounded">
-                        {groupPipelines.length} Connector(s)
+                        {groupPipelines.length} {deployId.startsWith('Shared:') ? 'Shared Slot' : 'Connector(s)'}
                       </span>
                     </div>
                   </div>
                   
-                  {deployId !== 'Legacy' && (
+                  {!isSpecialGroup && (
                     <div className="flex items-center gap-2 mt-3 ml-7">
                       <button 
                         onClick={(e) => { e.stopPropagation(); openQueryModal(deployId, folderName); }} 
