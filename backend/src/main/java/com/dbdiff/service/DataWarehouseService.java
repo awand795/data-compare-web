@@ -1403,7 +1403,7 @@ public class DataWarehouseService {
             
             List<Join> newJoins = new ArrayList<>(joins);
             newJoins.remove(targetIdx);
-            newJoins.add(newJoin);
+            newJoins.add(0, newJoin);
             plain.setJoins(newJoins);
             
             return select.toString();
