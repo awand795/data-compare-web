@@ -791,22 +791,45 @@ public class DataWarehouseService {
                         if (!t.trim().isEmpty()) mergedTables.add(t.trim());
                     }
                 }
-                mergedTables.addAll(formattedTables);
+                boolean newTablesAdded = mergedTables.addAll(formattedTables);
                 if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
                     mergedTables.add("public._dbz_heartbeat");
                 }
                 String updatedTableIncludeList = String.join(",", mergedTables);
-                existingConfig.put("table.include.list", updatedTableIncludeList);
                 
                 try {
-                    org.springframework.http.HttpEntity<java.util.Map<String, Object>> updateEntity = new org.springframework.http.HttpEntity<>(existingConfig, headers);
-                    restTemplate.put(DEBEZIUM_URL + "/" + sourceConnectorName + "/config", updateEntity);
-                    sendLog(emitter, "Successfully updated shared source connector tables to: " + updatedTableIncludeList);
+                    if (newTablesAdded) {
+                        sendLog(emitter, "New tables added. Re-creating shared connector to trigger initial snapshot...");
+                        try {
+                            restTemplate.delete(DEBEZIUM_URL + "/" + sourceConnectorName);
+                            Thread.sleep(2000);
+                        } catch (Exception ignored) {}
+                        
+                        sourceConfig.put("table.include.list", updatedTableIncludeList);
+                        sourceConfig.put("snapshot.mode", "initial");
+                        sourceConfig.put("slot.name", "slot_" + baseName + "_" + System.currentTimeMillis());
+                        sourceConfig.put("publication.name", "pub_" + baseName + "_" + System.currentTimeMillis());
+                        
+                        java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
+                        sourcePayload.put("name", sourceConnectorName);
+                        sourcePayload.put("config", sourceConfig);
+                        
+                        org.springframework.http.HttpEntity<java.util.Map<String, Object>> sourceEntity = new org.springframework.http.HttpEntity<>(sourcePayload, headers);
+                        org.springframework.http.ResponseEntity<String> sourceResponse = registerConnectorWithRetry(emitter, sourceConnectorName, sourceEntity, 3);
+                        sendLog(emitter, "Re-created shared source connector successfully: " + sourceResponse.getStatusCode());
+                    } else {
+                        existingConfig.put("table.include.list", updatedTableIncludeList);
+                        org.springframework.http.HttpEntity<java.util.Map<String, Object>> updateEntity = new org.springframework.http.HttpEntity<>(existingConfig, headers);
+                        restTemplate.put(DEBEZIUM_URL + "/" + sourceConnectorName + "/config", updateEntity);
+                        sendLog(emitter, "Successfully updated shared source connector tables to: " + updatedTableIncludeList);
+                    }
                 } catch (Exception e) {
                     sendLog(emitter, "ERROR: Could not update shared source connector in Debezium: " + e.getMessage());
                     throw e;
                 }
             } else {
+                sourceConfig.put("slot.name", "slot_" + baseName + "_shared");
+                sourceConfig.put("publication.name", "pub_slot_" + baseName + "_shared");
                 java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
                 sourcePayload.put("name", sourceConnectorName);
                 sourcePayload.put("config", sourceConfig);
