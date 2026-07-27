@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.client.RestTemplate;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.ListOffsetsResult;
@@ -2338,5 +2339,85 @@ public class DataWarehouseService {
             logger.error("Failed to get snapshot progress", e);
             return java.util.Map.of("error", e.getMessage());
         }
+    }
+
+    /**
+     * Safely cleans up orphan database pipeline records that no longer exist in Debezium/Kafka.
+     * Runs every Sunday at 00:00:00 (12 AM midnight).
+     * 
+     * Safety Guarantees:
+     * 1. If Debezium is offline/restarting/unreachable, the cleanup aborts instantly without deleting anything.
+     * 2. Active, Paused, Failed, or Restarting connectors remain registered in Debezium, so their pipeline DB records are preserved.
+     * 3. Grace Period: Pipelines created less than 15 minutes ago are skipped (protects mid-deployment pipelines).
+     */
+    @Scheduled(cron = "0 0 0 * * SUN")
+    public void cleanupOrphanPipelines() {
+        try {
+            // Step 1: Query Debezium for all registered connectors
+            String[] registeredConnectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+            if (registeredConnectors == null) {
+                return; // Debezium returned null, safety abort
+            }
+
+            Set<String> connectorSet = new HashSet<>(Arrays.asList(registeredConnectors));
+
+            // Step 2: Query database for stored pipeline metadata
+            List<Map<String, Object>> dbPipelines = pipelineMetadataRepository.getAllPipelinesWithCreatedAt();
+            if (dbPipelines == null || dbPipelines.isEmpty()) {
+                return;
+            }
+
+            List<String> orphanDeployIds = new ArrayList<>();
+            long now = System.currentTimeMillis();
+            long gracePeriodMs = 15 * 60 * 1000; // 15 minutes grace period
+
+            for (Map<String, Object> row : dbPipelines) {
+                String deployId = (String) row.get("deploy_id");
+                if (deployId == null || deployId.trim().isEmpty()) continue;
+
+                // Check creation timestamp for grace period
+                Object createdAtObj = row.get("created_at");
+                if (createdAtObj != null) {
+                    long createdAtMs = 0;
+                    if (createdAtObj instanceof java.sql.Timestamp) {
+                        createdAtMs = ((java.sql.Timestamp) createdAtObj).getTime();
+                    } else if (createdAtObj instanceof java.time.LocalDateTime) {
+                        createdAtMs = java.sql.Timestamp.valueOf((java.time.LocalDateTime) createdAtObj).getTime();
+                    }
+
+                    if (createdAtMs > 0 && (now - createdAtMs) < gracePeriodMs) {
+                        continue; // Mid-deployment protection
+                    }
+                }
+
+                // Step 3: Check if ANY registered connector in Debezium contains or ends with this deployId
+                boolean existsInDebezium = connectorSet.stream().anyMatch(connectorName ->
+                    connectorName.endsWith("-" + deployId) || connectorName.contains(deployId)
+                );
+
+                if (!existsInDebezium) {
+                    orphanDeployIds.add(deployId);
+                }
+            }
+
+            // Step 4: Delete only confirmed orphan pipelines from DB
+            if (!orphanDeployIds.isEmpty()) {
+                logger.info("Auto-cleanup: Removed {} orphan database pipeline records not found in Kafka/Debezium: {}", orphanDeployIds.size(), orphanDeployIds);
+                pipelineMetadataRepository.deletePipelinesByDeployIds(orphanDeployIds);
+            }
+
+        } catch (Exception e) {
+            // Safety: Log warning and abort if Debezium is unreachable or restarting
+            logger.warn("Auto-cleanup pipeline check skipped (Debezium unreachable or restarting): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Runs a one-time orphan pipeline cleanup on backend startup today.
+     */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void runOneTimePipelineCleanupOnStartup() {
+        logger.info("Running initial one-time orphan pipeline cleanup on backend startup...");
+        cleanupOrphanPipelines();
     }
 }

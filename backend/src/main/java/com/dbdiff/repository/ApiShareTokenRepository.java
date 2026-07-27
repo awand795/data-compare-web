@@ -63,4 +63,10 @@ public class ApiShareTokenRepository {
     public int deleteByApiEndpointId(String apiEndpointId) {
         return jdbcTemplate.update("DELETE FROM api_share_tokens WHERE api_endpoint_id = ?", apiEndpointId);
     }
+
+    public int cleanupExpiredOrUsedTokens() {
+        java.sql.Timestamp cutoff = java.sql.Timestamp.valueOf(java.time.LocalDateTime.now().minusDays(7));
+        return jdbcTemplate.update(
+                "DELETE FROM api_share_tokens WHERE is_used = true OR created_at < ?", cutoff);
+    }
 }

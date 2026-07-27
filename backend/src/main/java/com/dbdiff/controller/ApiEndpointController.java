@@ -178,10 +178,11 @@ public class ApiEndpointController {
         shareToken.setUsed(false);
         
         try {
+            apiShareTokenRepository.deleteByApiEndpointId(id);
             apiShareTokenRepository.insert(shareToken);
             Map<String, String> response = new HashMap<>();
             response.put("token", tokenId);
-            response.put("shareUrl", "/api/share/" + tokenId);
+            response.put("shareUrl", "/share/" + tokenId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

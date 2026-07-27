@@ -10,6 +10,7 @@ import { FileUploadView } from './components/FileUploadView';
 import { ScheduleManagerView } from './components/ScheduleManagerView';
 import { DataWarehouseView } from './components/DataWarehouseView';
 import { ApiBuilderView } from './components/ApiBuilderView';
+import { ApiShareDocView } from './components/ApiShareDocView';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2, Database, Webhook } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
@@ -20,6 +21,17 @@ import { LoginScreen } from './components/LoginScreen';
 import clsx from 'clsx';
 
 function App() {
+  const matchShareToken = () => {
+    const path = window.location.pathname;
+    const match = path.match(/^\/(?:api\/)?share\/([^/]+)/);
+    return match ? match[1] : null;
+  };
+
+  const shareToken = matchShareToken();
+  if (shareToken) {
+    return <ApiShareDocView token={shareToken} />;
+  }
+
   const { 
     appMode, setAppMode, 
     theme, setTheme, 

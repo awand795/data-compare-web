@@ -1,7 +1,9 @@
 package com.dbdiff.service;
 
+import com.dbdiff.repository.ApiShareTokenRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -11,6 +13,9 @@ public class KeepAliveService {
 
     private static final Logger logger = LoggerFactory.getLogger(KeepAliveService.class);
     private final JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ApiShareTokenRepository apiShareTokenRepository;
 
     public KeepAliveService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -28,5 +33,31 @@ public class KeepAliveService {
         } catch (Exception e) {
             logger.warn("Keep-alive ping failed: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Runs every Sunday at 00:00:00 (12 AM midnight) to clean up expired or already used share tokens.
+     */
+    @Scheduled(cron = "0 0 0 * * SUN")
+    public void cleanupExpiredShareTokens() {
+        try {
+            if (apiShareTokenRepository != null) {
+                int deleted = apiShareTokenRepository.cleanupExpiredOrUsedTokens();
+                if (deleted > 0) {
+                    logger.info("Auto-cleanup: Removed {} expired/used API share tokens.", deleted);
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Auto-cleanup share tokens failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Runs a one-time cleanup on backend startup today.
+     */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void runOneTimeCleanupOnStartup() {
+        logger.info("Running initial one-time share token cleanup on backend startup...");
+        cleanupExpiredShareTokens();
     }
 }

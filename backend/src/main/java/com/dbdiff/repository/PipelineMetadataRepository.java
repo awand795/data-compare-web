@@ -69,4 +69,15 @@ public class PipelineMetadataRepository {
     public void deletePipelineMetadata(String deployId) {
         jdbcTemplate.update("DELETE FROM data_warehouse_pipelines WHERE deploy_id = ?", deployId);
     }
+
+    public java.util.List<java.util.Map<String, Object>> getAllPipelinesWithCreatedAt() {
+        return jdbcTemplate.queryForList("SELECT deploy_id, created_at FROM data_warehouse_pipelines");
+    }
+
+    public void deletePipelinesByDeployIds(java.util.List<String> deployIds) {
+        if (deployIds == null || deployIds.isEmpty()) return;
+        for (String id : deployIds) {
+            jdbcTemplate.update("DELETE FROM data_warehouse_pipelines WHERE deploy_id = ?", id);
+        }
+    }
 }
