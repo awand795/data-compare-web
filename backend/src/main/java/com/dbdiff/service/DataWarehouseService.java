@@ -801,31 +801,24 @@ public class DataWarehouseService {
                 String updatedTableIncludeList = String.join(",", mergedTables);
                 
                 try {
-                    if (newTablesAdded) {
-                        sendLog(emitter, "New tables added. Re-creating shared connector to trigger initial snapshot...");
-                        try {
-                            restTemplate.delete(DEBEZIUM_URL + "/" + sourceConnectorName);
-                            Thread.sleep(2000);
-                        } catch (Exception ignored) {}
-                        
-                        sourceConfig.put("table.include.list", updatedTableIncludeList);
-                        sourceConfig.put("snapshot.mode", "initial");
-                        sourceConfig.put("slot.name", "slot_" + baseName + "_" + System.currentTimeMillis());
-                        sourceConfig.put("publication.name", "pub_" + baseName + "_" + System.currentTimeMillis());
-                        
-                        java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
-                        sourcePayload.put("name", sourceConnectorName);
-                        sourcePayload.put("config", sourceConfig);
-                        
-                        org.springframework.http.HttpEntity<java.util.Map<String, Object>> sourceEntity = new org.springframework.http.HttpEntity<>(sourcePayload, headers);
-                        org.springframework.http.ResponseEntity<String> sourceResponse = registerConnectorWithRetry(emitter, sourceConnectorName, sourceEntity, 3);
-                        sendLog(emitter, "Re-created shared source connector successfully: " + sourceResponse.getStatusCode());
-                    } else {
-                        existingConfig.put("table.include.list", updatedTableIncludeList);
-                        org.springframework.http.HttpEntity<java.util.Map<String, Object>> updateEntity = new org.springframework.http.HttpEntity<>(existingConfig, headers);
-                        restTemplate.put(DEBEZIUM_URL + "/" + sourceConnectorName + "/config", updateEntity);
-                        sendLog(emitter, "Successfully updated shared source connector tables to: " + updatedTableIncludeList);
-                    }
+                    sendLog(emitter, "Updating shared source connector table list to include new tables and triggering snapshot...");
+                    try {
+                        restTemplate.delete(DEBEZIUM_URL + "/" + sourceConnectorName);
+                        Thread.sleep(2000);
+                    } catch (Exception ignored) {}
+                    
+                    sourceConfig.put("table.include.list", updatedTableIncludeList);
+                    sourceConfig.put("snapshot.mode", "always");
+                    sourceConfig.put("slot.name", "slot_" + baseName + "_" + System.currentTimeMillis());
+                    sourceConfig.put("publication.name", "pub_" + baseName + "_" + System.currentTimeMillis());
+                    
+                    java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
+                    sourcePayload.put("name", sourceConnectorName);
+                    sourcePayload.put("config", sourceConfig);
+                    
+                    org.springframework.http.HttpEntity<java.util.Map<String, Object>> sourceEntity = new org.springframework.http.HttpEntity<>(sourcePayload, headers);
+                    org.springframework.http.ResponseEntity<String> sourceResponse = registerConnectorWithRetry(emitter, sourceConnectorName, sourceEntity, 3);
+                    sendLog(emitter, "Re-created shared source connector successfully: " + sourceResponse.getStatusCode());
                 } catch (Exception e) {
                     sendLog(emitter, "ERROR: Could not update shared source connector in Debezium: " + e.getMessage());
                     throw e;
@@ -967,7 +960,7 @@ public class DataWarehouseService {
                         }
                     }
                     
-                    if (totalRows == previousTotalRows && totalRows > 0) {
+                    if (totalRows == previousTotalRows) {
                         stableCount++;
                         long elapsed = (System.currentTimeMillis() - startTime) / 1000;
                         sendLog(emitter, "Landing tables stable (" + totalRows + " total rows, check " + stableCount + "/" + requiredStableChecks + ", " + elapsed + "s elapsed)");
