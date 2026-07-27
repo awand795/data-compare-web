@@ -1294,7 +1294,7 @@ public class DataWarehouseService {
             StringBuilder pkFilters = new StringBuilder();
             if (pks != null) {
                 for (String pk : pks) {
-                    pkFilters.append(" AND not(isNull(`").append(pk).append("`)) AND toString(`").append(pk).append("`) != ''");
+                    pkFilters.append(" AND `").append(pk).append("` IS NOT NULL AND toString(`").append(pk).append("`) != ''");
                 }
             }
             String existingAlias = getTableAlias(sql, t);
@@ -1334,7 +1334,7 @@ public class DataWarehouseService {
                         if (conds.length() > 0) {
                             conds.append(" AND ");
                         }
-                        conds.append("not(isNull(").append(prefix).append("`").append(pk).append("`))");
+                        conds.append(prefix).append("`").append(pk).append("` IS NOT NULL");
                         conds.append(" AND toString(").append(prefix).append("`").append(pk).append("`) != ''");
                     }
                 }
