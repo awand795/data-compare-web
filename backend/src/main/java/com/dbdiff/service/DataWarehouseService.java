@@ -1213,6 +1213,7 @@ public class DataWarehouseService {
                             rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb);
                         }
                     }
+                    reorderJoinsByDependency(plain);
                     return select.toString();
                 }
             }
@@ -1374,6 +1375,7 @@ public class DataWarehouseService {
             List<Join> joins = plain.getJoins();
             
             if (isTableMatch(currentFrom, triggerTable)) {
+                reorderJoinsByDependency(plain);
                 return select.toString();
             }
             
@@ -1391,6 +1393,7 @@ public class DataWarehouseService {
             }
             
             if (targetJoin == null) {
+                reorderJoinsByDependency(plain);
                 return select.toString();
             }
             
@@ -1406,11 +1409,74 @@ public class DataWarehouseService {
             newJoins.add(0, newJoin);
             plain.setJoins(newJoins);
             
+            reorderJoinsByDependency(plain);
             return select.toString();
         } catch (Exception e) {
             logger.warn("Failed to rotate query for trigger table " + triggerTable + ": " + e.getMessage());
             return sql;
         }
+    }
+
+    private void reorderJoinsByDependency(PlainSelect plain) {
+        if (plain == null || plain.getJoins() == null || plain.getJoins().size() <= 1) {
+            return;
+        }
+
+        java.util.Set<String> availableAliases = new java.util.LinkedHashSet<>();
+        if (plain.getFromItem() != null) {
+            String fromAlias = plain.getFromItem().getAlias() != null ? 
+                plain.getFromItem().getAlias().getName() : 
+                (plain.getFromItem() instanceof Table ? ((Table) plain.getFromItem()).getName() : null);
+            if (fromAlias != null) {
+                availableAliases.add(fromAlias.replaceAll("[\"``]", "").toLowerCase());
+            }
+        }
+
+        java.util.List<Join> pendingJoins = new java.util.ArrayList<>(plain.getJoins());
+        java.util.List<Join> orderedJoins = new java.util.ArrayList<>();
+
+        boolean progress = true;
+        while (!pendingJoins.isEmpty() && progress) {
+            progress = false;
+            for (int i = 0; i < pendingJoins.size(); i++) {
+                Join j = pendingJoins.get(i);
+                String joinAlias = j.getRightItem().getAlias() != null ? 
+                    j.getRightItem().getAlias().getName() : 
+                    (j.getRightItem() instanceof Table ? ((Table) j.getRightItem()).getName() : null);
+                if (joinAlias != null) {
+                    joinAlias = joinAlias.replaceAll("[\"``]", "").toLowerCase();
+                }
+
+                java.util.Set<String> referencedAliases = extractTableAliasesFromExpr(j.getOnExpression());
+                if (joinAlias != null) {
+                    referencedAliases.remove(joinAlias);
+                }
+
+                if (availableAliases.containsAll(referencedAliases)) {
+                    orderedJoins.add(j);
+                    if (joinAlias != null) {
+                        availableAliases.add(joinAlias);
+                    }
+                    pendingJoins.remove(i);
+                    progress = true;
+                    break;
+                }
+            }
+        }
+
+        orderedJoins.addAll(pendingJoins);
+        plain.setJoins(orderedJoins);
+    }
+
+    private java.util.Set<String> extractTableAliasesFromExpr(net.sf.jsqlparser.expression.Expression expr) {
+        java.util.Set<String> aliases = new java.util.HashSet<>();
+        if (expr == null) return aliases;
+        String exprStr = expr.toString();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?i)\\b([a-zA-Z0-9_]+)\\.[a-zA-Z0-9_]+\\b").matcher(exprStr);
+        while (m.find()) {
+            aliases.add(m.group(1).replaceAll("[\"``]", "").toLowerCase());
+        }
+        return aliases;
     }
 
     private boolean isTableMatch(FromItem item, String tableName) {
