@@ -896,6 +896,8 @@ export const PipelineMonitor: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
       {slotsModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-bg-panel w-full max-w-4xl rounded-xl shadow-2xl flex flex-col border border-border-main max-h-[85vh]">
