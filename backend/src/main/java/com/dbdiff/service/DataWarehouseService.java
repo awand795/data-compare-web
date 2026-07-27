@@ -649,6 +649,7 @@ public class DataWarehouseService {
             
             // Use a shared slot name per source database to avoid creating multiple slots
             String safeSlotName = "slot_" + baseName + "_shared";
+            java.util.Map<String, Object> sourceConfig = new java.util.HashMap<>();
             if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
                 sourceConfig.put("connector.class", "io.debezium.connector.postgresql.PostgresConnector");
                 sourceConfig.put("plugin.name", "pgoutput");
