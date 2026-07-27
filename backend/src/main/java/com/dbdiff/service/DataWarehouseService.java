@@ -161,7 +161,18 @@ public class DataWarehouseService {
             try {
                 return restTemplate.postForEntity(DEBEZIUM_URL, entity, String.class);
             } catch (org.springframework.web.client.HttpClientErrorException e) {
-                // 4xx: bad config or already-exists conflict handled by caller — do not retry.
+                if (e.getStatusCode() == org.springframework.http.HttpStatus.CONFLICT && attempt < maxAttempts) {
+                    lastError = e;
+                    sendLog(emitter, "Attempt " + attempt + "/" + maxAttempts
+                            + " conflict (409) for connector '" + connectorName + "', retrying in 3s...");
+                    try {
+                        Thread.sleep(3000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw ie;
+                    }
+                    continue;
+                }
                 throw e;
             } catch (Exception e) {
                 lastError = e;
@@ -178,6 +189,23 @@ public class DataWarehouseService {
             }
         }
         throw lastError;
+    }
+
+    private void deleteConnectorWithWait(String connectorName) {
+        try {
+            restTemplate.delete(DEBEZIUM_URL + "/" + connectorName);
+        } catch (Exception ignored) {}
+        for (int i = 0; i < 10; i++) {
+            try {
+                java.util.Map<String, Object> cfg = getConnectorConfig(connectorName);
+                if (cfg == null || cfg.isEmpty() || cfg.containsKey("error_code")) {
+                    break;
+                }
+            } catch (Exception e) {
+                break;
+            }
+            try { Thread.sleep(1000); } catch (Exception ignored) {}
+        }
     }
 
     public void deployPipeline(DataWarehouseDeployRequest request, SseEmitter emitter) {
@@ -802,10 +830,7 @@ public class DataWarehouseService {
                 
                 try {
                     sendLog(emitter, "Updating shared source connector table list to include new tables and triggering snapshot...");
-                    try {
-                        restTemplate.delete(DEBEZIUM_URL + "/" + sourceConnectorName);
-                        Thread.sleep(2000);
-                    } catch (Exception ignored) {}
+                    deleteConnectorWithWait(sourceConnectorName);
                     
                     sourceConfig.put("table.include.list", updatedTableIncludeList);
                     sourceConfig.put("snapshot.mode", "always");
