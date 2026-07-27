@@ -136,4 +136,18 @@ public class DataWarehouseController {
     public ResponseEntity<?> getSnapshotProgress(@PathVariable String deployId) {
         return ResponseEntity.ok(dataWarehouseService.getSnapshotProgress(deployId));
     }
+
+    @GetMapping("/replication-slots")
+    public ResponseEntity<?> getReplicationSlots(@RequestParam(required = false) String connectionId) {
+        return ResponseEntity.ok(dataWarehouseService.getReplicationSlots(connectionId));
+    }
+
+    @PostMapping("/replication-slots/cleanup")
+    public ResponseEntity<?> cleanupReplicationSlots(
+            @RequestParam(required = false) String connectionId,
+            @RequestParam(required = false) String slotName,
+            @RequestParam(required = false, defaultValue = "true") Boolean inactiveOnly) {
+        java.util.List<String> dropped = dataWarehouseService.cleanupReplicationSlots(connectionId, slotName, inactiveOnly);
+        return ResponseEntity.ok(java.util.Map.of("status", "success", "droppedSlots", dropped));
+    }
 }

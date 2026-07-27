@@ -1499,6 +1499,71 @@ public class DataWarehouseService {
     }
 
     public void deleteConnector(String connectorName) {
+        // Automatically drop PostgreSQL replication slot and publication if connector is Postgres
+        try {
+            java.util.Map<String, Object> config = getConnectorConfig(connectorName);
+            if (config != null) {
+                String slotName = (String) config.get("slot.name");
+                String dbHost = (String) config.get("database.hostname");
+                String dbPortStr = (String) config.get("database.port");
+                String dbName = (String) config.get("database.dbname");
+                String dbUser = (String) config.get("database.user");
+                String dbPass = (String) config.get("database.password");
+                
+                if (slotName != null && dbHost != null && dbUser != null && dbName != null) {
+                    int dbPort = 5432;
+                    try { if (dbPortStr != null) dbPort = Integer.parseInt(dbPortStr); } catch (Exception ignored) {}
+                    
+                    com.dbdiff.model.ConnectionDetails connDetails = new com.dbdiff.model.ConnectionDetails();
+                    connDetails.setType("postgresql");
+                    connDetails.setHost(dbHost);
+                    connDetails.setPort(dbPort);
+                    connDetails.setDatabase(dbName);
+                    connDetails.setUsername(dbUser);
+                    connDetails.setPassword(dbPass);
+                    
+                    try {
+                        DataSource ds = connectionManagerService.getDataSource(connDetails);
+                        try (Connection pgConn = ds.getConnection();
+                             Statement pgStmt = pgConn.createStatement()) {
+                            
+                            String findSql = "SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name = '" + slotName.replace("'", "''") + "'";
+                            Number activePid = null;
+                            boolean found = false;
+                            try (ResultSet rs = pgStmt.executeQuery(findSql)) {
+                                if (rs.next()) {
+                                    found = true;
+                                    activePid = (Number) rs.getObject("active_pid");
+                                }
+                            }
+                            if (found) {
+                                if (activePid != null) {
+                                    try {
+                                        pgStmt.execute("SELECT pg_terminate_backend(" + activePid.intValue() + ")");
+                                        Thread.sleep(500);
+                                    } catch (Exception ignored) {}
+                                }
+                                pgStmt.execute("SELECT pg_drop_replication_slot('" + slotName.replace("'", "''") + "')");
+                                logger.info("Auto-cleanup: Dropped PostgreSQL replication slot: " + slotName);
+                            }
+                            
+                            String pubName = (String) config.get("publication.name");
+                            if (pubName != null && !pubName.trim().isEmpty()) {
+                                try {
+                                    pgStmt.execute("DROP PUBLICATION IF EXISTS " + pubName.replace("'", "''"));
+                                    logger.info("Auto-cleanup: Dropped PostgreSQL publication: " + pubName);
+                                } catch (Exception ignored) {}
+                            }
+                        }
+                    } catch (Exception ex) {
+                        logger.warn("Failed auto-cleanup of replication slot " + slotName + " during connector deletion", ex);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Could not inspect config for slot cleanup prior to deleting connector: " + connectorName, e);
+        }
+
         String url = DEBEZIUM_URL + "/" + connectorName;
         try {
             org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
@@ -2419,5 +2484,117 @@ public class DataWarehouseService {
     public void runOneTimePipelineCleanupOnStartup() {
         logger.info("Running initial one-time orphan pipeline cleanup on backend startup...");
         cleanupOrphanPipelines();
+    }
+
+    public List<Map<String, Object>> getReplicationSlots(String connectionId) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        List<ConnectionDetails> connections = new ArrayList<>();
+        if (connectionId != null && !connectionId.trim().isEmpty()) {
+            ConnectionDetails conn = connectionRepository.findById(connectionId);
+            if (conn != null) connections.add(conn);
+        } else {
+            List<ConnectionDetails> allConns = connectionRepository.findAll();
+            for (ConnectionDetails c : allConns) {
+                if ("postgresql".equalsIgnoreCase(c.getType())) {
+                    connections.add(c);
+                }
+            }
+        }
+
+        for (ConnectionDetails connDetails : connections) {
+            if (!"postgresql".equalsIgnoreCase(connDetails.getType())) continue;
+            try {
+                DataSource ds = connectionManagerService.getDataSource(connDetails);
+                try (Connection conn = ds.getConnection();
+                     Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery(
+                         "SELECT slot_name, plugin, slot_type, database, temporary, active, active_pid, " +
+                         "pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) as wal_retained " +
+                         "FROM pg_replication_slots")) {
+                    while (rs.next()) {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("connection_id", connDetails.getId());
+                        map.put("connection_name", connDetails.getName());
+                        map.put("slot_name", rs.getString("slot_name"));
+                        map.put("plugin", rs.getString("plugin"));
+                        map.put("slot_type", rs.getString("slot_type"));
+                        map.put("database", rs.getString("database"));
+                        map.put("temporary", rs.getBoolean("temporary"));
+                        map.put("active", rs.getBoolean("active"));
+                        map.put("active_pid", rs.getObject("active_pid"));
+                        map.put("wal_retained", rs.getString("wal_retained"));
+                        result.add(map);
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to fetch replication slots for connection " + connDetails.getName(), e);
+            }
+        }
+        return result;
+    }
+
+    public List<String> cleanupReplicationSlots(String connectionId, String slotName, Boolean inactiveOnly) {
+        List<String> droppedSlots = new ArrayList<>();
+        List<ConnectionDetails> connections = new ArrayList<>();
+        if (connectionId != null && !connectionId.trim().isEmpty()) {
+            ConnectionDetails conn = connectionRepository.findById(connectionId);
+            if (conn != null) connections.add(conn);
+        } else {
+            List<ConnectionDetails> allConns = connectionRepository.findAll();
+            for (ConnectionDetails c : allConns) {
+                if ("postgresql".equalsIgnoreCase(c.getType())) {
+                    connections.add(c);
+                }
+            }
+        }
+
+        for (ConnectionDetails connDetails : connections) {
+            if (!"postgresql".equalsIgnoreCase(connDetails.getType())) continue;
+            try {
+                DataSource ds = connectionManagerService.getDataSource(connDetails);
+                try (Connection conn = ds.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    
+                    String query = "SELECT slot_name, active_pid, active FROM pg_replication_slots";
+                    if (slotName != null && !slotName.trim().isEmpty()) {
+                        query += " WHERE slot_name = '" + slotName.replace("'", "''") + "'";
+                    } else if (Boolean.TRUE.equals(inactiveOnly)) {
+                        query += " WHERE active = false";
+                    }
+                    
+                    List<Map<String, Object>> slotsToDrop = new ArrayList<>();
+                    try (ResultSet rs = stmt.executeQuery(query)) {
+                        while (rs.next()) {
+                            Map<String, Object> map = new HashMap<>();
+                            map.put("slot_name", rs.getString("slot_name"));
+                            map.put("active_pid", rs.getObject("active_pid"));
+                            map.put("active", rs.getBoolean("active"));
+                            slotsToDrop.add(map);
+                        }
+                    }
+                    
+                    for (Map<String, Object> s : slotsToDrop) {
+                        String sName = (String) s.get("slot_name");
+                        Number activePid = (Number) s.get("active_pid");
+                        if (activePid != null) {
+                            try {
+                                stmt.execute("SELECT pg_terminate_backend(" + activePid.intValue() + ")");
+                                Thread.sleep(500);
+                            } catch (Exception ignored) {}
+                        }
+                        try {
+                            stmt.execute("SELECT pg_drop_replication_slot('" + sName.replace("'", "''") + "')");
+                            droppedSlots.add(sName);
+                            logger.info("Successfully dropped PostgreSQL replication slot: " + sName + " on connection: " + connDetails.getName());
+                        } catch (Exception e) {
+                            logger.error("Failed to drop replication slot " + sName, e);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("Error during replication slots cleanup on connection " + connDetails.getName(), e);
+            }
+        }
+        return droppedSlots;
     }
 }

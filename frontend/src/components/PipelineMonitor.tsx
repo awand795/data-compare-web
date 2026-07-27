@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit3, Code, FileEdit } from 'lucide-react';
+import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit3, Code, FileEdit, Database } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -49,6 +49,69 @@ export const PipelineMonitor: React.FC = () => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [lagHistory, setLagHistory] = useState<Record<string, {time: string, lag: number}[]>>({});
   const [statsModalOpen, setStatsModalOpen] = useState<Pipeline | null>(null);
+
+  // Replication Slots Management State
+  const [slotsModalOpen, setSlotsModalOpen] = useState(false);
+  const [replicationSlots, setReplicationSlots] = useState<any[]>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [isCleaningSlots, setIsCleaningSlots] = useState(false);
+
+  const fetchReplicationSlots = async () => {
+    setIsLoadingSlots(true);
+    try {
+      const res = await fetch('/api/dwh/replication-slots');
+      if (res.ok) {
+        const data = await res.json();
+        setReplicationSlots(data);
+      } else {
+        addToast({ type: 'error', title: 'Error', message: 'Failed to fetch replication slots.' });
+      }
+    } catch (e) {
+      addToast({ type: 'error', title: 'Error', message: 'Could not connect to server.' });
+    } finally {
+      setIsLoadingSlots(false);
+    }
+  };
+
+  const handleOpenSlotsModal = () => {
+    setSlotsModalOpen(true);
+    fetchReplicationSlots();
+  };
+
+  const handleCleanupSlots = async (slotName?: string, inactiveOnly: boolean = true) => {
+    setIsCleaningSlots(true);
+    try {
+      let url = `/api/dwh/replication-slots/cleanup?inactiveOnly=${inactiveOnly}`;
+      if (slotName) {
+        url += `&slotName=${encodeURIComponent(slotName)}`;
+      }
+      const res = await fetch(url, { method: 'POST' });
+      if (res.ok) {
+        const result = await res.json();
+        const dropped: string[] = result.droppedSlots || [];
+        if (dropped.length > 0) {
+          addToast({
+            type: 'success',
+            title: 'Replication Slots Cleaned',
+            message: `Successfully dropped ${dropped.length} slot(s): ${dropped.join(', ')}`
+          });
+        } else {
+          addToast({
+            type: 'info',
+            title: 'No Slots Dropped',
+            message: 'No matching inactive replication slots were found to drop.'
+          });
+        }
+        fetchReplicationSlots();
+      } else {
+        addToast({ type: 'error', title: 'Cleanup Failed', message: 'Failed to drop replication slot(s).' });
+      }
+    } catch (e) {
+      addToast({ type: 'error', title: 'Cleanup Error', message: 'Error performing replication slots cleanup.' });
+    } finally {
+      setIsCleaningSlots(false);
+    }
+  };
 
   const filteredPipelines = pipelines.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -395,9 +458,18 @@ export const PipelineMonitor: React.FC = () => {
           <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
             <Activity className="w-4 h-4 text-indigo-500" /> Active Pipelines
           </h3>
-          <button onClick={fetchPipelines} className="text-[11px] text-text-muted hover:text-indigo-400 font-bold uppercase tracking-wide px-2 py-1 bg-indigo-500/10 rounded">
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleOpenSlotsModal} 
+              className="text-[11px] text-amber-400 hover:text-amber-300 font-bold uppercase tracking-wide px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded flex items-center gap-1.5 transition-colors"
+              title="Manage & Clean PostgreSQL WAL Replication Slots"
+            >
+              <Database className="w-3.5 h-3.5" /> WAL Slots
+            </button>
+            <button onClick={fetchPipelines} className="text-[11px] text-text-muted hover:text-indigo-400 font-bold uppercase tracking-wide px-2 py-1 bg-indigo-500/10 rounded">
+              Refresh
+            </button>
+          </div>
         </div>
         <div className="relative">
           <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -821,6 +893,120 @@ export const PipelineMonitor: React.FC = () => {
                   {isUpdatingQuery ? <><Activity className="w-4 h-4 animate-spin" /> Syncing...</> : <><Save className="w-4 h-4" /> Save & Sync Schema</>}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      {slotsModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-panel w-full max-w-4xl rounded-xl shadow-2xl flex flex-col border border-border-main max-h-[85vh]">
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-amber-500/10">
+              <h3 className="font-bold text-amber-400 flex items-center gap-2">
+                <Database className="w-5 h-5" /> PostgreSQL Replication Slots (WAL Cleanup)
+              </h3>
+              <button onClick={() => setSlotsModalOpen(false)} className="text-text-muted hover:text-text-main text-2xl leading-none">&times;</button>
+            </div>
+
+            <div className="p-4 flex flex-col flex-1 min-h-0 overflow-y-auto space-y-4">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300 leading-relaxed flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
+                <div>
+                  <strong>Replication Slot & WAL Management:</strong>
+                  <p className="mt-1 text-slate-300">
+                    Setiap kali Debezium dijalankan pada PostgreSQL, sebuah <em>Replication Slot</em> dibuat. Jika pipeline di-stop atau dihapus tanpa membersihkan slot, PostgreSQL akan <strong>menahan file log WAL (Write-Ahead Log)</strong> di server database, menyebabkan kapasitas disk membesar hingga <strong>puluhan GB (misal 19GB+)</strong>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-text-muted uppercase tracking-wider">
+                  Total Slots Detected: {replicationSlots.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={fetchReplicationSlots}
+                    disabled={isLoadingSlots}
+                    className="px-3 py-1.5 rounded text-xs font-bold bg-bg-header hover:bg-bg-main border border-border-main text-text-main flex items-center gap-1"
+                  >
+                    <RotateCcw className={clsx("w-3.5 h-3.5", isLoadingSlots && "animate-spin")} /> Refresh
+                  </button>
+                  <button
+                    onClick={() => handleCleanupSlots(undefined, true)}
+                    disabled={isCleaningSlots || replicationSlots.filter(s => !s.active).length === 0}
+                    className="px-3.5 py-1.5 rounded text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+                  >
+                    {isCleaningSlots ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    Bersihkan Semua Slot Inaktif ({replicationSlots.filter(s => !s.active).length})
+                  </button>
+                </div>
+              </div>
+
+              <div className="border border-border-main rounded-lg overflow-hidden bg-bg-main flex-1 min-h-[200px]">
+                {isLoadingSlots ? (
+                  <div className="p-8 text-center text-text-muted text-xs flex items-center justify-center gap-2">
+                    <Activity className="w-4 h-4 animate-spin text-amber-400" /> Scanning PostgreSQL replication slots...
+                  </div>
+                ) : replicationSlots.length === 0 ? (
+                  <div className="p-8 text-center text-text-muted text-xs italic">
+                    Tidak ada replication slot yang ditemukan pada koneksi PostgreSQL.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-bg-header/80 text-text-muted border-b border-border-main font-semibold uppercase text-[10px]">
+                          <th className="py-2.5 px-3">Connection</th>
+                          <th className="py-2.5 px-3">Slot Name</th>
+                          <th className="py-2.5 px-3">Plugin</th>
+                          <th className="py-2.5 px-3">Database</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3">WAL Retained</th>
+                          <th className="py-2.5 px-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border-main font-mono text-[11px]">
+                        {replicationSlots.map((s, idx) => (
+                          <tr key={idx} className="hover:bg-bg-header/50 transition-colors">
+                            <td className="py-2.5 px-3 font-sans font-medium text-text-main">{s.connection_name}</td>
+                            <td className="py-2.5 px-3 font-bold text-amber-400 break-all">{s.slot_name}</td>
+                            <td className="py-2.5 px-3 text-text-muted">{s.plugin}</td>
+                            <td className="py-2.5 px-3 text-text-muted">{s.database}</td>
+                            <td className="py-2.5 px-3">
+                              {s.active ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 uppercase font-sans">
+                                  ACTIVE (PID: {s.active_pid || 'N/A'})
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 uppercase font-sans">
+                                  INACTIVE (WAL Retained)
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-300">{s.wal_retained || '-'}</td>
+                            <td className="py-2.5 px-3 text-right">
+                              <button
+                                onClick={() => handleCleanupSlots(s.slot_name, false)}
+                                disabled={isCleaningSlots}
+                                className="px-2.5 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-colors text-[11px] font-bold font-sans disabled:opacity-50"
+                              >
+                                Drop Slot
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-t border-border-main flex justify-end bg-bg-header/50">
+              <button
+                onClick={() => setSlotsModalOpen(false)}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold bg-bg-header hover:bg-bg-main border border-border-main text-text-main"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
