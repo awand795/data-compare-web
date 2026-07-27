@@ -626,6 +626,8 @@ public class DataWarehouseService {
                 sourceConfig.put("slot.name", safeSlotName);
                 sourceConfig.put("publication.name", "pub_" + safeSlotName);
                 sourceConfig.put("publication.autocreate.mode", "filtered");
+                // Emit heartbeats every 10s to keep confirmed_flush_lsn up to date with pg_current_wal_lsn
+                sourceConfig.put("heartbeat.interval.ms", "10000");
                 String sslMode = request.getSourceConnection().getSslMode();
                 if (sslMode != null && !sslMode.trim().isEmpty()) {
                     sourceConfig.put("database.sslmode", sslMode.trim());
