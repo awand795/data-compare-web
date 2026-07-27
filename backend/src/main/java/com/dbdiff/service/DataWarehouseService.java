@@ -195,11 +195,11 @@ public class DataWarehouseService {
                         + "Please wait a moment and try again.");
             }
 
-            // Generate unique names for connectors based on a single deployment ID
+            // Generate shared source connector name per connection, and target-specific sink connector name
             String baseName = request.getSourceConnection().getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
             long deployId = System.currentTimeMillis();
             String cleanTarget = request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "");
-            String sourceConnectorName = "source-" + baseName + "-" + cleanTarget + "-" + deployId;
+            String sourceConnectorName = "source-" + baseName + "-shared";
             String sinkConnectorName = "sink-clickhouse-" + cleanTarget + "-" + deployId;
             
             org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
@@ -647,12 +647,11 @@ public class DataWarehouseService {
             // =========================================================================
             sendLog(emitter, "Configuring Debezium Source Connector (" + sourceConnectorName + ")...");
             
-            java.util.Map<String, Object> sourceConfig = new java.util.HashMap<>();
+            // Use a shared slot name per source database to avoid creating multiple slots
+            String safeSlotName = "slot_" + baseName + "_shared";
             if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
                 sourceConfig.put("connector.class", "io.debezium.connector.postgresql.PostgresConnector");
                 sourceConfig.put("plugin.name", "pgoutput");
-                // Force a fresh snapshot by using a unique slot name for every deployment
-                String safeSlotName = sourceConnectorName.replaceAll("[^a-z0-9_]", "_").toLowerCase();
                 sourceConfig.put("slot.name", safeSlotName);
                 sourceConfig.put("publication.name", "pub_" + safeSlotName);
                 sourceConfig.put("publication.autocreate.mode", "filtered");
@@ -772,17 +771,53 @@ public class DataWarehouseService {
             sourceConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
             sourceConfig.put("value.converter.schemas.enable", "false");
             
-            java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
-            sourcePayload.put("name", sourceConnectorName);
-            sourcePayload.put("config", sourceConfig);
-            
+            // Register or Update Shared Source Connector
+            boolean sharedConnectorExists = false;
+            java.util.Map<String, Object> existingConfig = null;
             try {
-                org.springframework.http.HttpEntity<java.util.Map<String, Object>> sourceEntity = new org.springframework.http.HttpEntity<>(sourcePayload, headers);
-                org.springframework.http.ResponseEntity<String> sourceResponse = registerConnectorWithRetry(emitter, sourceConnectorName, sourceEntity, 3);
-                sendLog(emitter, "Source connector registered successfully: " + sourceResponse.getStatusCode());
-            } catch (Exception e) {
-                sendLog(emitter, "ERROR: Could not register source connector in Debezium: " + e.getMessage());
-                throw e;
+                existingConfig = getConnectorConfig(sourceConnectorName);
+                if (existingConfig != null && !existingConfig.isEmpty() && !existingConfig.containsKey("error_code")) {
+                    sharedConnectorExists = true;
+                }
+            } catch (Exception ignored) {}
+
+            if (sharedConnectorExists && existingConfig != null) {
+                sendLog(emitter, "Shared source connector " + sourceConnectorName + " already exists. Merging table list...");
+                String currentTablesStr = (String) existingConfig.get("table.include.list");
+                Set<String> mergedTables = new LinkedHashSet<>();
+                if (currentTablesStr != null && !currentTablesStr.isEmpty()) {
+                    for (String t : currentTablesStr.split(",")) {
+                        if (!t.trim().isEmpty()) mergedTables.add(t.trim());
+                    }
+                }
+                mergedTables.addAll(formattedTables);
+                if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
+                    mergedTables.add("public._dbz_heartbeat");
+                }
+                String updatedTableIncludeList = String.join(",", mergedTables);
+                existingConfig.put("table.include.list", updatedTableIncludeList);
+                
+                try {
+                    org.springframework.http.HttpEntity<java.util.Map<String, Object>> updateEntity = new org.springframework.http.HttpEntity<>(existingConfig, headers);
+                    restTemplate.put(DEBEZIUM_URL + "/" + sourceConnectorName + "/config", updateEntity);
+                    sendLog(emitter, "Successfully updated shared source connector tables to: " + updatedTableIncludeList);
+                } catch (Exception e) {
+                    sendLog(emitter, "ERROR: Could not update shared source connector in Debezium: " + e.getMessage());
+                    throw e;
+                }
+            } else {
+                java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
+                sourcePayload.put("name", sourceConnectorName);
+                sourcePayload.put("config", sourceConfig);
+                
+                try {
+                    org.springframework.http.HttpEntity<java.util.Map<String, Object>> sourceEntity = new org.springframework.http.HttpEntity<>(sourcePayload, headers);
+                    org.springframework.http.ResponseEntity<String> sourceResponse = registerConnectorWithRetry(emitter, sourceConnectorName, sourceEntity, 3);
+                    sendLog(emitter, "Shared source connector registered successfully: " + sourceResponse.getStatusCode());
+                } catch (Exception e) {
+                    sendLog(emitter, "ERROR: Could not register shared source connector in Debezium: " + e.getMessage());
+                    throw e;
+                }
             }
 
             // STEP 3.5: Wait for Kafka topics to initialize
@@ -1640,102 +1675,172 @@ public class DataWarehouseService {
 
     public void deletePipeline(String deployId) {
         try {
+            java.util.Map<String, Object> meta = pipelineMetadataRepository.getPipelineMetadata(deployId);
+            String sourceConnectionId = meta != null ? (String) meta.get("source_connection_id") : null;
+            
             String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
-            if (connectors == null) return;
-            
-            java.util.List<String> toDelete = new java.util.ArrayList<>();
-            String sinkConnector = null;
-            String targetTable = null;
-            
-            for (String c : connectors) {
-                if (c.endsWith("-" + deployId)) {
-                    toDelete.add(c);
-                    if (c.startsWith("sink-clickhouse-")) {
-                        sinkConnector = c;
-                        targetTable = c.substring("sink-clickhouse-".length(), c.lastIndexOf("-" + deployId));
+            if (connectors != null) {
+                java.util.List<String> toDelete = new java.util.ArrayList<>();
+                String sinkConnector = null;
+                String targetTable = null;
+                
+                for (String c : connectors) {
+                    if (c.endsWith("-" + deployId)) {
+                        toDelete.add(c);
+                        if (c.startsWith("sink-clickhouse-")) {
+                            sinkConnector = c;
+                            targetTable = c.substring("sink-clickhouse-".length(), c.lastIndexOf("-" + deployId));
+                        }
                     }
                 }
-            }
-            
-            if (sinkConnector != null && targetTable != null) {
-                try {
-                    java.util.Map<String, Object> config = getConnectorConfig(sinkConnector);
-                    String hostname = (String) config.get("hostname");
-                    String port = (String) config.get("port");
-                    String db = (String) config.get("database");
-                    String username = (String) config.get("username");
-                    String password = (String) config.get("password");
-                    
-                    if (hostname != null && port != null && db != null) {
-                        ConnectionDetails chDetails = new ConnectionDetails();
-                        chDetails.setType("clickhouse");
-                        chDetails.setHost(hostname);
-                        chDetails.setPort(Integer.parseInt(port));
-                        chDetails.setDatabase(db);
-                        chDetails.setUsername(username);
-                        chDetails.setPassword(password);
+                
+                if (sinkConnector != null && targetTable != null) {
+                    try {
+                        java.util.Map<String, Object> config = getConnectorConfig(sinkConnector);
+                        String hostname = (String) config.get("hostname");
+                        String port = (String) config.get("port");
+                        String db = (String) config.get("database");
+                        String username = (String) config.get("username");
+                        String password = (String) config.get("password");
                         
-                        DataSource ds = connectionManagerService.getDataSource(chDetails);
-                        try (java.sql.Connection conn = ds.getConnection();
-                             java.sql.Statement stmt = conn.createStatement()) {
-                             
-                            stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`v_" + targetTable + "`");
+                        if (hostname != null && port != null && db != null) {
+                            ConnectionDetails chDetails = new ConnectionDetails();
+                            chDetails.setType("clickhouse");
+                            chDetails.setHost(hostname);
+                            chDetails.setPort(Integer.parseInt(port));
+                            chDetails.setDatabase(db);
+                            chDetails.setUsername(username);
+                            chDetails.setPassword(password);
                             
-                            String findMVs = "SELECT name FROM system.tables WHERE database = '" + db + "' AND name LIKE 'mv_%'";
-                            java.util.List<String> mvsToDrop = new java.util.ArrayList<>();
-                            try (java.sql.ResultSet rs = stmt.executeQuery(findMVs)) {
-                                while (rs.next()) {
-                                    String name = rs.getString("name");
-                                    if (name.startsWith("mv_" + targetTable + "_")) {
-                                        mvsToDrop.add(name);
+                            DataSource ds = connectionManagerService.getDataSource(chDetails);
+                            try (java.sql.Connection conn = ds.getConnection();
+                                 java.sql.Statement stmt = conn.createStatement()) {
+                                 
+                                stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`v_" + targetTable + "`");
+                                
+                                String findMVs = "SELECT name FROM system.tables WHERE database = '" + db + "' AND name LIKE 'mv_%'";
+                                java.util.List<String> mvsToDrop = new java.util.ArrayList<>();
+                                try (java.sql.ResultSet rs = stmt.executeQuery(findMVs)) {
+                                    while (rs.next()) {
+                                        String name = rs.getString("name");
+                                        if (name.startsWith("mv_" + targetTable + "_")) {
+                                            mvsToDrop.add(name);
+                                        }
                                     }
                                 }
-                            }
-                            
-                            for (String mv : mvsToDrop) {
-                                stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`" + mv + "`");
-                                String prefix = "mv_" + targetTable + "_";
-                                if (mv.startsWith(prefix)) {
-                                    String landingTable = mv.substring(prefix.length());
-                                    // Cek apakah masih ada MV lain yang memakai tabel CDC/Landing ini
-                                    try (java.sql.ResultSet rsDep = stmt.executeQuery(
-                                            "SELECT length(dependencies_table) FROM system.tables WHERE database = '" + db + "' AND name = '" + landingTable + "'")) {
-                                        if (rsDep.next() && rsDep.getInt(1) == 0) {
-                                            // Tidak ada yang pakai lagi, aman untuk dihapus
-                                            stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + landingTable + "`");
-                                        } else {
-                                            logger.info("CDC landing table `" + landingTable + "` is still used by other pipelines. Not dropping.");
+                                
+                                for (String mv : mvsToDrop) {
+                                    stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`" + mv + "`");
+                                    String prefix = "mv_" + targetTable + "_";
+                                    if (mv.startsWith(prefix)) {
+                                        String landingTable = mv.substring(prefix.length());
+                                        try (java.sql.ResultSet rsDep = stmt.executeQuery(
+                                                "SELECT length(dependencies_table) FROM system.tables WHERE database = '" + db + "' AND name = '" + landingTable + "'")) {
+                                            if (rsDep.next() && rsDep.getInt(1) == 0) {
+                                                stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + landingTable + "`");
+                                            } else {
+                                                logger.info("CDC landing table `" + landingTable + "` is still used by other pipelines. Not dropping.");
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + targetTable + "`");
+                                
+                                if (!"default".equalsIgnoreCase(db)) {
+                                    try (java.sql.ResultSet rsTb = stmt.executeQuery(
+                                            "SELECT count(*) FROM system.tables WHERE database = '" + db + "'")) {
+                                        if (rsTb.next() && rsTb.getInt(1) == 0) {
+                                            stmt.execute("DROP DATABASE IF EXISTS `" + db + "`");
+                                            logger.info("Database `" + db + "` is empty and has been dropped.");
                                         }
                                     }
                                 }
                             }
-                            
-                            stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + targetTable + "`");
-                            
-                            if (!"default".equalsIgnoreCase(db)) {
-                                try (java.sql.ResultSet rsTb = stmt.executeQuery(
-                                        "SELECT count(*) FROM system.tables WHERE database = '" + db + "'")) {
-                                    if (rsTb.next() && rsTb.getInt(1) == 0) {
-                                        stmt.execute("DROP DATABASE IF EXISTS `" + db + "`");
-                                        logger.info("Database `" + db + "` is empty and has been dropped.");
-                                    }
-                                }
-                            }
                         }
+                    } catch (Exception e) {
+                        logger.warn("Failed to cleanup ClickHouse tables for pipeline " + deployId, e);
                     }
-                } catch (Exception e) {
-                    logger.warn("Failed to cleanup ClickHouse tables for pipeline " + deployId, e);
                 }
-            }
-            
-            for (String c : toDelete) {
-                deleteConnector(c);
+                
+                for (String c : toDelete) {
+                    deleteConnector(c);
+                }
             }
             
             // Also delete metadata
             try {
                 pipelineMetadataRepository.deletePipelineMetadata(deployId);
             } catch (Exception ignored) {}
+            
+            // Reference Counting Cleanup for Shared Source Connector & Replication Slot
+            if (sourceConnectionId != null) {
+                try {
+                    int remainingCount = pipelineMetadataRepository.countPipelinesBySourceConnectionId(sourceConnectionId);
+                    com.dbdiff.model.ConnectionDetails sourceConn = connectionRepository.findById(sourceConnectionId);
+                    if (sourceConn != null) {
+                        String baseName = sourceConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                        String sharedSourceConnectorName = "source-" + baseName + "-shared";
+                        String safeSlotName = "slot_" + baseName + "_shared";
+                        
+                        if (remainingCount == 0) {
+                            logger.info("No active pipelines remain for source connection " + sourceConn.getName() + ". Deleting shared connector " + sharedSourceConnectorName);
+                            try {
+                                restTemplate.delete(DEBEZIUM_URL + "/" + sharedSourceConnectorName);
+                                logger.info("Deleted shared Debezium connector: " + sharedSourceConnectorName);
+                            } catch (Exception ex) {
+                                logger.warn("Failed to delete shared connector " + sharedSourceConnectorName + ": " + ex.getMessage());
+                            }
+                            if ("postgresql".equalsIgnoreCase(sourceConn.getType())) {
+                                try {
+                                    DataSource sourceDs = connectionManagerService.getDataSource(sourceConn);
+                                    try (Connection pgConn = sourceDs.getConnection();
+                                         Statement pgStmt = pgConn.createStatement()) {
+                                        pgStmt.execute("SELECT pg_drop_replication_slot('" + safeSlotName + "')");
+                                        logger.info("Successfully dropped shared Postgres replication slot: " + safeSlotName);
+                                    }
+                                } catch (Exception ex) {
+                                    logger.warn("Could not drop shared Postgres replication slot " + safeSlotName + ": " + ex.getMessage());
+                                }
+                            }
+                        } else {
+                            logger.info(remainingCount + " pipeline(s) still remain for source connection " + sourceConn.getName() + ". Updating shared connector table list.");
+                            try {
+                                java.util.List<java.util.Map<String, Object>> remainingMetas = pipelineMetadataRepository.getPipelinesBySourceConnectionId(sourceConnectionId);
+                                java.util.Set<String> activeTables = new java.util.LinkedHashSet<>();
+                                for (java.util.Map<String, Object> rMeta : remainingMetas) {
+                                    String q = (String) rMeta.get("query");
+                                    if (q != null) {
+                                        java.util.List<String> phys = extractPhysicalTables(q);
+                                        for (String pt : phys) {
+                                            String cleanTable = pt.replaceAll("[\"``]", "");
+                                            if (!cleanTable.contains(".") && "postgresql".equalsIgnoreCase(sourceConn.getType())) {
+                                                String defSchema = sourceConn.getSchema();
+                                                if (defSchema == null || defSchema.isEmpty()) defSchema = "public";
+                                                cleanTable = defSchema + "." + cleanTable;
+                                            }
+                                            activeTables.add(cleanTable);
+                                        }
+                                    }
+                                }
+                                if ("postgresql".equalsIgnoreCase(sourceConn.getType())) {
+                                    activeTables.add("public._dbz_heartbeat");
+                                }
+                                java.util.Map<String, Object> cfg = getConnectorConfig(sharedSourceConnectorName);
+                                if (cfg != null && !cfg.isEmpty() && !cfg.containsKey("error_code")) {
+                                    cfg.put("table.include.list", String.join(",", activeTables));
+                                    updateConnectorConfig(sharedSourceConnectorName, cfg);
+                                    logger.info("Updated shared connector " + sharedSourceConnectorName + " table.include.list to: " + String.join(",", activeTables));
+                                }
+                            } catch (Exception ex) {
+                                logger.warn("Could not update shared connector table list for " + sharedSourceConnectorName + ": " + ex.getMessage());
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    logger.warn("Failed reference counting cleanup for sourceConnectionId " + sourceConnectionId, ex);
+                }
+            }
             
         } catch (Exception e) {
             logger.error("Failed to delete pipeline " + deployId, e);
