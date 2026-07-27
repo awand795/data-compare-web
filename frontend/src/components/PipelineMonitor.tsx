@@ -902,18 +902,18 @@ export const PipelineMonitor: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-bg-panel w-full max-w-4xl rounded-xl shadow-2xl flex flex-col border border-border-main max-h-[85vh]">
             <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-amber-500/10">
-              <h3 className="font-bold text-amber-400 flex items-center gap-2">
+              <h3 className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-2">
                 <Database className="w-5 h-5" /> PostgreSQL Replication Slots (WAL Cleanup)
               </h3>
               <button onClick={() => setSlotsModalOpen(false)} className="text-text-muted hover:text-text-main text-2xl leading-none">&times;</button>
             </div>
 
             <div className="p-4 flex flex-col flex-1 min-h-0 overflow-y-auto space-y-4">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300 leading-relaxed flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs leading-relaxed flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                 <div>
-                  <strong>Replication Slot & WAL Management:</strong>
-                  <p className="mt-1 text-slate-300">
+                  <strong className="font-bold text-amber-800 dark:text-amber-300">Replication Slot & WAL Management:</strong>
+                  <p className="mt-1 text-text-main dark:text-slate-300">
                     Setiap kali Debezium dijalankan pada PostgreSQL, sebuah <em>Replication Slot</em> dibuat. Jika pipeline di-stop atau dihapus tanpa membersihkan slot, PostgreSQL akan <strong>menahan file log WAL (Write-Ahead Log)</strong> di server database, menyebabkan kapasitas disk membesar hingga <strong>puluhan GB (misal 19GB+)</strong>.
                   </p>
                 </div>
@@ -945,7 +945,7 @@ export const PipelineMonitor: React.FC = () => {
               <div className="border border-border-main rounded-lg overflow-hidden bg-bg-main flex-1 min-h-[200px]">
                 {isLoadingSlots ? (
                   <div className="p-8 text-center text-text-muted text-xs flex items-center justify-center gap-2">
-                    <Activity className="w-4 h-4 animate-spin text-amber-400" /> Scanning PostgreSQL replication slots...
+                    <Activity className="w-4 h-4 animate-spin text-amber-500 dark:text-amber-400" /> Scanning PostgreSQL replication slots...
                   </div>
                 ) : replicationSlots.length === 0 ? (
                   <div className="p-8 text-center text-text-muted text-xs italic">
@@ -969,21 +969,21 @@ export const PipelineMonitor: React.FC = () => {
                         {replicationSlots.map((s, idx) => (
                           <tr key={idx} className="hover:bg-bg-header/50 transition-colors">
                             <td className="py-2.5 px-3 font-sans font-medium text-text-main">{s.connection_name}</td>
-                            <td className="py-2.5 px-3 font-bold text-amber-400 break-all">{s.slot_name}</td>
+                            <td className="py-2.5 px-3 font-bold text-amber-600 dark:text-amber-400 break-all">{s.slot_name}</td>
                             <td className="py-2.5 px-3 text-text-muted">{s.plugin}</td>
                             <td className="py-2.5 px-3 text-text-muted">{s.database}</td>
                             <td className="py-2.5 px-3">
                               {s.active ? (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 uppercase font-sans">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 uppercase font-sans">
                                   ACTIVE (PID: {s.active_pid || 'N/A'})
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 uppercase font-sans">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 uppercase font-sans">
                                   INACTIVE (WAL Retained)
                                 </span>
                               )}
                             </td>
-                            <td className="py-2.5 px-3 text-slate-300">{s.wal_retained || '-'}</td>
+                            <td className="py-2.5 px-3 text-text-main dark:text-slate-300">{s.wal_retained || '-'}</td>
                             <td className="py-2.5 px-3 text-right">
                               <button
                                 onClick={() => handleCleanupSlots(s.slot_name, false)}
