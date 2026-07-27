@@ -261,6 +261,26 @@ public class DataWarehouseService {
                 logger.warn("Failed to clean up old replication slots in Postgres", ex);
             }
 
+            // Ensure the Debezium heartbeat table exists in the source DB (PostgreSQL only).
+            // Required by heartbeat.action.query so Debezium can advance confirmed_flush_lsn
+            // even when the monitored tables are idle — preventing WAL from accumulating.
+            if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
+                try (Connection pgConn = sourceDsForCleanup.getConnection();
+                     Statement pgStmt = pgConn.createStatement()) {
+                    pgStmt.execute(
+                        "CREATE TABLE IF NOT EXISTS public._dbz_heartbeat " +
+                        "(id INT PRIMARY KEY, ts TIMESTAMPTZ NOT NULL)"
+                    );
+                    pgStmt.execute(
+                        "INSERT INTO public._dbz_heartbeat(id, ts) VALUES(1, now()) " +
+                        "ON CONFLICT(id) DO NOTHING"
+                    );
+                    sendLog(emitter, "Heartbeat table public._dbz_heartbeat ensured in source DB.");
+                } catch (Exception ex) {
+                    logger.warn("Could not create heartbeat table in source DB: {}", ex.getMessage());
+                }
+            }
+
             // =========================================================================
             // STEP 1: Parse Query, Introspect Schema and PKs
             // =========================================================================
@@ -626,8 +646,17 @@ public class DataWarehouseService {
                 sourceConfig.put("slot.name", safeSlotName);
                 sourceConfig.put("publication.name", "pub_" + safeSlotName);
                 sourceConfig.put("publication.autocreate.mode", "filtered");
-                // Emit heartbeats every 10s to keep confirmed_flush_lsn up to date with pg_current_wal_lsn
+                // Emit heartbeats every 10s to keep confirmed_flush_lsn up to date with pg_current_wal_lsn.
+                // heartbeat.action.query performs an actual write on the source DB so a WAL record is
+                // produced and Debezium can advance the slot's confirmed_flush_lsn — even when the
+                // monitored tables are completely idle. Without this, WAL accumulates indefinitely.
                 sourceConfig.put("heartbeat.interval.ms", "10000");
+                sourceConfig.put("heartbeat.action.query",
+                    "INSERT INTO public._dbz_heartbeat(id, ts) VALUES(1, now()) " +
+                    "ON CONFLICT(id) DO UPDATE SET ts = EXCLUDED.ts");
+                // Drop the replication slot automatically when the connector is stopped/deleted.
+                // Prevents orphaned slots (and WAL accumulation) when a pipeline is redeployed.
+                sourceConfig.put("slot.drop.on.stop", "true");
                 String sslMode = request.getSourceConnection().getSslMode();
                 if (sslMode != null && !sslMode.trim().isEmpty()) {
                     sourceConfig.put("database.sslmode", sslMode.trim());
