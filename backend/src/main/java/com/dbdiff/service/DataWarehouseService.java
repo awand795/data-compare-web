@@ -697,7 +697,9 @@ public class DataWarehouseService {
 
             // Route Debezium topics to a unified target format: cdc_[baseName]_[schema]_[table]
             String topicPrefix = "cdc_" + baseName + "_";
-            sourceConfig.put("transforms", "route,unwrap,rename");
+            // dropHeartbeat filters out _dbz_heartbeat events AFTER they are committed
+            // (so the LSN/offset is advanced) but BEFORE they reach Kafka/ClickHouse.
+            sourceConfig.put("transforms", "route,unwrap,rename,dropHeartbeat");
             sourceConfig.put("transforms.route.type", "org.apache.kafka.connect.transforms.RegexRouter");
             sourceConfig.put("transforms.route.regex", "([^\\.]+)\\.([^\\.]+)\\.([^\\.]+)");
             sourceConfig.put("transforms.route.replacement", topicPrefix + "$2_$3");
@@ -711,6 +713,17 @@ public class DataWarehouseService {
             // Rename internal Debezium fields to match our ClickHouse landing tables
             sourceConfig.put("transforms.rename.type", "org.apache.kafka.connect.transforms.ReplaceField$Value");
             sourceConfig.put("transforms.rename.renames", "__deleted:is_deleted,__ts_ms:version");
+
+            // Drop heartbeat events (from public._dbz_heartbeat) so they never reach Kafka/ClickHouse.
+            // The Filter transform drops matching records but still commits their offsets,
+            // which is exactly what allows confirmed_flush_lsn to advance in Postgres.
+            sourceConfig.put("predicates", "isHeartbeat");
+            sourceConfig.put("predicates.isHeartbeat.type",
+                "org.apache.kafka.connect.transforms.predicates.TopicNameMatches");
+            sourceConfig.put("predicates.isHeartbeat.pattern", ".*_dbz_heartbeat");
+            sourceConfig.put("transforms.dropHeartbeat.type",
+                "org.apache.kafka.connect.transforms.Filter");
+            sourceConfig.put("transforms.dropHeartbeat.predicate", "isHeartbeat");
             
             List<String> formattedTables = new ArrayList<>();
             for (String t : physicalTables) {
@@ -731,6 +744,13 @@ public class DataWarehouseService {
                 }
             }
             String tableIncludeList = String.join(",", formattedTables);
+            // Include the heartbeat table in the publication so Debezium generates actual CDC
+            // events for each heartbeat write. Without this, _dbz_heartbeat writes are invisible
+            // to the publication, no offset is committed to Kafka, and confirmed_flush_lsn
+            // never advances — causing WAL to accumulate indefinitely on idle databases.
+            if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
+                tableIncludeList += ",public._dbz_heartbeat";
+            }
             sourceConfig.put("table.include.list", tableIncludeList);
             
             // Serialize Decimals as strings to avoid Base64 encoding which breaks ClickHouse sink
