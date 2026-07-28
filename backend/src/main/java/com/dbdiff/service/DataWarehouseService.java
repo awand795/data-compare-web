@@ -923,8 +923,8 @@ public class DataWarehouseService {
                     
                     sourceConfig.put("table.include.list", updatedTableIncludeList);
                     sourceConfig.put("snapshot.mode", "always");
-                    sourceConfig.put("slot.name", "slot_" + baseName + "_" + System.currentTimeMillis());
-                    sourceConfig.put("publication.name", "pub_" + baseName + "_" + System.currentTimeMillis());
+                    sourceConfig.put("slot.name", safeSlotName);
+                    sourceConfig.put("publication.name", "pub_" + safeSlotName);
                     
                     java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
                     sourcePayload.put("name", sourceConnectorName);
