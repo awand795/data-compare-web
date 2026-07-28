@@ -1617,18 +1617,32 @@ public class DataWarehouseService {
             
             Join newJoin = new Join();
             newJoin.setRightItem(currentFrom);
-            if (targetJoin.isCross() || targetJoin.isSimple() || targetJoin.getOnExpression() == null) {
-                newJoin.setCross(true);
+            if (joins != null && !joins.isEmpty() && joins.get(0).getOnExpression() != null) {
+                newJoin.setInner(true);
+                newJoin.setOnExpression(joins.get(0).getOnExpression());
             } else {
-                newJoin.setLeft(true);
-                newJoin.setOnExpression(targetJoin.getOnExpression());
+                newJoin.setCross(true);
             }
             
             plain.setFromItem(targetJoin.getRightItem());
             
-            List<Join> newJoins = new ArrayList<>(joins);
-            newJoins.remove(targetIdx);
-            newJoins.add(0, newJoin);
+            List<Join> newJoins = new ArrayList<>();
+            if (joins != null) {
+                for (int i = 0; i < joins.size(); i++) {
+                    if (i == targetIdx) continue;
+                    Join j = joins.get(i);
+                    if (i == 0 && targetJoin.getOnExpression() != null) {
+                        Join jCopy = new Join();
+                        jCopy.setRightItem(j.getRightItem());
+                        jCopy.setInner(true);
+                        jCopy.setOnExpression(targetJoin.getOnExpression());
+                        newJoins.add(jCopy);
+                    } else {
+                        newJoins.add(j);
+                    }
+                }
+            }
+            newJoins.add(newJoin);
             plain.setJoins(newJoins);
             
             reorderJoinsByDependency(plain);
@@ -1696,6 +1710,9 @@ public class DataWarehouseService {
                         plain.setWhere(new net.sf.jsqlparser.expression.operators.conditional.AndExpression(currentWhere, onExpr));
                     }
                     j.setOnExpression(null);
+                    j.setLeft(false);
+                    j.setRight(false);
+                    j.setInner(false);
                     j.setCross(true);
                 }
                 String joinAlias = j.getRightItem().getAlias() != null ? 
