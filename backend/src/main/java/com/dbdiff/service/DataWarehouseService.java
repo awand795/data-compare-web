@@ -161,17 +161,21 @@ public class DataWarehouseService {
             try {
                 return restTemplate.postForEntity(DEBEZIUM_URL, entity, String.class);
             } catch (org.springframework.web.client.HttpClientErrorException e) {
-                if (e.getStatusCode() == org.springframework.http.HttpStatus.CONFLICT && attempt < maxAttempts) {
-                    lastError = e;
-                    sendLog(emitter, "Attempt " + attempt + "/" + maxAttempts
-                            + " conflict (409) for connector '" + connectorName + "', retrying in 3s...");
+                if (e.getStatusCode() == org.springframework.http.HttpStatus.CONFLICT) {
+                    sendLog(emitter, "Connector '" + connectorName + "' already exists (409). Updating connector configuration...");
                     try {
-                        Thread.sleep(3000);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw ie;
+                        java.util.Map<String, Object> body = entity.getBody();
+                        java.lang.Object configObj = (body != null) ? body.get("config") : null;
+                        org.springframework.http.HttpEntity<java.lang.Object> putEntity = new org.springframework.http.HttpEntity<>(configObj != null ? configObj : body, entity.getHeaders());
+                        return restTemplate.exchange(DEBEZIUM_URL + "/" + connectorName + "/config", org.springframework.http.HttpMethod.PUT, putEntity, String.class);
+                    } catch (Exception putEx) {
+                        sendLog(emitter, "Config update via PUT failed: " + putEx.getMessage() + ". Re-creating connector...");
+                        deleteConnectorWithWait(connectorName);
+                        if (attempt < maxAttempts) {
+                            try { Thread.sleep(2000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); throw ie; }
+                            continue;
+                        }
                     }
-                    continue;
                 }
                 throw e;
             } catch (Exception e) {
