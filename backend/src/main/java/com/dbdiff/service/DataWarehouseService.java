@@ -266,6 +266,8 @@ public class DataWarehouseService {
 
     private void deploySinglePipeline(DataWarehouseDeployRequest request, SseEmitter emitter) throws Exception {
         try {
+            request.setSourceConnection(enrichConnection(request.getSourceConnection()));
+            request.setTargetConnection(enrichConnection(request.getTargetConnection()));
             sendLog(emitter, "Deploying Data Warehouse pipeline for source " + request.getSourceConnection().getName() + " to target table " + request.getTargetTable());
 
             // =========================================================================
@@ -2969,5 +2971,54 @@ public class DataWarehouseService {
             }
         }
         return droppedSlots;
+    }
+
+    private ConnectionDetails enrichConnection(ConnectionDetails conn) {
+        if (conn == null) return null;
+        if (conn.getId() != null && !conn.getId().trim().isEmpty()) {
+            try {
+                ConnectionDetails stored = connectionRepository.findById(conn.getId().trim());
+                if (stored != null) {
+                    if (conn.getPassword() == null || conn.getPassword().trim().isEmpty() || "*****".equals(conn.getPassword().trim())) {
+                        conn.setPassword(stored.getPassword());
+                    }
+                    if (conn.getHost() == null || conn.getHost().trim().isEmpty()) {
+                        conn.setHost(stored.getHost());
+                    }
+                    if (conn.getUsername() == null || conn.getUsername().trim().isEmpty()) {
+                        conn.setUsername(stored.getUsername());
+                    }
+                    if (conn.getType() == null || conn.getType().trim().isEmpty()) {
+                        conn.setType(stored.getType());
+                    }
+                    if (conn.getPort() <= 0) {
+                        conn.setPort(stored.getPort());
+                    }
+                    if (conn.getDatabase() == null || conn.getDatabase().trim().isEmpty()) {
+                        conn.setDatabase(stored.getDatabase());
+                    }
+                    if (conn.getSchema() == null || conn.getSchema().trim().isEmpty()) {
+                        conn.setSchema(stored.getSchema());
+                    }
+                    if (conn.getSslMode() == null || conn.getSslMode().trim().isEmpty()) {
+                        conn.setSslMode(stored.getSslMode());
+                    }
+                    if (conn.isUseSsh()) {
+                        if (conn.getSshPassword() == null || conn.getSshPassword().trim().isEmpty() || "*****".equals(conn.getSshPassword().trim())) {
+                            conn.setSshPassword(stored.getSshPassword());
+                        }
+                        if (conn.getSshHost() == null || conn.getSshHost().trim().isEmpty()) {
+                            conn.setSshHost(stored.getSshHost());
+                        }
+                        if (conn.getSshUsername() == null || conn.getSshUsername().trim().isEmpty()) {
+                            conn.setSshUsername(stored.getSshUsername());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to enrich connection from repository: " + e.getMessage());
+            }
+        }
+        return conn;
     }
 }
