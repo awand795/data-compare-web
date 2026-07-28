@@ -858,6 +858,22 @@ public class DataWarehouseService {
             // never advances — causing WAL to accumulate indefinitely on idle databases.
             if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
                 tableIncludeList += ",public._dbz_heartbeat";
+                // Enable REPLICA IDENTITY FULL on all Postgres source tables so DELETE and UPDATE events log full row state for CDC
+                try (Connection pgConn = sourceDsForCleanup.getConnection();
+                     Statement pgStmt = pgConn.createStatement()) {
+                    for (String tbl : formattedTables) {
+                        if (!"public._dbz_heartbeat".equalsIgnoreCase(tbl)) {
+                            try {
+                                pgStmt.execute("ALTER TABLE " + tbl + " REPLICA IDENTITY FULL");
+                                sendLog(emitter, "Set REPLICA IDENTITY FULL on PostgreSQL table: " + tbl);
+                            } catch (Exception ex) {
+                                logger.warn("Could not set REPLICA IDENTITY FULL on table " + tbl + ": " + ex.getMessage());
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    logger.warn("Failed to apply REPLICA IDENTITY FULL on Postgres tables", ex);
+                }
             }
             sourceConfig.put("table.include.list", tableIncludeList);
             
