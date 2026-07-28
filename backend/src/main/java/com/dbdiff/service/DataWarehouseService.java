@@ -677,6 +677,10 @@ public class DataWarehouseService {
             for (ColumnInfo col : targetColumns) {
                 targetDdl.append("    `").append(col.name).append("` ").append(col.clickhouseType).append(",\n");
             }
+            boolean hasSyncDt = targetColumns.stream().anyMatch(c -> "sync_dt".equalsIgnoreCase(c.name));
+            if (!hasSyncDt) {
+                targetDdl.append("    `sync_dt` DateTime64(3, 'Asia/Jakarta') DEFAULT now64(3, 'Asia/Jakarta'),\n");
+            }
             targetDdl.append("    `version` UInt64 DEFAULT 0,\n");
             targetDdl.append("    `is_deleted` UInt8 DEFAULT 0\n");
             targetDdl.append(") ENGINE = ReplacingMergeTree(version)\n");
@@ -1659,6 +1663,10 @@ public class DataWarehouseService {
             String alias = getTableAlias(sql, triggerTable);
             String prefix = (alias != null && !alias.isEmpty()) ? alias + "." : "";
             
+            net.sf.jsqlparser.statement.select.SelectItem syncItem = new net.sf.jsqlparser.statement.select.SelectItem();
+            syncItem.setExpression(net.sf.jsqlparser.parser.CCJSqlParserUtil.parseExpression("toTimeZone(now64(3), 'Asia/Jakarta')"));
+            syncItem.setAlias(new net.sf.jsqlparser.expression.Alias("sync_dt"));
+
             net.sf.jsqlparser.statement.select.SelectItem verItem = new net.sf.jsqlparser.statement.select.SelectItem();
             verItem.setExpression(net.sf.jsqlparser.parser.CCJSqlParserUtil.parseExpression(prefix + "version"));
             verItem.setAlias(new net.sf.jsqlparser.expression.Alias("version"));
@@ -1667,7 +1675,7 @@ public class DataWarehouseService {
             delItem.setExpression(net.sf.jsqlparser.parser.CCJSqlParserUtil.parseExpression(prefix + "is_deleted"));
             delItem.setAlias(new net.sf.jsqlparser.expression.Alias("is_deleted"));
             
-            plain.addSelectItems(verItem, delItem);
+            plain.addSelectItems(syncItem, verItem, delItem);
             return select.toString();
         } catch (Exception e) {
             logger.warn("Failed to inject metadata columns to select list: " + e.getMessage());
