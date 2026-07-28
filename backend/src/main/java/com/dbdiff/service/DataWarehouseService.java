@@ -214,6 +214,58 @@ public class DataWarehouseService {
 
     public void deployPipeline(DataWarehouseDeployRequest request, SseEmitter emitter) {
         try {
+            List<ConnectionDetails> conns = request.getSourceConnections();
+            if (conns == null || conns.isEmpty()) {
+                if (request.getSourceConnection() != null) {
+                    conns = java.util.Collections.singletonList(request.getSourceConnection());
+                } else {
+                    throw new RuntimeException("No source connections specified for deployment.");
+                }
+            }
+
+            sendLog(emitter, "Checking Debezium availability before deploying...");
+            if (!waitForDebeziumReady(emitter, 120)) {
+                throw new RuntimeException("Debezium is not ready (Kafka/Debezium may be restarting on the server). "
+                        + "Please wait a moment and try again.");
+            }
+
+            sendLog(emitter, "Starting Multi-DB Data Warehouse deployment for " + conns.size() + " source database(s) to target table `" + request.getTargetTable() + "`...");
+
+            for (int i = 0; i < conns.size(); i++) {
+                ConnectionDetails conn = conns.get(i);
+                DataWarehouseDeployRequest singleReq = new DataWarehouseDeployRequest();
+                singleReq.setSourceConnection(conn);
+                singleReq.setSourceConnections(java.util.Collections.singletonList(conn));
+                singleReq.setTargetConnection(request.getTargetConnection());
+                singleReq.setTargetDatabase(request.getTargetDatabase());
+                singleReq.setTargetTable(request.getTargetTable());
+                singleReq.setQuery(request.getQuery());
+                singleReq.setPrimaryKeys(request.getPrimaryKeys());
+
+                sendLog(emitter, "--------------------------------------------------");
+                sendLog(emitter, "Deploying pipeline " + (i + 1) + "/" + conns.size() + " for source database [" + conn.getName() + "]...");
+                try {
+                    deploySinglePipeline(singleReq, emitter);
+                } catch (Exception ex) {
+                    sendLog(emitter, "ERROR on source database [" + conn.getName() + "]: " + ex.getMessage());
+                    if (conns.size() == 1) throw ex;
+                }
+            }
+
+            sendLog(emitter, "==================================================");
+            sendLog(emitter, "All " + conns.size() + " pipeline(s) deployed successfully to target table `" + request.getTargetTable() + "`!");
+            try { emitter.complete(); } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.error("Data Warehouse deployment failed", e);
+            try {
+                sendLog(emitter, "DEPLOYMENT FAILED: " + e.getMessage());
+                emitter.complete();
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void deploySinglePipeline(DataWarehouseDeployRequest request, SseEmitter emitter) throws Exception {
+        try {
             sendLog(emitter, "Deploying Data Warehouse pipeline for source " + request.getSourceConnection().getName() + " to target table " + request.getTargetTable());
 
             // =========================================================================
