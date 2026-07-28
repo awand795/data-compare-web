@@ -398,7 +398,17 @@ public class DataWarehouseService {
             if (request.getPrimaryKeys() != null && !request.getPrimaryKeys().trim().isEmpty()) {
                 String[] pks = request.getPrimaryKeys().split(",");
                 for (String pk : pks) {
-                    if (!pk.trim().isEmpty()) compositePKs.add(pk.trim());
+                    if (!pk.trim().isEmpty()) {
+                        String trimmed = pk.trim();
+                        String matched = trimmed;
+                        for (ColumnInfo col : targetColumns) {
+                            if (col.name.equalsIgnoreCase(trimmed)) {
+                                matched = col.name;
+                                break;
+                            }
+                        }
+                        compositePKs.add(matched);
+                    }
                 }
                 sendLog(emitter, "Using user-provided primary keys: " + String.join(", ", compositePKs));
             } else {
@@ -645,6 +655,14 @@ public class DataWarehouseService {
                  Statement stmt = conn.createStatement()) {
                 // Do not drop as view, it is a regular table.
                 stmt.execute(targetDdl.toString());
+                if (request.getPrimaryKeys() != null && !request.getPrimaryKeys().trim().isEmpty()) {
+                    try {
+                        stmt.execute("ALTER TABLE `" + chDb + "`.`" + request.getTargetTable() + "` MODIFY ORDER BY (" + pkBuilder.toString() + ")");
+                        sendLog(emitter, "Updated target table ORDER BY to user-provided primary keys: (" + pkBuilder.toString() + ")");
+                    } catch (Exception alterEx) {
+                        logger.warn("Could not modify ORDER BY on existing target table: " + alterEx.getMessage());
+                    }
+                }
                 sendLog(emitter, "Target table `" + request.getTargetTable() + "` verified/created.");
             } catch (Exception e) {
                 sendLog(emitter, "ERROR: Target table creation failed: " + e.getMessage());
