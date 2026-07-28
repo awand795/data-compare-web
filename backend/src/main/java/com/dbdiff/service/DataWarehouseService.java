@@ -2265,10 +2265,11 @@ public class DataWarehouseService {
     }
 
     private java.util.List<ColumnInfo> getQueryColumns(String query, DataSource sourceDs, ConnectionDetails sourceConn) throws Exception {
+        String cleanQuery = (query != null) ? query.trim().replaceAll(";+$", "").trim() : "";
         String srcType = sourceConn.getType().toLowerCase();
         String dryRun = srcType.contains("sqlserver")
-            ? "SELECT TOP 0 * FROM (" + query + ") AS tmp"
-            : "SELECT * FROM (" + query + ") AS tmp LIMIT 0";
+            ? "SELECT TOP 0 * FROM (" + cleanQuery + ") AS tmp"
+            : "SELECT * FROM (" + cleanQuery + ") AS tmp LIMIT 0";
         java.util.List<ColumnInfo> cols = new java.util.ArrayList<>();
         try (java.sql.Connection conn = sourceDs.getConnection();
              java.sql.PreparedStatement ps = conn.prepareStatement(dryRun);
