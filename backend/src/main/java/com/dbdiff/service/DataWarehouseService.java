@@ -708,9 +708,8 @@ public class DataWarehouseService {
                 sourceConfig.put("heartbeat.action.query",
                     "INSERT INTO public._dbz_heartbeat(id, ts) VALUES(1, now()) " +
                     "ON CONFLICT(id) DO UPDATE SET ts = EXCLUDED.ts");
-                // Drop the replication slot automatically when the connector is stopped/deleted.
-                // Prevents orphaned slots (and WAL accumulation) when a pipeline is redeployed.
-                sourceConfig.put("slot.drop.on.stop", "true");
+                // Keep the shared replication slot persistent in PostgreSQL across updates/restarts.
+                sourceConfig.put("slot.drop.on.stop", "false");
                 String sslMode = request.getSourceConnection().getSslMode();
                 if (sslMode != null && !sslMode.trim().isEmpty()) {
                     sourceConfig.put("database.sslmode", sslMode.trim());
