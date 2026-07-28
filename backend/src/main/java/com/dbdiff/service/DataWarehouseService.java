@@ -669,14 +669,8 @@ public class DataWarehouseService {
                 throw e;
             }
 
-            // Truncate target table
-            try (Connection conn = targetDs.getConnection();
-                 Statement stmt = conn.createStatement()) {
-                stmt.execute("TRUNCATE TABLE `" + chDb + "`.`" + request.getTargetTable() + "`");
-                sendLog(emitter, "Truncated target table `" + request.getTargetTable() + "`.");
-            } catch (Exception e) {
-                // Ignore
-            }
+            // Do not truncate target table so data from multiple pipelines/PTs can accumulate safely.
+            // Landing tables are already truncated per source table to ensure clean snapshots.
 
             // Create a convenience VIEW that automatically applies FINAL and filters deleted rows
             String viewName = "v_" + request.getTargetTable();
