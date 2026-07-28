@@ -1603,7 +1603,7 @@ public class DataWarehouseService {
         if (lowerName.contains("bool")) return "UInt8";
         if (lowerName.contains("date")) return "Date";
         if (lowerName.contains("timestamp") || lowerName.contains("datetime") || lowerName.contains("time")) {
-            return "DateTime64(3)";
+            return "DateTime64(3, 'Asia/Jakarta')";
         }
         return "String";
     }
