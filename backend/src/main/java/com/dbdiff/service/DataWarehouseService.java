@@ -1658,7 +1658,7 @@ public class DataWarehouseService {
         java.util.List<Join> orderedJoins = new java.util.ArrayList<>();
 
         boolean progress = true;
-        while (!pendingJoins.isEmpty() && progress) {
+        while (!pendingJoins.isEmpty()) {
             progress = false;
             for (int i = 0; i < pendingJoins.size(); i++) {
                 Join j = pendingJoins.get(i);
@@ -1684,9 +1684,30 @@ public class DataWarehouseService {
                     break;
                 }
             }
+
+            if (!progress && !pendingJoins.isEmpty()) {
+                Join j = pendingJoins.remove(0);
+                if (j.getOnExpression() != null) {
+                    net.sf.jsqlparser.expression.Expression onExpr = j.getOnExpression();
+                    net.sf.jsqlparser.expression.Expression currentWhere = plain.getWhere();
+                    if (currentWhere == null) {
+                        plain.setWhere(onExpr);
+                    } else {
+                        plain.setWhere(new net.sf.jsqlparser.expression.operators.conditional.AndExpression(currentWhere, onExpr));
+                    }
+                    j.setOnExpression(null);
+                    j.setCross(true);
+                }
+                String joinAlias = j.getRightItem().getAlias() != null ? 
+                    j.getRightItem().getAlias().getName() : 
+                    (j.getRightItem() instanceof Table ? ((Table) j.getRightItem()).getName() : null);
+                if (joinAlias != null) {
+                    availableAliases.add(joinAlias.replaceAll("[\"``]", "").toLowerCase());
+                }
+                orderedJoins.add(j);
+            }
         }
 
-        orderedJoins.addAll(pendingJoins);
         plain.setJoins(orderedJoins);
     }
 
