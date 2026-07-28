@@ -1465,8 +1465,12 @@ public class DataWarehouseService {
             
             Join newJoin = new Join();
             newJoin.setRightItem(currentFrom);
-            newJoin.setLeft(true);
-            newJoin.setOnExpression(targetJoin.getOnExpression());
+            if (targetJoin.isCross() || targetJoin.isSimple() || targetJoin.getOnExpression() == null) {
+                newJoin.setCross(true);
+            } else {
+                newJoin.setLeft(true);
+                newJoin.setOnExpression(targetJoin.getOnExpression());
+            }
             
             plain.setFromItem(targetJoin.getRightItem());
             
