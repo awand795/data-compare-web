@@ -918,8 +918,28 @@ public class DataWarehouseService {
                 String updatedTableIncludeList = String.join(",", mergedTables);
                 
                 try {
-                    sendLog(emitter, "Updating shared source connector table list to include new tables and triggering snapshot...");
+                    sendLog(emitter, "Updating shared source connector table list to include new tables and triggering full snapshot...");
                     deleteConnectorWithWait(sourceConnectorName);
+                    
+                    if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
+                        try (Connection pgConn = sourceDsForCleanup.getConnection();
+                             Statement pgStmt = pgConn.createStatement()) {
+                            String findSlotsSql = "SELECT active_pid FROM pg_replication_slots WHERE slot_name = '" + safeSlotName + "'";
+                            try (ResultSet rs = pgStmt.executeQuery(findSlotsSql)) {
+                                while (rs.next()) {
+                                    Number activePid = (Number) rs.getObject("active_pid");
+                                    if (activePid != null) {
+                                        try { pgStmt.execute("SELECT pg_terminate_backend(" + activePid.intValue() + ")"); } catch (Exception ignored) {}
+                                        Thread.sleep(1000);
+                                    }
+                                }
+                            }
+                            try { pgStmt.execute("SELECT pg_drop_replication_slot('" + safeSlotName + "')"); } catch (Exception ignored) {}
+                            sendLog(emitter, "Dropped Postgres replication slot `" + safeSlotName + "` to trigger fresh snapshot.");
+                        } catch (Exception ex) {
+                            logger.warn("Could not drop shared replication slot " + safeSlotName + ": " + ex.getMessage());
+                        }
+                    }
                     
                     sourceConfig.put("table.include.list", updatedTableIncludeList);
                     sourceConfig.put("snapshot.mode", "always");
