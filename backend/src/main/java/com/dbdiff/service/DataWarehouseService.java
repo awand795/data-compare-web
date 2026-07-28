@@ -1333,7 +1333,89 @@ public class DataWarehouseService {
         return sql;
     }
 
+    private String convertPostgresJsonToClickHouse(String sql) {
+        if (sql == null || !sql.contains("->")) {
+            return sql;
+        }
+        String result = sql;
+
+        // 1. CAST(expr AS json/jsonb) ->> or -> index (numeric)
+        Pattern p1 = Pattern.compile("(?i)CAST\\s*\\(\\s*(.+?)\\s+AS\\s+jsonb?\\s*\\)\\s*(->>|->)\\s*(\\d+)");
+        Matcher m1 = p1.matcher(result);
+        StringBuffer sb1 = new StringBuffer();
+        while (m1.find()) {
+            String expr = m1.group(1).trim();
+            int idx = Integer.parseInt(m1.group(3)) + 1;
+            m1.appendReplacement(sb1, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + idx + ")"));
+        }
+        m1.appendTail(sb1);
+        result = sb1.toString();
+
+        // 2. CAST(expr AS json/jsonb) ->> or -> 'key' (string)
+        Pattern p2 = Pattern.compile("(?i)CAST\\s*\\(\\s*(.+?)\\s+AS\\s+jsonb?\\s*\\)\\s*(->>|->)\\s*('(?:[^'\\\\]|\\\\.)*')");
+        Matcher m2 = p2.matcher(result);
+        StringBuffer sb2 = new StringBuffer();
+        while (m2.find()) {
+            String expr = m2.group(1).trim();
+            String key = m2.group(3).trim();
+            m2.appendReplacement(sb2, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + key + ")"));
+        }
+        m2.appendTail(sb2);
+        result = sb2.toString();
+
+        // 3. expr::json/jsonb ->> or -> index
+        Pattern p3 = Pattern.compile("(?i)([a-zA-Z0-9_.]+|\\([^\\)]+\\))\\s*::\\s*jsonb?\\s*(->>|->)\\s*(\\d+)");
+        Matcher m3 = p3.matcher(result);
+        StringBuffer sb3 = new StringBuffer();
+        while (m3.find()) {
+            String expr = m3.group(1).trim();
+            int idx = Integer.parseInt(m3.group(3)) + 1;
+            m3.appendReplacement(sb3, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + idx + ")"));
+        }
+        m3.appendTail(sb3);
+        result = sb3.toString();
+
+        // 4. expr::json/jsonb ->> or -> 'key'
+        Pattern p4 = Pattern.compile("(?i)([a-zA-Z0-9_.]+|\\([^\\)]+\\))\\s*::\\s*jsonb?\\s*(->>|->)\\s*('(?:[^'\\\\]|\\\\.)*')");
+        Matcher m4 = p4.matcher(result);
+        StringBuffer sb4 = new StringBuffer();
+        while (m4.find()) {
+            String expr = m4.group(1).trim();
+            String key = m4.group(3).trim();
+            m4.appendReplacement(sb4, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + key + ")"));
+        }
+        m4.appendTail(sb4);
+        result = sb4.toString();
+
+        // 5. expr ->> or -> index
+        Pattern p5 = Pattern.compile("(?i)([a-zA-Z0-9_.]+|\\([^\\)]+\\))\\s*(->>|->)\\s*(\\d+)");
+        Matcher m5 = p5.matcher(result);
+        StringBuffer sb5 = new StringBuffer();
+        while (m5.find()) {
+            String expr = m5.group(1).trim();
+            int idx = Integer.parseInt(m5.group(3)) + 1;
+            m5.appendReplacement(sb5, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + idx + ")"));
+        }
+        m5.appendTail(sb5);
+        result = sb5.toString();
+
+        // 6. expr ->> or -> 'key'
+        Pattern p6 = Pattern.compile("(?i)([a-zA-Z0-9_.]+|\\([^\\)]+\\))\\s*(->>|->)\\s*('(?:[^'\\\\]|\\\\.)*')");
+        Matcher m6 = p6.matcher(result);
+        StringBuffer sb6 = new StringBuffer();
+        while (m6.find()) {
+            String expr = m6.group(1).trim();
+            String key = m6.group(3).trim();
+            m6.appendReplacement(sb6, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + key + ")"));
+        }
+        m6.appendTail(sb6);
+        result = sb6.toString();
+
+        return result;
+    }
+
     private String rewriteQueryForClickHouse(String sql, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb) {
+        sql = convertPostgresJsonToClickHouse(sql);
         try {
             net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
             if (stmt instanceof Select) {
@@ -1420,6 +1502,7 @@ public class DataWarehouseService {
     }
 
     private String rewriteQueryForClickHouseView(String sql, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb, java.util.Map<String, java.util.Set<String>> tableToPKs) {
+        sql = convertPostgresJsonToClickHouse(sql);
         String rewrittenSql = sql;
         for (String t : physicalTables) {
             String landingTable = getClickHouseLandingTable(t, baseName, sourceConn);
@@ -1447,6 +1530,7 @@ public class DataWarehouseService {
     }
 
     private String addPKFiltersToWhere(String sql, List<String> physicalTables, java.util.Map<String, java.util.Set<String>> tableToPKs) {
+        sql = convertPostgresJsonToClickHouse(sql);
         try {
             net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
             if (!(stmt instanceof Select)) {
@@ -1493,6 +1577,7 @@ public class DataWarehouseService {
     }
 
     private String rotateQuery(String sql, String triggerTable) {
+        sql = convertPostgresJsonToClickHouse(sql);
         try {
             net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
             if (!(stmt instanceof Select)) {
@@ -1651,6 +1736,7 @@ public class DataWarehouseService {
     }
 
     private String addMetadataColsToSelect(String sql, String triggerTable) {
+        sql = convertPostgresJsonToClickHouse(sql);
         try {
             net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
             if (!(stmt instanceof Select)) {
