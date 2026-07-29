@@ -174,7 +174,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 1536M
       restart_policy:
         condition: any
         delay: 20s
@@ -183,7 +183,9 @@ services:
     depends_on:
       - kafka
     environment:
+      - KAFKA_OPTS=-Xmx512m -Xms256m
       - KAFKA_HEAP_OPTS=-Xmx512m -Xms256m
+      - JAVA_OPTS=-Xmx512m -Xms256m
       - MALLOC_ARENA_MAX=2
       - BOOTSTRAP_SERVERS=tasks.kafka:9092
       - GROUP_ID=1
