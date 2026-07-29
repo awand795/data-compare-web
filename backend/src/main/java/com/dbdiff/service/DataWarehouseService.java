@@ -1736,12 +1736,12 @@ public class DataWarehouseService {
                 }
             } catch (Exception e) {
                 logger.warn("Could not inspect columns for backfill table " + physicalTable + ": " + e.getMessage());
-                sendLog(emitter, "WARNING: Could not inspect columns for backfill table " + physicalTable + ": " + e.getMessage());
+                try { sendLog(emitter, "WARNING: Could not inspect columns for backfill table " + physicalTable + ": " + e.getMessage()); } catch (Exception ignored) {}
             }
             
             if (cols.isEmpty()) {
                 logger.warn("Cols list is empty for backfill table " + physicalTable);
-                sendLog(emitter, "WARNING: Could not determine columns for backfill table " + physicalTable);
+                try { sendLog(emitter, "WARNING: Could not determine columns for backfill table " + physicalTable); } catch (Exception ignored) {}
                 return;
             }
             
@@ -1793,11 +1793,11 @@ public class DataWarehouseService {
                 }
                 
                 logger.info("Successfully backfilled {} rows into landing table {}", rowCount, landingTable);
-                sendLog(emitter, "Successfully backfilled " + rowCount + " rows into landing table `" + landingTable + "`.");
+                try { sendLog(emitter, "Successfully backfilled " + rowCount + " rows into landing table `" + landingTable + "`."); } catch (Exception ignored) {}
             }
         } catch (Exception e) {
             logger.warn("Could not backfill landing table " + landingTable + " directly from source: " + e.getMessage(), e);
-            sendLog(emitter, "WARNING: Could not backfill landing table `" + landingTable + "` directly from source: " + e.getMessage());
+            try { sendLog(emitter, "WARNING: Could not backfill landing table `" + landingTable + "` directly from source: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
 
