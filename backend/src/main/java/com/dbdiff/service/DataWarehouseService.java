@@ -1557,20 +1557,20 @@ public class DataWarehouseService {
             String escapedLanding = "`" + chDb + "`.`" + landingTable + "`";
             String shortTable = t.contains(".") ? t.substring(t.indexOf('.') + 1) : t;
 
-            String patternStrWithSchema = "(?i)\\b" + Pattern.quote(t) + "\\b(\\s+(?:AS\\s+)?([a-zA-Z0-9_]+))?";
-            Pattern p = Pattern.compile(patternStrWithSchema);
-            Matcher m = p.matcher(rewrittenSql);
-            StringBuffer sb = new StringBuffer();
-            while (m.find()) {
-                String existingAlias = m.group(2);
-                if (existingAlias != null && !existingAlias.isEmpty()) {
-                    m.appendReplacement(sb, escapedLanding + " AS `" + existingAlias + "`");
-                } else {
-                    m.appendReplacement(sb, escapedLanding + " AS `" + shortTable + "`");
-                }
-            }
-            m.appendTail(sb);
-            rewrittenSql = sb.toString();
+            String patternStrWithSchema = "(?i)\\b" + Pattern.quote(t) + "\\b(\\s+(?:AS\\s+)?(?!(?:WHERE|FROM|JOIN|ON|GROUP|ORDER|HAVING|LIMIT|UNION|SELECT|INNER|LEFT|RIGHT|FULL|CROSS|NATURAL|OUTER|SET|WITH|CASE|WHEN|THEN|ELSE|END|IN|IS|AND|OR|NOT|NULL|FETCH|OFFSET|PREWHERE|SETTINGS|FINAL|SAMPLE|STREAM)\\b)([a-zA-Z0-9_]+))?";
+                    Pattern p = Pattern.compile(patternStrWithSchema);
+                    Matcher m = p.matcher(rewrittenSql);
+                    StringBuffer sb = new StringBuffer();
+                    while (m.find()) {
+                        String existingAlias = m.group(2);
+                        if (existingAlias != null && !existingAlias.isEmpty()) {
+                            m.appendReplacement(sb, escapedLanding + " AS `" + existingAlias + "`");
+                        } else {
+                            m.appendReplacement(sb, escapedLanding + " AS `" + shortTable + "`");
+                        }
+                    }
+                    m.appendTail(sb);
+                    rewrittenSql = sb.toString();
 
             if (t.contains(".")) {
                 String patternStrShort = "(?i)\\b(FROM|JOIN)\\s+`?" + Pattern.quote(shortTable) + "`?\\b(\\s+(?:AS\\s+)?([a-zA-Z0-9_]+))?";
@@ -1654,7 +1654,7 @@ public class DataWarehouseService {
                     // Use the explicit alias if provided, otherwise use the CTE name itself
                     String effectiveAlias = (alias != null && !alias.isBlank()) ? alias : cteName;
                     m.appendReplacement(sb, Matcher.quoteReplacement(
-                        keyword + " (" + cteBody + ") AS `" + effectiveAlias + "`"
+                        keyword + " (" + cteBody + ") AS " + effectiveAlias
                     ));
                 }
                 m.appendTail(sb);
