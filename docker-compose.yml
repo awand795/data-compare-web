@@ -183,7 +183,7 @@ services:
     depends_on:
       - kafka
     environment:
-      - JAVA_OPTS=-Xmx512m -Xms256m
+      - KAFKA_HEAP_OPTS=-Xmx512m -Xms256m
       - MALLOC_ARENA_MAX=2
       - BOOTSTRAP_SERVERS=tasks.kafka:9092
       - GROUP_ID=1
