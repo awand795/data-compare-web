@@ -1447,8 +1447,8 @@ public class DataWarehouseService {
         StringBuffer sb1 = new StringBuffer();
         while (m1.find()) {
             String expr = m1.group(1).trim();
-            int idx = Integer.parseInt(m1.group(3)) + 1;
-            m1.appendReplacement(sb1, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + idx + ")"));
+            int arrIdx = Integer.parseInt(m1.group(3)) + 2;
+            m1.appendReplacement(sb1, Matcher.quoteReplacement("splitByRegexp('[\\\\\"\\\\s*\\\\[\\\\]\\\\s*,\\\\s*]+', " + expr + ")[" + arrIdx + "]"));
         }
         m1.appendTail(sb1);
         result = sb1.toString();
@@ -1460,7 +1460,7 @@ public class DataWarehouseService {
         while (m2.find()) {
             String expr = m2.group(1).trim();
             String key = m2.group(3).trim();
-            m2.appendReplacement(sb2, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + key + ")"));
+            m2.appendReplacement(sb2, Matcher.quoteReplacement("visitParamExtractString(" + expr + ", " + key + ")"));
         }
         m2.appendTail(sb2);
         result = sb2.toString();
@@ -1471,8 +1471,8 @@ public class DataWarehouseService {
         StringBuffer sb3 = new StringBuffer();
         while (m3.find()) {
             String expr = m3.group(1).trim();
-            int idx = Integer.parseInt(m3.group(3)) + 1;
-            m3.appendReplacement(sb3, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + idx + ")"));
+            int arrIdx = Integer.parseInt(m3.group(3)) + 2;
+            m3.appendReplacement(sb3, Matcher.quoteReplacement("splitByRegexp('[\\\\\"\\\\s*\\\\[\\\\]\\\\s*,\\\\s*]+', " + expr + ")[" + arrIdx + "]"));
         }
         m3.appendTail(sb3);
         result = sb3.toString();
@@ -1484,7 +1484,7 @@ public class DataWarehouseService {
         while (m4.find()) {
             String expr = m4.group(1).trim();
             String key = m4.group(3).trim();
-            m4.appendReplacement(sb4, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + key + ")"));
+            m4.appendReplacement(sb4, Matcher.quoteReplacement("visitParamExtractString(" + expr + ", " + key + ")"));
         }
         m4.appendTail(sb4);
         result = sb4.toString();
@@ -1495,8 +1495,8 @@ public class DataWarehouseService {
         StringBuffer sb5 = new StringBuffer();
         while (m5.find()) {
             String expr = m5.group(1).trim();
-            int idx = Integer.parseInt(m5.group(3)) + 1;
-            m5.appendReplacement(sb5, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + idx + ")"));
+            int arrIdx = Integer.parseInt(m5.group(3)) + 2;
+            m5.appendReplacement(sb5, Matcher.quoteReplacement("splitByRegexp('[\\\\\"\\\\s*\\\\[\\\\]\\\\s*,\\\\s*]+', " + expr + ")[" + arrIdx + "]"));
         }
         m5.appendTail(sb5);
         result = sb5.toString();
@@ -1508,7 +1508,7 @@ public class DataWarehouseService {
         while (m6.find()) {
             String expr = m6.group(1).trim();
             String key = m6.group(3).trim();
-            m6.appendReplacement(sb6, Matcher.quoteReplacement("JSONExtractString(" + expr + ", " + key + ")"));
+            m6.appendReplacement(sb6, Matcher.quoteReplacement("visitParamExtractString(" + expr + ", " + key + ")"));
         }
         m6.appendTail(sb6);
         result = sb6.toString();
