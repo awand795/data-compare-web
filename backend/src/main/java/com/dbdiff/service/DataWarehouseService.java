@@ -1509,6 +1509,19 @@ public class DataWarehouseService {
             net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
             if (stmt instanceof Select) {
                 Select select = (Select) stmt;
+                if (select.getWithItemsList() != null) {
+                    for (net.sf.jsqlparser.statement.select.WithItem withItem : select.getWithItemsList()) {
+                        if (withItem.getSelect() != null && withItem.getSelect().getPlainSelect() != null) {
+                            PlainSelect withPlain = withItem.getSelect().getPlainSelect();
+                            rewriteFromItemForClickHouse(withPlain.getFromItem(), physicalTables, baseName, sourceConn, chDb);
+                            if (withPlain.getJoins() != null) {
+                                for (Join join : withPlain.getJoins()) {
+                                    rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb);
+                                }
+                            }
+                        }
+                    }
+                }
                 PlainSelect plain = select.getPlainSelect();
                 if (plain != null) {
                     rewriteFromItemForClickHouse(plain.getFromItem(), physicalTables, baseName, sourceConn, chDb);
