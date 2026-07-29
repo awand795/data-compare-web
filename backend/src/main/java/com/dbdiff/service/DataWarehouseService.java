@@ -642,7 +642,18 @@ public class DataWarehouseService {
                 StringBuilder landingDdl = new StringBuilder();
                 landingDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(landingTable).append("` (\n");
                 for (ColumnInfo col : landingCols) {
-                    landingDdl.append("    `").append(col.name).append("` ").append(col.clickhouseType).append(",\n");
+                    boolean isPk = false;
+                    for (String pk : tablePKs) {
+                        if (pk.equalsIgnoreCase(col.name)) {
+                            isPk = true;
+                            break;
+                        }
+                    }
+                    String colType = col.clickhouseType;
+                    if (!isPk && !colType.startsWith("Nullable")) {
+                        colType = "Nullable(" + colType + ")";
+                    }
+                    landingDdl.append("    `").append(col.name).append("` ").append(colType).append(",\n");
                 }
                 landingDdl.append("    `version` UInt64 DEFAULT 0,\n");
                 landingDdl.append("    `is_deleted` UInt8 DEFAULT 0\n");
@@ -677,7 +688,18 @@ public class DataWarehouseService {
             StringBuilder targetDdl = new StringBuilder();
             targetDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(request.getTargetTable()).append("` (\n");
             for (ColumnInfo col : targetColumns) {
-                targetDdl.append("    `").append(col.name).append("` ").append(col.clickhouseType).append(",\n");
+                boolean isPk = false;
+                for (String pk : compositePKs) {
+                    if (pk.equalsIgnoreCase(col.name)) {
+                        isPk = true;
+                        break;
+                    }
+                }
+                String colType = col.clickhouseType;
+                if (!isPk && !colType.startsWith("Nullable")) {
+                    colType = "Nullable(" + colType + ")";
+                }
+                targetDdl.append("    `").append(col.name).append("` ").append(colType).append(",\n");
             }
             boolean hasSyncDt = targetColumns.stream().anyMatch(c -> "sync_dt".equalsIgnoreCase(c.name));
             if (!hasSyncDt) {
