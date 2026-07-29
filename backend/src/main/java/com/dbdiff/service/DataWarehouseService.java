@@ -419,9 +419,9 @@ public class DataWarehouseService {
             String dryRunSql;
             String srcType = request.getSourceConnection().getType().toLowerCase();
             if (srcType.contains("sqlserver")) {
-                dryRunSql = "SELECT TOP 0 * FROM (" + originalQuery + ") AS tmp";
+                dryRunSql = originalQuery.replaceAll("(?i)^(\\s*SELECT\\s+)", "$1TOP 0 ");
             } else {
-                dryRunSql = "SELECT * FROM (" + originalQuery + ") AS tmp LIMIT 0";
+                dryRunSql = originalQuery + " LIMIT 0";
             }
             
             List<ColumnInfo> targetColumns = new ArrayList<>();
@@ -1329,6 +1329,7 @@ public class DataWarehouseService {
 
                     boolean modified = false;
                     List<net.sf.jsqlparser.statement.select.SelectItem<?>> newItems = new ArrayList<>();
+                    Set<String> usedAliases = new HashSet<>();
                     
                     for (net.sf.jsqlparser.statement.select.SelectItem item : plain.getSelectItems()) {
                         if (item.getExpression() instanceof net.sf.jsqlparser.statement.select.AllTableColumns) {
@@ -1345,8 +1346,12 @@ public class DataWarehouseService {
                                         net.sf.jsqlparser.statement.select.SelectItem newItem = new net.sf.jsqlparser.statement.select.SelectItem();
                                         net.sf.jsqlparser.schema.Column c = new net.sf.jsqlparser.schema.Column(new net.sf.jsqlparser.schema.Table(atc.getTable().getName()), col);
                                         newItem.setExpression(c);
-                                        // Use lowercase alias to match the JDBC driver output for target table schema
-                                        newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col.toLowerCase()));
+                                        String targetAlias = col.toLowerCase();
+                                        if (usedAliases.contains(targetAlias)) {
+                                            targetAlias = (atc.getTable().getName() + "_" + col).toLowerCase();
+                                        }
+                                        usedAliases.add(targetAlias);
+                                        newItem.setAlias(new net.sf.jsqlparser.expression.Alias(targetAlias));
                                         newItems.add(newItem);
                                     }
                                     modified = true;
@@ -1363,8 +1368,12 @@ public class DataWarehouseService {
                                         net.sf.jsqlparser.statement.select.SelectItem newItem = new net.sf.jsqlparser.statement.select.SelectItem();
                                         net.sf.jsqlparser.schema.Column c = new net.sf.jsqlparser.schema.Column(new net.sf.jsqlparser.schema.Table(aliasName), col);
                                         newItem.setExpression(c);
-                                        // Use lowercase alias to match the JDBC driver output for target table schema
-                                        newItem.setAlias(new net.sf.jsqlparser.expression.Alias(col.toLowerCase()));
+                                        String targetAlias = col.toLowerCase();
+                                        if (usedAliases.contains(targetAlias)) {
+                                            targetAlias = (aliasName + "_" + col).toLowerCase();
+                                        }
+                                        usedAliases.add(targetAlias);
+                                        newItem.setAlias(new net.sf.jsqlparser.expression.Alias(targetAlias));
                                         newItems.add(newItem);
                                         expandedAny = true;
                                     }
@@ -1377,7 +1386,12 @@ public class DataWarehouseService {
                         } else if (item.getExpression() instanceof net.sf.jsqlparser.schema.Column) {
                             net.sf.jsqlparser.schema.Column col = (net.sf.jsqlparser.schema.Column) item.getExpression();
                             if (item.getAlias() == null && col.getTable() != null && col.getTable().getName() != null) {
-                                item.setAlias(new net.sf.jsqlparser.expression.Alias(col.getColumnName().toLowerCase()));
+                                String targetAlias = col.getColumnName().toLowerCase();
+                                if (usedAliases.contains(targetAlias)) {
+                                    targetAlias = (col.getTable().getName() + "_" + col.getColumnName()).toLowerCase();
+                                }
+                                usedAliases.add(targetAlias);
+                                item.setAlias(new net.sf.jsqlparser.expression.Alias(targetAlias));
                                 modified = true;
                             }
                         }
