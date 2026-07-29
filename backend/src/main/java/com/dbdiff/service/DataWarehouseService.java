@@ -1034,19 +1034,20 @@ public class DataWarehouseService {
                 String rotatedSql = rotateQuery(originalQuery, t);
                 String sqlWithMeta = addMetadataColsToSelect(rotatedSql, t);
                 
+                // ClickHouse does NOT support WITH (CTE) inside Materialized Views.
+                // Inline CTEs BEFORE rewriting table names so JSqlParser gets clean PostgreSQL SQL.
+                String sqlInlined = inlineCTEs(sqlWithMeta);
+
                 String rewrittenSql;
                 if (physicalTables.size() > 1) {
                     // For JOIN queries, add PK filters to the WHERE clause (avoiding subqueries/FINAL which are disallowed in MVs)
-                    String sqlWithFilters = addPKFiltersToWhere(sqlWithMeta, physicalTables, tableToPKs);
+                    String sqlWithFilters = addPKFiltersToWhere(sqlInlined, physicalTables, tableToPKs);
                     rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, baseName, request.getSourceConnection(), chDb);
                     // Change LEFT JOIN -> INNER JOIN to prevent ghost rows
                     rewrittenSql = rewrittenSql.replaceAll("(?i)\\b(?:LEFT|RIGHT|FULL)(?:\\s+OUTER)?\\s+JOIN\\b", "INNER JOIN");
                 } else {
-                    rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
+                    rewrittenSql = rewriteQueryForClickHouse(sqlInlined, physicalTables, baseName, request.getSourceConnection(), chDb);
                 }
-                // ClickHouse does NOT support WITH (CTE) inside Materialized Views.
-                // Inline all CTEs into subqueries so ClickHouse can resolve column references.
-                rewrittenSql = inlineCTEs(rewrittenSql);
                 
                 StringBuilder mvDdl = new StringBuilder();
                 mvDdl.append("CREATE MATERIALIZED VIEW IF NOT EXISTS `").append(chDb).append("`.`").append(mvName).append("`\n");
@@ -1597,11 +1598,14 @@ public class DataWarehouseService {
      * ClickHouse does NOT support WITH clauses inside Materialized View definitions,
      * so we must inline them before creating the MV DDL.
      *
+     * IMPORTANT: Call this on clean PostgreSQL SQL BEFORE rewriting table names to ClickHouse
+     * landing table names, so JSqlParser can reliably parse the query.
+     *
      * Example:
      *   WITH q AS (SELECT val FROM t WHERE col = 'X')
-     *   SELECT q.val FROM main CROSS JOIN q
+     *   SELECT q.val FROM main CROSS JOIN q alias
      * becomes:
-     *   SELECT q.val FROM main CROSS JOIN (SELECT val FROM t WHERE col = 'X') AS q
+     *   SELECT q.val FROM main CROSS JOIN (SELECT val FROM t WHERE col = 'X') AS `alias`
      */
     private String inlineCTEs(String sql) {
         try {
@@ -1610,14 +1614,13 @@ public class DataWarehouseService {
             Select select = (Select) stmt;
             if (select.getWithItemsList() == null || select.getWithItemsList().isEmpty()) return sql;
 
-            // Build a map: CTE name -> CTE SELECT SQL string
+            // Build a map: lowercase CTE name -> CTE SELECT SQL string
             java.util.Map<String, String> cteMap = new java.util.LinkedHashMap<>();
             for (net.sf.jsqlparser.statement.select.WithItem wi : select.getWithItemsList()) {
                 String cteName = wi.getAlias() != null ? wi.getAlias().getName() : wi.toString().split("\\s+")[0];
-                // Strip backtick/quote wrappers
-                cteName = cteName.replaceAll("[`\"']", "");
+                cteName = cteName.replaceAll("[`\"']", "").toLowerCase();
                 String cteBody = wi.getSelect() != null ? wi.getSelect().toString() : "";
-                cteMap.put(cteName.toLowerCase(), cteBody);
+                cteMap.put(cteName, cteBody);
             }
 
             if (cteMap.isEmpty()) return sql;
@@ -1626,13 +1629,31 @@ public class DataWarehouseService {
             select.setWithItemsList(null);
             String mainSql = select.toString();
 
-            // Replace each reference to CTE name (as a table reference) with (SELECT ...) AS name
+            // Replace each reference to CTE name (as a table reference) with an inline subquery.
+            // Handles any alias after the CTE name (e.g., CROSS JOIN q_perusahaan q -> CROSS JOIN (...) AS `q`)
             for (java.util.Map.Entry<String, String> entry : cteMap.entrySet()) {
                 String cteName = entry.getKey();
                 String cteBody = entry.getValue();
-                // Match: FROM cteName | JOIN cteName | CROSS JOIN cteName (with optional alias)
-                String pattern = "(?i)(\\bFROM\\b|\\bJOIN\\b)\\s+(`?" + Pattern.quote(cteName) + "`?)(\\s+(?:AS\\s+)?(`?" + Pattern.quote(cteName) + "`?))?";
-                mainSql = mainSql.replaceAll(pattern, "$1 (" + cteBody.replace("$", "\\$") + ") AS `" + cteName + "`");
+                // Match: (FROM|JOIN) [optional_qualifier.]cteName [AS] [alias]
+                // Group 1: FROM or JOIN keyword
+                // Group 2: alias (may differ from cteName, e.g., q vs q_perusahaan)
+                Pattern p = Pattern.compile(
+                    "(?i)(\\bFROM\\b|\\bJOIN\\b)\\s+`?" + Pattern.quote(cteName) + "`?(?:\\s+(?:AS\\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?\\b",
+                    Pattern.CASE_INSENSITIVE
+                );
+                Matcher m = p.matcher(mainSql);
+                StringBuffer sb = new StringBuffer();
+                while (m.find()) {
+                    String keyword = m.group(1);
+                    String alias = m.group(2);
+                    // Use the explicit alias if provided, otherwise use the CTE name itself
+                    String effectiveAlias = (alias != null && !alias.isBlank()) ? alias : cteName;
+                    m.appendReplacement(sb, Matcher.quoteReplacement(
+                        keyword + " (" + cteBody + ") AS `" + effectiveAlias + "`"
+                    ));
+                }
+                m.appendTail(sb);
+                mainSql = sb.toString();
             }
 
             return mainSql;
