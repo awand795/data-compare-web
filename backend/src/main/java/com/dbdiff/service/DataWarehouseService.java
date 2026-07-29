@@ -1049,8 +1049,8 @@ public class DataWarehouseService {
                     // For JOIN queries, add PK filters to the WHERE clause (avoiding subqueries/FINAL which are disallowed in MVs)
                     String sqlWithFilters = addPKFiltersToWhere(sqlInlined, physicalTables, tableToPKs);
                     rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, baseName, request.getSourceConnection(), chDb);
-                    // Change LEFT JOIN -> INNER JOIN to prevent ghost rows
-                    rewrittenSql = rewrittenSql.replaceAll("(?i)\\b(?:LEFT|RIGHT|FULL)(?:\\s+OUTER)?\\s+JOIN\\b", "INNER JOIN");
+                    // Preserve join types (LEFT/INNER/etc.) as specified in user query
+
                 } else {
                     rewrittenSql = rewriteQueryForClickHouse(sqlInlined, physicalTables, baseName, request.getSourceConnection(), chDb);
                 }
@@ -1174,7 +1174,7 @@ public class DataWarehouseService {
                     String rotatedSql = rotateQuery(originalQuery, primaryTable);
                     String sqlWithMeta = addMetadataColsToSelect(rotatedSql, primaryTable);
                     String rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
-                    rewrittenSql = rewrittenSql.replaceAll("(?i)\\b(?:LEFT|RIGHT|FULL)(?:\\s+OUTER)?\\s+JOIN\\b", "INNER JOIN");
+
                     
                     String insertSql = "INSERT INTO `" + chDb + "`.`" + request.getTargetTable() + "` " + rewrittenSql;
                     logger.info("Executing initial snapshot populate SQL:\n{}", insertSql);
@@ -2701,7 +2701,6 @@ public class DataWarehouseService {
                     if (physicalTables.size() > 1) {
                         String sqlWithFilters = addPKFiltersToWhere(sqlWithMeta, physicalTables, tableToPKs);
                         rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, resolvedBaseName, sourceConn, chDb);
-                        rewrittenSql = rewrittenSql.replaceAll("(?i)\\b(?:LEFT|RIGHT|FULL)(?:\\s+OUTER)?\\s+JOIN\\b", "INNER JOIN");
                     } else {
                         rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, resolvedBaseName, sourceConn, chDb);
                     }
