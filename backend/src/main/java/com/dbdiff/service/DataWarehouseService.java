@@ -685,6 +685,10 @@ public class DataWarehouseService {
                 } catch (Exception e) {
                     // Ignore
                 }
+                
+                // Backfill landing table directly from source DB for complete initial snapshot
+                sendLog(emitter, "Populating initial snapshot for landing table `" + landingTable + "` directly from source DB...");
+                backfillLandingTableFromSource(sourceDs, targetDs, t, landingTable, chDb, request.getSourceConnection(), emitter);
             }
 
             // 2b. Create Physical Target ReplacingMergeTree Table
@@ -1058,13 +1062,6 @@ public class DataWarehouseService {
                     sendLog(emitter, "ERROR: Failed to create Materialized View `" + mvName + "`: " + e.getMessage());
                     throw e;
                 }
-            }
-
-            // Populating initial snapshot data into ClickHouse landing tables directly from source DB
-            for (String t : physicalTables) {
-                String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
-                sendLog(emitter, "Populating initial snapshot for landing table `" + landingTable + "` directly from source DB...");
-                backfillLandingTableFromSource(sourceDs, targetDs, t, landingTable, chDb, request.getSourceConnection());
             }
 
             // =========================================================================
@@ -1724,7 +1721,7 @@ public class DataWarehouseService {
         }
     }
 
-    private void backfillLandingTableFromSource(DataSource sourceDs, DataSource targetDs, String physicalTable, String landingTable, String chDb, ConnectionDetails sourceConn) {
+    private void backfillLandingTableFromSource(DataSource sourceDs, DataSource targetDs, String physicalTable, String landingTable, String chDb, ConnectionDetails sourceConn, SseEmitter emitter) {
         try {
             List<ColumnInfo> cols = new ArrayList<>();
             try (Connection conn = sourceDs.getConnection();
@@ -1739,10 +1736,12 @@ public class DataWarehouseService {
                 }
             } catch (Exception e) {
                 logger.warn("Could not inspect columns for backfill table " + physicalTable + ": " + e.getMessage());
+                sendLog(emitter, "WARNING: Could not inspect columns for backfill table " + physicalTable + ": " + e.getMessage());
             }
             
             if (cols.isEmpty()) {
                 logger.warn("Cols list is empty for backfill table " + physicalTable);
+                sendLog(emitter, "WARNING: Could not determine columns for backfill table " + physicalTable);
                 return;
             }
             
@@ -1794,9 +1793,11 @@ public class DataWarehouseService {
                 }
                 
                 logger.info("Successfully backfilled {} rows into landing table {}", rowCount, landingTable);
+                sendLog(emitter, "Successfully backfilled " + rowCount + " rows into landing table `" + landingTable + "`.");
             }
         } catch (Exception e) {
             logger.warn("Could not backfill landing table " + landingTable + " directly from source: " + e.getMessage(), e);
+            sendLog(emitter, "WARNING: Could not backfill landing table `" + landingTable + "` directly from source: " + e.getMessage());
         }
     }
 
