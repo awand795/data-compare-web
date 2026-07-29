@@ -774,6 +774,10 @@ public class DataWarehouseService {
                 } else {
                     sourceConfig.put("database.sslmode", "disable");
                 }
+                
+                // CRITICAL: Ensure Debezium outputs timestamps in milliseconds (Kafka Connect logical types)
+                // instead of default microseconds, so ClickHouse DateTime64(3) interprets them correctly.
+                sourceConfig.put("time.precision.mode", "connect");
             } else if ("mysql".equalsIgnoreCase(request.getSourceConnection().getType())) {
                 sourceConfig.put("connector.class", "io.debezium.connector.mysql.MySqlConnector");
             } else {
