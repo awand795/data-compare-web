@@ -1737,9 +1737,14 @@ public class DataWarehouseService {
                     c.clickhouseType = mapJdbcTypeToClickHouse(meta.getColumnType(i), meta.getPrecision(i), meta.getScale(i), meta.getColumnTypeName(i));
                     cols.add(c);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Could not inspect columns for backfill table " + physicalTable + ": " + e.getMessage());
+            }
             
-            if (cols.isEmpty()) return;
+            if (cols.isEmpty()) {
+                logger.warn("Cols list is empty for backfill table " + physicalTable);
+                return;
+            }
             
             StringBuilder chInsertSql = new StringBuilder();
             chInsertSql.append("INSERT INTO `").append(chDb).append("`.`").append(landingTable).append("` (");
@@ -1782,6 +1787,7 @@ public class DataWarehouseService {
                 if (batchSize > 0 && batchSize % 1000 != 0) {
                     targetPs.executeBatch();
                 }
+                logger.info("Successfully backfilled {} rows into landing table {}", batchSize, landingTable);
             }
         } catch (Exception e) {
             logger.warn("Could not backfill landing table " + landingTable + " directly from source: " + e.getMessage(), e);
