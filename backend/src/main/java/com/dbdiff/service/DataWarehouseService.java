@@ -899,6 +899,7 @@ public class DataWarehouseService {
                 // Enable REPLICA IDENTITY FULL on all Postgres source tables so DELETE and UPDATE events log full row state for CDC
                 try (Connection pgConn = sourceDsForCleanup.getConnection();
                      Statement pgStmt = pgConn.createStatement()) {
+                    try { pgStmt.execute("SET lock_timeout = '3s'"); } catch (Exception ignored) {}
                     for (String tbl : formattedTables) {
                         if (!"public._dbz_heartbeat".equalsIgnoreCase(tbl)) {
                             try {
