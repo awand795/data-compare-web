@@ -1044,6 +1044,9 @@ public class DataWarehouseService {
                 } else {
                     rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
                 }
+                // ClickHouse does NOT support WITH (CTE) inside Materialized Views.
+                // Inline all CTEs into subqueries so ClickHouse can resolve column references.
+                rewrittenSql = inlineCTEs(rewrittenSql);
                 
                 StringBuilder mvDdl = new StringBuilder();
                 mvDdl.append("CREATE MATERIALIZED VIEW IF NOT EXISTS `").append(chDb).append("`.`").append(mvName).append("`\n");
@@ -1587,6 +1590,56 @@ public class DataWarehouseService {
             }
         }
         return rewrittenSql;
+    }
+
+    /**
+     * Expands all CTE definitions (WITH ... AS (...)) inline as subqueries in the main query.
+     * ClickHouse does NOT support WITH clauses inside Materialized View definitions,
+     * so we must inline them before creating the MV DDL.
+     *
+     * Example:
+     *   WITH q AS (SELECT val FROM t WHERE col = 'X')
+     *   SELECT q.val FROM main CROSS JOIN q
+     * becomes:
+     *   SELECT q.val FROM main CROSS JOIN (SELECT val FROM t WHERE col = 'X') AS q
+     */
+    private String inlineCTEs(String sql) {
+        try {
+            net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
+            if (!(stmt instanceof Select)) return sql;
+            Select select = (Select) stmt;
+            if (select.getWithItemsList() == null || select.getWithItemsList().isEmpty()) return sql;
+
+            // Build a map: CTE name -> CTE SELECT SQL string
+            java.util.Map<String, String> cteMap = new java.util.LinkedHashMap<>();
+            for (net.sf.jsqlparser.statement.select.WithItem wi : select.getWithItemsList()) {
+                String cteName = wi.getAlias() != null ? wi.getAlias().getName() : wi.toString().split("\\s+")[0];
+                // Strip backtick/quote wrappers
+                cteName = cteName.replaceAll("[`\"']", "");
+                String cteBody = wi.getSelect() != null ? wi.getSelect().toString() : "";
+                cteMap.put(cteName.toLowerCase(), cteBody);
+            }
+
+            if (cteMap.isEmpty()) return sql;
+
+            // Get the main query body (strip WITH clause)
+            select.setWithItemsList(null);
+            String mainSql = select.toString();
+
+            // Replace each reference to CTE name (as a table reference) with (SELECT ...) AS name
+            for (java.util.Map.Entry<String, String> entry : cteMap.entrySet()) {
+                String cteName = entry.getKey();
+                String cteBody = entry.getValue();
+                // Match: FROM cteName | JOIN cteName | CROSS JOIN cteName (with optional alias)
+                String pattern = "(?i)(\\bFROM\\b|\\bJOIN\\b)\\s+(`?" + Pattern.quote(cteName) + "`?)(\\s+(?:AS\\s+)?(`?" + Pattern.quote(cteName) + "`?))?";
+                mainSql = mainSql.replaceAll(pattern, "$1 (" + cteBody.replace("$", "\\$") + ") AS `" + cteName + "`");
+            }
+
+            return mainSql;
+        } catch (Exception e) {
+            logger.warn("inlineCTEs: Could not parse SQL for CTE inlining, returning as-is: " + e.getMessage());
+            return sql;
+        }
     }
 
     private void rewriteFromItemForClickHouse(FromItem item, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb) {
