@@ -1053,7 +1053,7 @@ public class DataWarehouseService {
             sinkConfig.put("key.converter.schemas.enable", "true");
             sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
             sinkConfig.put("value.converter.schemas.enable", "true");
-            sinkConfig.put("errors.tolerance", "all"); // Skip poison pill messages from previous failed runs
+            sinkConfig.put("errors.tolerance", "none"); // Fail fast to surface errors
             
             // Force immediate consumer offset commits to prevent re-reading snapshot batch upon Debezium partition rebalance
             sinkConfig.put("consumer.override.auto.offset.reset", "earliest");
