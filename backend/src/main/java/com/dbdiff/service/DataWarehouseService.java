@@ -1060,6 +1060,13 @@ public class DataWarehouseService {
                 }
             }
 
+            // Populating initial snapshot data into ClickHouse landing tables directly from source DB
+            for (String t : physicalTables) {
+                String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
+                sendLog(emitter, "Populating initial snapshot for landing table `" + landingTable + "` directly from source DB...");
+                backfillLandingTableFromSource(sourceDs, targetDs, t, landingTable, chDb, request.getSourceConnection());
+            }
+
             // =========================================================================
             // STEP 5: Configure ClickHouse Sink Connector
             // =========================================================================
@@ -1714,6 +1721,70 @@ public class DataWarehouseService {
         } catch (Exception e) {
             logger.warn("Failed to inject PK filters to WHERE clause: " + e.getMessage());
             return sql;
+        }
+    }
+
+    private void backfillLandingTableFromSource(DataSource sourceDs, DataSource targetDs, String physicalTable, String landingTable, String chDb, ConnectionDetails sourceConn) {
+        try {
+            List<ColumnInfo> cols = new ArrayList<>();
+            try (Connection conn = sourceDs.getConnection();
+                 PreparedStatement ps = conn.prepareStatement("SELECT * FROM " + physicalTable + (sourceConn.getType().toLowerCase().contains("sqlserver") ? " WITH (NOLOCK)" : "") + " LIMIT 1");
+                 ResultSet rs = ps.executeQuery()) {
+                ResultSetMetaData meta = rs.getMetaData();
+                for (int i = 1; i <= meta.getColumnCount(); i++) {
+                    ColumnInfo c = new ColumnInfo();
+                    c.name = meta.getColumnLabel(i);
+                    c.clickhouseType = mapJdbcTypeToClickHouse(meta.getColumnType(i), meta.getPrecision(i), meta.getScale(i), meta.getColumnTypeName(i));
+                    cols.add(c);
+                }
+            } catch (Exception ignored) {}
+            
+            if (cols.isEmpty()) return;
+            
+            StringBuilder chInsertSql = new StringBuilder();
+            chInsertSql.append("INSERT INTO `").append(chDb).append("`.`").append(landingTable).append("` (");
+            StringBuilder placeholders = new StringBuilder();
+            for (int i = 0; i < cols.size(); i++) {
+                if (i > 0) {
+                    chInsertSql.append(", ");
+                    placeholders.append(", ");
+                }
+                chInsertSql.append("`").append(cols.get(i).name).append("`");
+                placeholders.append("?");
+            }
+            chInsertSql.append(") VALUES (").append(placeholders).append(")");
+            
+            String srcSelectSql = "SELECT * FROM " + physicalTable;
+            try (Connection srcConn = sourceDs.getConnection();
+                 PreparedStatement srcPs = srcConn.prepareStatement(srcSelectSql);
+                 ResultSet rs = srcPs.executeQuery();
+                 Connection targetConn = targetDs.getConnection();
+                 PreparedStatement targetPs = targetConn.prepareStatement(chInsertSql.toString())) {
+                
+                int batchSize = 0;
+                while (rs.next()) {
+                    for (int i = 1; i <= cols.size(); i++) {
+                        Object val = rs.getObject(i);
+                        if (val instanceof java.sql.Timestamp ts) {
+                            targetPs.setObject(i, ts.toLocalDateTime());
+                        } else if (val instanceof java.sql.Date d) {
+                            targetPs.setObject(i, d.toLocalDate());
+                        } else {
+                            targetPs.setObject(i, val);
+                        }
+                    }
+                    targetPs.addBatch();
+                    batchSize++;
+                    if (batchSize % 1000 == 0) {
+                        targetPs.executeBatch();
+                    }
+                }
+                if (batchSize > 0 && batchSize % 1000 != 0) {
+                    targetPs.executeBatch();
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Could not backfill landing table " + landingTable + " directly from source: " + e.getMessage(), e);
         }
     }
 
