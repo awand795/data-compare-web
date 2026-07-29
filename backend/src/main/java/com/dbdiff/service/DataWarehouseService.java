@@ -1619,7 +1619,12 @@ public class DataWarehouseService {
             for (net.sf.jsqlparser.statement.select.WithItem wi : select.getWithItemsList()) {
                 String cteName = wi.getAlias() != null ? wi.getAlias().getName() : wi.toString().split("\\s+")[0];
                 cteName = cteName.replaceAll("[`\"']", "").toLowerCase();
-                String cteBody = wi.getSelect() != null ? wi.getSelect().toString() : "";
+                String cteBody = wi.getSelect() != null ? wi.getSelect().toString().trim() : "";
+                // JSqlParser wraps WITH body in ParenthesedSelect which adds outer ( ).
+                // Strip them here so we don't produce double parens ((...)) when inlining.
+                if (cteBody.startsWith("(") && cteBody.endsWith(")")) {
+                    cteBody = cteBody.substring(1, cteBody.length() - 1).trim();
+                }
                 cteMap.put(cteName, cteBody);
             }
 
