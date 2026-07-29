@@ -1885,12 +1885,7 @@ public class DataWarehouseService {
         if (lowerName.contains("int2") || lowerName.contains("smallint")) return "Int16";
         if (lowerName.contains("int4") || lowerName.contains("integer") || lowerName.contains("int")) return "Int32";
         if (lowerName.contains("float") || lowerName.contains("real")) return "Float32";
-        if (lowerName.contains("double") || lowerName.contains("numeric") || lowerName.contains("decimal")) {
-            if (precision > 0 && precision <= 38) {
-                return "Decimal(" + precision + ", " + (scale >= 0 ? scale : 0) + ")";
-            }
-            return "Decimal(18, 4)";
-        }
+        if (lowerName.contains("double") || lowerName.contains("numeric") || lowerName.contains("decimal")) return "Float64";
         if (lowerName.contains("bool")) return "UInt8";
         if (lowerName.contains("date")) return "Date";
         if (lowerName.contains("timestamp") || lowerName.contains("datetime") || lowerName.contains("time")) {
