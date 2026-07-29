@@ -669,6 +669,9 @@ public class DataWarehouseService {
                 sendLog(emitter, "Executing ClickHouse DDL for landing table `" + landingTable + "`...");
                 try (Connection conn = targetDs.getConnection();
                      Statement stmt = conn.createStatement()) {
+                    String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
+                    try { stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
+                    try { stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + landingTable + "`"); } catch (Exception ignored) {}
                     stmt.execute(landingDdl.toString());
                 } catch (Exception e) {
                     sendLog(emitter, "WARNING: Could not pre-create landing table `" + landingTable + "`: " + e.getMessage());
@@ -1048,6 +1051,7 @@ public class DataWarehouseService {
                 
                 try (Connection conn = targetDs.getConnection();
                      Statement stmt = conn.createStatement()) {
+                    try { stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
                     stmt.execute(mvDdl.toString());
                     sendLog(emitter, "Materialized View `" + mvName + "` registered successfully.");
                 } catch (Exception e) {
