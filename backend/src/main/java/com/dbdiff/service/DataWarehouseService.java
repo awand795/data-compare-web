@@ -2091,7 +2091,23 @@ public class DataWarehouseService {
             }
             
             String alias = getTableAlias(sql, triggerTable);
-            String prefix = (alias != null && !alias.isEmpty()) ? alias + "." : "";
+            String prefix;
+            if (alias != null && !alias.isEmpty()) {
+                prefix = alias + ".";
+            } else {
+                // Trigger table not found in outer FROM/JOIN (e.g., it's inside a CTE subquery).
+                // Fall back to the main FROM table's alias so version/is_deleted are qualified
+                // and don't cause AMBIGUOUS_IDENTIFIER when multiple tables are JOINed.
+                String fromAlias = null;
+                if (plain.getFromItem() instanceof Table) {
+                    Table fromTable = (Table) plain.getFromItem();
+                    fromAlias = fromTable.getAlias() != null ? fromTable.getAlias().getName() : fromTable.getName();
+                } else if (plain.getFromItem() != null && plain.getFromItem().getAlias() != null) {
+                    fromAlias = plain.getFromItem().getAlias().getName();
+                }
+                prefix = (fromAlias != null && !fromAlias.isEmpty()) ? fromAlias + "." : "";
+            }
+
             
             net.sf.jsqlparser.statement.select.SelectItem syncItem = new net.sf.jsqlparser.statement.select.SelectItem();
             syncItem.setExpression(net.sf.jsqlparser.parser.CCJSqlParserUtil.parseExpression("toTimeZone(now64(3), 'Asia/Jakarta')"));
