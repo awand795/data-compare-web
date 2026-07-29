@@ -1142,6 +1142,24 @@ public class DataWarehouseService {
                 sendLog(emitter, "Waiting for sink connector to flush data to ClickHouse...");
                 Thread.sleep(10000);
                 
+                // Populate target table with initial snapshot data from landing tables to ensure complete snapshot
+                sendLog(emitter, "Populating target table `" + request.getTargetTable() + "` with initial snapshot data...");
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    String primaryTable = physicalTables.get(0);
+                    String rotatedSql = rotateQuery(originalQuery, primaryTable);
+                    String sqlWithMeta = addMetadataColsToSelect(rotatedSql, primaryTable);
+                    String rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
+                    rewrittenSql = rewrittenSql.replaceAll("(?i)\\b(?:LEFT|RIGHT|FULL)(?:\\s+OUTER)?\\s+JOIN\\b", "INNER JOIN");
+                    
+                    String insertSql = "INSERT INTO `" + chDb + "`.`" + request.getTargetTable() + "` " + rewrittenSql;
+                    logger.info("Executing initial snapshot populate SQL:\n{}", insertSql);
+                    stmt.execute(insertSql);
+                    sendLog(emitter, "Initial snapshot data populated into `" + request.getTargetTable() + "`.");
+                } catch (Exception ex) {
+                    logger.warn("Could not populate initial snapshot into " + request.getTargetTable() + ": " + ex.getMessage());
+                }
+
                 // Force immediate physical deduplication on landing and target tables after snapshot
                 sendLog(emitter, "Optimizing target table and landing tables for physical deduplication...");
                 try (Connection conn = targetDs.getConnection();
