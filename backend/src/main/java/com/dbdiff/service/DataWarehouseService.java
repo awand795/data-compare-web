@@ -73,9 +73,15 @@ public class DataWarehouseService {
         String clickhouseType;
     }
 
-    private void sendLog(SseEmitter emitter, String message) throws IOException {
+    private void sendLog(SseEmitter emitter, String message) {
         logger.info(message);
-        emitter.send(SseEmitter.event().data(message));
+        if (emitter != null) {
+            try {
+                emitter.send(SseEmitter.event().data(message));
+            } catch (Throwable ignored) {
+                // Client disconnect or emitter completion should never abort deployment background thread
+            }
+        }
     }
 
     /**
@@ -1859,7 +1865,12 @@ public class DataWarehouseService {
                     rowCount++;
                     batchRows++;
                     
-                    if (batchRows >= 500) {
+                    if (rowCount % 50000 == 0) {
+                        logger.info("Backfilling landing table `{}`: {} rows processed...", landingTable, rowCount);
+                        sendLog(emitter, "Backfilled " + rowCount + " rows into landing table `" + landingTable + "`...");
+                    }
+                    
+                    if (batchRows >= 5000) {
                         targetStmt.execute(valuesBuilder.toString());
                         valuesBuilder = new StringBuilder();
                         valuesBuilder.append(insertHeader);

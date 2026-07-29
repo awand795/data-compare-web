@@ -39,7 +39,7 @@ public class DataWarehouseController {
             request.setTargetConnection(connectionRepository.findById(request.getTargetConnection().getId()));
         }
         
-        SseEmitter emitter = new SseEmitter(600_000L); // 10 minutes timeout
+        SseEmitter emitter = new SseEmitter(7_200_000L); // 2 hours timeout
         
         executor.execute(() -> {
             try {
