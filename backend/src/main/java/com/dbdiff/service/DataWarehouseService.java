@@ -817,7 +817,7 @@ public class DataWarehouseService {
             String topicPrefix = "cdc_" + baseName + "_";
             // dropHeartbeat filters out _dbz_heartbeat events AFTER they are committed
             // (so the LSN/offset is advanced) but BEFORE they reach Kafka/ClickHouse.
-            sourceConfig.put("transforms", "route,unwrap,rename,dropHeartbeat");
+            sourceConfig.put("transforms", "route,unwrap,rename,castBool,castInt,dropHeartbeat");
             sourceConfig.put("transforms.route.type", "org.apache.kafka.connect.transforms.RegexRouter");
             sourceConfig.put("transforms.route.regex", "([^\\.]+)\\.([^\\.]+)\\.([^\\.]+)");
             sourceConfig.put("transforms.route.replacement", topicPrefix + "$2_$3");
@@ -831,6 +831,12 @@ public class DataWarehouseService {
             // Rename internal Debezium fields to match our ClickHouse landing tables
             sourceConfig.put("transforms.rename.type", "org.apache.kafka.connect.transforms.ReplaceField$Value");
             sourceConfig.put("transforms.rename.renames", "__deleted:is_deleted,__ts_ms:version");
+            
+            // Cast is_deleted string to boolean, then to int8 (so it writes to ClickHouse UInt8 correctly)
+            sourceConfig.put("transforms.castBool.type", "org.apache.kafka.connect.transforms.Cast$Value");
+            sourceConfig.put("transforms.castBool.spec", "is_deleted:boolean");
+            sourceConfig.put("transforms.castInt.type", "org.apache.kafka.connect.transforms.Cast$Value");
+            sourceConfig.put("transforms.castInt.spec", "is_deleted:int8");
 
             // Drop heartbeat events (from public._dbz_heartbeat) so they never reach Kafka/ClickHouse.
             // The Filter transform drops matching records but still commits their offsets,
