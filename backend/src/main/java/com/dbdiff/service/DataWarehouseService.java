@@ -1600,6 +1600,16 @@ public class DataWarehouseService {
                 t.setSchemaName("`" + chDb + "`");
                 t.setName("`" + landingTable + "`");
             }
+        } else if (item instanceof net.sf.jsqlparser.statement.select.ParenthesedSelect) {
+            net.sf.jsqlparser.statement.select.ParenthesedSelect ps = (net.sf.jsqlparser.statement.select.ParenthesedSelect) item;
+            if (ps.getPlainSelect() != null) {
+                rewriteFromItemForClickHouse(ps.getPlainSelect().getFromItem(), physicalTables, baseName, sourceConn, chDb);
+                if (ps.getPlainSelect().getJoins() != null) {
+                    for (Join join : ps.getPlainSelect().getJoins()) {
+                        rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb);
+                    }
+                }
+            }
         }
     }
 
