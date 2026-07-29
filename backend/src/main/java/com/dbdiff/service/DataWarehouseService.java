@@ -892,9 +892,9 @@ public class DataWarehouseService {
             
             // Disable schemas in the output Kafka topics to save bandwidth and simplify sink parsing
             sourceConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
-            sourceConfig.put("key.converter.schemas.enable", "false");
+            sourceConfig.put("key.converter.schemas.enable", "true");
             sourceConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
-            sourceConfig.put("value.converter.schemas.enable", "false");
+            sourceConfig.put("value.converter.schemas.enable", "true");
             
             // Register or Update Shared Source Connector
             boolean sharedConnectorExists = false;
@@ -1044,9 +1044,9 @@ public class DataWarehouseService {
             sinkConfig.put("database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
             sinkConfig.put("clickhouseSettings", "insert_quorum=1"); // Optional optimization
             sinkConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
-            sinkConfig.put("key.converter.schemas.enable", "false");
+            sinkConfig.put("key.converter.schemas.enable", "true");
             sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
-            sinkConfig.put("value.converter.schemas.enable", "false");
+            sinkConfig.put("value.converter.schemas.enable", "true");
             sinkConfig.put("errors.tolerance", "all"); // Skip poison pill messages from previous failed runs
             
             // Force immediate consumer offset commits to prevent re-reading snapshot batch upon Debezium partition rebalance
