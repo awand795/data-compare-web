@@ -1655,9 +1655,33 @@ public class DataWarehouseService {
                 return sql;
             }
             
+            Set<String> outerTables = new HashSet<>();
+            if (plain.getFromItem() instanceof Table) {
+                Table t = (Table) plain.getFromItem();
+                outerTables.add(t.getFullyQualifiedName().toLowerCase());
+                outerTables.add(t.getName().toLowerCase());
+            }
+            if (plain.getJoins() != null) {
+                for (Join j : plain.getJoins()) {
+                    if (j.getRightItem() instanceof Table) {
+                        Table t = (Table) j.getRightItem();
+                        outerTables.add(t.getFullyQualifiedName().toLowerCase());
+                        outerTables.add(t.getName().toLowerCase());
+                    }
+                }
+            }
+
             StringBuilder conds = new StringBuilder();
             for (String t : physicalTables) {
                 String alias = getTableAlias(sql, t);
+                String shortTable = t.contains(".") ? t.substring(t.indexOf('.') + 1) : t;
+                boolean isOuter = outerTables.contains(t.toLowerCase()) || 
+                                  outerTables.contains(shortTable.toLowerCase()) ||
+                                  (alias != null && !alias.isEmpty() && outerTables.contains(alias.toLowerCase()));
+                if (!isOuter) {
+                    continue;
+                }
+
                 String prefix = (alias != null && !alias.isEmpty()) ? alias + "." : "";
                 java.util.Set<String> pks = tableToPKs.get(t);
                 if (pks != null) {
