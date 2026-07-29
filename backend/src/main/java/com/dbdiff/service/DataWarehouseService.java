@@ -1881,9 +1881,9 @@ public class DataWarehouseService {
 
     private String mapJdbcTypeToClickHouse(int jdbcType, int precision, int scale, String typeName) {
         String lowerName = typeName.toLowerCase();
+        if (lowerName.contains("int8") || lowerName.contains("bigint")) return "Int64";
         if (lowerName.contains("int2") || lowerName.contains("smallint")) return "Int16";
         if (lowerName.contains("int4") || lowerName.contains("integer") || lowerName.contains("int")) return "Int32";
-        if (lowerName.contains("int8") || lowerName.contains("bigint")) return "Int64";
         if (lowerName.contains("float") || lowerName.contains("real")) return "Float32";
         if (lowerName.contains("double") || lowerName.contains("numeric") || lowerName.contains("decimal")) {
             if (precision > 0 && precision <= 38) {
