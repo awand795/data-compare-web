@@ -1095,6 +1095,10 @@ public class DataWarehouseService {
             sinkConfig.put("password", request.getTargetConnection().getPassword());
             sinkConfig.put("database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
             sinkConfig.put("clickhouseSettings", "insert_quorum=1"); // Optional optimization
+            sinkConfig.put("transforms", "unwrap");
+            sinkConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
+            sinkConfig.put("transforms.unwrap.drop.tombstones", "false");
+            sinkConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
             sinkConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
             sinkConfig.put("key.converter.schemas.enable", "true");
             sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
