@@ -1100,10 +1100,12 @@ public class DataWarehouseService {
             sinkConfig.put("transforms.unwrap.drop.tombstones", "false");
             sinkConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
             sinkConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
-            sinkConfig.put("key.converter.schemas.enable", "true");
+            sinkConfig.put("key.converter.schemas.enable", "false");
             sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
             sinkConfig.put("value.converter.schemas.enable", "true");
-            sinkConfig.put("errors.tolerance", "none"); // Fail fast to surface errors
+            sinkConfig.put("errors.tolerance", "all");
+            sinkConfig.put("errors.log.enable", "true");
+            sinkConfig.put("errors.log.include.messages", "true");
             
             // Force immediate consumer offset commits to prevent re-reading snapshot batch upon Debezium partition rebalance
             sinkConfig.put("consumer.override.auto.offset.reset", "earliest");
