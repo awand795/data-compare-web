@@ -1956,11 +1956,17 @@ public class DataWarehouseService {
             }
             
             String srcSelectSql = "SELECT * FROM " + physicalTable;
-            try (Connection srcConn = sourceDs.getConnection();
-                 PreparedStatement srcPs = srcConn.prepareStatement(srcSelectSql);
-                 ResultSet rs = srcPs.executeQuery();
-                 Connection targetConn = targetDs.getConnection();
-                 Statement targetStmt = targetConn.createStatement()) {
+            try (Connection srcConn = sourceDs.getConnection()) {
+                try {
+                    srcConn.setAutoCommit(false);
+                } catch (Exception ignored) {}
+                try (PreparedStatement srcPs = srcConn.prepareStatement(srcSelectSql)) {
+                    try {
+                        srcPs.setFetchSize(5000);
+                    } catch (Exception ignored) {}
+                    try (ResultSet rs = srcPs.executeQuery();
+                         Connection targetConn = targetDs.getConnection();
+                         Statement targetStmt = targetConn.createStatement()) {
                 
                 StringBuilder valuesBuilder = new StringBuilder();
                 String insertHeader = "INSERT INTO `" + chDb + "`.`" + landingTable + "` (`" + 
