@@ -1658,6 +1658,9 @@ public class DataWarehouseService {
             // Build a map: lowercase CTE name -> CTE SELECT SQL string
             java.util.Map<String, String> cteMap = new java.util.LinkedHashMap<>();
             for (net.sf.jsqlparser.statement.select.WithItem wi : select.getWithItemsList()) {
+                if (wi.getSelect() != null) {
+                    ensureExplicitColumnAliases(wi.getSelect());
+                }
                 String cteName = wi.getAlias() != null ? wi.getAlias().getName() : wi.toString().split("\\s+")[0];
                 cteName = cteName.replaceAll("[`\"']", "").toLowerCase();
                 String cteBody = wi.getSelect() != null ? wi.getSelect().toString().trim() : "";
@@ -1728,6 +1731,27 @@ public class DataWarehouseService {
         } catch (Exception e) {
             logger.warn("inlineCTEs: Could not parse SQL for CTE inlining, returning as-is: " + e.getMessage());
             return sql;
+        }
+    }
+
+    private void ensureExplicitColumnAliases(Select select) {
+        if (select == null) return;
+        if (select.getPlainSelect() != null) {
+            ensureExplicitColumnAliases(select.getPlainSelect());
+        } else if (select.getSetOperationList() != null) {
+            for (Select s : select.getSetOperationList().getSelects()) {
+                ensureExplicitColumnAliases(s);
+            }
+        }
+    }
+
+    private void ensureExplicitColumnAliases(PlainSelect plainSelect) {
+        if (plainSelect == null || plainSelect.getSelectItems() == null) return;
+        for (net.sf.jsqlparser.statement.select.SelectItem<?> item : plainSelect.getSelectItems()) {
+            if (item.getAlias() == null && item.getExpression() instanceof net.sf.jsqlparser.schema.Column) {
+                net.sf.jsqlparser.schema.Column col = (net.sf.jsqlparser.schema.Column) item.getExpression();
+                item.setAlias(new net.sf.jsqlparser.expression.Alias(col.getColumnName()));
+            }
         }
     }
 
