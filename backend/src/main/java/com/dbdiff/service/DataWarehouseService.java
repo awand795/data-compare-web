@@ -3485,6 +3485,9 @@ public class DataWarehouseService {
             try {
                 ConnectionDetails stored = connectionRepository.findById(conn.getId().trim());
                 if (stored != null) {
+                    if (conn.getName() == null || conn.getName().trim().isEmpty()) {
+                        conn.setName(stored.getName());
+                    }
                     if (conn.getPassword() == null || conn.getPassword().trim().isEmpty() || "*****".equals(conn.getPassword().trim())) {
                         conn.setPassword(stored.getPassword());
                     }
