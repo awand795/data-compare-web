@@ -229,6 +229,12 @@ public class DataWarehouseService {
                 }
             }
 
+            List<ConnectionDetails> enrichedConns = new java.util.ArrayList<>();
+            for (ConnectionDetails c : conns) {
+                enrichedConns.add(enrichConnection(c));
+            }
+            conns = enrichedConns;
+
             sendLog(emitter, "Checking Debezium availability before deploying...");
             if (!waitForDebeziumReady(emitter, 120)) {
                 throw new RuntimeException("Debezium is not ready (Kafka/Debezium may be restarting on the server). "
@@ -242,7 +248,7 @@ public class DataWarehouseService {
                 DataWarehouseDeployRequest singleReq = new DataWarehouseDeployRequest();
                 singleReq.setSourceConnection(conn);
                 singleReq.setSourceConnections(java.util.Collections.singletonList(conn));
-                singleReq.setTargetConnection(request.getTargetConnection());
+                singleReq.setTargetConnection(enrichConnection(request.getTargetConnection()));
                 singleReq.setTargetDatabase(request.getTargetDatabase());
                 singleReq.setTargetTable(request.getTargetTable());
                 singleReq.setQuery(request.getQuery());
@@ -253,7 +259,7 @@ public class DataWarehouseService {
                 try {
                     deploySinglePipeline(singleReq, emitter);
                 } catch (Exception ex) {
-                    sendLog(emitter, "ERROR on source database [" + conn.getName() + "]: " + ex.getMessage());
+                    sendLog(emitter, "ERROR on source database [" + (conn.getName() != null ? conn.getName() : "unknown") + "]: " + ex.getMessage());
                     if (conns.size() == 1) throw ex;
                 }
             }
