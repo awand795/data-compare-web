@@ -1967,54 +1967,56 @@ public class DataWarehouseService {
                     try (ResultSet rs = srcPs.executeQuery();
                          Connection targetConn = targetDs.getConnection();
                          Statement targetStmt = targetConn.createStatement()) {
-                
-                StringBuilder valuesBuilder = new StringBuilder();
-                String insertHeader = "INSERT INTO `" + chDb + "`.`" + landingTable + "` (`" + 
-                    cols.stream().map(c -> c.name).collect(java.util.stream.Collectors.joining("`, `")) + 
-                    "`, `version`, `is_deleted`) VALUES ";
-                
-                valuesBuilder.append(insertHeader);
-                int rowCount = 0;
-                int batchRows = 0;
-                
-                while (rs.next()) {
-                    if (batchRows > 0) valuesBuilder.append(", ");
-                    valuesBuilder.append("(");
-                    for (int i = 1; i <= cols.size(); i++) {
-                        if (i > 1) valuesBuilder.append(", ");
-                        Object val = rs.getObject(i);
-                        if (val == null) {
-                            valuesBuilder.append("NULL");
-                        } else if (val instanceof Number || val instanceof Boolean) {
-                            valuesBuilder.append(val);
-                        } else {
-                            String strVal = val.toString().replace("\\", "\\\\").replace("'", "\\'");
-                            valuesBuilder.append("'").append(strVal).append("'");
-                        }
-                    }
-                    valuesBuilder.append(", 0, 0)");
-                    rowCount++;
-                    batchRows++;
-                    
-                    if (rowCount % 50000 == 0) {
-                        logger.info("Backfilling landing table `{}`: {} rows processed...", landingTable, rowCount);
-                        sendLog(emitter, "Backfilled " + rowCount + " rows into landing table `" + landingTable + "`...");
-                    }
-                    
-                    if (batchRows >= 5000) {
-                        targetStmt.execute(valuesBuilder.toString());
-                        valuesBuilder = new StringBuilder();
+                        
+                        StringBuilder valuesBuilder = new StringBuilder();
+                        String insertHeader = "INSERT INTO `" + chDb + "`.`" + landingTable + "` (`" + 
+                            cols.stream().map(c -> c.name).collect(java.util.stream.Collectors.joining("`, `")) + 
+                            "`, `version`, `is_deleted`) VALUES ";
+                        
                         valuesBuilder.append(insertHeader);
-                        batchRows = 0;
+                        int rowCount = 0;
+                        int batchRows = 0;
+                        
+                        while (rs.next()) {
+                            if (batchRows > 0) valuesBuilder.append(", ");
+                            valuesBuilder.append("(");
+                            for (int i = 1; i <= cols.size(); i++) {
+                                if (i > 1) valuesBuilder.append(", ");
+                                Object val = rs.getObject(i);
+                                if (val == null) {
+                                    valuesBuilder.append("NULL");
+                                } else if (val instanceof Number || val instanceof Boolean) {
+                                    valuesBuilder.append(val);
+                                } else {
+                                    String strVal = val.toString().replace("\\", "\\\\").replace("'", "\\'");
+                                    valuesBuilder.append("'").append(strVal).append("'");
+                                }
+                            }
+                            valuesBuilder.append(", 0, 0)");
+                            rowCount++;
+                            batchRows++;
+                            
+                            if (rowCount % 50000 == 0) {
+                                logger.info("Backfilling landing table `{}`: {} rows processed...", landingTable, rowCount);
+                                sendLog(emitter, "Backfilled " + rowCount + " rows into landing table `" + landingTable + "`...");
+                            }
+                            
+                            if (batchRows >= 5000) {
+                                targetStmt.execute(valuesBuilder.toString());
+                                valuesBuilder = new StringBuilder();
+                                valuesBuilder.append(insertHeader);
+                                batchRows = 0;
+                            }
+                        }
+                        
+                        if (batchRows > 0) {
+                            targetStmt.execute(valuesBuilder.toString());
+                        }
+                        
+                        logger.info("Successfully backfilled {} rows into landing table {}", rowCount, landingTable);
+                        try { sendLog(emitter, "Successfully backfilled " + rowCount + " rows into landing table `" + landingTable + "`."); } catch (Exception ignored) {}
                     }
                 }
-                
-                if (batchRows > 0) {
-                    targetStmt.execute(valuesBuilder.toString());
-                }
-                
-                logger.info("Successfully backfilled {} rows into landing table {}", rowCount, landingTable);
-                try { sendLog(emitter, "Successfully backfilled " + rowCount + " rows into landing table `" + landingTable + "`."); } catch (Exception ignored) {}
             }
         } catch (Exception e) {
             logger.warn("Could not backfill landing table " + landingTable + " directly from source: " + e.getMessage(), e);
