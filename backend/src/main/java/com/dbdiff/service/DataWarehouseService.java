@@ -409,19 +409,66 @@ public class DataWarehouseService {
             }
             sendLog(emitter, "Detected source tables: " + String.join(", ", physicalTables));
 
-            // Cleanup old Kafka topics specifically for the target physical tables of this pipeline
+            // Cleanup old Kafka topics specifically for the target physical tables of this pipeline.
+            // SAFE GUARD: Skip deleting topics that are currently subscribed to by OTHER active
+            // sink connectors. Deleting a shared topic (e.g. mhd_lookup used by multiple pipelines)
+            // would invalidate the consumer-group offsets of those other connectors, breaking live CDC.
             try {
                 Properties kProps = new Properties();
                 kProps.put("bootstrap.servers", "kafka:9092");
                 try (AdminClient adminClient = AdminClient.create(kProps)) {
                     Set<String> existingTopics = adminClient.listTopics().names().get();
+
+                    // --- Collect topics actively consumed by OTHER sink connectors ---
+                    Set<String> topicsInUseByOtherSinks = new HashSet<>();
+                    try {
+                        // GET /connectors?expand=info to retrieve all connector configs in one call
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> allConnectors = restTemplate.getForObject(
+                                DEBEZIUM_URL + "?expand=info&expand=status", Map.class);
+                        if (allConnectors != null) {
+                            for (Map.Entry<String, Object> entry : allConnectors.entrySet()) {
+                                String connName = entry.getKey();
+                                // Only inspect SINK connectors that are not the current pipeline's sink
+                                // Skip connectors that belong to THIS pipeline's target table (same cleanTarget)
+                                if (!connName.startsWith("sink-") || connName.contains(cleanTarget)) continue;
+                                try {
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> wrapper = (Map<String, Object>) entry.getValue();
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> info = (Map<String, Object>) wrapper.get("info");
+                                    if (info == null) continue;
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> cfg = (Map<String, Object>) info.get("config");
+                                    if (cfg == null) continue;
+                                    String topicsStr = (String) cfg.get("topics");
+                                    if (topicsStr != null && !topicsStr.isBlank()) {
+                                        for (String t : topicsStr.split(",")) {
+                                            topicsInUseByOtherSinks.add(t.trim());
+                                        }
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                        }
+                    } catch (Exception ex) {
+                        logger.warn("Could not retrieve other connector configs for shared-topic check: {}", ex.getMessage());
+                    }
+
                     List<String> topicsToDelete = new ArrayList<>();
+                    List<String> topicsSkipped  = new ArrayList<>();
                     for (String t : physicalTables) {
                         String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
                         String targetTopic = "cdc_" + baseName + "_" + cleanTable;
-                        if (existingTopics.contains(targetTopic)) {
+                        if (!existingTopics.contains(targetTopic)) continue;
+                        if (topicsInUseByOtherSinks.contains(targetTopic)) {
+                            topicsSkipped.add(targetTopic);
+                        } else {
                             topicsToDelete.add(targetTopic);
                         }
+                    }
+                    if (!topicsSkipped.isEmpty()) {
+                        sendLog(emitter, "Skipping deletion of shared Kafka topic(s) still in use by other pipelines: "
+                                + String.join(", ", topicsSkipped));
                     }
                     if (!topicsToDelete.isEmpty()) {
                         sendLog(emitter, "Cleaning up specific Kafka topic(s) by exact name: " + String.join(", ", topicsToDelete));
