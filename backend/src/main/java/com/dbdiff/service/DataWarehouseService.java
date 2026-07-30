@@ -1876,19 +1876,16 @@ public class DataWarehouseService {
                 return sql;
             }
             
-            Set<String> outerTables = new HashSet<>();
+            // Only apply PK filters to the primary FROM table of the query.
+            // Joined tables (and especially LEFT JOINs / lookup tables) must NOT have mandatory WHERE PK filters injected,
+            // as that converts LEFT JOINs to INNER JOINs and drops valid parameter/lookup rows where composite PK parts are empty.
+            Set<String> targetTables = new HashSet<>();
             if (plain.getFromItem() instanceof Table) {
                 Table t = (Table) plain.getFromItem();
-                outerTables.add(t.getFullyQualifiedName().toLowerCase());
-                outerTables.add(t.getName().toLowerCase());
-            }
-            if (plain.getJoins() != null) {
-                for (Join j : plain.getJoins()) {
-                    if (j.getRightItem() instanceof Table) {
-                        Table t = (Table) j.getRightItem();
-                        outerTables.add(t.getFullyQualifiedName().toLowerCase());
-                        outerTables.add(t.getName().toLowerCase());
-                    }
+                targetTables.add(t.getFullyQualifiedName().toLowerCase());
+                targetTables.add(t.getName().toLowerCase());
+                if (t.getAlias() != null && t.getAlias().getName() != null) {
+                    targetTables.add(t.getAlias().getName().toLowerCase());
                 }
             }
 
@@ -1896,10 +1893,10 @@ public class DataWarehouseService {
             for (String t : physicalTables) {
                 String alias = getTableAlias(sql, t);
                 String shortTable = t.contains(".") ? t.substring(t.indexOf('.') + 1) : t;
-                boolean isOuter = outerTables.contains(t.toLowerCase()) || 
-                                  outerTables.contains(shortTable.toLowerCase()) ||
-                                  (alias != null && !alias.isEmpty() && outerTables.contains(alias.toLowerCase()));
-                if (!isOuter) {
+                boolean isFromTable = targetTables.contains(t.toLowerCase()) || 
+                                      targetTables.contains(shortTable.toLowerCase()) ||
+                                      (alias != null && !alias.isEmpty() && targetTables.contains(alias.toLowerCase()));
+                if (!isFromTable) {
                     continue;
                 }
 
