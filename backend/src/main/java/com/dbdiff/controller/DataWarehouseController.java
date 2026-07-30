@@ -31,7 +31,19 @@ public class DataWarehouseController {
 
     @PostMapping(value = "/deploy", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter deployPipeline(@RequestBody DataWarehouseDeployRequest request) {
-        // Fetch full connection details from the database so that passwords are included
+        // Fetch full connection details from the database so that passwords and metadata are included
+        if (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) {
+            java.util.List<com.dbdiff.model.ConnectionDetails> enrichedList = new java.util.ArrayList<>();
+            for (com.dbdiff.model.ConnectionDetails c : request.getSourceConnections()) {
+                if (c != null && c.getId() != null) {
+                    com.dbdiff.model.ConnectionDetails fullConn = connectionRepository.findById(c.getId());
+                    enrichedList.add(fullConn != null ? fullConn : c);
+                } else {
+                    enrichedList.add(c);
+                }
+            }
+            request.setSourceConnections(enrichedList);
+        }
         if (request.getSourceConnection() != null && request.getSourceConnection().getId() != null) {
             request.setSourceConnection(connectionRepository.findById(request.getSourceConnection().getId()));
         }

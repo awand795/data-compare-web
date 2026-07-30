@@ -272,6 +272,14 @@ public class DataWarehouseService {
 
     private void deploySinglePipeline(DataWarehouseDeployRequest request, SseEmitter emitter) throws Exception {
         try {
+            if (request.getQuery() != null) {
+                String rawQuery = request.getQuery().trim();
+                rawQuery = rawQuery.replaceAll("(?i);\\s*(?=UNION\\b)", "");
+                if (rawQuery.endsWith(";")) {
+                    rawQuery = rawQuery.substring(0, rawQuery.length() - 1).trim();
+                }
+                request.setQuery(rawQuery);
+            }
             request.setSourceConnection(enrichConnection(request.getSourceConnection()));
             request.setTargetConnection(enrichConnection(request.getTargetConnection()));
             sendLog(emitter, "Deploying Data Warehouse pipeline for source " + request.getSourceConnection().getName() + " to target table " + request.getTargetTable());
@@ -1236,11 +1244,26 @@ public class DataWarehouseService {
 
     private List<String> extractPhysicalTables(String sql) {
         List<String> tables = new ArrayList<>();
+        Set<String> cteNames = new HashSet<>();
         try {
             net.sf.jsqlparser.statement.Statement statement = CCJSqlParserUtil.parse(sql);
             if (statement instanceof Select) {
+                Select select = (Select) statement;
+                if (select.getWithItemsList() != null) {
+                    for (net.sf.jsqlparser.statement.select.WithItem wi : select.getWithItemsList()) {
+                        String name = wi.getAlias() != null ? wi.getAlias().getName() : wi.toString().split("\\s+")[0];
+                        if (name != null) {
+                            cteNames.add(name.replaceAll("[`\"']", "").toLowerCase());
+                        }
+                    }
+                }
                 TablesNamesFinder finder = new TablesNamesFinder();
-                tables.addAll(finder.getTableList(statement));
+                for (String t : finder.getTableList(statement)) {
+                    String clean = t.replaceAll("[`\"']", "").toLowerCase();
+                    if (!cteNames.contains(clean) && !tables.contains(t)) {
+                        tables.add(t);
+                    }
+                }
             }
         } catch (Exception e) {
             logger.warn("Could not parse SQL query using JSqlParser: " + e.getMessage());
@@ -1249,7 +1272,7 @@ public class DataWarehouseService {
             Matcher m = p.matcher(sql);
             while (m.find()) {
                 String t = m.group(1) != null ? m.group(1) : m.group(2);
-                if (t != null && !tables.contains(t)) {
+                if (t != null && !tables.contains(t) && !cteNames.contains(t.toLowerCase())) {
                     tables.add(t);
                 }
             }
@@ -1642,20 +1665,43 @@ public class DataWarehouseService {
 
             if (cteMap.isEmpty()) return sql;
 
+            // Resolve references to other CTEs inside CTE bodies (e.g. q_so_penjualan referencing q_perusahaan)
+            for (java.util.Map.Entry<String, String> outer : cteMap.entrySet()) {
+                String targetCteName = outer.getKey();
+                String targetCteBody = outer.getValue();
+
+                for (java.util.Map.Entry<String, String> inner : cteMap.entrySet()) {
+                    if (inner.getKey().equals(targetCteName)) continue;
+                    String innerBody = inner.getValue();
+                    Pattern p = Pattern.compile(
+                        "(?i)(\\bFROM\\b|(?:\\b[a-zA-Z_]+\\s+)?\\bJOIN\\b)\\s+`?" + Pattern.quote(targetCteName) + "`?(?:\\s+(?:AS\\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?\\b",
+                        Pattern.CASE_INSENSITIVE
+                    );
+                    Matcher m = p.matcher(innerBody);
+                    StringBuffer sb = new StringBuffer();
+                    while (m.find()) {
+                        String keyword = m.group(1);
+                        String alias = m.group(2);
+                        String effectiveAlias = (alias != null && !alias.isBlank()) ? alias : targetCteName;
+                        m.appendReplacement(sb, Matcher.quoteReplacement(
+                            keyword + " (" + targetCteBody + ") AS `" + effectiveAlias + "`"
+                        ));
+                    }
+                    m.appendTail(sb);
+                    inner.setValue(sb.toString());
+                }
+            }
+
             // Get the main query body (strip WITH clause)
             select.setWithItemsList(null);
             String mainSql = select.toString();
 
-            // Replace each reference to CTE name (as a table reference) with an inline subquery.
-            // Handles any alias after the CTE name (e.g., CROSS JOIN q_perusahaan q -> CROSS JOIN (...) AS `q`)
+            // Replace each reference to CTE name (as a table reference) with an inline subquery in mainSql.
             for (java.util.Map.Entry<String, String> entry : cteMap.entrySet()) {
                 String cteName = entry.getKey();
                 String cteBody = entry.getValue();
-                // Match: (FROM|JOIN) [optional_qualifier.]cteName [AS] [alias]
-                // Group 1: FROM or JOIN keyword
-                // Group 2: alias (may differ from cteName, e.g., q vs q_perusahaan)
                 Pattern p = Pattern.compile(
-                    "(?i)(\\bFROM\\b|\\bJOIN\\b)\\s+`?" + Pattern.quote(cteName) + "`?(?:\\s+(?:AS\\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?\\b",
+                    "(?i)(\\bFROM\\b|(?:\\b[a-zA-Z_]+\\s+)?\\bJOIN\\b)\\s+`?" + Pattern.quote(cteName) + "`?(?:\\s+(?:AS\\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?\\b",
                     Pattern.CASE_INSENSITIVE
                 );
                 Matcher m = p.matcher(mainSql);
@@ -1663,10 +1709,9 @@ public class DataWarehouseService {
                 while (m.find()) {
                     String keyword = m.group(1);
                     String alias = m.group(2);
-                    // Use the explicit alias if provided, otherwise use the CTE name itself
                     String effectiveAlias = (alias != null && !alias.isBlank()) ? alias : cteName;
                     m.appendReplacement(sb, Matcher.quoteReplacement(
-                        keyword + " (" + cteBody + ") AS " + effectiveAlias
+                        keyword + " (" + cteBody + ") AS `" + effectiveAlias + "`"
                     ));
                 }
                 m.appendTail(sb);
