@@ -841,7 +841,7 @@ public class DataWarehouseService {
             sourceConfig.put("database.password", request.getSourceConnection().getPassword());
             sourceConfig.put("database.dbname", request.getSourceConnection().getDatabase() != null ? request.getSourceConnection().getDatabase().trim() : "");
             // Set snapshot.mode to always so Debezium performs an initial snapshot for all included tables
-            sourceConfig.put("snapshot.mode", "never");
+            sourceConfig.put("snapshot.mode", "initial");
             
             // Add connection timeout to Debezium PostgreSQL connector
             sourceConfig.put("database.connect.timeout.ms", "30000");
@@ -992,7 +992,7 @@ public class DataWarehouseService {
                         }
                         
                         sourceConfig.put("table.include.list", updatedTableIncludeList);
-                        sourceConfig.put("snapshot.mode", "never");
+                        sourceConfig.put("snapshot.mode", "initial");
                         sourceConfig.put("slot.name", safeSlotName);
                         sourceConfig.put("publication.name", "pub_" + safeSlotName);
                         
