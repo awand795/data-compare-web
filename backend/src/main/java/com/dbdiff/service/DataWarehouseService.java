@@ -2897,8 +2897,17 @@ public class DataWarehouseService {
         StringBuilder sb = new StringBuilder();
         sb.append("INSERT INTO `").append(chDb).append("`.`").append(targetTable).append("` (");
 
-        java.util.List<String> insertCols = new java.util.ArrayList<>(pkCols);
-        for (String c : addedCols) { if (!insertCols.contains(c)) insertCols.add(c); }
+        java.util.List<String> insertCols = new java.util.ArrayList<>();
+        for (String pk : pkCols) {
+            if (colTypes != null && colTypes.containsKey(pk.toLowerCase()) && !insertCols.contains(pk)) {
+                insertCols.add(pk);
+            }
+        }
+        for (String c : addedCols) {
+            if (colTypes != null && colTypes.containsKey(c.toLowerCase()) && !insertCols.contains(c)) {
+                insertCols.add(c);
+            }
+        }
         // Add version and is_deleted so RMT dedup works
         insertCols.add("version");
         insertCols.add("is_deleted");
