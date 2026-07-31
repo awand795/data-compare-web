@@ -1001,11 +1001,17 @@ export const PipelineMonitor: React.FC = () => {
                             <td className="py-2.5 px-3 text-text-main dark:text-slate-300">{s.wal_retained || '-'}</td>
                             <td className="py-2.5 px-3 text-right">
                               <button
-                                onClick={() => handleCleanupSlots(s.slot_name, false)}
-                                disabled={isCleaningSlots}
-                                className="px-2.5 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-colors text-[11px] font-bold font-sans disabled:opacity-50"
+                                onClick={() => handleCleanupSlots(s.slot_name, true)}
+                                disabled={isCleaningSlots || s.active}
+                                title={s.active ? "Slot sedang aktif (digunakan CDC pipeline). Matikan pipeline lebih dahulu jika ingin menghapus slot ini." : "Drop slot inaktif ini"}
+                                className={clsx(
+                                  "px-2.5 py-1 rounded transition-colors text-[11px] font-bold font-sans",
+                                  s.active
+                                    ? "bg-slate-500/10 text-slate-400 dark:text-slate-500 border border-slate-500/20 cursor-not-allowed opacity-50"
+                                    : "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20"
+                                )}
                               >
-                                Drop Slot
+                                {s.active ? 'Active' : 'Drop Slot'}
                               </button>
                             </td>
                           </tr>
