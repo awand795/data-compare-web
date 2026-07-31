@@ -7,7 +7,7 @@ import {
   Settings2, ChevronDown, ChevronUp, X, AlertCircle, Loader2, 
   Search, Filter, Eraser, Code2, BookTemplate, 
   ListRestart, Bug, SquareTerminal, CopyPlus, FileCode,
-  LayoutGrid, List, Clock, Lock, Unlock, Layers
+  LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal
 } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -101,7 +101,6 @@ export const ApiBuilderView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [methodFilter, setMethodFilter] = useState<string>('ALL');
   const [securityFilter, setSecurityFilter] = useState<string>('ALL');
-  const [activeTab, setActiveTab] = useState<'general' | 'params' | 'security' | 'preview'>('general');
   
   // Testing States
   const [testResult, setTestResult] = useState<any>(null);
@@ -245,7 +244,6 @@ export const ApiBuilderView: React.FC = () => {
     setParameterMeta([]);
     setValidationErrors([]);
     setIsDirty(false);
-    setActiveTab('general');
     editInitialRef.current = JSON.stringify({ api: newApi, params: [] });
     setViewMode('edit');
   };
@@ -267,7 +265,6 @@ export const ApiBuilderView: React.FC = () => {
     setParameterMeta(parsed);
     setValidationErrors([]);
     setIsDirty(false);
-    setActiveTab('general');
     editInitialRef.current = JSON.stringify({ api, params: parsed });
     setViewMode('edit');
   };
@@ -296,7 +293,6 @@ export const ApiBuilderView: React.FC = () => {
     setParameterMeta(parsed);
     setValidationErrors([]);
     setIsDirty(false);
-    setActiveTab('general');
     editInitialRef.current = JSON.stringify({ api: clone, params: parsed });
     setViewMode('edit');
     addToast({ type: 'info', title: 'API Cloned', message: `Duplicated "${api.name}" into temporary workspace.` });
@@ -1312,8 +1308,63 @@ export const ApiBuilderView: React.FC = () => {
         <div className="flex-1 overflow-hidden flex flex-col relative">
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
             
-            {/* LEFT PANE: SQL Editor */}
+            {/* LEFT PANE: Target Database Connection Selector + SQL Query Studio */}
             <div className="flex-1 lg:w-3/5 flex flex-col border-r border-border-main min-w-0 bg-[#080e1a]">
+              
+              {/* TOP CONNECTION BAR: Target Database Connection (Moved above SQL Query Studio) */}
+              <div className="bg-bg-panel/90 border-b border-border-main p-4 shrink-0 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0 shadow-inner">
+                      <Server className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-extrabold uppercase tracking-wider text-text-main">
+                          Target Database Connection
+                        </label>
+                        <span className="text-rose-400 font-bold">*</span>
+                        {currentApi.connectionId ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Connected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Select Connection
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-text-muted mt-0.5">Source database for query autocompletion & runtime execution</p>
+                    </div>
+                  </div>
+
+                  <div className="w-full sm:w-80 relative">
+                    <select 
+                      className={clsx(
+                        "w-full bg-bg-editor border rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 outline-none appearance-none shadow-inner text-text-main font-bold transition-all pr-9",
+                        getError('connectionId')
+                          ? "border-rose-500 focus:border-rose-500 focus:ring-rose-500/30"
+                          : "border-border-main hover:border-blue-500/50 focus:border-blue-500 focus:ring-blue-500/20"
+                      )}
+                      value={currentApi.connectionId}
+                      onChange={e => setCurrentApi({...currentApi, connectionId: e.target.value})}
+                    >
+                      <option value="" disabled>Select target connection...</option>
+                      {connections.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 absolute right-3 top-3 text-text-muted pointer-events-none" />
+                  </div>
+                </div>
+                {getError('connectionId') && (
+                  <p className="text-xs text-rose-400 mt-2 flex items-center gap-1 font-medium pl-1">
+                    <AlertCircle className="w-3.5 h-3.5" /> {getError('connectionId')?.message}
+                  </p>
+                )}
+              </div>
+
+              {/* SQL QUERY STUDIO HEADER */}
               <div className="bg-bg-panel border-b border-border-main px-4 py-3 flex justify-between items-center shrink-0">
                 <div className="flex items-center gap-2.5 text-sm font-bold text-text-main">
                   <Database className="w-4 h-4 text-blue-500" /> SQL Query Studio
@@ -1358,6 +1409,7 @@ export const ApiBuilderView: React.FC = () => {
                 </div>
               </div>
 
+              {/* SQL EDITOR */}
               <div className="flex-1 min-h-0 relative">
                 <SQLEditor 
                   key={currentApi.connectionId}
@@ -1368,46 +1420,47 @@ export const ApiBuilderView: React.FC = () => {
               </div>
             </div>
 
-            {/* RIGHT PANE: Configuration Tabs */}
+            {/* RIGHT PANE: Unified Single-Page Settings (Config, Parameters, Security) */}
             <div className="flex-1 lg:w-2/5 flex flex-col bg-bg-panel overflow-y-auto min-w-0">
               
-              {/* TAB NAVIGATION HEADER */}
-              <div className="border-b border-border-main bg-bg-editor p-2 flex items-center justify-around shrink-0">
-                <button
-                  onClick={() => setActiveTab('general')}
-                  className={clsx(
-                    "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
-                    activeTab === 'general' ? "bg-bg-panel text-blue-400 shadow-md border border-border-main" : "text-text-muted hover:text-text-main"
-                  )}
-                >
-                  <Settings2 className="w-4 h-4" /> Config
-                </button>
-                <button
-                  onClick={() => setActiveTab('params')}
-                  className={clsx(
-                    "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 relative",
-                    activeTab === 'params' ? "bg-bg-panel text-blue-400 shadow-md border border-border-main" : "text-text-muted hover:text-text-main"
-                  )}
-                >
-                  <Database className="w-4 h-4" /> Parameters
-                  {paramCount > 0 && (
-                    <span className="w-2 h-2 rounded-full bg-blue-500 absolute top-1 right-1"></span>
-                  )}
-                </button>
-                <button
-                  onClick={() => setActiveTab('security')}
-                  className={clsx(
-                    "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
-                    activeTab === 'security' ? "bg-bg-panel text-blue-400 shadow-md border border-border-main" : "text-text-muted hover:text-text-main"
-                  )}
-                >
-                  <ShieldCheck className="w-4 h-4" /> Security
-                </button>
+              {/* STICKY QUICK-NAV HEADER */}
+              <div className="sticky top-0 z-20 border-b border-border-main bg-bg-editor/90 backdrop-blur-md px-4 py-3 flex items-center justify-between shrink-0 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="w-4 h-4 text-blue-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-text-main">API Settings & Configuration</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => document.getElementById('sec-config')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-blue-400 hover:bg-blue-500/10 transition-all border border-transparent hover:border-blue-500/20 cursor-pointer"
+                  >
+                    Config
+                  </button>
+                  <span className="text-text-muted/30">•</span>
+                  <button
+                    onClick={() => document.getElementById('sec-params')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-purple-400 hover:bg-purple-500/10 transition-all border border-transparent hover:border-purple-500/20 flex items-center gap-1 cursor-pointer"
+                  >
+                    Params
+                    {paramCount > 0 && (
+                      <span className="px-1.5 py-0.2 text-[9px] bg-purple-500/20 text-purple-300 rounded-full font-mono font-extrabold">
+                        {paramCount}
+                      </span>
+                    )}
+                  </button>
+                  <span className="text-text-muted/30">•</span>
+                  <button
+                    onClick={() => document.getElementById('sec-security')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10 transition-all border border-transparent hover:border-emerald-500/20 cursor-pointer"
+                  >
+                    Security
+                  </button>
+                </div>
               </div>
 
-              {/* TAB CONTENT BODY */}
-              <div className="p-6 space-y-6">
-                
+              {/* UNIFIED PAGE CONTENT */}
+              <div className="p-5 space-y-6">
+
                 {/* Validation Banner */}
                 {validationErrors.length > 0 && (
                   <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 animate-in fade-in">
@@ -1424,162 +1477,165 @@ export const ApiBuilderView: React.FC = () => {
                     </ul>
                   </div>
                 )}
-                
-                {/* TAB 1: GENERAL CONFIG */}
-                {activeTab === 'general' && (
-                  <div className="space-y-5">
-                    <div>
-                      <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                        API Endpoint Name
-                      </label>
-                      <input 
-                        className={clsx("w-full bg-bg-editor border rounded-xl p-3 text-sm focus:ring-1 outline-none text-text-main transition-all shadow-inner font-medium",
-                          getError('name') ? "border-rose-500 focus:border-rose-500 focus:ring-rose-500" : "border-border-main focus:border-blue-500 focus:ring-blue-500"
-                        )}
-                        value={currentApi.name}
-                        onChange={e => setCurrentApi({...currentApi, name: e.target.value})}
-                        placeholder="e.g. Fetch Active Customers List"
-                      />
+
+                {/* SECTION 1: GENERAL CONFIGURATION */}
+                <div id="sec-config" className="bg-bg-editor/50 border border-border-main/70 rounded-2xl p-5 space-y-4 shadow-sm hover:border-blue-500/30 transition-all">
+                  <div className="flex items-center gap-2.5 border-b border-border-main/50 pb-3">
+                    <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                      <Settings2 className="w-3.5 h-3.5" />
                     </div>
-
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">HTTP Method</label>
-                        <div className="relative">
-                          <select 
-                            className="w-full bg-bg-editor border border-border-main rounded-xl p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-black appearance-none shadow-inner"
-                            value={currentApi.method}
-                            onChange={e => setCurrentApi({...currentApi, method: e.target.value})}
-                          >
-                            {['GET','POST','PUT','PATCH','DELETE'].map(m => (
-                              <option key={m} value={m}>{m}</option>
-                            ))}
-                          </select>
-                          <ChevronDown className="w-4 h-4 absolute right-3 top-3.5 text-text-muted pointer-events-none" />
-                        </div>
-                      </div>
-
-                      <div className="col-span-2">
-                        <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Route Path</label>
-                        <div className={clsx("flex items-center shadow-inner rounded-xl border overflow-hidden",
-                          getError('endpointPath') ? "border-rose-500" : "border-border-main focus-within:border-blue-500"
-                        )}>
-                          <span className="bg-bg-editor px-3 py-3 text-xs text-text-muted font-mono border-r border-border-main shrink-0">
-                            /api/data
-                          </span>
-                          <input 
-                            className="w-full bg-bg-editor p-3 text-sm outline-none font-mono text-blue-400 font-bold"
-                            value={currentApi.endpointPath}
-                            onChange={e => {
-                              let val = e.target.value;
-                              if (val && !val.startsWith('/')) val = '/' + val;
-                              setCurrentApi({...currentApi, endpointPath: val});
-                            }}
-                            placeholder="/customers"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
                     <div>
-                      <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                        Target Database Connection
-                      </label>
+                      <h3 className="text-xs font-extrabold uppercase tracking-wider text-text-main">1. General Configuration</h3>
+                      <p className="text-[11px] text-text-muted">Define API endpoint identity, HTTP method & path</p>
+                    </div>
+                  </div>
+
+                  {/* API Name */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-text-muted uppercase tracking-wider mb-1.5">
+                      API Endpoint Name <span className="text-rose-400">*</span>
+                    </label>
+                    <input 
+                      className={clsx(
+                        "w-full bg-bg-editor border rounded-xl p-3 text-sm focus:ring-1 outline-none text-text-main transition-all shadow-inner font-medium",
+                        getError('name') ? "border-rose-500 focus:border-rose-500 focus:ring-rose-500" : "border-border-main focus:border-blue-500 focus:ring-blue-500"
+                      )}
+                      value={currentApi.name}
+                      onChange={e => setCurrentApi({...currentApi, name: e.target.value})}
+                      placeholder="e.g. Fetch Active Customers List"
+                    />
+                  </div>
+
+                  {/* Method & Route Path */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-text-muted uppercase tracking-wider mb-1.5">Method</label>
                       <div className="relative">
                         <select 
-                          className="w-full bg-bg-editor border border-border-main rounded-xl p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none appearance-none shadow-inner text-text-main font-semibold"
-                          value={currentApi.connectionId}
-                          onChange={e => setCurrentApi({...currentApi, connectionId: e.target.value})}
+                          className="w-full bg-bg-editor border border-border-main rounded-xl p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-black appearance-none shadow-inner text-text-main"
+                          value={currentApi.method}
+                          onChange={e => setCurrentApi({...currentApi, method: e.target.value})}
                         >
-                          <option value="" disabled>Select a connection...</option>
-                          {connections.map(c => (
-                            <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                          {['GET','POST','PUT','PATCH','DELETE'].map(m => (
+                            <option key={m} value={m}>{m}</option>
                           ))}
                         </select>
                         <ChevronDown className="w-4 h-4 absolute right-3 top-3.5 text-text-muted pointer-events-none" />
                       </div>
                     </div>
-                  </div>
-                )}
 
-                {/* TAB 2: PARAMETERS SCHEMA */}
-                {activeTab === 'params' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider">Detected Parameters</h4>
-                      <span className="text-xs font-bold text-blue-400 bg-blue-500/10 px-2.5 py-0.5 rounded-full border border-blue-500/20">
-                        {paramCount} Detected
-                      </span>
-                    </div>
-
-                    {paramsList.length === 0 ? (
-                      <div className="bg-bg-editor border border-border-main border-dashed rounded-2xl p-8 text-center">
-                        <Code2 className="w-8 h-8 text-text-muted/30 mx-auto mb-2" />
-                        <p className="text-xs text-text-muted">
-                          Write variables in SQL as <code className="font-mono text-blue-400 font-bold bg-blue-500/10 px-1 rounded">:parameter_name</code> to automatically extract parameters here.
-                        </p>
+                    <div className="col-span-2">
+                      <label className="block text-[11px] font-extrabold text-text-muted uppercase tracking-wider mb-1.5">
+                        Route Path <span className="text-rose-400">*</span>
+                      </label>
+                      <div className={clsx("flex items-center shadow-inner rounded-xl border overflow-hidden",
+                        getError('endpointPath') ? "border-rose-500" : "border-border-main focus-within:border-blue-500"
+                      )}>
+                        <span className="bg-bg-panel px-3 py-3 text-xs text-text-muted font-mono border-r border-border-main shrink-0 select-none">
+                          /api/data
+                        </span>
+                        <input 
+                          className="w-full bg-bg-editor p-3 text-sm outline-none font-mono text-blue-400 font-bold"
+                          value={currentApi.endpointPath}
+                          onChange={e => {
+                            let val = e.target.value;
+                            if (val && !val.startsWith('/')) val = '/' + val;
+                            setCurrentApi({...currentApi, endpointPath: val});
+                          }}
+                          placeholder="/customers"
+                        />
                       </div>
-                    ) : (
-                      <div className="border border-border-main rounded-2xl overflow-x-auto shadow-sm">
-                        <table className="w-full text-left">
-                          <thead className="bg-bg-editor">
-                            <tr>
-                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Param</th>
-                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Type</th>
-                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase text-center">Req</th>
-                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Default</th>
-                              <th className="p-3 border-b border-border-main font-bold text-text-main text-[10px] uppercase min-w-[280px]">Description / Keterangan</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {paramsList.map(p => {
-                              const meta = parameterMeta.find(m => m.name === p) || {
-                                name: p, type: 'string', required: true, defaultValue: '', description: ''
-                              };
-                              return (
-                                <tr key={p} className="border-b border-border-main last:border-0 hover:bg-bg-hover/30 transition-colors">
-                                  <td className="p-3 font-mono text-xs text-blue-400 font-bold">:{p}</td>
-                                  <td className="p-3">
-                                    <select 
-                                      className="bg-bg-editor border border-border-main rounded-lg text-xs p-1.5 outline-none focus:border-blue-500 font-semibold shadow-inner"
-                                      value={meta.type}
-                                      onChange={e => {
-                                        const newType = e.target.value as any;
-                                        setParameterMeta(prev => {
-                                          const exists = prev.some(m => m.name === p);
-                                          if (exists) return prev.map(m => m.name === p ? { ...m, type: newType } : m);
-                                          return [...prev, { name: p, type: newType, required: true, defaultValue: '', description: '' }];
-                                        });
-                                      }}
-                                    >
-                                      <option value="string">String</option>
-                                      <option value="integer">Integer</option>
-                                      <option value="number">Number</option>
-                                      <option value="boolean">Boolean</option>
-                                      <option value="date">Date</option>
-                                    </select>
-                                  </td>
-                                  <td className="p-3 text-center">
-                                    <input 
-                                      type="checkbox"
-                                      className="w-4 h-4 rounded border-border-main text-blue-600 focus:ring-blue-500"
-                                      checked={meta.required}
-                                      onChange={e => {
-                                        const isReq = e.target.checked;
-                                        setParameterMeta(prev => {
-                                          const exists = prev.some(m => m.name === p);
-                                          if (exists) return prev.map(m => m.name === p ? { ...m, required: isReq } : m);
-                                          return [...prev, { name: p, type: 'string', required: isReq, defaultValue: '', description: '' }];
-                                        });
-                                      }}
-                                    />
-                                  </td>
-                                  <td className="p-3">
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 2: PARAMETERS SCHEMA */}
+                <div id="sec-params" className="bg-bg-editor/50 border border-border-main/70 rounded-2xl p-5 space-y-4 shadow-sm hover:border-purple-500/30 transition-all">
+                  <div className="flex items-center justify-between border-b border-border-main/50 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                        <Code2 className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-extrabold uppercase tracking-wider text-text-main">2. Query Parameters</h3>
+                        <p className="text-[11px] text-text-muted">Extracted variables from your SQL query statement</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20 font-mono">
+                      {paramCount} Detected
+                    </span>
+                  </div>
+
+                  {paramsList.length === 0 ? (
+                    <div className="bg-bg-editor border border-border-main border-dashed rounded-xl p-6 text-center">
+                      <Code2 className="w-7 h-7 text-text-muted/30 mx-auto mb-2" />
+                      <p className="text-xs text-text-muted">
+                        Write variables in SQL as <code className="font-mono text-purple-400 font-bold bg-purple-500/10 px-1.5 py-0.5 rounded">:parameter_name</code> to automatically extract parameter metadata here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="border border-border-main rounded-xl overflow-x-auto shadow-sm">
+                      <table className="w-full text-left">
+                        <thead className="bg-bg-panel/80">
+                          <tr>
+                            <th className="p-2.5 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Param</th>
+                            <th className="p-2.5 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Type</th>
+                            <th className="p-2.5 border-b border-border-main font-bold text-text-main text-[10px] uppercase text-center">Req</th>
+                            <th className="p-2.5 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Default</th>
+                            <th className="p-2.5 border-b border-border-main font-bold text-text-main text-[10px] uppercase min-w-[240px]">Description</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paramsList.map(p => {
+                            const meta = parameterMeta.find(m => m.name === p) || {
+                              name: p, type: 'string', required: true, defaultValue: '', description: ''
+                            };
+                            return (
+                              <tr key={p} className="border-b border-border-main last:border-0 hover:bg-bg-hover/30 transition-colors">
+                                <td className="p-2.5 font-mono text-xs text-purple-400 font-bold">:{p}</td>
+                                <td className="p-2.5">
+                                  <select 
+                                    className="bg-bg-editor border border-border-main rounded-lg text-xs p-1 outline-none focus:border-purple-500 font-semibold shadow-inner text-text-main"
+                                    value={meta.type}
+                                    onChange={e => {
+                                      const newType = e.target.value as any;
+                                      setParameterMeta(prev => {
+                                        const exists = prev.some(m => m.name === p);
+                                        if (exists) return prev.map(m => m.name === p ? { ...m, type: newType } : m);
+                                        return [...prev, { name: p, type: newType, required: true, defaultValue: '', description: '' }];
+                                      });
+                                    }}
+                                  >
+                                    <option value="string">String</option>
+                                    <option value="integer">Integer</option>
+                                    <option value="number">Number</option>
+                                    <option value="boolean">Boolean</option>
+                                    <option value="date">Date</option>
+                                  </select>
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <input 
+                                    type="checkbox"
+                                    className="w-4 h-4 rounded border-border-main text-purple-600 focus:ring-purple-500 cursor-pointer"
+                                    checked={meta.required}
+                                    onChange={e => {
+                                      const isReq = e.target.checked;
+                                      setParameterMeta(prev => {
+                                        const exists = prev.some(m => m.name === p);
+                                        if (exists) return prev.map(m => m.name === p ? { ...m, required: isReq, defaultValue: isReq ? '' : m.defaultValue } : m);
+                                        return [...prev, { name: p, type: 'string', required: isReq, defaultValue: '', description: '' }];
+                                      });
+                                    }}
+                                  />
+                                </td>
+                                <td className="p-2.5 text-center sm:text-left">
+                                  {meta.required ? (
+                                    <span className="text-text-muted/30 text-xs font-mono select-none" title="Nilai default tidak berlaku untuk parameter wajib">—</span>
+                                  ) : (
                                     <input 
                                       type="text"
-                                      className="w-20 bg-bg-editor border border-border-main rounded-lg text-xs p-1.5 outline-none focus:border-blue-500 shadow-inner font-mono"
-                                      placeholder="default..."
-                                      disabled={meta.required}
+                                      className="w-24 bg-bg-editor border border-purple-500/40 focus:border-purple-500 rounded-lg text-xs p-1.5 outline-none font-mono text-purple-300 shadow-inner focus:ring-1 focus:ring-purple-500/30 transition-all placeholder:text-text-muted/40"
+                                      placeholder="Isi default..."
                                       value={meta.defaultValue}
                                       onChange={e => {
                                         const defVal = e.target.value;
@@ -1590,98 +1646,109 @@ export const ApiBuilderView: React.FC = () => {
                                         });
                                       }}
                                     />
-                                  </td>
-                                  <td className="p-3 min-w-[280px]">
-                                    <input 
-                                      type="text"
-                                      className="w-full bg-bg-editor border border-border-main rounded-lg text-xs p-1.5 outline-none focus:border-blue-500 shadow-inner text-text-main"
-                                      placeholder="Keterangan manual (opsional, auto-generate jika kosong)..."
-                                      value={meta.description || ''}
-                                      onChange={e => {
-                                        const descVal = e.target.value;
-                                        setParameterMeta(prev => {
-                                          const exists = prev.some(m => m.name === p);
-                                          if (exists) return prev.map(m => m.name === p ? { ...m, description: descVal } : m);
-                                          return [...prev, { name: p, type: 'string', required: true, defaultValue: '', description: descVal }];
-                                        });
-                                      }}
-                                    />
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* TAB 3: SECURITY & FEATURES */}
-                {activeTab === 'security' && (
-                  <div className="space-y-5">
-                    {/* Public vs Protected */}
-                    <div className={clsx("border rounded-2xl p-5 transition-all shadow-sm", currentApi.isPublic ? "bg-emerald-500/10 border-emerald-500/30" : "bg-bg-editor border-border-main")}>
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          className="mt-1 w-5 h-5 rounded border-border-main text-emerald-500 focus:ring-emerald-500"
-                          checked={currentApi.isPublic} 
-                          onChange={e => setCurrentApi({...currentApi, isPublic: e.target.checked})} 
-                        />
-                        <div>
-                          <span className={clsx("text-sm font-bold block", currentApi.isPublic ? "text-emerald-400" : "text-text-main")}>
-                            Public Endpoint Access
-                          </span>
-                          <span className="text-xs text-text-muted block mt-1">
-                            Allow external callers to access this endpoint without Authorization headers.
-                          </span>
-                        </div>
-                      </label>
+                                  )}
+                                </td>
+                                <td className="p-2.5 min-w-[240px]">
+                                  <input 
+                                    type="text"
+                                    className="w-full bg-bg-editor border border-border-main rounded-lg text-xs p-1 outline-none focus:border-purple-500 shadow-inner text-text-main"
+                                    placeholder="Keterangan manual..."
+                                    value={meta.description || ''}
+                                    onChange={e => {
+                                      const descVal = e.target.value;
+                                      setParameterMeta(prev => {
+                                        const exists = prev.some(m => m.name === p);
+                                        if (exists) return prev.map(m => m.name === p ? { ...m, description: descVal } : m);
+                                        return [...prev, { name: p, type: 'string', required: true, defaultValue: '', description: descVal }];
+                                      });
+                                    }}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
+                  )}
+                </div>
 
-                    {!currentApi.isPublic && (
-                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-bold text-amber-400 uppercase tracking-wider">Required Bearer Auth Token</label>
-                          <button
-                            onClick={() => setCurrentApi({ ...currentApi, authToken: generateToken() })}
-                            className="text-xs text-amber-400 hover:underline font-semibold"
-                          >
-                            Generate New Token
-                          </button>
-                        </div>
-                        <input 
-                          type="text"
-                          className="w-full bg-[#0d1117] border border-amber-500/30 rounded-xl p-3 text-sm outline-none text-amber-300 font-mono font-bold shadow-inner"
-                          value={currentApi.authToken}
-                          onChange={e => setCurrentApi({...currentApi, authToken: e.target.value})}
-                          placeholder="e.g. sk_secret_token..."
-                        />
-                      </div>
-                    )}
-
-                    {/* Pagination Settings */}
-                    <div className={clsx("border rounded-2xl p-5 transition-all shadow-sm", currentApi.enablePagination ? "bg-blue-500/10 border-blue-500/30" : "bg-bg-editor border-border-main")}>
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          className="mt-1 w-5 h-5 rounded border-border-main text-blue-500 focus:ring-blue-500"
-                          checked={currentApi.enablePagination} 
-                          onChange={e => setCurrentApi({...currentApi, enablePagination: e.target.checked})} 
-                        />
-                        <div>
-                          <span className={clsx("text-sm font-bold block", currentApi.enablePagination ? "text-blue-400" : "text-text-main")}>
-                            Enable Automatic SQL Pagination
-                          </span>
-                          <span className="text-xs text-text-muted block mt-1 leading-relaxed">
-                            Automatically parses request query params (<code className="font-mono text-blue-400 font-bold">limit</code>, <code className="font-mono text-blue-400 font-bold">offset</code>, <code className="font-mono text-blue-400 font-bold">page</code>) and injects LIMIT/OFFSET clauses.
-                          </span>
-                        </div>
-                      </label>
+                {/* SECTION 3: SECURITY & ADVANCED FEATURES */}
+                <div id="sec-security" className="bg-bg-editor/50 border border-border-main/70 rounded-2xl p-5 space-y-4 shadow-sm hover:border-emerald-500/30 transition-all">
+                  <div className="flex items-center gap-2.5 border-b border-border-main/50 pb-3">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-extrabold uppercase tracking-wider text-text-main">3. Security & Features</h3>
+                      <p className="text-[11px] text-text-muted">Authentication rules, access control, and pagination</p>
                     </div>
                   </div>
-                )}
+
+                  {/* Public vs Protected */}
+                  <div className={clsx("border rounded-xl p-4 transition-all shadow-sm", currentApi.isPublic ? "bg-emerald-500/10 border-emerald-500/30" : "bg-bg-editor border-border-main")}>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="mt-0.5 w-4 h-4 rounded border-border-main text-emerald-500 focus:ring-emerald-500"
+                        checked={currentApi.isPublic} 
+                        onChange={e => setCurrentApi({...currentApi, isPublic: e.target.checked})} 
+                      />
+                      <div>
+                        <span className={clsx("text-xs font-bold block", currentApi.isPublic ? "text-emerald-400" : "text-text-main")}>
+                          Public Endpoint Access
+                        </span>
+                        <span className="text-[11px] text-text-muted block mt-0.5">
+                          Allow external callers to access this endpoint without Authorization headers.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
+                  {!currentApi.isPublic && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <Lock className="w-3.5 h-3.5" /> Required Bearer Auth Token
+                        </label>
+                        <button
+                          onClick={() => setCurrentApi({ ...currentApi, authToken: generateToken() })}
+                          className="text-[11px] text-amber-400 hover:underline font-semibold"
+                        >
+                          Generate New Token
+                        </button>
+                      </div>
+                      <input 
+                        type="text"
+                        className="w-full bg-[#0d1117] border border-amber-500/30 rounded-xl p-2.5 text-xs outline-none text-amber-300 font-mono font-bold shadow-inner"
+                        value={currentApi.authToken}
+                        onChange={e => setCurrentApi({...currentApi, authToken: e.target.value})}
+                        placeholder="e.g. sk_secret_token..."
+                      />
+                    </div>
+                  )}
+
+                  {/* Pagination Settings */}
+                  <div className={clsx("border rounded-xl p-4 transition-all shadow-sm", currentApi.enablePagination ? "bg-blue-500/10 border-blue-500/30" : "bg-bg-editor border-border-main")}>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="mt-0.5 w-4 h-4 rounded border-border-main text-blue-500 focus:ring-blue-500"
+                        checked={currentApi.enablePagination} 
+                        onChange={e => setCurrentApi({...currentApi, enablePagination: e.target.checked})} 
+                      />
+                      <div>
+                        <span className={clsx("text-xs font-bold block", currentApi.enablePagination ? "text-blue-400" : "text-text-main")}>
+                          Enable Automatic SQL Pagination
+                        </span>
+                        <span className="text-[11px] text-text-muted block mt-0.5 leading-relaxed">
+                          Automatically parses request query params (<code className="font-mono text-blue-400 font-bold">limit</code>, <code className="font-mono text-blue-400 font-bold">offset</code>, <code className="font-mono text-blue-400 font-bold">page</code>) and injects LIMIT/OFFSET clauses.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>
