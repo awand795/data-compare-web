@@ -1270,8 +1270,8 @@ export const ApiBuilderView: React.FC = () => {
                 {currentApi.method}
               </span>
               <span className="px-3 py-1.5 bg-[#0d1117] text-slate-300 truncate flex-1 flex items-center gap-1">
-                <span className="opacity-40">{window.location.origin}/api/data</span>
-                <span className="text-blue-400 font-bold">{currentApi.endpointPath || <span className="opacity-30 italic">/your-path</span>}</span>
+                <span className="opacity-40">{window.location.origin}/api/data/</span>
+                <span className="text-blue-400 font-bold">{currentApi.endpointPath ? currentApi.endpointPath.replace(/^\//, '') : <span className="opacity-30 italic">your-path</span>}</span>
                 {paramsList.length > 0 && currentApi.method === 'GET' && (
                   <span className="text-purple-400">?{paramsList.map(p => `${p}={${p}}`).join('&')}</span>
                 )}
@@ -1534,18 +1534,19 @@ export const ApiBuilderView: React.FC = () => {
                     <div className={clsx("flex items-center shadow-inner rounded-xl border overflow-hidden transition-all",
                       getError('endpointPath') ? "border-rose-500 focus-within:ring-2 focus-within:ring-rose-500/30" : "border-border-main focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20"
                     )}>
-                      <span className="bg-bg-panel px-3 py-3 text-xs text-text-muted font-mono border-r border-border-main shrink-0 select-none">
-                        /api/data
+                      <span className="bg-bg-panel px-3 py-3 text-xs text-text-muted font-mono border-r border-border-main shrink-0 select-none font-semibold">
+                        /api/data/
                       </span>
                       <input 
                         className="w-full bg-bg-editor p-3 text-sm outline-none font-mono text-blue-400 font-bold"
-                        value={currentApi.endpointPath}
+                        value={currentApi.endpointPath.startsWith('/') ? currentApi.endpointPath.slice(1) : currentApi.endpointPath}
                         onChange={e => {
-                          let val = e.target.value;
-                          if (val && !val.startsWith('/')) val = '/' + val;
-                          setCurrentApi({...currentApi, endpointPath: val});
+                          let val = e.target.value.trim();
+                          if (val.startsWith('/')) val = val.slice(1);
+                          const fullPath = val ? '/' + val : '';
+                          setCurrentApi({...currentApi, endpointPath: fullPath});
                         }}
-                        placeholder="/customers"
+                        placeholder="customers"
                       />
                     </div>
                   </div>
