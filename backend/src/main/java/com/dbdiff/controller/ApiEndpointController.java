@@ -66,8 +66,10 @@ public class ApiEndpointController {
 
             String sql = endpoint.getSqlQuery();
             if (endpoint.isEnablePagination()) {
-                int limit = 100;
+                int limit = 10;
                 int offset = 0;
+                int page = 1;
+
                 if (params.containsKey("limit")) {
                     String val = params.get("limit").toString();
                     if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'limit' must be a valid integer")));
@@ -78,24 +80,60 @@ public class ApiEndpointController {
                     limit = Integer.parseInt(val);
                 }
                 
-                if (params.containsKey("offset")) {
+                if (params.containsKey("page")) {
+                    String val = params.get("page").toString();
+                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'page' must be a valid integer")));
+                    page = Integer.parseInt(val);
+                    if (page < 1) page = 1;
+                    offset = (page - 1) * limit;
+                } else if (params.containsKey("offset")) {
                     String val = params.get("offset").toString();
                     if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'offset' must be a valid integer")));
                     offset = Integer.parseInt(val);
-                } else if (params.containsKey("page")) {
-                    String val = params.get("page").toString();
-                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'page' must be a valid integer")));
-                    int page = Integer.parseInt(val);
-                    offset = (page > 0 ? page - 1 : 0) * limit;
+                    page = (limit > 0 ? (offset / limit) + 1 : 1);
                 }
                 
-                if (conn.getType() != null && conn.getType().equalsIgnoreCase("SQLSERVER")) {
-                    sql += " OFFSET " + offset + " ROWS FETCH NEXT " + limit + " ROWS ONLY";
-                } else if (conn.getType() != null && conn.getType().equalsIgnoreCase("ORACLE")) {
-                    sql += " OFFSET " + offset + " ROWS FETCH NEXT " + limit + " ROWS ONLY";
-                } else {
-                    sql += " LIMIT " + limit + " OFFSET " + offset;
+                // Clean SQL query by removing trailing semicolon if present
+                String cleanSql = sql.trim();
+                if (cleanSql.endsWith(";")) {
+                    cleanSql = cleanSql.substring(0, cleanSql.length() - 1).trim();
                 }
+
+                // Calculate total records for pagination metadata
+                int totalRecords = 0;
+                try {
+                    String countSql = "SELECT COUNT(*) FROM (" + cleanSql + ") AS _total_count_subquery";
+                    Integer count = jdbcTemplate.queryForObject(countSql, params, Integer.class);
+                    if (count != null) totalRecords = count;
+                } catch (Exception ex) {
+                    // Ignore count fallback if dialect query fails
+                }
+
+                String paginatedSql;
+                if (conn.getType() != null && conn.getType().equalsIgnoreCase("SQLSERVER")) {
+                    paginatedSql = cleanSql + " OFFSET " + offset + " ROWS FETCH NEXT " + limit + " ROWS ONLY";
+                } else if (conn.getType() != null && conn.getType().equalsIgnoreCase("ORACLE")) {
+                    paginatedSql = cleanSql + " OFFSET " + offset + " ROWS FETCH NEXT " + limit + " ROWS ONLY";
+                } else {
+                    paginatedSql = cleanSql + " LIMIT " + limit + " OFFSET " + offset;
+                }
+
+                List<Map<String, Object>> data = jdbcTemplate.queryForList(paginatedSql, params);
+
+                int totalPages = limit > 0 ? (int) Math.ceil((double) totalRecords / limit) : (totalRecords > 0 ? 1 : 0);
+
+                Map<String, Object> paginationMeta = new HashMap<>();
+                paginationMeta.put("current_page", page);
+                paginationMeta.put("limit", limit);
+                paginationMeta.put("offset", offset);
+                paginationMeta.put("total_records", totalRecords);
+                paginationMeta.put("total_pages", totalPages);
+
+                Map<String, Object> responseBody = new HashMap<>();
+                responseBody.put("data", data);
+                responseBody.put("pagination", paginationMeta);
+
+                return ResponseEntity.ok(responseBody);
             }
 
             List<Map<String, Object>> results = jdbcTemplate.queryForList(sql, params);
