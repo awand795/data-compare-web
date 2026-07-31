@@ -1308,73 +1308,61 @@ export const ApiBuilderView: React.FC = () => {
         <div className="flex-1 overflow-hidden flex flex-col relative">
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
             
-            {/* LEFT PANE: Target Database Connection Selector + SQL Query Studio */}
+            {/* LEFT PANE: SQL Studio & Target Database Connection */}
             <div className="flex-1 lg:w-3/5 flex flex-col border-r border-border-main min-w-0 bg-[#080e1a]">
               
-              {/* TOP CONNECTION BAR: Target Database Connection (Moved above SQL Query Studio) */}
-              <div className="bg-bg-panel/90 border-b border-border-main p-4 shrink-0 shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0 shadow-inner">
-                      <Server className="w-4 h-4" />
+              {/* COMPACT INTEGRATED TOOLBAR (IDE-STYLE) */}
+              <div className="bg-bg-panel/95 backdrop-blur border-b border-border-main px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-2 text-xs font-black text-text-main shrink-0 uppercase tracking-wider">
+                    <div className="w-6 h-6 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                      <Database className="w-3.5 h-3.5" />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs font-extrabold uppercase tracking-wider text-text-main">
-                          Target Database Connection
-                        </label>
-                        <span className="text-rose-400 font-bold">*</span>
-                        {currentApi.connectionId ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Connected
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Select Connection
-                          </span>
+                    <span>SQL Studio</span>
+                  </div>
+
+                  <div className="h-4 w-px bg-border-main shrink-0"></div>
+
+                  {/* Sleek Target Database Dropdown Pill */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-extrabold text-text-muted uppercase tracking-wider shrink-0 hidden sm:inline">DB:</span>
+                    <div className="relative min-w-[200px] max-w-[280px]">
+                      <select 
+                        className={clsx(
+                          "w-full bg-bg-editor/90 border rounded-lg px-2.5 py-1 text-xs focus:ring-1 outline-none appearance-none shadow-inner font-bold transition-all pr-7 cursor-pointer",
+                          currentApi.connectionId
+                            ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5 focus:border-emerald-500"
+                            : getError('connectionId')
+                              ? "border-rose-500 text-rose-400 focus:border-rose-500"
+                              : "border-border-main text-text-main hover:border-blue-500/50 focus:border-blue-500"
                         )}
-                      </div>
-                      <p className="text-[11px] text-text-muted mt-0.5">Source database for query autocompletion & runtime execution</p>
+                        value={currentApi.connectionId}
+                        onChange={e => setCurrentApi({...currentApi, connectionId: e.target.value})}
+                      >
+                        <option value="" disabled className="text-text-muted">Select Target Database...</option>
+                        {connections.map(c => (
+                          <option key={c.id} value={c.id} className="text-text-main font-semibold bg-bg-panel">{c.name} ({c.type})</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-2 text-text-muted pointer-events-none" />
                     </div>
-                  </div>
-
-                  <div className="w-full sm:w-80 relative">
-                    <select 
-                      className={clsx(
-                        "w-full bg-bg-editor border rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 outline-none appearance-none shadow-inner text-text-main font-bold transition-all pr-9",
-                        getError('connectionId')
-                          ? "border-rose-500 focus:border-rose-500 focus:ring-rose-500/30"
-                          : "border-border-main hover:border-blue-500/50 focus:border-blue-500 focus:ring-blue-500/20"
-                      )}
-                      value={currentApi.connectionId}
-                      onChange={e => setCurrentApi({...currentApi, connectionId: e.target.value})}
-                    >
-                      <option value="" disabled>Select target connection...</option>
-                      {connections.map(c => (
-                        <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-4 h-4 absolute right-3 top-3 text-text-muted pointer-events-none" />
+                    {currentApi.connectionId ? (
+                      <span className="hidden xl:inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Ready
+                      </span>
+                    ) : (
+                      <span className="hidden xl:inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+                        Required
+                      </span>
+                    )}
                   </div>
                 </div>
-                {getError('connectionId') && (
-                  <p className="text-xs text-rose-400 mt-2 flex items-center gap-1 font-medium pl-1">
-                    <AlertCircle className="w-3.5 h-3.5" /> {getError('connectionId')?.message}
-                  </p>
-                )}
-              </div>
 
-              {/* SQL QUERY STUDIO HEADER */}
-              <div className="bg-bg-panel border-b border-border-main px-4 py-3 flex justify-between items-center shrink-0">
-                <div className="flex items-center gap-2.5 text-sm font-bold text-text-main">
-                  <Database className="w-4 h-4 text-blue-500" /> SQL Query Studio
-                </div>
-
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <div className="relative">
                     <button
                       onClick={() => setShowTemplates(!showTemplates)}
-                      className="text-xs font-bold text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 px-3 py-1.5 rounded-xl border border-purple-500/20 flex items-center gap-1.5 transition-colors"
+                      className="text-xs font-bold text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 px-2.5 py-1 rounded-lg border border-purple-500/20 flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <BookTemplate className="w-3.5 h-3.5" /> Templates
                     </button>
@@ -1389,7 +1377,7 @@ export const ApiBuilderView: React.FC = () => {
                             <button
                               key={i}
                               onClick={() => applyTemplate(template)}
-                              className="w-full text-left p-3 hover:bg-bg-hover rounded-xl transition-colors flex items-start gap-3 group"
+                              className="w-full text-left p-2.5 hover:bg-bg-hover rounded-xl transition-colors flex items-start gap-2.5 group cursor-pointer"
                             >
                               <template.icon className="w-4 h-4 text-text-muted group-hover:text-blue-400 shrink-0 mt-0.5" />
                               <div>
@@ -1403,8 +1391,8 @@ export const ApiBuilderView: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="text-xs font-bold text-blue-400 bg-blue-500/10 px-3 py-1.5 rounded-xl border border-blue-500/20 font-mono">
-                    Use <code className="text-blue-300 font-bold">:param</code> for parameters
+                  <div className="text-[11px] font-bold text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20 font-mono hidden sm:block">
+                    <code className="text-blue-300 font-bold">:param</code> extract
                   </div>
                 </div>
               </div>
@@ -1423,37 +1411,35 @@ export const ApiBuilderView: React.FC = () => {
             {/* RIGHT PANE: Unified Single-Page Settings (Config, Parameters, Security) */}
             <div className="flex-1 lg:w-2/5 flex flex-col bg-bg-panel overflow-y-auto min-w-0">
               
-              {/* STICKY QUICK-NAV HEADER */}
-              <div className="sticky top-0 z-20 border-b border-border-main bg-bg-editor/90 backdrop-blur-md px-4 py-3 flex items-center justify-between shrink-0 shadow-sm">
+              {/* STICKY HEADER & SEGMENT CONTROL */}
+              <div className="sticky top-0 z-20 border-b border-border-main bg-bg-editor/90 backdrop-blur-md px-4 py-2.5 flex items-center justify-between shrink-0 shadow-sm">
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal className="w-4 h-4 text-blue-400" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-text-main">API Settings & Configuration</span>
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-text-main">API Settings</span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center bg-bg-panel/80 p-1 rounded-xl border border-border-main shadow-inner">
                   <button
                     onClick={() => document.getElementById('sec-config')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-blue-400 hover:bg-blue-500/10 transition-all border border-transparent hover:border-blue-500/20 cursor-pointer"
+                    className="px-3 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-blue-400 hover:bg-blue-500/10 transition-all cursor-pointer"
                   >
-                    Config
+                    1. Config
                   </button>
-                  <span className="text-text-muted/30">•</span>
                   <button
                     onClick={() => document.getElementById('sec-params')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-purple-400 hover:bg-purple-500/10 transition-all border border-transparent hover:border-purple-500/20 flex items-center gap-1 cursor-pointer"
+                    className="px-3 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-purple-400 hover:bg-purple-500/10 transition-all flex items-center gap-1.5 cursor-pointer"
                   >
-                    Params
+                    2. Params
                     {paramCount > 0 && (
                       <span className="px-1.5 py-0.2 text-[9px] bg-purple-500/20 text-purple-300 rounded-full font-mono font-extrabold">
                         {paramCount}
                       </span>
                     )}
                   </button>
-                  <span className="text-text-muted/30">•</span>
                   <button
                     onClick={() => document.getElementById('sec-security')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10 transition-all border border-transparent hover:border-emerald-500/20 cursor-pointer"
+                    className="px-3 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10 transition-all cursor-pointer"
                   >
-                    Security
+                    3. Security
                   </button>
                 </div>
               </div>
@@ -1479,26 +1465,28 @@ export const ApiBuilderView: React.FC = () => {
                 )}
 
                 {/* SECTION 1: GENERAL CONFIGURATION */}
-                <div id="sec-config" className="bg-bg-editor/50 border border-border-main/70 rounded-2xl p-5 space-y-4 shadow-sm hover:border-blue-500/30 transition-all">
-                  <div className="flex items-center gap-2.5 border-b border-border-main/50 pb-3">
-                    <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-                      <Settings2 className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-extrabold uppercase tracking-wider text-text-main">1. General Configuration</h3>
-                      <p className="text-[11px] text-text-muted">Define API endpoint identity, HTTP method & path</p>
+                <div id="sec-config" className="bg-bg-editor/40 border border-border-main hover:border-blue-500/30 rounded-2xl p-5 space-y-4 transition-all shadow-sm">
+                  <div className="flex items-center justify-between border-b border-border-main/50 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shadow-inner">
+                        <Settings2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-text-main">1. Endpoint Identity</h3>
+                        <p className="text-[11px] text-text-muted">Set API name, HTTP method, and route path</p>
+                      </div>
                     </div>
                   </div>
 
-                  {/* API Name */}
+                  {/* API Endpoint Name */}
                   <div>
                     <label className="block text-[11px] font-extrabold text-text-muted uppercase tracking-wider mb-1.5">
                       API Endpoint Name <span className="text-rose-400">*</span>
                     </label>
                     <input 
                       className={clsx(
-                        "w-full bg-bg-editor border rounded-xl p-3 text-sm focus:ring-1 outline-none text-text-main transition-all shadow-inner font-medium",
-                        getError('name') ? "border-rose-500 focus:border-rose-500 focus:ring-rose-500" : "border-border-main focus:border-blue-500 focus:ring-blue-500"
+                        "w-full bg-bg-editor border rounded-xl p-3 text-sm focus:ring-2 outline-none text-text-main transition-all shadow-inner font-medium",
+                        getError('name') ? "border-rose-500 focus:ring-rose-500/30" : "border-border-main focus:border-blue-500 focus:ring-blue-500/20"
                       )}
                       value={currentApi.name}
                       onChange={e => setCurrentApi({...currentApi, name: e.target.value})}
@@ -1506,96 +1494,110 @@ export const ApiBuilderView: React.FC = () => {
                     />
                   </div>
 
-                  {/* Method & Route Path */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-extrabold text-text-muted uppercase tracking-wider mb-1.5">Method</label>
-                      <div className="relative">
-                        <select 
-                          className="w-full bg-bg-editor border border-border-main rounded-xl p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-black appearance-none shadow-inner text-text-main"
-                          value={currentApi.method}
-                          onChange={e => setCurrentApi({...currentApi, method: e.target.value})}
-                        >
-                          {['GET','POST','PUT','PATCH','DELETE'].map(m => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="w-4 h-4 absolute right-3 top-3.5 text-text-muted pointer-events-none" />
-                      </div>
-                    </div>
+                  {/* HTTP Method Pills Selector */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-text-muted uppercase tracking-wider mb-1.5">
+                      HTTP Method
+                    </label>
+                    <div className="grid grid-cols-5 gap-1.5 bg-bg-panel/80 p-1.5 rounded-xl border border-border-main">
+                      {['GET','POST','PUT','PATCH','DELETE'].map(m => {
+                        const active = currentApi.method === m;
+                        let activeColorClass = "bg-slate-500 text-white shadow";
+                        if (m === 'GET') activeColorClass = "bg-emerald-500 text-white shadow-emerald-500/25";
+                        if (m === 'POST') activeColorClass = "bg-blue-500 text-white shadow-blue-500/25";
+                        if (m === 'PUT') activeColorClass = "bg-amber-500 text-white shadow-amber-500/25";
+                        if (m === 'PATCH') activeColorClass = "bg-purple-500 text-white shadow-purple-500/25";
+                        if (m === 'DELETE') activeColorClass = "bg-rose-500 text-white shadow-rose-500/25";
 
-                    <div className="col-span-2">
-                      <label className="block text-[11px] font-extrabold text-text-muted uppercase tracking-wider mb-1.5">
-                        Route Path <span className="text-rose-400">*</span>
-                      </label>
-                      <div className={clsx("flex items-center shadow-inner rounded-xl border overflow-hidden",
-                        getError('endpointPath') ? "border-rose-500" : "border-border-main focus-within:border-blue-500"
-                      )}>
-                        <span className="bg-bg-panel px-3 py-3 text-xs text-text-muted font-mono border-r border-border-main shrink-0 select-none">
-                          /api/data
-                        </span>
-                        <input 
-                          className="w-full bg-bg-editor p-3 text-sm outline-none font-mono text-blue-400 font-bold"
-                          value={currentApi.endpointPath}
-                          onChange={e => {
-                            let val = e.target.value;
-                            if (val && !val.startsWith('/')) val = '/' + val;
-                            setCurrentApi({...currentApi, endpointPath: val});
-                          }}
-                          placeholder="/customers"
-                        />
-                      </div>
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setCurrentApi({...currentApi, method: m})}
+                            className={clsx(
+                              "py-2 rounded-lg text-xs font-black transition-all cursor-pointer text-center shadow-sm",
+                              active ? `${activeColorClass} shadow-md` : "text-text-muted hover:text-text-main hover:bg-bg-editor"
+                            )}
+                          >
+                            {m}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Route Path */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-text-muted uppercase tracking-wider mb-1.5">
+                      Route Path <span className="text-rose-400">*</span>
+                    </label>
+                    <div className={clsx("flex items-center shadow-inner rounded-xl border overflow-hidden transition-all",
+                      getError('endpointPath') ? "border-rose-500 focus-within:ring-2 focus-within:ring-rose-500/30" : "border-border-main focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20"
+                    )}>
+                      <span className="bg-bg-panel px-3 py-3 text-xs text-text-muted font-mono border-r border-border-main shrink-0 select-none">
+                        /api/data
+                      </span>
+                      <input 
+                        className="w-full bg-bg-editor p-3 text-sm outline-none font-mono text-blue-400 font-bold"
+                        value={currentApi.endpointPath}
+                        onChange={e => {
+                          let val = e.target.value;
+                          if (val && !val.startsWith('/')) val = '/' + val;
+                          setCurrentApi({...currentApi, endpointPath: val});
+                        }}
+                        placeholder="/customers"
+                      />
                     </div>
                   </div>
                 </div>
 
                 {/* SECTION 2: PARAMETERS SCHEMA */}
-                <div id="sec-params" className="bg-bg-editor/50 border border-border-main/70 rounded-2xl p-5 space-y-4 shadow-sm hover:border-purple-500/30 transition-all">
+                <div id="sec-params" className="bg-bg-editor/40 border border-border-main hover:border-purple-500/30 rounded-2xl p-5 space-y-4 transition-all shadow-sm">
                   <div className="flex items-center justify-between border-b border-border-main/50 pb-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
-                        <Code2 className="w-3.5 h-3.5" />
+                      <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shadow-inner">
+                        <Code2 className="w-4 h-4" />
                       </div>
                       <div>
-                        <h3 className="text-xs font-extrabold uppercase tracking-wider text-text-main">2. Query Parameters</h3>
-                        <p className="text-[11px] text-text-muted">Extracted variables from your SQL query statement</p>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-text-main">2. Query Parameters</h3>
+                        <p className="text-[11px] text-text-muted">Variables automatically parsed from SQL query</p>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20 font-mono">
-                      {paramCount} Detected
+                    <span className="text-xs font-bold text-purple-400 bg-purple-500/10 px-2.5 py-1 rounded-full border border-purple-500/20 font-mono">
+                      {paramCount} Variables
                     </span>
                   </div>
 
                   {paramsList.length === 0 ? (
-                    <div className="bg-bg-editor border border-border-main border-dashed rounded-xl p-6 text-center">
+                    <div className="bg-bg-editor/80 border border-border-main border-dashed rounded-xl p-6 text-center">
                       <Code2 className="w-7 h-7 text-text-muted/30 mx-auto mb-2" />
-                      <p className="text-xs text-text-muted">
-                        Write variables in SQL as <code className="font-mono text-purple-400 font-bold bg-purple-500/10 px-1.5 py-0.5 rounded">:parameter_name</code> to automatically extract parameter metadata here.
+                      <p className="text-xs text-text-muted leading-relaxed">
+                        Use variables in SQL like <code className="font-mono text-purple-400 font-bold bg-purple-500/10 px-1.5 py-0.5 rounded border border-purple-500/20">:parameter_name</code> to extract schema rules here.
                       </p>
                     </div>
                   ) : (
-                    <div className="border border-border-main rounded-xl overflow-x-auto shadow-sm">
-                      <table className="w-full text-left">
-                        <thead className="bg-bg-panel/80">
+                    <div className="border border-border-main rounded-xl overflow-hidden shadow-sm">
+                      <table className="w-full text-left border-collapse">
+                        <thead className="bg-bg-panel/90 border-b border-border-main">
                           <tr>
-                            <th className="p-2.5 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Param</th>
-                            <th className="p-2.5 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Type</th>
-                            <th className="p-2.5 border-b border-border-main font-bold text-text-main text-[10px] uppercase text-center">Req</th>
-                            <th className="p-2.5 border-b border-border-main font-bold text-text-main text-[10px] uppercase">Default</th>
-                            <th className="p-2.5 border-b border-border-main font-bold text-text-main text-[10px] uppercase min-w-[240px]">Description</th>
+                            <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase">Param</th>
+                            <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase">Type</th>
+                            <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase text-center">Req?</th>
+                            <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase">Default Value</th>
+                            <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase min-w-[200px]">Description</th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="divide-y divide-border-main/50">
                           {paramsList.map(p => {
                             const meta = parameterMeta.find(m => m.name === p) || {
                               name: p, type: 'string', required: true, defaultValue: '', description: ''
                             };
                             return (
-                              <tr key={p} className="border-b border-border-main last:border-0 hover:bg-bg-hover/30 transition-colors">
+                              <tr key={p} className="hover:bg-bg-hover/40 transition-colors">
                                 <td className="p-2.5 font-mono text-xs text-purple-400 font-bold">:{p}</td>
                                 <td className="p-2.5">
                                   <select 
-                                    className="bg-bg-editor border border-border-main rounded-lg text-xs p-1 outline-none focus:border-purple-500 font-semibold shadow-inner text-text-main"
+                                    className="bg-bg-editor border border-border-main rounded-lg text-xs p-1 outline-none focus:border-purple-500 font-semibold shadow-inner text-text-main cursor-pointer"
                                     value={meta.type}
                                     onChange={e => {
                                       const newType = e.target.value as any;
@@ -1628,9 +1630,9 @@ export const ApiBuilderView: React.FC = () => {
                                     }}
                                   />
                                 </td>
-                                <td className="p-2.5 text-center sm:text-left">
+                                <td className="p-2.5">
                                   {meta.required ? (
-                                    <span className="text-text-muted/30 text-xs font-mono select-none" title="Nilai default tidak berlaku untuk parameter wajib">—</span>
+                                    <span className="text-text-muted/30 text-xs font-mono select-none px-2" title="Default is disabled for required parameters">—</span>
                                   ) : (
                                     <input 
                                       type="text"
@@ -1648,11 +1650,11 @@ export const ApiBuilderView: React.FC = () => {
                                     />
                                   )}
                                 </td>
-                                <td className="p-2.5 min-w-[240px]">
+                                <td className="p-2.5 min-w-[200px]">
                                   <input 
                                     type="text"
-                                    className="w-full bg-bg-editor border border-border-main rounded-lg text-xs p-1 outline-none focus:border-purple-500 shadow-inner text-text-main"
-                                    placeholder="Keterangan manual..."
+                                    className="w-full bg-bg-editor border border-border-main rounded-lg text-xs p-1.5 outline-none focus:border-purple-500 shadow-inner text-text-main placeholder:text-text-muted/40"
+                                    placeholder="Description..."
                                     value={meta.description || ''}
                                     onChange={e => {
                                       const descVal = e.target.value;
@@ -1674,23 +1676,25 @@ export const ApiBuilderView: React.FC = () => {
                 </div>
 
                 {/* SECTION 3: SECURITY & ADVANCED FEATURES */}
-                <div id="sec-security" className="bg-bg-editor/50 border border-border-main/70 rounded-2xl p-5 space-y-4 shadow-sm hover:border-emerald-500/30 transition-all">
-                  <div className="flex items-center gap-2.5 border-b border-border-main/50 pb-3">
-                    <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-extrabold uppercase tracking-wider text-text-main">3. Security & Features</h3>
-                      <p className="text-[11px] text-text-muted">Authentication rules, access control, and pagination</p>
+                <div id="sec-security" className="bg-bg-editor/40 border border-border-main hover:border-emerald-500/30 rounded-2xl p-5 space-y-4 transition-all shadow-sm">
+                  <div className="flex items-center justify-between border-b border-border-main/50 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-inner">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-text-main">3. Security & Features</h3>
+                        <p className="text-[11px] text-text-muted">Authentication rules and runtime features</p>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Public vs Protected */}
-                  <div className={clsx("border rounded-xl p-4 transition-all shadow-sm", currentApi.isPublic ? "bg-emerald-500/10 border-emerald-500/30" : "bg-bg-editor border-border-main")}>
+                  {/* Public Access Card */}
+                  <div className={clsx("border rounded-xl p-4 transition-all shadow-sm", currentApi.isPublic ? "bg-emerald-500/10 border-emerald-500/30" : "bg-bg-editor/80 border-border-main")}>
                     <label className="flex items-start gap-3 cursor-pointer">
                       <input 
                         type="checkbox" 
-                        className="mt-0.5 w-4 h-4 rounded border-border-main text-emerald-500 focus:ring-emerald-500"
+                        className="mt-1 w-4 h-4 rounded border-border-main text-emerald-500 focus:ring-emerald-500 cursor-pointer"
                         checked={currentApi.isPublic} 
                         onChange={e => setCurrentApi({...currentApi, isPublic: e.target.checked})} 
                       />
@@ -1699,23 +1703,25 @@ export const ApiBuilderView: React.FC = () => {
                           Public Endpoint Access
                         </span>
                         <span className="text-[11px] text-text-muted block mt-0.5">
-                          Allow external callers to access this endpoint without Authorization headers.
+                          Allow external callers to access this API without authorization tokens.
                         </span>
                       </div>
                     </label>
                   </div>
 
+                  {/* Protected Bearer Token Card */}
                   {!currentApi.isPublic && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2.5">
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2.5 shadow-sm">
                       <div className="flex items-center justify-between">
                         <label className="text-[11px] font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                           <Lock className="w-3.5 h-3.5" /> Required Bearer Auth Token
                         </label>
                         <button
+                          type="button"
                           onClick={() => setCurrentApi({ ...currentApi, authToken: generateToken() })}
-                          className="text-[11px] text-amber-400 hover:underline font-semibold"
+                          className="text-[11px] text-amber-400 hover:underline font-bold cursor-pointer"
                         >
-                          Generate New Token
+                          Generate Token
                         </button>
                       </div>
                       <input 
@@ -1728,21 +1734,21 @@ export const ApiBuilderView: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Pagination Settings */}
-                  <div className={clsx("border rounded-xl p-4 transition-all shadow-sm", currentApi.enablePagination ? "bg-blue-500/10 border-blue-500/30" : "bg-bg-editor border-border-main")}>
+                  {/* SQL Pagination Card */}
+                  <div className={clsx("border rounded-xl p-4 transition-all shadow-sm", currentApi.enablePagination ? "bg-blue-500/10 border-blue-500/30" : "bg-bg-editor/80 border-border-main")}>
                     <label className="flex items-start gap-3 cursor-pointer">
                       <input 
                         type="checkbox" 
-                        className="mt-0.5 w-4 h-4 rounded border-border-main text-blue-500 focus:ring-blue-500"
+                        className="mt-1 w-4 h-4 rounded border-border-main text-blue-500 focus:ring-blue-500 cursor-pointer"
                         checked={currentApi.enablePagination} 
                         onChange={e => setCurrentApi({...currentApi, enablePagination: e.target.checked})} 
                       />
                       <div>
                         <span className={clsx("text-xs font-bold block", currentApi.enablePagination ? "text-blue-400" : "text-text-main")}>
-                          Enable Automatic SQL Pagination
+                          Automatic SQL Pagination
                         </span>
                         <span className="text-[11px] text-text-muted block mt-0.5 leading-relaxed">
-                          Automatically parses request query params (<code className="font-mono text-blue-400 font-bold">limit</code>, <code className="font-mono text-blue-400 font-bold">offset</code>, <code className="font-mono text-blue-400 font-bold">page</code>) and injects LIMIT/OFFSET clauses.
+                          Automatically handles <code className="font-mono text-blue-400 font-bold">limit</code>, <code className="font-mono text-blue-400 font-bold">offset</code>, and <code className="font-mono text-blue-400 font-bold">page</code> parameters.
                         </span>
                       </div>
                     </label>
