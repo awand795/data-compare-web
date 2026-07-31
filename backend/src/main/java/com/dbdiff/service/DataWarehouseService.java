@@ -1618,10 +1618,10 @@ public class DataWarehouseService {
                     for (net.sf.jsqlparser.statement.select.WithItem withItem : select.getWithItemsList()) {
                         if (withItem.getSelect() != null && withItem.getSelect().getPlainSelect() != null) {
                             PlainSelect withPlain = withItem.getSelect().getPlainSelect();
-                            rewriteFromItemForClickHouse(withPlain.getFromItem(), physicalTables, baseName, sourceConn, chDb);
+                            withPlain.setFromItem(rewriteFromItemForClickHouse(withPlain.getFromItem(), physicalTables, baseName, sourceConn, chDb, triggerTable));
                             if (withPlain.getJoins() != null) {
                                 for (Join join : withPlain.getJoins()) {
-                                    rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb);
+                                    join.setRightItem(rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb, triggerTable));
                                 }
                             }
                         }
@@ -1629,10 +1629,10 @@ public class DataWarehouseService {
                 }
                 PlainSelect plain = select.getPlainSelect();
                 if (plain != null) {
-                    rewriteFromItemForClickHouse(plain.getFromItem(), physicalTables, baseName, sourceConn, chDb);
+                    plain.setFromItem(rewriteFromItemForClickHouse(plain.getFromItem(), physicalTables, baseName, sourceConn, chDb, triggerTable));
                     if (plain.getJoins() != null) {
                         for (Join join : plain.getJoins()) {
-                            rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb);
+                            join.setRightItem(rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb, triggerTable));
                         }
                     }
                     if (triggerTable != null && !triggerTable.isEmpty()) {
@@ -1831,7 +1831,7 @@ public class DataWarehouseService {
         }
     }
 
-    private void rewriteFromItemForClickHouse(FromItem item, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb) {
+    private FromItem rewriteFromItemForClickHouse(FromItem item, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb, String triggerTable) {
         if (item instanceof Table) {
             Table t = (Table) item;
             String matchedPhysicalTable = null;
@@ -1845,23 +1845,40 @@ public class DataWarehouseService {
                 String landingTable = getClickHouseLandingTable(matchedPhysicalTable, baseName, sourceConn);
                 String shortTable = matchedPhysicalTable.contains(".") ? matchedPhysicalTable.substring(matchedPhysicalTable.indexOf('.') + 1) : matchedPhysicalTable;
 
-                if (t.getAlias() == null) {
-                    t.setAlias(new net.sf.jsqlparser.expression.Alias("`" + shortTable + "`"));
+                net.sf.jsqlparser.expression.Alias existingAlias = t.getAlias();
+                net.sf.jsqlparser.expression.Alias aliasToUse = existingAlias != null ? existingAlias : new net.sf.jsqlparser.expression.Alias("`" + shortTable + "`");
+
+                // If this is a joined table (not the main trigger table), we wrap it in a FINAL subquery
+                // so we don't accidentally join against historical/deleted tombstone CDC records.
+                if (triggerTable != null && !triggerTable.isEmpty() && !matchedPhysicalTable.equalsIgnoreCase(triggerTable) && !isTableMatch(t, triggerTable)) {
+                    try {
+                        String subquerySql = "SELECT * FROM (SELECT * FROM `" + chDb + "`.`" + landingTable + "` FINAL WHERE is_deleted = 0) AS a";
+                        net.sf.jsqlparser.statement.Statement parsed = CCJSqlParserUtil.parse(subquerySql);
+                        net.sf.jsqlparser.statement.select.ParenthesedSelect ps = (net.sf.jsqlparser.statement.select.ParenthesedSelect) ((PlainSelect)((Select)parsed).getSelectBody()).getFromItem();
+                        ps.setAlias(aliasToUse);
+                        return ps;
+                    } catch (Exception e) {
+                        logger.warn("Could not wrap joined table in FINAL subquery: " + e.getMessage());
+                    }
                 }
+
+                t.setAlias(aliasToUse);
                 t.setSchemaName("`" + chDb + "`");
                 t.setName("`" + landingTable + "`");
+                return t;
             }
         } else if (item instanceof net.sf.jsqlparser.statement.select.ParenthesedSelect) {
             net.sf.jsqlparser.statement.select.ParenthesedSelect ps = (net.sf.jsqlparser.statement.select.ParenthesedSelect) item;
             if (ps.getPlainSelect() != null) {
-                rewriteFromItemForClickHouse(ps.getPlainSelect().getFromItem(), physicalTables, baseName, sourceConn, chDb);
+                ps.getPlainSelect().setFromItem(rewriteFromItemForClickHouse(ps.getPlainSelect().getFromItem(), physicalTables, baseName, sourceConn, chDb, triggerTable));
                 if (ps.getPlainSelect().getJoins() != null) {
                     for (Join join : ps.getPlainSelect().getJoins()) {
-                        rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb);
+                        join.setRightItem(rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb, triggerTable));
                     }
                 }
             }
         }
+        return item;
     }
 
     private String rewriteQueryForClickHouseView(String sql, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb, java.util.Map<String, java.util.Set<String>> tableToPKs) {
