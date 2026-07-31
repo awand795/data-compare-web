@@ -113,8 +113,10 @@ public class DynamicApiController {
 
             // Pagination support
             if (endpoint.isEnablePagination()) {
-                int limit = 100;
+                int limit = 10;
                 int offset = 0;
+                int page = 1;
+
                 if (allParams.containsKey("limit")) {
                     String val = allParams.get("limit").toString();
                     if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'limit' must be a valid integer")));
@@ -125,20 +127,51 @@ public class DynamicApiController {
                     limit = Integer.parseInt(val);
                 }
                 
-                if (allParams.containsKey("offset")) {
+                if (allParams.containsKey("page")) {
+                    String val = allParams.get("page").toString();
+                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'page' must be a valid integer")));
+                    page = Integer.parseInt(val);
+                    if (page < 1) page = 1;
+                    offset = (page - 1) * limit;
+                } else if (allParams.containsKey("offset")) {
                     String val = allParams.get("offset").toString();
                     if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'offset' must be a valid integer")));
                     offset = Integer.parseInt(val);
-                } else if (allParams.containsKey("page")) {
-                    String val = allParams.get("page").toString();
-                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'page' must be a valid integer")));
-                    int page = Integer.parseInt(val);
-                    offset = (page > 0 ? page - 1 : 0) * limit;
+                    page = (limit > 0 ? (offset / limit) + 1 : 1);
                 }
 
-                // A simplistic way to append pagination. In real life, dialect matters (MySQL/PG vs SQLServer)
-                // Assuming MySQL/PostgreSQL/Clickhouse dialect:
-                sql = sql + " LIMIT " + limit + " OFFSET " + offset;
+                // Clean SQL query by removing trailing semicolon if present
+                String cleanSql = sql.trim();
+                if (cleanSql.endsWith(";")) {
+                    cleanSql = cleanSql.substring(0, cleanSql.length() - 1).trim();
+                }
+
+                // Calculate total records for pagination metadata
+                int totalRecords = 0;
+                try {
+                    String countSql = "SELECT COUNT(*) FROM (" + cleanSql + ") AS _total_count_subquery";
+                    Integer count = jdbcTemplate.queryForObject(countSql, allParams, Integer.class);
+                    if (count != null) totalRecords = count;
+                } catch (Exception ex) {
+                    // Ignore count fallback if dialect query fails
+                }
+
+                String paginatedSql = cleanSql + " LIMIT " + limit + " OFFSET " + offset;
+                List<Map<String, Object>> data = jdbcTemplate.queryForList(paginatedSql, allParams);
+
+                int totalPages = limit > 0 ? (int) Math.ceil((double) totalRecords / limit) : (totalRecords > 0 ? 1 : 0);
+
+                Map<String, Object> paginationMeta = new HashMap<>();
+                paginationMeta.put("current_page", page);
+                paginationMeta.put("limit", limit);
+                paginationMeta.put("total_records", totalRecords);
+                paginationMeta.put("total_pages", totalPages);
+
+                Map<String, Object> responseBody = new HashMap<>();
+                responseBody.put("data", data);
+                responseBody.put("pagination", paginationMeta);
+
+                return ResponseEntity.ok(responseBody);
             }
 
             List<Map<String, Object>> result = jdbcTemplate.queryForList(sql, allParams);
