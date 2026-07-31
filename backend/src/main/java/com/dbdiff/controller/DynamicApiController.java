@@ -164,6 +164,7 @@ public class DynamicApiController {
                 Map<String, Object> paginationMeta = new HashMap<>();
                 paginationMeta.put("current_page", page);
                 paginationMeta.put("limit", limit);
+                paginationMeta.put("offset", offset);
                 paginationMeta.put("total_records", totalRecords);
                 paginationMeta.put("total_pages", totalPages);
 
