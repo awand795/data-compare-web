@@ -1109,11 +1109,11 @@ public class DataWarehouseService {
                 if (physicalTables.size() > 1) {
                     // For JOIN queries, add PK filters to the WHERE clause (avoiding subqueries/FINAL which are disallowed in MVs)
                     String sqlWithFilters = addPKFiltersToWhere(sqlInlined, physicalTables, tableToPKs);
-                    rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, baseName, request.getSourceConnection(), chDb);
+                    rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, baseName, request.getSourceConnection(), chDb, t);
                     // Preserve join types (LEFT/INNER/etc.) as specified in user query
 
                 } else {
-                    rewrittenSql = rewriteQueryForClickHouse(sqlInlined, physicalTables, baseName, request.getSourceConnection(), chDb);
+                    rewrittenSql = rewriteQueryForClickHouse(sqlInlined, physicalTables, baseName, request.getSourceConnection(), chDb, t);
                 }
                 
                 StringBuilder mvDdl = new StringBuilder();
@@ -1605,6 +1605,10 @@ public class DataWarehouseService {
     }
 
     private String rewriteQueryForClickHouse(String sql, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb) {
+        return rewriteQueryForClickHouse(sql, physicalTables, baseName, sourceConn, chDb, null);
+    }
+
+    private String rewriteQueryForClickHouse(String sql, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb, String triggerTable) {
         sql = convertPostgresJsonToClickHouse(sql);
         try {
             net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
@@ -1631,7 +1635,11 @@ public class DataWarehouseService {
                             rewriteFromItemForClickHouse(join.getRightItem(), physicalTables, baseName, sourceConn, chDb);
                         }
                     }
-                    reorderJoinsByDependency(plain);
+                    if (triggerTable != null && !triggerTable.isEmpty()) {
+                        swapTriggerTableToFrom(plain, triggerTable, baseName, sourceConn, chDb);
+                    } else {
+                        reorderJoinsByDependency(plain);
+                    }
                     return select.toString();
                 }
             }
@@ -1646,19 +1654,19 @@ public class DataWarehouseService {
             String shortTable = t.contains(".") ? t.substring(t.indexOf('.') + 1) : t;
 
             String patternStrWithSchema = "(?i)\\b" + Pattern.quote(t) + "\\b(\\s+(?:AS\\s+)?(?!(?:WHERE|FROM|JOIN|ON|GROUP|ORDER|HAVING|LIMIT|UNION|SELECT|INNER|LEFT|RIGHT|FULL|CROSS|NATURAL|OUTER|SET|WITH|CASE|WHEN|THEN|ELSE|END|IN|IS|AND|OR|NOT|NULL|FETCH|OFFSET|PREWHERE|SETTINGS|FINAL|SAMPLE|STREAM)\\b)([a-zA-Z0-9_]+))?";
-                    Pattern p = Pattern.compile(patternStrWithSchema);
-                    Matcher m = p.matcher(rewrittenSql);
-                    StringBuffer sb = new StringBuffer();
-                    while (m.find()) {
-                        String existingAlias = m.group(2);
-                        if (existingAlias != null && !existingAlias.isEmpty()) {
-                            m.appendReplacement(sb, escapedLanding + " AS `" + existingAlias + "`");
-                        } else {
-                            m.appendReplacement(sb, escapedLanding + " AS `" + shortTable + "`");
-                        }
-                    }
-                    m.appendTail(sb);
-                    rewrittenSql = sb.toString();
+            Pattern p = Pattern.compile(patternStrWithSchema);
+            Matcher m = p.matcher(rewrittenSql);
+            StringBuffer sb = new StringBuffer();
+            while (m.find()) {
+                String existingAlias = m.group(2);
+                if (existingAlias != null && !existingAlias.isEmpty()) {
+                    m.appendReplacement(sb, escapedLanding + " AS `" + existingAlias + "`");
+                } else {
+                    m.appendReplacement(sb, escapedLanding + " AS `" + shortTable + "`");
+                }
+            }
+            m.appendTail(sb);
+            rewrittenSql = sb.toString();
 
             if (t.contains(".")) {
                 String patternStrShort = "(?i)\\b(FROM|JOIN)\\s+`?" + Pattern.quote(shortTable) + "`?\\b(\\s+(?:AS\\s+)?([a-zA-Z0-9_]+))?";
@@ -1679,6 +1687,27 @@ public class DataWarehouseService {
             }
         }
         return rewrittenSql;
+    }
+
+    private void swapTriggerTableToFrom(PlainSelect plain, String triggerTable, String baseName, ConnectionDetails sourceConn, String chDb) {
+        if (triggerTable == null || plain == null || plain.getJoins() == null) return;
+        String targetLanding = getClickHouseLandingTable(triggerTable, baseName, sourceConn).toLowerCase();
+        
+        FromItem currentFrom = plain.getFromItem();
+        if (currentFrom != null && currentFrom.toString().toLowerCase().contains(targetLanding)) {
+            return;
+        }
+        
+        for (int i = 0; i < plain.getJoins().size(); i++) {
+            Join j = plain.getJoins().get(i);
+            FromItem right = j.getRightItem();
+            if (right != null && right.toString().toLowerCase().contains(targetLanding)) {
+                j.setRightItem(currentFrom);
+                plain.setFromItem(right);
+                break;
+            }
+        }
+        reorderJoinsByDependency(plain);
     }
 
     /**
@@ -1845,7 +1874,7 @@ public class DataWarehouseService {
             StringBuilder pkFilters = new StringBuilder();
             if (pks != null) {
                 for (String pk : pks) {
-                    pkFilters.append(" AND `").append(pk).append("` IS NOT NULL AND toString(`").append(pk).append("`) != ''");
+                    pkFilters.append(" AND `").append(pk).append("` IS NOT NULL");
                 }
             }
             String existingAlias = getTableAlias(sql, t);
@@ -1908,7 +1937,6 @@ public class DataWarehouseService {
                             conds.append(" AND ");
                         }
                         conds.append(prefix).append("`").append(pk).append("` IS NOT NULL");
-                        conds.append(" AND toString(").append(prefix).append("`").append(pk).append("`) != ''");
                     }
                 }
             }
@@ -2062,41 +2090,42 @@ public class DataWarehouseService {
                 reorderJoinsByDependency(plain);
                 return select.toString();
             }
-            
-            Join newJoin = new Join();
-            newJoin.setRightItem(currentFrom);
-            if (joins != null && !joins.isEmpty() && joins.get(0).getOnExpression() != null) {
-                newJoin.setInner(true);
-                newJoin.setOnExpression(joins.get(0).getOnExpression());
-            } else {
-                newJoin.setCross(true);
-            }
-            
+
+            // Target table becomes the new FROM table
             plain.setFromItem(targetJoin.getRightItem());
-            
+
             List<Join> newJoins = new ArrayList<>();
+
+            // 1. Convert old FROM into a proper INNER JOIN
+            Join fromJoin = new Join();
+            fromJoin.setRightItem(currentFrom);
+            fromJoin.setInner(true);
+            newJoins.add(fromJoin);
+
+            // 2. Add all other joins except targetJoin, preserving type and ON expressions
             if (joins != null) {
                 for (int i = 0; i < joins.size(); i++) {
                     if (i == targetIdx) continue;
                     Join j = joins.get(i);
-                    if (i == 0 && targetJoin.getOnExpression() != null) {
-                        Join jCopy = new Join();
-                        jCopy.setRightItem(j.getRightItem());
-                        jCopy.setInner(true);
-                        jCopy.setOnExpression(targetJoin.getOnExpression());
-                        newJoins.add(jCopy);
-                    } else {
-                        newJoins.add(j);
+                    Join jCopy = new Join();
+                    jCopy.setRightItem(j.getRightItem());
+                    if (j.isLeft()) jCopy.setLeft(true);
+                    else if (j.isRight()) jCopy.setRight(true);
+                    else if (j.isFull()) jCopy.setFull(true);
+                    else if (j.isCross()) jCopy.setCross(true);
+                    else jCopy.setInner(true);
+                    if (j.getOnExpression() != null) {
+                        jCopy.setOnExpression(j.getOnExpression());
                     }
+                    newJoins.add(jCopy);
                 }
             }
-            newJoins.add(newJoin);
+
             plain.setJoins(newJoins);
-            
             reorderJoinsByDependency(plain);
             return select.toString();
         } catch (Exception e) {
-            logger.warn("Failed to rotate query for trigger table " + triggerTable + ": " + e.getMessage());
+            logger.warn("Failed to rotate query for trigger table " + triggerTable + ": " + e.getMessage(), e);
             return sql;
         }
     }
@@ -2274,15 +2303,15 @@ public class DataWarehouseService {
     }
 
     private String mapJdbcTypeToClickHouse(int jdbcType, int precision, int scale, String typeName) {
-        String lowerName = typeName.toLowerCase();
-        if (lowerName.contains("int8") || lowerName.contains("bigint")) return "Int64";
-        if (lowerName.contains("int2") || lowerName.contains("smallint")) return "Int16";
-        if (lowerName.contains("int4") || lowerName.contains("integer") || lowerName.contains("int")) return "Int32";
-        if (lowerName.contains("float") || lowerName.contains("real")) return "Float32";
-        if (lowerName.contains("double") || lowerName.contains("numeric") || lowerName.contains("decimal")) return "Float64";
-        if (lowerName.contains("bool")) return "UInt8";
-        if (lowerName.contains("date")) return "Date";
-        if (lowerName.contains("timestamp") || lowerName.contains("datetime") || lowerName.contains("time")) {
+        String lowerName = typeName != null ? typeName.toLowerCase() : "";
+        if (lowerName.contains("bigserial") || lowerName.contains("serial8") || lowerName.contains("int8") || lowerName.contains("bigint") || jdbcType == java.sql.Types.BIGINT) return "Int64";
+        if (lowerName.contains("smallserial") || lowerName.contains("serial2") || lowerName.contains("int2") || lowerName.contains("smallint") || jdbcType == java.sql.Types.SMALLINT || jdbcType == java.sql.Types.TINYINT) return "Int16";
+        if (lowerName.contains("serial") || lowerName.contains("int4") || lowerName.contains("integer") || lowerName.contains("int") || jdbcType == java.sql.Types.INTEGER) return "Int32";
+        if (lowerName.contains("float") || lowerName.contains("real") || jdbcType == java.sql.Types.FLOAT || jdbcType == java.sql.Types.REAL) return "Float32";
+        if (lowerName.contains("double") || lowerName.contains("numeric") || lowerName.contains("decimal") || jdbcType == java.sql.Types.DOUBLE || jdbcType == java.sql.Types.NUMERIC || jdbcType == java.sql.Types.DECIMAL) return "Float64";
+        if (lowerName.contains("bool") || jdbcType == java.sql.Types.BOOLEAN || jdbcType == java.sql.Types.BIT) return "UInt8";
+        if (lowerName.contains("date") || jdbcType == java.sql.Types.DATE) return "Date";
+        if (lowerName.contains("timestamp") || lowerName.contains("datetime") || lowerName.contains("time") || jdbcType == java.sql.Types.TIMESTAMP || jdbcType == java.sql.Types.TIMESTAMP_WITH_TIMEZONE) {
             return "DateTime64(3, 'Asia/Jakarta')";
         }
         return "String";
