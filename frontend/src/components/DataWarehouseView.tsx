@@ -10,7 +10,7 @@ export const DataWarehouseView: React.FC = () => {
   const { 
     connections, addToast, 
     isDeployingDwh, setIsDeployingDwh, 
-    deployLogs, setDeployLogs, addDeployLog 
+    deployLogs, setDeployLogs, addDeployLog, clearDeployLogs
   } = useAppStore();
   
   const [sourceConnId, setSourceConnId] = useState('');
