@@ -3611,6 +3611,52 @@ public class DataWarehouseService {
         return droppedSlots;
     }
 
+    @Scheduled(initialDelay = 15000, fixedDelay = 60000)
+    public void autoReconnectDebeziumTunnels() {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> allConnectors = restTemplate.getForObject(
+                DEBEZIUM_URL + "?expand=info&expand=status", Map.class);
+                
+            if (allConnectors == null) return;
+            
+            for (Map.Entry<String, Object> entry : allConnectors.entrySet()) {
+                String connName = entry.getKey();
+                if (connName.startsWith("source-") && connName.endsWith("-shared")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> wrapper = (Map<String, Object>) entry.getValue();
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> info = (Map<String, Object>) wrapper.get("info");
+                    if (info == null) continue;
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> cfg = (Map<String, Object>) info.get("config");
+                    if (cfg == null) continue;
+                    
+                    String dbHostname = (String) cfg.get("database.hostname");
+                    String dbPortStr = (String) cfg.get("database.port");
+                    if ("backend".equals(dbHostname) && dbPortStr != null) {
+                        int assignedPort = Integer.parseInt(dbPortStr);
+                        // Extract baseName from source-{baseName}-shared
+                        String baseName = connName.substring(7, connName.length() - 7);
+                        for (ConnectionDetails details : connectionManagerService.getAllConnections()) {
+                            if (details.isUseSsh()) {
+                                String cBase = (details.getName() != null ? details.getName() : "").replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                                if (cBase.equals(baseName)) {
+                                    String connId = String.valueOf(details.getId());
+                                    // Enrich connection to get passwords which might not be fully populated in getAllConnections
+                                    ConnectionDetails enriched = enrichConnection(details);
+                                    sshTunnelService.registerAndRecoverTunnel(connId, enriched, assignedPort);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.debug("autoReconnectDebeziumTunnels skipped or failed: {}", e.getMessage());
+        }
+    }
+
     private ConnectionDetails enrichConnection(ConnectionDetails conn) {
         if (conn == null) return null;
         if (conn.getId() != null && !conn.getId().trim().isEmpty()) {

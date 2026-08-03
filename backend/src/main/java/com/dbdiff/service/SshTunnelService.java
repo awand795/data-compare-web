@@ -21,8 +21,26 @@ public class SshTunnelService implements DisposableBean {
 
     private final Map<String, Session> activeSessions = new ConcurrentHashMap<>();
     private final Map<String, Integer> localPorts = new ConcurrentHashMap<>();
+    private final Map<String, ConnectionDetails> connectionDetailsMap = new ConcurrentHashMap<>();
     private final java.util.Set<String> permanentTunnels = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final ReentrantLock lock = new ReentrantLock();
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 30000)
+    public void checkAndReconnectTunnels() {
+        for (String connId : permanentTunnels) {
+            if (!isTunnelHealthy(connId)) {
+                logger.warn("Permanent tunnel {} is dead or unresponsive! Attempting to auto-reconnect...", connId);
+                ConnectionDetails details = connectionDetailsMap.get(connId);
+                if (details != null) {
+                    try {
+                        getOrOpenTunnel(details, connId);
+                    } catch (Exception e) {
+                        logger.error("Failed to auto-reconnect tunnel {}: {}", connId, e.getMessage());
+                    }
+                }
+            }
+        }
+    }
 
     public int getOrOpenTunnel(ConnectionDetails details, String connId) throws Exception {
         if (!details.isUseSsh()) {
@@ -69,10 +87,12 @@ public class SshTunnelService implements DisposableBean {
             logger.info("Opening SSH tunnel to {}@{}:{}", details.getSshUsername(), details.getSshHost(), sshPort);
             session.connect(60000);  // naik dari 30s → 60s untuk koneksi lambat
 
-            int assignedLocalPort = session.setPortForwardingL("0.0.0.0", 0, details.getHost(), details.getPort());
+            int portToUse = localPorts.containsKey(connId) ? localPorts.get(connId) : 0;
+            int assignedLocalPort = session.setPortForwardingL("0.0.0.0", portToUse, details.getHost(), details.getPort());
             
             activeSessions.put(connId, session);
             localPorts.put(connId, assignedLocalPort);
+            connectionDetailsMap.put(connId, details);
 
             logger.info("SSH tunnel established: localhost:{} → {}:{} via {}@{}",
                 assignedLocalPort, details.getHost(), details.getPort(), details.getSshUsername(), details.getSshHost());
@@ -114,6 +134,20 @@ public class SshTunnelService implements DisposableBean {
     public void markTunnelAsPermanent(String connectionId) {
         if (connectionId != null) {
             permanentTunnels.add(connectionId);
+        }
+    }
+
+    public void registerAndRecoverTunnel(String connectionId, ConnectionDetails details, int expectedPort) {
+        if (connectionId == null || details == null) return;
+        lock.lock();
+        try {
+            permanentTunnels.add(connectionId);
+            connectionDetailsMap.put(connectionId, details);
+            if (!localPorts.containsKey(connectionId)) {
+                localPorts.put(connectionId, expectedPort);
+            }
+        } finally {
+            lock.unlock();
         }
     }
 
