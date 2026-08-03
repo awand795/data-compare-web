@@ -887,6 +887,7 @@ public class DataWarehouseService {
             if (request.getSourceConnection().isUseSsh()) {
                 try {
                     int tunnelPort = sshTunnelService.getOrOpenTunnel(request.getSourceConnection(), String.valueOf(request.getSourceConnection().getId()));
+                    sshTunnelService.markTunnelAsPermanent(String.valueOf(request.getSourceConnection().getId()));
                     dbHost = "backend";
                     dbPort = String.valueOf(tunnelPort);
                     sendLog(emitter, "Source connection uses SSH tunnel. Routing Debezium through backend:" + tunnelPort);

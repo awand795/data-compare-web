@@ -21,6 +21,7 @@ public class SshTunnelService implements DisposableBean {
 
     private final Map<String, Session> activeSessions = new ConcurrentHashMap<>();
     private final Map<String, Integer> localPorts = new ConcurrentHashMap<>();
+    private final java.util.Set<String> permanentTunnels = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final ReentrantLock lock = new ReentrantLock();
 
     public int getOrOpenTunnel(ConnectionDetails details, String connId) throws Exception {
@@ -110,8 +111,18 @@ public class SshTunnelService implements DisposableBean {
         }
     }
 
+    public void markTunnelAsPermanent(String connectionId) {
+        if (connectionId != null) {
+            permanentTunnels.add(connectionId);
+        }
+    }
+
     public void closeTunnel(String connectionId) {
         if (connectionId == null) return;
+        if (permanentTunnels.contains(connectionId)) {
+            logger.info("Ignoring close request for permanent SSH tunnel: {}", connectionId);
+            return;
+        }
         lock.lock();
         try {
             closeTunnelInternal(connectionId);
