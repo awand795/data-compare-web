@@ -915,8 +915,8 @@ export const PipelineMonitor: React.FC = () => {
 
       {slotsModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-bg-panel w-full max-w-4xl rounded-xl shadow-2xl flex flex-col border border-border-main max-h-[85vh]">
-            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-amber-500/10">
+          <div className="bg-bg-panel w-full max-w-4xl rounded-xl shadow-2xl flex flex-col border border-border-main max-h-[90vh] overflow-hidden">
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-amber-500/10 shrink-0">
               <h3 className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-2">
                 <Database className="w-5 h-5" /> PostgreSQL Replication Slots (WAL Cleanup)
               </h3>
@@ -924,7 +924,7 @@ export const PipelineMonitor: React.FC = () => {
             </div>
 
             <div className="p-4 flex flex-col flex-1 min-h-0 overflow-y-auto space-y-4">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs leading-relaxed flex items-start gap-2">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs leading-relaxed flex items-start gap-2 shrink-0">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                 <div>
                   <strong className="font-bold text-amber-800 dark:text-amber-300">Replication Slot & WAL Management:</strong>
@@ -934,7 +934,7 @@ export const PipelineMonitor: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between shrink-0">
                 <span className="text-xs font-bold text-text-muted uppercase tracking-wider">
                   Total Slots Detected: {replicationSlots.length}
                 </span>
@@ -957,20 +957,20 @@ export const PipelineMonitor: React.FC = () => {
                 </div>
               </div>
 
-              <div className="border border-border-main rounded-lg overflow-hidden bg-bg-main flex-1 min-h-[200px]">
+              <div className="border border-border-main rounded-lg overflow-hidden bg-bg-main flex-1 flex flex-col min-h-[200px]">
                 {isLoadingSlots ? (
-                  <div className="p-8 text-center text-text-muted text-xs flex items-center justify-center gap-2">
+                  <div className="p-8 text-center text-text-muted text-xs flex items-center justify-center gap-2 flex-1">
                     <Activity className="w-4 h-4 animate-spin text-amber-500 dark:text-amber-400" /> Scanning PostgreSQL replication slots...
                   </div>
                 ) : replicationSlots.length === 0 ? (
-                  <div className="p-8 text-center text-text-muted text-xs italic">
+                  <div className="p-8 text-center text-text-muted text-xs italic flex-1">
                     Tidak ada replication slot yang ditemukan pada koneksi PostgreSQL.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="overflow-auto flex-1">
                     <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-bg-header/80 text-text-muted border-b border-border-main font-semibold uppercase text-[10px]">
+                      <thead className="sticky top-0 z-10 bg-bg-header/90 backdrop-blur-sm">
+                        <tr className="text-text-muted border-b border-border-main font-semibold uppercase text-[10px]">
                           <th className="py-2.5 px-3">Connection</th>
                           <th className="py-2.5 px-3">Slot Name</th>
                           <th className="py-2.5 px-3">Plugin</th>
@@ -1023,7 +1023,7 @@ export const PipelineMonitor: React.FC = () => {
               </div>
             </div>
 
-            <div className="px-5 py-3 border-t border-border-main flex justify-end bg-bg-header/50">
+            <div className="px-5 py-3 border-t border-border-main flex justify-end bg-bg-header/50 shrink-0">
               <button
                 onClick={() => setSlotsModalOpen(false)}
                 className="px-4 py-1.5 rounded-lg text-xs font-bold bg-bg-header hover:bg-bg-main border border-border-main text-text-main"
