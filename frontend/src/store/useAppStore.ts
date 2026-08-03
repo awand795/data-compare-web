@@ -279,6 +279,13 @@ type AppState = {
 
   // Notification Channels
 
+  isDeployingDwh: boolean;
+  setIsDeployingDwh: (isDeploying: boolean) => void;
+  deployLogs: string[];
+  setDeployLogs: (logs: string[]) => void;
+  addDeployLog: (log: string) => void;
+  clearDeployLogs: () => void;
+
   notificationChannels: NotificationChannel[];
   setNotificationChannels: (channels: NotificationChannel[]) => void;
   addNotificationChannel: (channel: NotificationChannel) => void;
@@ -559,6 +566,12 @@ export const useAppStore = create<AppState>()(
   workspaceResetTrigger: 0,
   triggerWorkspaceReset: () => set(state => ({ workspaceResetTrigger: state.workspaceResetTrigger + 1 })),
 
+  isDeployingDwh: false,
+  setIsDeployingDwh: (isDeploying) => set({ isDeployingDwh: isDeploying }),
+  deployLogs: [],
+  setDeployLogs: (logs) => set({ deployLogs: logs }),
+  addDeployLog: (log) => set((state) => ({ deployLogs: [...state.deployLogs, log] })),
+  clearDeployLogs: () => set({ deployLogs: [] }),
 
   notificationChannels: [],
   setNotificationChannels: (channels) => set({ notificationChannels: channels }),

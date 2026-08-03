@@ -7,7 +7,12 @@ import clsx from 'clsx';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 
 export const DataWarehouseView: React.FC = () => {
-  const { connections, addToast } = useAppStore();
+  const { 
+    connections, addToast, 
+    isDeployingDwh, setIsDeployingDwh, 
+    deployLogs, setDeployLogs, addDeployLog 
+  } = useAppStore();
+  
   const [sourceConnId, setSourceConnId] = useState('');
   const [sourceConnIds, setSourceConnIds] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -16,8 +21,6 @@ export const DataWarehouseView: React.FC = () => {
   const [targetTable, setTargetTable] = useState('');
   const [targetDatabase, setTargetDatabase] = useState('');
   const [primaryKeys, setPrimaryKeys] = useState('');
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'console' | 'monitor'>('monitor');
 
   const toggleSourceConn = (id: string) => {
@@ -37,9 +40,9 @@ export const DataWarehouseView: React.FC = () => {
       return;
     }
     
-    setIsDeploying(true);
+    setIsDeployingDwh(true);
     setActiveTab('console');
-    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Initializing Data Warehouse pipeline...`]);
+    setDeployLogs([`[${new Date().toLocaleTimeString()}] Initializing Data Warehouse pipeline...`]);
     
     try {
       const targetConn = connections.find(c => c.id === targetConnId);
@@ -76,7 +79,7 @@ export const DataWarehouseView: React.FC = () => {
             if (line.startsWith('data:')) {
               const logMsg = line.substring(5).trim();
               if (logMsg) {
-                setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${logMsg}`]);
+                addDeployLog(`[${new Date().toLocaleTimeString()}] ${logMsg}`);
                 if (logMsg.startsWith('ERROR:')) {
                   throw new Error(logMsg.substring(6).trim());
                 }
@@ -88,10 +91,10 @@ export const DataWarehouseView: React.FC = () => {
 
       addToast({ type: 'success', title: 'Deployed Successfully', message: 'Data Warehouse pipeline is now active.' });
     } catch (error: any) {
-      setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Deployment failed: ${error.message}`]);
+      addDeployLog(`[${new Date().toLocaleTimeString()}] Deployment failed: ${error.message}`);
       addToast({ type: 'error', title: 'Deployment Failed', message: error.message || 'An error occurred' });
     } finally {
-      setIsDeploying(false);
+      setIsDeployingDwh(false);
     }
   };
 
@@ -109,12 +112,12 @@ export const DataWarehouseView: React.FC = () => {
         </div>
         <button
           onClick={handleDeploy}
-          disabled={isDeploying || (sourceConnIds.length === 0 && !sourceConnId) || !targetConnId || !targetTable}
+          disabled={isDeployingDwh || (sourceConnIds.length === 0 && !sourceConnId) || !targetConnId || !targetTable}
           className="group relative overflow-hidden px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg text-[13px] font-bold disabled:opacity-50 transition-all flex items-center gap-1.5 shadow-md shadow-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/50 hover:-translate-y-0.5 active:translate-y-0 duration-300 whitespace-nowrap"
         >
           <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          {isDeploying ? <Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" /> : <Play className="w-3.5 h-3.5 fill-current relative z-10" />}
-          <span className="relative z-10">{isDeploying ? 'Deploying Pipeline...' : 'Deploy Pipeline'}</span>
+          {isDeployingDwh ? <Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" /> : <Play className="w-3.5 h-3.5 fill-current relative z-10" />}
+          <span className="relative z-10">{isDeployingDwh ? 'Deploying Pipeline...' : 'Deploy Pipeline'}</span>
         </button>
       </div>
 
@@ -291,9 +294,9 @@ export const DataWarehouseView: React.FC = () => {
                 ) : (
                   <div className="h-full flex flex-col">
                     <div className="flex justify-end px-4 py-2 border-b border-border-main/50">
-                      {logs.length > 0 && (
+                      {deployLogs.length > 0 && (
                         <button 
-                          onClick={() => setLogs([])}
+                          onClick={() => clearDeployLogs()}
                           className="text-[10px] uppercase font-bold text-text-muted hover:text-indigo-500 transition-colors px-2 py-1 rounded hover:bg-indigo-500/10"
                         >
                           Clear Logs
@@ -301,13 +304,13 @@ export const DataWarehouseView: React.FC = () => {
                       )}
                     </div>
                     <div className="flex-1 p-4 overflow-y-auto font-mono text-[12px] leading-relaxed flex flex-col gap-2 no-scrollbar">
-                      {logs.length === 0 ? (
+                      {deployLogs.length === 0 ? (
                         <div className="text-text-muted/40 h-full flex flex-col items-center justify-center gap-3">
                           <Server className="w-12 h-12 stroke-[1]" />
                           <span className="italic">Deployment logs will stream here</span>
                         </div>
                       ) : (
-                        logs.map((log, idx) => (
+                        deployLogs.map((log, idx) => (
                           <div key={idx} className={clsx(
                             "break-words animate-in slide-in-from-bottom-2 duration-300 py-1 border-b border-border-main/30 last:border-0",
                             log.includes('successfully') || log.includes('active') ? "text-emerald-500" :
@@ -318,7 +321,7 @@ export const DataWarehouseView: React.FC = () => {
                           </div>
                         ))
                       )}
-                      {isDeploying && (
+                      {isDeployingDwh && (
                         <div className="text-indigo-500 flex items-center gap-2 mt-2 py-1 animate-pulse">
                           <span className="opacity-50 text-[10px]">►</span> <span className="flex items-center gap-1">Processing <span className="flex gap-0.5"><span className="animate-bounce">.</span><span className="animate-bounce delay-75">.</span><span className="animate-bounce delay-150">.</span></span></span>
                         </div>
