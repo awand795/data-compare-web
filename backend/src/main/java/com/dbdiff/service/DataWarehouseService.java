@@ -2585,15 +2585,8 @@ public class DataWarehouseService {
                                 
                                 stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + targetTable + "`");
                                 
-                                if (!"default".equalsIgnoreCase(db)) {
-                                    try (java.sql.ResultSet rsTb = stmt.executeQuery(
-                                            "SELECT count(*) FROM system.tables WHERE database = '" + db + "'")) {
-                                        if (rsTb.next() && rsTb.getInt(1) == 0) {
-                                            stmt.execute("DROP DATABASE IF EXISTS `" + db + "`");
-                                            logger.info("Database `" + db + "` is empty and has been dropped.");
-                                        }
-                                    }
-                                }
+                                // Tidak lagi men-drop database meskipun kosong, sesuai request:
+                                // "jangan drop database, hanya tabel jika sudah tidak ada pipeline lain yang pakai lagi"
                             }
                         }
                     } catch (Exception e) {
