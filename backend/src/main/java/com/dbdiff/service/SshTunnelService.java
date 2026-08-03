@@ -27,6 +27,14 @@ public class SshTunnelService implements DisposableBean {
 
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 30000)
     public void checkAndReconnectTunnels() {
+        java.time.LocalTime now = java.time.LocalTime.now(java.time.ZoneId.of("Asia/Jakarta"));
+        java.time.LocalTime startPause = java.time.LocalTime.of(21, 0);
+        java.time.LocalTime endPause = java.time.LocalTime.of(7, 30);
+        
+        if (now.isAfter(startPause) || now.isBefore(endPause)) {
+            return; // Jangan lakukan pengecekan dari jam 21:00 sampai 07:30 pagi
+        }
+
         for (String connId : permanentTunnels) {
             if (!isTunnelHealthy(connId)) {
                 logger.warn("Permanent tunnel {} is dead or unresponsive! Attempting to auto-reconnect...", connId);

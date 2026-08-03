@@ -3613,6 +3613,14 @@ public class DataWarehouseService {
 
     @Scheduled(initialDelay = 15000, fixedDelay = 60000)
     public void autoReconnectDebeziumTunnels() {
+        java.time.LocalTime now = java.time.LocalTime.now(java.time.ZoneId.of("Asia/Jakarta"));
+        java.time.LocalTime startPause = java.time.LocalTime.of(21, 0);
+        java.time.LocalTime endPause = java.time.LocalTime.of(7, 30);
+        
+        if (now.isAfter(startPause) || now.isBefore(endPause)) {
+            return; // Jangan lakukan auto-reconnect dari jam 21:00 sampai 07:30 pagi
+        }
+
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> allConnectors = restTemplate.getForObject(
@@ -3638,7 +3646,7 @@ public class DataWarehouseService {
                         int assignedPort = Integer.parseInt(dbPortStr);
                         // Extract baseName from source-{baseName}-shared
                         String baseName = connName.substring(7, connName.length() - 7);
-                        for (ConnectionDetails details : connectionManagerService.getAllConnections()) {
+                        for (ConnectionDetails details : connectionRepository.findAll()) {
                             if (details.isUseSsh()) {
                                 String cBase = (details.getName() != null ? details.getName() : "").replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
                                 if (cBase.equals(baseName)) {
