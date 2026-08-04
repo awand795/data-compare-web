@@ -21,7 +21,7 @@ else
 fi
 
 echo ""
-echo "2. Membersihkan dangling/unused images (<none>)..."
+echo "2. Membersihkan dangling/unused images (<none> saja, image bernama/tagged seperti metabase/metabase TIDAK AKAN terhapus)..."
 docker image prune -f
 
 echo ""
