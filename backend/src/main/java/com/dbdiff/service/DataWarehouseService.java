@@ -3608,64 +3608,9 @@ public class DataWarehouseService {
         return droppedSlots;
     }
 
-    @Scheduled(initialDelay = 15000, fixedDelay = 60000)
+    // Auto-reconnect disabled by user request
     public void autoReconnectDebeziumTunnels() {
-        java.time.LocalTime now = java.time.LocalTime.now(java.time.ZoneId.of("Asia/Jakarta"));
-        java.time.LocalTime startPause = java.time.LocalTime.of(21, 0);
-        java.time.LocalTime endPause = java.time.LocalTime.of(7, 30);
-        
-        if (now.isAfter(startPause) || now.isBefore(endPause)) {
-            return; // Jangan lakukan auto-reconnect dari jam 21:00 sampai 07:30 pagi
-        }
-
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> allConnectors = restTemplate.getForObject(
-                DEBEZIUM_URL + "?expand=info&expand=status", Map.class);
-                
-            if (allConnectors == null) return;
-            
-            for (Map.Entry<String, Object> entry : allConnectors.entrySet()) {
-                String connName = entry.getKey();
-                if (connName.startsWith("source-") && connName.endsWith("-shared")) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> wrapper = (Map<String, Object>) entry.getValue();
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> info = (Map<String, Object>) wrapper.get("info");
-                    if (info == null) continue;
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> cfg = (Map<String, Object>) info.get("config");
-                    if (cfg == null) continue;
-                    
-                    String dbHostname = (String) cfg.get("database.hostname");
-                    String dbPortStr = (String) cfg.get("database.port");
-                    if (("backend".equals(dbHostname) || "tasks.backend".equals(dbHostname) || "172.21.0.1".equals(dbHostname)) && dbPortStr != null) {
-                        int assignedPort = Integer.parseInt(dbPortStr);
-                        // Extract baseName from source-{baseName}-shared
-                        String baseName = connName.substring(7, connName.length() - 7);
-                        for (ConnectionDetails details : connectionRepository.findAll()) {
-                            if (details.isUseSsh()) {
-                                String cBase = (details.getName() != null ? details.getName() : "").replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
-                                if (cBase.equals(baseName)) {
-                                    String connId = String.valueOf(details.getId());
-                                    // Enrich connection to get passwords which might not be fully populated in getAllConnections
-                                    ConnectionDetails enriched = enrichConnection(details);
-                                    sshTunnelService.registerAndRecoverTunnel(connId, enriched, assignedPort);
-                                    try {
-                                        sshTunnelService.getOrOpenTunnel(enriched, connId);
-                                        logger.info("Auto-recovered SSH tunnel for connection {} on port {}", connId, assignedPort);
-                                    } catch (Exception ex) {
-                                        logger.error("Failed to auto-open SSH tunnel for connection {}: {}", connId, ex.getMessage());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            logger.debug("autoReconnectDebeziumTunnels skipped or failed: {}", e.getMessage());
-        }
+        // Disabled
     }
 
     private ConnectionDetails enrichConnection(ConnectionDetails conn) {

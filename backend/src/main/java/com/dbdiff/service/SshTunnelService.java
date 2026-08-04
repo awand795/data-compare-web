@@ -29,34 +29,9 @@ public class SshTunnelService implements DisposableBean {
         return connectionLocks.computeIfAbsent(connId, k -> new ReentrantLock());
     }
 
-    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 30000)
+    // Auto-reconnect disabled by user request
     public void checkAndReconnectTunnels() {
-        java.time.LocalTime now = java.time.LocalTime.now(java.time.ZoneId.of("Asia/Jakarta"));
-        java.time.LocalTime startPause = java.time.LocalTime.of(21, 0);
-        java.time.LocalTime endPause = java.time.LocalTime.of(7, 30);
-        
-        if (now.isAfter(startPause) || now.isBefore(endPause)) {
-            return; // Jangan lakukan pengecekan dari jam 21:00 sampai 07:30 pagi
-        }
-
-        for (String connId : permanentTunnels) {
-            if (!isTunnelHealthy(connId)) {
-                ReentrantLock connLock = getLock(connId);
-                if (connLock.tryLock()) {
-                    try {
-                        logger.warn("Permanent tunnel {} is dead or unresponsive! Attempting to auto-reconnect...", connId);
-                        ConnectionDetails details = connectionDetailsMap.get(connId);
-                        if (details != null) {
-                            getOrOpenTunnelInternal(details, connId);
-                        }
-                    } catch (Exception e) {
-                        logger.error("Failed to auto-reconnect tunnel {}: {}", connId, e.getMessage());
-                    } finally {
-                        connLock.unlock();
-                    }
-                }
-            }
-        }
+        // Disabled
     }
 
     public int getOrOpenTunnel(ConnectionDetails details, String connId) throws Exception {
