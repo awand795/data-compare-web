@@ -97,7 +97,7 @@ export const ApiBuilderView: React.FC = () => {
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   
   // Display & Filtering States
-  const [displayMode, setDisplayMode] = useState<'grid' | 'table'>('grid');
+  const [displayMode, setDisplayMode] = useState<'grid' | 'table'>('table');
   const [searchQuery, setSearchQuery] = useState('');
   const [methodFilter, setMethodFilter] = useState<string>('ALL');
   const [securityFilter, setSecurityFilter] = useState<string>('ALL');
