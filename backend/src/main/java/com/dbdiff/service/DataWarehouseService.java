@@ -888,9 +888,9 @@ public class DataWarehouseService {
                 try {
                     int tunnelPort = sshTunnelService.getOrOpenTunnel(request.getSourceConnection(), String.valueOf(request.getSourceConnection().getId()));
                     sshTunnelService.markTunnelAsPermanent(String.valueOf(request.getSourceConnection().getId()));
-                    dbHost = "backend";
+                    dbHost = "tasks.backend";
                     dbPort = String.valueOf(tunnelPort);
-                    sendLog(emitter, "Source connection uses SSH tunnel. Routing Debezium through backend:" + tunnelPort);
+                    sendLog(emitter, "Source connection uses SSH tunnel. Routing Debezium through tasks.backend:" + tunnelPort);
                 } catch (Exception ex) {
                     logger.error("Failed to establish SSH tunnel for Debezium source connector", ex);
                     sendLog(emitter, "WARNING: Failed to open SSH tunnel for Debezium: " + ex.getMessage());
@@ -3635,7 +3635,7 @@ public class DataWarehouseService {
                     
                     String dbHostname = (String) cfg.get("database.hostname");
                     String dbPortStr = (String) cfg.get("database.port");
-                    if ("backend".equals(dbHostname) && dbPortStr != null) {
+                    if (("backend".equals(dbHostname) || "tasks.backend".equals(dbHostname) || "172.21.0.1".equals(dbHostname)) && dbPortStr != null) {
                         int assignedPort = Integer.parseInt(dbPortStr);
                         // Extract baseName from source-{baseName}-shared
                         String baseName = connName.substring(7, connName.length() - 7);
@@ -3647,6 +3647,12 @@ public class DataWarehouseService {
                                     // Enrich connection to get passwords which might not be fully populated in getAllConnections
                                     ConnectionDetails enriched = enrichConnection(details);
                                     sshTunnelService.registerAndRecoverTunnel(connId, enriched, assignedPort);
+                                    try {
+                                        sshTunnelService.getOrOpenTunnel(enriched, connId);
+                                        logger.info("Auto-recovered SSH tunnel for connection {} on port {}", connId, assignedPort);
+                                    } catch (Exception ex) {
+                                        logger.error("Failed to auto-open SSH tunnel for connection {}: {}", connId, ex.getMessage());
+                                    }
                                 }
                             }
                         }
@@ -3700,6 +3706,18 @@ public class DataWarehouseService {
                         }
                         if (conn.getSshUsername() == null || conn.getSshUsername().trim().isEmpty()) {
                             conn.setSshUsername(stored.getSshUsername());
+                        }
+                        if (conn.getSshAuthMode() == null || conn.getSshAuthMode().trim().isEmpty()) {
+                            conn.setSshAuthMode(stored.getSshAuthMode());
+                        }
+                        if (conn.getSshKeyFile() == null || conn.getSshKeyFile().trim().isEmpty()) {
+                            conn.setSshKeyFile(stored.getSshKeyFile());
+                        }
+                        if (conn.getSshPassphrase() == null || conn.getSshPassphrase().trim().isEmpty()) {
+                            conn.setSshPassphrase(stored.getSshPassphrase());
+                        }
+                        if (conn.getSshPort() == null || conn.getSshPort() <= 0) {
+                            conn.setSshPort(stored.getSshPort());
                         }
                     }
                 }
