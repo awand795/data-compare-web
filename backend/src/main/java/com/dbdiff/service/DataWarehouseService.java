@@ -3622,9 +3622,55 @@ public class DataWarehouseService {
         return droppedSlots;
     }
 
-    // Auto-reconnect disabled by user request
-    public void autoReconnectDebeziumTunnels() {
-        // Disabled
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void initDebeziumTunnelsOnStartup() {
+        logger.info("Initializing Debezium SSH tunnels once on application startup...");
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> allConnectors = restTemplate.getForObject(
+                DEBEZIUM_URL + "?expand=info&expand=status", Map.class);
+                
+            if (allConnectors == null) return;
+            
+            for (Map.Entry<String, Object> entry : allConnectors.entrySet()) {
+                String connName = entry.getKey();
+                if (connName.startsWith("source-") && connName.endsWith("-shared")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> wrapper = (Map<String, Object>) entry.getValue();
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> info = (Map<String, Object>) wrapper.get("info");
+                    if (info == null) continue;
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> cfg = (Map<String, Object>) info.get("config");
+                    if (cfg == null) continue;
+                    
+                    String dbHostname = (String) cfg.get("database.hostname");
+                    String dbPortStr = (String) cfg.get("database.port");
+                    if (("backend".equals(dbHostname) || "tasks.backend".equals(dbHostname) || "172.21.0.1".equals(dbHostname)) && dbPortStr != null) {
+                        int assignedPort = Integer.parseInt(dbPortStr);
+                        String baseName = connName.substring(7, connName.length() - 7);
+                        for (ConnectionDetails details : connectionRepository.findAll()) {
+                            if (details.isUseSsh()) {
+                                String cBase = (details.getName() != null ? details.getName() : "").replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                                if (cBase.equals(baseName)) {
+                                    String connId = String.valueOf(details.getId());
+                                    ConnectionDetails enriched = enrichConnection(details);
+                                    sshTunnelService.registerAndRecoverTunnel(connId, enriched, assignedPort);
+                                    try {
+                                        sshTunnelService.getOrOpenTunnel(enriched, connId);
+                                        logger.info("Startup initialized SSH tunnel for connection {} on port {}", connId, assignedPort);
+                                    } catch (Exception ex) {
+                                        logger.error("Failed to startup-open SSH tunnel for connection {}: {}", connId, ex.getMessage());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.debug("initDebeziumTunnelsOnStartup skipped or failed: {}", e.getMessage());
+        }
     }
 
     private ConnectionDetails enrichConnection(ConnectionDetails conn) {
