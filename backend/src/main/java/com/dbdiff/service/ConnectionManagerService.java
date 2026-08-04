@@ -272,9 +272,8 @@ public class ConnectionManagerService {
         // Fail fast during initialization so we can see the actual connection error!
         config.setInitializationFailTimeout(1);
 
-        // Frontend sends timeout in seconds, HikariCP expects milliseconds.
-        // Dihitung di sini agar bisa dipakai juga sebagai driver-level connect/login timeout per tipe DB.
-        int timeoutMs = details.getConnectionTimeout() != null ? details.getConnectionTimeout() * 1000 : 60000;
+        // Maximum 5-second connection timeout to ensure UI fails fast on offline databases
+        int timeoutMs = details.getConnectionTimeout() != null ? Math.min(details.getConnectionTimeout() * 1000, 5000) : 5000;
         if (timeoutMs < 250) timeoutMs = 250;
 
         switch (details.getType().toLowerCase()) {
