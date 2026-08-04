@@ -2340,27 +2340,31 @@ public class DataWarehouseService {
         String groupId = "connect-" + connectorName;
         Properties props = new Properties();
         props.put("bootstrap.servers", "kafka:9092");
+        props.put("request.timeout.ms", "2000");
+        props.put("default.api.timeout.ms", "2000");
         try (AdminClient admin = AdminClient.create(props)) {
-            java.util.Map<TopicPartition, OffsetAndMetadata> groupOffsets = admin.listConsumerGroupOffsets(groupId).partitionsToOffsetAndMetadata().get();
-            if (groupOffsets.isEmpty()) return null;
+            java.util.Map<TopicPartition, OffsetAndMetadata> groupOffsets = admin.listConsumerGroupOffsets(groupId).partitionsToOffsetAndMetadata().get(2, java.util.concurrent.TimeUnit.SECONDS);
+            if (groupOffsets == null || groupOffsets.isEmpty()) return null;
             
             java.util.Map<TopicPartition, OffsetSpec> requestOffsets = new HashMap<>();
             for (TopicPartition tp : groupOffsets.keySet()) {
                 requestOffsets.put(tp, OffsetSpec.latest());
             }
-            java.util.Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> endOffsets = admin.listOffsets(requestOffsets).all().get();
+            java.util.Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> endOffsets = admin.listOffsets(requestOffsets).all().get(2, java.util.concurrent.TimeUnit.SECONDS);
             
             long totalLag = 0;
             for (TopicPartition tp : groupOffsets.keySet()) {
-                long currentOffset = groupOffsets.get(tp).offset();
-                long endOffset = endOffsets.get(tp).offset();
-                if (endOffset > currentOffset) {
-                    totalLag += (endOffset - currentOffset);
+                if (groupOffsets.get(tp) != null && endOffsets.get(tp) != null) {
+                    long currentOffset = groupOffsets.get(tp).offset();
+                    long endOffset = endOffsets.get(tp).offset();
+                    if (endOffset > currentOffset) {
+                        totalLag += (endOffset - currentOffset);
+                    }
                 }
             }
             return totalLag;
         } catch (Exception e) {
-            logger.warn("Could not fetch lag for " + connectorName + ": " + e.getMessage());
+            logger.debug("Could not fetch lag for {}: {}", connectorName, e.getMessage());
             return null;
         }
     }
