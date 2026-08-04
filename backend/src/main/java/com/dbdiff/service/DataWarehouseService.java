@@ -2335,14 +2335,24 @@ public class DataWarehouseService {
         return "String";
     }
 
+    private volatile AdminClient sharedKafkaAdminClient = null;
+
+    private synchronized AdminClient getSharedKafkaAdminClient() {
+        if (sharedKafkaAdminClient == null) {
+            Properties props = new Properties();
+            props.put("bootstrap.servers", "kafka:9092");
+            props.put("request.timeout.ms", "2000");
+            props.put("default.api.timeout.ms", "2000");
+            sharedKafkaAdminClient = AdminClient.create(props);
+        }
+        return sharedKafkaAdminClient;
+    }
+
     private Long getConnectorLag(String connectorName) {
         if (!connectorName.startsWith("sink-")) return null;
         String groupId = "connect-" + connectorName;
-        Properties props = new Properties();
-        props.put("bootstrap.servers", "kafka:9092");
-        props.put("request.timeout.ms", "2000");
-        props.put("default.api.timeout.ms", "2000");
-        try (AdminClient admin = AdminClient.create(props)) {
+        try {
+            AdminClient admin = getSharedKafkaAdminClient();
             java.util.Map<TopicPartition, OffsetAndMetadata> groupOffsets = admin.listConsumerGroupOffsets(groupId).partitionsToOffsetAndMetadata().get(2, java.util.concurrent.TimeUnit.SECONDS);
             if (groupOffsets == null || groupOffsets.isEmpty()) return null;
             
@@ -2365,6 +2375,10 @@ public class DataWarehouseService {
             return totalLag;
         } catch (Exception e) {
             logger.debug("Could not fetch lag for {}: {}", connectorName, e.getMessage());
+            if (sharedKafkaAdminClient != null) {
+                try { sharedKafkaAdminClient.close(); } catch (Exception ignored) {}
+                sharedKafkaAdminClient = null;
+            }
             return null;
         }
     }
