@@ -23,7 +23,11 @@ public class SshTunnelService implements DisposableBean {
     private final Map<String, Integer> localPorts = new ConcurrentHashMap<>();
     private final Map<String, ConnectionDetails> connectionDetailsMap = new ConcurrentHashMap<>();
     private final java.util.Set<String> permanentTunnels = java.util.concurrent.ConcurrentHashMap.newKeySet();
-    private final ReentrantLock lock = new ReentrantLock();
+    private final Map<String, ReentrantLock> connectionLocks = new ConcurrentHashMap<>();
+
+    private ReentrantLock getLock(String connId) {
+        return connectionLocks.computeIfAbsent(connId, k -> new ReentrantLock());
+    }
 
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 30000)
     public void checkAndReconnectTunnels() {
@@ -37,13 +41,18 @@ public class SshTunnelService implements DisposableBean {
 
         for (String connId : permanentTunnels) {
             if (!isTunnelHealthy(connId)) {
-                logger.warn("Permanent tunnel {} is dead or unresponsive! Attempting to auto-reconnect...", connId);
-                ConnectionDetails details = connectionDetailsMap.get(connId);
-                if (details != null) {
+                ReentrantLock connLock = getLock(connId);
+                if (connLock.tryLock()) {
                     try {
-                        getOrOpenTunnel(details, connId);
+                        logger.warn("Permanent tunnel {} is dead or unresponsive! Attempting to auto-reconnect...", connId);
+                        ConnectionDetails details = connectionDetailsMap.get(connId);
+                        if (details != null) {
+                            getOrOpenTunnelInternal(details, connId);
+                        }
                     } catch (Exception e) {
                         logger.error("Failed to auto-reconnect tunnel {}: {}", connId, e.getMessage());
+                    } finally {
+                        connLock.unlock();
                     }
                 }
             }
@@ -54,61 +63,66 @@ public class SshTunnelService implements DisposableBean {
         if (!details.isUseSsh()) {
             return details.getPort();
         }
-        lock.lock();
+        ReentrantLock connLock = getLock(connId);
+        connLock.lock();
         try {
-            if (activeSessions.containsKey(connId) && activeSessions.get(connId).isConnected()) {
-                int cachedPort = localPorts.get(connId);
-                logger.debug("Reusing existing SSH tunnel for {} on localhost:{}", connId, cachedPort);
-                return cachedPort;
-            }
-
-            closeTunnelInternal(connId);
-
-            JSch jsch = new JSch();
-            
-            if ("key".equalsIgnoreCase(details.getSshAuthMode()) && details.getSshKeyFile() != null && !details.getSshKeyFile().trim().isEmpty()) {
-                byte[] prvk = details.getSshKeyFile().getBytes();
-                byte[] passphrase = (details.getSshPassphrase() != null && !details.getSshPassphrase().isEmpty()) 
-                                        ? details.getSshPassphrase().getBytes() 
-                                        : null;
-                jsch.addIdentity("ssh-key", prvk, null, passphrase);
-            }
-
-            int sshPort = (details.getSshPort() != null && details.getSshPort() > 0) ? details.getSshPort() : 22;
-            Session session = jsch.getSession(details.getSshUsername(), details.getSshHost(), sshPort);
-
-            if ("password".equalsIgnoreCase(details.getSshAuthMode())) {
-                session.setPassword(details.getSshPassword());
-            }
-
-            // SSH keepalive agar tunnel tidak mati di tengah streaming lama
-            // FORCE 'no' for headless docker environment to prevent "reject HostKey" exception
-            session.setConfig("StrictHostKeyChecking", "no");
-            session.setConfig("PreferredAuthentications", "publickey,password");
-            session.setConfig("PubkeyAcceptedAlgorithms", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
-            session.setConfig("server_host_key", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
-            session.setConfig("kex", "curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512,diffie-hellman-group-exchange-sha256");
-            session.setConfig("TCPKeepAlive", "yes"); // Let OS handle keep-alive to avoid blocking during heavy data stream
-            session.setServerAliveInterval(15000);    // 15 detik (agar cepat mendeteksi tunnel putus)
-            session.setServerAliveCountMax(3);        // 3 kali gagal = 45 detik
-            
-            logger.info("Opening SSH tunnel to {}@{}:{}", details.getSshUsername(), details.getSshHost(), sshPort);
-            session.connect(60000);  // naik dari 30s → 60s untuk koneksi lambat
-
-            int portToUse = localPorts.containsKey(connId) ? localPorts.get(connId) : 0;
-            int assignedLocalPort = session.setPortForwardingL("0.0.0.0", portToUse, details.getHost(), details.getPort());
-            
-            activeSessions.put(connId, session);
-            localPorts.put(connId, assignedLocalPort);
-            connectionDetailsMap.put(connId, details);
-
-            logger.info("SSH tunnel established: localhost:{} → {}:{} via {}@{}",
-                assignedLocalPort, details.getHost(), details.getPort(), details.getSshUsername(), details.getSshHost());
-
-            return assignedLocalPort;
+            return getOrOpenTunnelInternal(details, connId);
         } finally {
-            lock.unlock();
+            connLock.unlock();
         }
+    }
+
+    private int getOrOpenTunnelInternal(ConnectionDetails details, String connId) throws Exception {
+        if (activeSessions.containsKey(connId) && activeSessions.get(connId).isConnected()) {
+            int cachedPort = localPorts.get(connId);
+            logger.debug("Reusing existing SSH tunnel for {} on localhost:{}", connId, cachedPort);
+            return cachedPort;
+        }
+
+        closeTunnelInternal(connId);
+
+        JSch jsch = new JSch();
+        
+        if ("key".equalsIgnoreCase(details.getSshAuthMode()) && details.getSshKeyFile() != null && !details.getSshKeyFile().trim().isEmpty()) {
+            byte[] prvk = details.getSshKeyFile().getBytes();
+            byte[] passphrase = (details.getSshPassphrase() != null && !details.getSshPassphrase().isEmpty()) 
+                                    ? details.getSshPassphrase().getBytes() 
+                                    : null;
+            jsch.addIdentity("ssh-key", prvk, null, passphrase);
+        }
+
+        int sshPort = (details.getSshPort() != null && details.getSshPort() > 0) ? details.getSshPort() : 22;
+        Session session = jsch.getSession(details.getSshUsername(), details.getSshHost(), sshPort);
+
+        if ("password".equalsIgnoreCase(details.getSshAuthMode())) {
+            session.setPassword(details.getSshPassword());
+        }
+
+        // SSH keepalive agar tunnel tidak mati di tengah streaming lama
+        // FORCE 'no' for headless docker environment to prevent "reject HostKey" exception
+        session.setConfig("StrictHostKeyChecking", "no");
+        session.setConfig("PreferredAuthentications", "publickey,password");
+        session.setConfig("PubkeyAcceptedAlgorithms", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
+        session.setConfig("server_host_key", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
+        session.setConfig("kex", "curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512,diffie-hellman-group-exchange-sha256");
+        session.setConfig("TCPKeepAlive", "yes"); // Let OS handle keep-alive to avoid blocking during heavy data stream
+        session.setServerAliveInterval(15000);    // 15 detik (agar cepat mendeteksi tunnel putus)
+        session.setServerAliveCountMax(3);        // 3 kali gagal = 45 detik
+        
+        logger.info("Opening SSH tunnel to {}@{}:{}", details.getSshUsername(), details.getSshHost(), sshPort);
+        session.connect(10000);  // 10 detik timeout max untuk mencegah blocking berlarut-larut
+
+        int portToUse = localPorts.containsKey(connId) ? localPorts.get(connId) : 0;
+        int assignedLocalPort = session.setPortForwardingL("0.0.0.0", portToUse, details.getHost(), details.getPort());
+        
+        activeSessions.put(connId, session);
+        localPorts.put(connId, assignedLocalPort);
+        connectionDetailsMap.put(connId, details);
+
+        logger.info("SSH tunnel established: localhost:{} → {}:{} via {}@{}",
+            assignedLocalPort, details.getHost(), details.getPort(), details.getSshUsername(), details.getSshHost());
+
+        return assignedLocalPort;
     }
 
     /**
@@ -117,13 +131,7 @@ public class SshTunnelService implements DisposableBean {
      * karena JSch tetap membuka port lokal meskipun koneksi ke server SSH sudah terputus.
      */
     public boolean isTunnelHealthy(String connId) {
-        Session session;
-        lock.lock();
-        try {
-            session = activeSessions.get(connId);
-        } finally {
-            lock.unlock();
-        }
+        Session session = activeSessions.get(connId);
 
         if (session == null || !session.isConnected()) {
             return false;
@@ -147,15 +155,10 @@ public class SshTunnelService implements DisposableBean {
 
     public void registerAndRecoverTunnel(String connectionId, ConnectionDetails details, int expectedPort) {
         if (connectionId == null || details == null) return;
-        lock.lock();
-        try {
-            permanentTunnels.add(connectionId);
-            connectionDetailsMap.put(connectionId, details);
-            if (!localPorts.containsKey(connectionId)) {
-                localPorts.put(connectionId, expectedPort);
-            }
-        } finally {
-            lock.unlock();
+        permanentTunnels.add(connectionId);
+        connectionDetailsMap.put(connectionId, details);
+        if (!localPorts.containsKey(connectionId)) {
+            localPorts.put(connectionId, expectedPort);
         }
     }
 
@@ -165,11 +168,12 @@ public class SshTunnelService implements DisposableBean {
             logger.info("Ignoring close request for permanent SSH tunnel: {}", connectionId);
             return;
         }
-        lock.lock();
+        ReentrantLock connLock = getLock(connectionId);
+        connLock.lock();
         try {
             closeTunnelInternal(connectionId);
         } finally {
-            lock.unlock();
+            connLock.unlock();
         }
     }
 
@@ -189,19 +193,16 @@ public class SshTunnelService implements DisposableBean {
 
     @Override
     public void destroy() throws Exception {
-        lock.lock();
-        try {
-            logger.info("Shutting down all active SSH tunnels during application exit...");
-            for (Map.Entry<String, Session> entry : activeSessions.entrySet()) {
-                if (entry.getValue() != null && entry.getValue().isConnected()) {
+        logger.info("Shutting down all active SSH tunnels during application exit...");
+        for (Map.Entry<String, Session> entry : activeSessions.entrySet()) {
+            if (entry.getValue() != null && entry.getValue().isConnected()) {
+                try {
                     entry.getValue().disconnect();
-                    logger.info("Closed SSH tunnel for {}", entry.getKey());
-                }
+                } catch (Exception ignored) {}
+                logger.info("Closed SSH tunnel for {}", entry.getKey());
             }
-            activeSessions.clear();
-            localPorts.clear();
-        } finally {
-            lock.unlock();
         }
+        activeSessions.clear();
+        localPorts.clear();
     }
 }
