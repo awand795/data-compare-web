@@ -292,6 +292,9 @@ public class ApiSchedulerService {
         String cleanTargetTable = targetTable.trim();
 
         try (Connection conn = ds.getConnection()) {
+            if (!conn.getAutoCommit()) {
+                conn.setAutoCommit(true);
+            }
             if ("clickhouse".contains(dbType)) {
                 // ClickHouse Ingestion (Do NOT CREATE TABLE automatically)
                 // 1. Verify Table Existence
@@ -406,6 +409,9 @@ public class ApiSchedulerService {
                     pstmt.setString(1, effectiveKodeData);
                     pstmt.setString(2, responseJson);
                     pstmt.executeUpdate();
+                }
+                if (!conn.getAutoCommit()) {
+                    conn.commit();
                 }
             }
         }
