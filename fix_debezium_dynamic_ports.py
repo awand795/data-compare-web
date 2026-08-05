@@ -24,7 +24,7 @@ targets = [
         "conn_name": "P011-BPI-ERP",
         "connector": "source-p011_bpi_erp-shared",
         "password": "SsiJakarta",
-        "remote_host": "bpidarkoerpdb"
+        "remote_host": "ssidarkoerpdb"
     }
 ]
 

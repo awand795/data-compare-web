@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # Spring Boot Backend (Connected to Dedicated Pipeline Server 94.237.69.119)
+  backend:
+    image: awandadarkotech/darkosync-backend:latest
+    container_name: darkosync-backend
+    restart: unless-stopped
+    environment:
+      - JAVA_OPTS=-Xmx2048m -Xms1024m -DMALLOC_ARENA_MAX=2
+      - MALLOC_ARENA_MAX=2
+      - TZ=Asia/Jakarta
+      - DB_HOST=war.darkosuite.com
+      - DB_PORT=8832
+      - DB_NAME=data_setting_sync
+      - DB_USER=postgres
+      - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
+      - KAFKA_BOOTSTRAP_SERVERS=94.237.69.119:9092
+      - DEBEZIUM_BASE_URL=http://94.237.69.119:8083
+      - CLICKHOUSE_HOST=94.237.69.119
+      - CLICKHOUSE_PORT=8123
+    ports:
+      - "5300:8081"
+    volumes:
+      - ./ssh-keys:/app/ssh-keys:ro
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+
+  # React Frontend with Nginx
+  frontend:
+    image: awandadarkotech/darkosync-frontend:latest
+    container_name: darkosync-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+      - "5175:80"
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+networks:
+  app-network:
+    driver: bridge

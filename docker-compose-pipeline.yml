@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  # 1. ZooKeeper Coordinator (0.5 GB RAM)
+  zookeeper:
+    image: quay.io/debezium/zookeeper:2.4
+    container_name: darkosync-zookeeper
+    restart: unless-stopped
+    environment:
+      - KAFKA_HEAP_OPTS=-Xmx512m -Xms512m
+      - MALLOC_ARENA_MAX=2
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    volumes:
+      - zookeeper_data:/zookeeper/data
+      - zookeeper_txns:/zookeeper/txns
+    networks:
+      - pipeline-network
+
+  # 2. Apache Kafka Message Broker (2.5 GB RAM)
+  kafka:
+    image: quay.io/debezium/kafka:2.4
+    container_name: darkosync-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/9092' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    environment:
+      - KAFKA_HEAP_OPTS=-Xmx1536m -Xms1536m
+      - MALLOC_ARENA_MAX=2
+      - ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093
+      - KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka:9092,EXTERNAL://94.237.69.119:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS=10000
+      - KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS=10000
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      - KAFKA_LOG_RETENTION_HOURS=24
+      - KAFKA_LOG_RETENTION_BYTES=5368709120
+      - KAFKA_LOG_SEGMENT_BYTES=104857600
+      - KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS=60000
+    volumes:
+      - kafka_data:/kafka/data
+    networks:
+      - pipeline-network
+
+  # 3. Debezium Connect + ClickHouse Sink (3.0 GB RAM)
+  debezium:
+    image: awandadarkotech/debezium-clickhouse:latest
+    container_name: darkosync-debezium
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null 2>&1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_OPTS=-Xmx3072m -Xms2048m -XX:+UseG1GC
+      - KAFKA_HEAP_OPTS=-Xmx3072m -Xms2048m
+      - JAVA_OPTS=-Xmx3072m -Xms2048m -XX:+UseG1GC
+      - MALLOC_ARENA_MAX=2
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=my_connect_configs
+      - OFFSET_STORAGE_TOPIC=my_connect_offsets
+      - STATUS_STORAGE_TOPIC=my_connect_statuses
+      - CONFIG_STORAGE_REPLICATION_FACTOR=1
+      - OFFSET_STORAGE_REPLICATION_FACTOR=1
+      - STATUS_STORAGE_REPLICATION_FACTOR=1
+      - CONNECT_ADMIN_REQUEST_TIMEOUT_MS=60000
+      - CONNECT_CONNECTIONS_MAX_IDLE_MS=600000
+    deploy:
+      resources:
+        limits:
+          memory: 3072M
+    networks:
+      - pipeline-network
+
+  # 4. ClickHouse Data Warehouse Server (8.0 GB RAM)
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: darkosync-clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    deploy:
+      resources:
+        limits:
+          memory: 8192M
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=darkosync
+      - CLICKHOUSE_PASSWORD=darkoSync9292
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    volumes:
+      - /data/clickhouse:/var/lib/clickhouse
+    networks:
+      - pipeline-network
+
+volumes:
+  zookeeper_data:
+  zookeeper_txns:
+  kafka_data:
+
+networks:
+  pipeline-network:
+    driver: bridge
