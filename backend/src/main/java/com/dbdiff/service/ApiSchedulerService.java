@@ -312,12 +312,15 @@ public class ApiSchedulerService {
                     }
                 }
 
-                // 2. Verify Required Standard Columns: seq, kode_data, detail_data, input_by, input_dt
+                // 2. Verify Required Standard Columns & Extract Column Types
                 Set<String> existingCols = new HashSet<>();
+                Map<String, String> colTypes = new HashMap<>();
                 try (Statement stmt = conn.createStatement();
                      ResultSet rs = stmt.executeQuery("DESCRIBE TABLE " + cleanTargetTable)) {
                     while (rs.next()) {
-                        existingCols.add(rs.getString("name").toLowerCase());
+                        String colName = rs.getString("name").toLowerCase();
+                        existingCols.add(colName);
+                        colTypes.put(colName, rs.getString("type").toLowerCase());
                     }
                 }
 
@@ -333,14 +336,6 @@ public class ApiSchedulerService {
                 }
 
                 // Insert into ClickHouse via HTTP API — bypasses JDBC driver entirely.
-                // JDBC Statement.execute() with FORMAT JSONEachRow still processes the SQL string
-                // and can mangle JSON data (escaping, encoding) before it reaches ClickHouse.
-                // Direct HTTP POST sends raw UTF-8 bytes exactly as ClickHouse expects.
-                //
-                // Settings applied:
-                //   async_insert=0                                   — synchronous insert, errors surface immediately
-                //   date_time_input_format=best_effort               — handles ISO 8601 timestamps with +07:00 timezone
-                //   input_format_json_infer_incomplete_types_as_strings=1 — handles null-only fields in JSON type
                 ConnectionDetails chCd = connectionRepository.findById(connectionId);
                 String chHost = (chCd != null && chCd.getHost() != null) ? chCd.getHost() : "localhost";
                 int chPort = (chCd != null && chCd.getPort() > 0) ? chCd.getPort() : 8123;
@@ -348,19 +343,25 @@ public class ApiSchedulerService {
                 String chUser = (chCd != null && chCd.getUsername() != null) ? chCd.getUsername() : "default";
                 String chPass = (chCd != null && chCd.getPassword() != null) ? chCd.getPassword() : "";
 
+                String detailType = colTypes.getOrDefault("detail_data", "string");
+                boolean isJsonColumn = detailType.contains("json") || detailType.contains("object");
+
                 ObjectMapper chMapper = new ObjectMapper();
                 StringBuilder jsonRows = new StringBuilder();
                 for (String recordJson : recordsToInsert) {
                     Map<String, Object> row = new java.util.LinkedHashMap<>();
                     row.put("kode_data", effectiveKodeData);
-                    // detail_data: parse as JsonNode so Jackson serializes it as a nested JSON object (not a quoted string)
-                    JsonNode detailNode;
-                    try {
-                        detailNode = chMapper.readTree(recordJson);
-                    } catch (Exception ex) {
-                        detailNode = chMapper.getNodeFactory().textNode(recordJson);
+                    if (isJsonColumn) {
+                        // Target detail_data is a JSON/Object column -> pass nested JSON object {...}
+                        try {
+                            row.put("detail_data", chMapper.readTree(recordJson));
+                        } catch (Exception ex) {
+                            row.put("detail_data", recordJson);
+                        }
+                    } else {
+                        // Target detail_data is String/Nullable(String) -> pass raw JSON string "..."
+                        row.put("detail_data", recordJson);
                     }
-                    row.put("detail_data", detailNode);
                     row.put("input_by", "darkosync");
                     row.put("input_dt", java.time.Instant.now().toString());
                     jsonRows.append(chMapper.writeValueAsString(row)).append("\n");
