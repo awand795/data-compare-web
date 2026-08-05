@@ -89,7 +89,9 @@ export const ApiSchedulerView: React.FC = () => {
     active: true,
   });
 
-  // Simultaneous Telegram & Discord Channels State
+  // Dual Notification Toggles & Profile IDs State
+  const [isTgEnabled, setIsTgEnabled] = useState<boolean>(false);
+  const [isDcEnabled, setIsDcEnabled] = useState<boolean>(false);
   const [selectedTgChannelId, setSelectedTgChannelId] = useState<string>('');
   const [selectedDcChannelId, setSelectedDcChannelId] = useState<string>('');
 
@@ -151,6 +153,8 @@ export const ApiSchedulerView: React.FC = () => {
       notificationChannelId: '',
       active: true,
     });
+    setIsTgEnabled(false);
+    setIsDcEnabled(false);
     setSelectedTgChannelId('');
     setSelectedDcChannelId('');
     setCronTriggers(['0 */5 * * * *']);
@@ -185,11 +189,18 @@ export const ApiSchedulerView: React.FC = () => {
         if (chan) {
           if (chan.type === 'TELEGRAM') tgId = chan.id;
           if (chan.type === 'DISCORD') dcId = chan.id;
+        } else {
+          tgId = id; // Fallback if raw ID
         }
       });
+
+      setIsTgEnabled(!!tgId);
+      setIsDcEnabled(!!dcId);
       setSelectedTgChannelId(tgId);
       setSelectedDcChannelId(dcId);
     } else {
+      setIsTgEnabled(false);
+      setIsDcEnabled(false);
       setSelectedTgChannelId('');
       setSelectedDcChannelId('');
     }
@@ -238,8 +249,8 @@ export const ApiSchedulerView: React.FC = () => {
 
   const getCompiledNotificationChannelId = () => {
     const ids = [];
-    if (selectedTgChannelId) ids.push(selectedTgChannelId);
-    if (selectedDcChannelId) ids.push(selectedDcChannelId);
+    if (isTgEnabled && selectedTgChannelId) ids.push(selectedTgChannelId);
+    if (isDcEnabled && selectedDcChannelId) ids.push(selectedDcChannelId);
     return ids.join('; ');
   };
 
@@ -931,43 +942,67 @@ export const ApiSchedulerView: React.FC = () => {
                         {/* Telegram Profile Card */}
                         <div className={clsx(
                           "p-4 rounded-2xl border transition-all space-y-3",
-                          selectedTgChannelId 
+                          isTgEnabled 
                             ? "bg-blue-500/10 border-blue-500/40 shadow-sm" 
-                            : "bg-bg-main border-border-main"
+                            : "bg-bg-main border-border-main hover:border-blue-500/30"
                         )}>
-                          <div className="flex items-center justify-between">
+                          <div 
+                            onClick={() => {
+                              const next = !isTgEnabled;
+                              setIsTgEnabled(next);
+                              if (next && !selectedTgChannelId && telegramChannels.length > 0) {
+                                setSelectedTgChannelId(telegramChannels[0].id);
+                              }
+                            }}
+                            className="flex items-center justify-between cursor-pointer select-none"
+                          >
                             <div className="flex items-center gap-2">
-                              <MessageCircle className="w-4 h-4 text-blue-500" />
-                              <span className="text-xs font-bold text-text-main">✈️ Telegram Alerts</span>
+                              <MessageCircle className="w-4.5 h-4.5 text-blue-500" />
+                              <div>
+                                <span className="text-xs font-bold text-text-main block">✈️ Telegram Alerts</span>
+                                <span className="text-[10px] text-text-muted">
+                                  {isTgEnabled ? 'Enabled for this schedule' : 'Click to enable Telegram notifications'}
+                                </span>
+                              </div>
                             </div>
                             <input
                               type="checkbox"
-                              checked={!!selectedTgChannelId}
+                              checked={isTgEnabled}
                               onChange={(e) => {
-                                if (e.target.checked) {
-                                  const firstTg = telegramChannels[0]?.id || '';
-                                  setSelectedTgChannelId(firstTg);
-                                } else {
-                                  setSelectedTgChannelId('');
+                                e.stopPropagation();
+                                const next = e.target.checked;
+                                setIsTgEnabled(next);
+                                if (next && !selectedTgChannelId && telegramChannels.length > 0) {
+                                  setSelectedTgChannelId(telegramChannels[0].id);
                                 }
                               }}
                               className="w-4.5 h-4.5 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
                             />
                           </div>
 
-                          {selectedTgChannelId !== '' && (
-                            <div className="space-y-1.5 animate-fadeIn">
+                          {isTgEnabled && (
+                            <div className="space-y-2 pt-2 border-t border-blue-500/20 animate-fadeIn">
                               <label className="block text-[11px] font-semibold text-text-muted">Select Telegram Profile</label>
                               {telegramChannels.length === 0 ? (
-                                <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-600 dark:text-blue-300 flex items-center justify-between">
-                                  <span>No Telegram profiles saved.</span>
-                                  <button type="button" onClick={() => setIsChannelModalOpen(true)} className="underline font-bold">Add Profile</button>
+                                <div className="p-3 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs text-blue-700 dark:text-blue-300 space-y-2">
+                                  <p className="font-medium">Belum ada profile Telegram yang tersimpan.</p>
+                                  <button 
+                                    type="button" 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setIsChannelModalOpen(true);
+                                    }} 
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white font-bold text-xs hover:bg-blue-600 transition-all shadow-sm"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>+ Tambah Profile Telegram</span>
+                                  </button>
                                 </div>
                               ) : (
                                 <select
                                   value={selectedTgChannelId}
                                   onChange={(e) => setSelectedTgChannelId(e.target.value)}
-                                  className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-medium text-text-main focus:outline-none focus:border-blue-500 cursor-pointer"
+                                  className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-semibold text-text-main focus:outline-none focus:border-blue-500 cursor-pointer"
                                 >
                                   {telegramChannels.map(chan => (
                                     <option key={chan.id} value={chan.id}>
@@ -983,43 +1018,67 @@ export const ApiSchedulerView: React.FC = () => {
                         {/* Discord Profile Card */}
                         <div className={clsx(
                           "p-4 rounded-2xl border transition-all space-y-3",
-                          selectedDcChannelId 
+                          isDcEnabled 
                             ? "bg-indigo-500/10 border-indigo-500/40 shadow-sm" 
-                            : "bg-bg-main border-border-main"
+                            : "bg-bg-main border-border-main hover:border-indigo-500/30"
                         )}>
-                          <div className="flex items-center justify-between">
+                          <div 
+                            onClick={() => {
+                              const next = !isDcEnabled;
+                              setIsDcEnabled(next);
+                              if (next && !selectedDcChannelId && discordChannels.length > 0) {
+                                setSelectedDcChannelId(discordChannels[0].id);
+                              }
+                            }}
+                            className="flex items-center justify-between cursor-pointer select-none"
+                          >
                             <div className="flex items-center gap-2">
-                              <Send className="w-4 h-4 text-indigo-500" />
-                              <span className="text-xs font-bold text-text-main">💬 Discord Webhook Alerts</span>
+                              <Send className="w-4.5 h-4.5 text-indigo-500" />
+                              <div>
+                                <span className="text-xs font-bold text-text-main block">💬 Discord Webhook Alerts</span>
+                                <span className="text-[10px] text-text-muted">
+                                  {isDcEnabled ? 'Enabled for this schedule' : 'Click to enable Discord notifications'}
+                                </span>
+                              </div>
                             </div>
                             <input
                               type="checkbox"
-                              checked={!!selectedDcChannelId}
+                              checked={isDcEnabled}
                               onChange={(e) => {
-                                if (e.target.checked) {
-                                  const firstDc = discordChannels[0]?.id || '';
-                                  setSelectedDcChannelId(firstDc);
-                                } else {
-                                  setSelectedDcChannelId('');
+                                e.stopPropagation();
+                                const next = e.target.checked;
+                                setIsDcEnabled(next);
+                                if (next && !selectedDcChannelId && discordChannels.length > 0) {
+                                  setSelectedDcChannelId(discordChannels[0].id);
                                 }
                               }}
                               className="w-4.5 h-4.5 rounded border-border-main text-indigo-500 focus:ring-0 cursor-pointer"
                             />
                           </div>
 
-                          {selectedDcChannelId !== '' && (
-                            <div className="space-y-1.5 animate-fadeIn">
-                              <label className="block text-[11px] font-semibold text-text-muted">Select Discord Webhook Profile</label>
+                          {isDcEnabled && (
+                            <div className="space-y-2 pt-2 border-t border-indigo-500/20 animate-fadeIn">
+                              <label className="block text-[11px] font-semibold text-text-muted">Select Discord Profile</label>
                               {discordChannels.length === 0 ? (
-                                <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-xs text-indigo-600 dark:text-indigo-300 flex items-center justify-between">
-                                  <span>No Discord profiles saved.</span>
-                                  <button type="button" onClick={() => setIsChannelModalOpen(true)} className="underline font-bold">Add Profile</button>
+                                <div className="p-3 bg-indigo-500/10 border border-indigo-500/25 rounded-xl text-xs text-indigo-700 dark:text-indigo-300 space-y-2">
+                                  <p className="font-medium">Belum ada profile Discord Webhook yang tersimpan.</p>
+                                  <button 
+                                    type="button" 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setIsChannelModalOpen(true);
+                                    }} 
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all shadow-sm"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>+ Tambah Profile Discord</span>
+                                  </button>
                                 </div>
                               ) : (
                                 <select
                                   value={selectedDcChannelId}
                                   onChange={(e) => setSelectedDcChannelId(e.target.value)}
-                                  className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-medium text-text-main focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                  className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-semibold text-text-main focus:outline-none focus:border-indigo-500 cursor-pointer"
                                 >
                                   {discordChannels.map(chan => (
                                     <option key={chan.id} value={chan.id}>
@@ -1034,11 +1093,11 @@ export const ApiSchedulerView: React.FC = () => {
 
                       </div>
 
-                      {(selectedTgChannelId || selectedDcChannelId) && (
+                      {(isTgEnabled || isDcEnabled) && (
                         <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-700 dark:text-purple-200 flex items-center gap-2">
                           <Bell className="w-4 h-4 text-purple-500 shrink-0" />
                           <span>
-                            Notifikasi alert kegagalan (FAILED) akan dikirimkan secara bersamaan ke: <b>{[selectedTgChannelId && 'Telegram', selectedDcChannelId && 'Discord'].filter(Boolean).join(' & ')}</b>.
+                            Notifikasi alert kegagalan (FAILED) akan dikirimkan secara bersamaan ke: <b>{[isTgEnabled && 'Telegram', isDcEnabled && 'Discord'].filter(Boolean).join(' & ')}</b>.
                           </span>
                         </div>
                       )}
