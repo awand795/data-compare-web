@@ -332,15 +332,31 @@ public class ApiSchedulerService {
                     throw new RuntimeException("Target table '" + cleanTargetTable + "' does not conform to standard schema. Missing required columns: " + missingCols + ". Standard schema columns required: [seq, kode_data, detail_data, input_by, input_dt].");
                 }
 
-                // Insert into ClickHouse (Batch Insert)
-                String insertSql = "INSERT INTO " + cleanTargetTable + " (kode_data, detail_data, input_by, input_dt) VALUES (?, ?, 'darkosync', now())";
-                try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
-                    for (String recordJson : recordsToInsert) {
-                        pstmt.setString(1, effectiveKodeData);
-                        pstmt.setString(2, recordJson);
-                        pstmt.addBatch();
+                // Insert into ClickHouse using FORMAT JSONEachRow to avoid JSON column type casting issues.
+                // PreparedStatement.setString() wraps value in quotes which ClickHouse JSON type rejects.
+                // Instead we build raw newline-delimited JSON rows and send via Statement.execute().
+                ObjectMapper chMapper = new ObjectMapper();
+                StringBuilder jsonRows = new StringBuilder();
+                for (String recordJson : recordsToInsert) {
+                    Map<String, Object> row = new java.util.LinkedHashMap<>();
+                    row.put("kode_data", effectiveKodeData);
+                    // detail_data must be raw JSON object/value, not a string
+                    JsonNode detailNode;
+                    try {
+                        detailNode = chMapper.readTree(recordJson);
+                    } catch (Exception ex) {
+                        detailNode = chMapper.getNodeFactory().textNode(recordJson);
                     }
-                    pstmt.executeBatch();
+                    row.put("detail_data", detailNode);
+                    row.put("input_by", "darkosync");
+                    row.put("input_dt", java.time.Instant.now().toString());
+                    jsonRows.append(chMapper.writeValueAsString(row)).append("\n");
+                }
+                String chInsertSql = "INSERT INTO " + cleanTargetTable
+                        + " (kode_data, detail_data, input_by, input_dt) FORMAT JSONEachRow\n"
+                        + jsonRows;
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.execute(chInsertSql);
                 }
 
             } else {
