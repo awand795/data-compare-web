@@ -486,66 +486,135 @@ public class ApiSchedulerService {
         if (responseJson == null || responseJson.trim().isEmpty()) {
             return recordsToInsert;
         }
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode rootNode = mapper.readTree(responseJson.trim());
+        String trimmed = responseJson.trim();
 
-            JsonNode targetArrayNode = findArrayNode(rootNode, 0);
+        JsonNode rootNode;
+        try {
+            rootNode = objectMapper.readTree(trimmed);
+        } catch (Exception e) {
+            // Response is not a single JSON document — fall back to JSON Lines
+            // (one JSON object per line, e.g. streaming / NDJSON APIs).
+            logger.warn("Response is not a single JSON document ({}), trying per-line JSON parsing...", e.getMessage());
+            int parsedLines = 0;
+            String[] lines = trimmed.split("\\R");
+            for (String line : lines) {
+                String l = line.trim();
+                if (l.isEmpty()) continue;
+                try {
+                    JsonNode item = objectMapper.readTree(l);
+                    // Only treat object/array lines as records; plain scalar lines (numbers,
+                    // booleans, prose) are skipped so multi-line text bodies are not fragmented.
+                    if (item != null && (item.isObject() || item.isArray())) {
+                        recordsToInsert.add(objectMapper.writeValueAsString(item));
+                        parsedLines++;
+                    }
+                } catch (Exception ignored) {
+                    // not a JSON line — skip it
+                }
+            }
+            if (parsedLines > 0) {
+                return recordsToInsert;
+            }
+            // Completely unparseable payload -> store the raw body as a single record.
+            recordsToInsert.add(trimmed);
+            return recordsToInsert;
+        }
+
+        // Unwrap a root-level JSON string that actually contains JSON (double-encoded payloads).
+        if (rootNode != null && rootNode.isTextual()) {
+            try {
+                JsonNode unwrapped = objectMapper.readTree(rootNode.asText());
+                if (unwrapped != null && (unwrapped.isArray() || unwrapped.isObject())) {
+                    rootNode = unwrapped;
+                }
+            } catch (Exception ignored) {
+                // keep the original text value
+            }
+        }
+
+        try {
+            JsonNode targetArrayNode = findBestArrayNode(rootNode);
 
             if (targetArrayNode != null && targetArrayNode.isArray()) {
+                logger.info("Found data array with {} element(s) to ingest", targetArrayNode.size());
                 for (JsonNode item : targetArrayNode) {
-                    recordsToInsert.add(mapper.writeValueAsString(item));
+                    if (item == null || item.isNull()) continue;
+                    recordsToInsert.add(objectMapper.writeValueAsString(item));
                 }
             } else if (rootNode.isObject()) {
-                recordsToInsert.add(mapper.writeValueAsString(rootNode));
+                // Single-object response -> ingest as one record
+                recordsToInsert.add(objectMapper.writeValueAsString(rootNode));
             } else {
-                recordsToInsert.add(responseJson);
+                // Scalar / primitive response -> ingest raw body as one record
+                recordsToInsert.add(trimmed);
             }
         } catch (Exception e) {
-            logger.warn("Could not parse responseJson as JSON tree, using raw responseJson: {}", e.getMessage());
-            recordsToInsert.add(responseJson);
+            // Extremely defensive: never let a serialization hiccup block ingestion.
+            logger.warn("Failed to serialize JSON record, storing raw body as single record instead: {}", e.getMessage());
+            recordsToInsert.clear();
+            recordsToInsert.add(trimmed);
         }
         return recordsToInsert;
     }
 
-    private JsonNode findArrayNode(JsonNode node, int depth) {
-        if (node == null || depth > 5) return null;
+    /**
+     * Recursively finds the "most likely" data array anywhere in the JSON tree so any API
+     * response shape can be ingested:
+     *  - arrays of objects/arrays are preferred over arrays of scalars
+     *  - larger arrays are preferred over smaller ones
+     *  - ties keep the shallowest array (first found, top-down traversal)
+     *  - double-encoded JSON string fields are unwrapped before searching
+     */
+    private JsonNode findBestArrayNode(JsonNode node) {
+        return findBestArrayNode(node, 0, new int[]{0}, new JsonNode[]{null});
+    }
+
+    private JsonNode findBestArrayNode(JsonNode node, int depth, int[] bestScore, JsonNode[] bestNode) {
+        if (node == null || depth > 100) return bestNode[0];
 
         if (node.isArray()) {
-            return node;
+            int score = scoreArray(node);
+            if (score > bestScore[0]) {
+                bestScore[0] = score;
+                bestNode[0] = node;
+            }
+            return bestNode[0]; // array elements are the records themselves — do not descend
         }
 
         if (node.isObject()) {
-            // 1. Check standard common array keys first
-            String[] commonKeys = {"data", "items", "records", "results", "list", "content", "payload", "rows", "data_list"};
-            for (String key : commonKeys) {
-                if (node.has(key) && node.get(key).isArray()) {
-                    return node.get(key);
-                }
-            }
-
-            // 2. Check any array field at current level
             Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
             while (fields.hasNext()) {
                 Map.Entry<String, JsonNode> field = fields.next();
-                if (field.getValue().isArray()) {
-                    return field.getValue();
-                }
-            }
-
-            // 3. Deep recursive search inside child objects
-            fields = node.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
-                if (field.getValue().isObject()) {
-                    JsonNode childArray = findArrayNode(field.getValue(), depth + 1);
-                    if (childArray != null) {
-                        return childArray;
+                JsonNode value = field.getValue();
+                // Unwrap JSON-encoded string fields (double-encoded payloads)
+                if (value != null && value.isTextual()) {
+                    try {
+                        JsonNode unwrapped = objectMapper.readTree(value.asText());
+                        if (unwrapped != null && (unwrapped.isArray() || unwrapped.isObject())) {
+                            value = unwrapped;
+                        }
+                    } catch (Exception ignored) {
+                        // plain string value — keep as-is
                     }
                 }
+                findBestArrayNode(value, depth + 1, bestScore, bestNode);
             }
         }
-        return null;
+        return bestNode[0];
+    }
+
+    private int scoreArray(JsonNode arr) {
+        int size = arr.size();
+        if (size == 0) return 1; // empty arrays stay candidates with the lowest priority
+        boolean hasObjectElements = false;
+        for (JsonNode el : arr) {
+            if (el != null && (el.isObject() || el.isArray())) {
+                hasObjectElements = true;
+                break;
+            }
+        }
+        // Arrays of objects/arrays dominate scalar arrays; any non-empty array beats an empty one.
+        return (hasObjectElements ? 1000 : 1) + Math.min(size, 1000);
     }
 
     private String buildFullUrl(String baseUrl, String queryParamsJson) {
