@@ -1,11 +1,13 @@
 version: '3.8'
 
 services:
-  # Spring Boot Backend (Connected to Dedicated Pipeline Server 94.237.69.119)
+  # Spring Boot Backend (Connected via Pipeline SSH Tunnel to Server 94.237.69.119)
   backend:
     image: awandadarkotech/darkosync-backend:latest
     container_name: darkosync-backend
     restart: unless-stopped
+    extra_hosts:
+      - "pipeline.server:host-gateway"
     environment:
       - JAVA_OPTS=-Xmx2048m -Xms1024m -DMALLOC_ARENA_MAX=2
       - MALLOC_ARENA_MAX=2
@@ -15,9 +17,9 @@ services:
       - DB_NAME=data_setting_sync
       - DB_USER=postgres
       - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
-      - KAFKA_BOOTSTRAP_SERVERS=94.237.69.119:9092
-      - DEBEZIUM_BASE_URL=http://94.237.69.119:8083
-      - CLICKHOUSE_HOST=94.237.69.119
+      - KAFKA_BOOTSTRAP_SERVERS=pipeline.server:9092
+      - DEBEZIUM_BASE_URL=http://pipeline.server:8083
+      - CLICKHOUSE_HOST=pipeline.server
       - CLICKHOUSE_PORT=8123
     ports:
       - "5300:8081"
