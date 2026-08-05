@@ -41,7 +41,7 @@ public class ApiSchedulerService {
     private final TaskScheduler taskScheduler;
     private final NotificationService notificationService;
 
-    private final Map<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
+    private final Map<String, List<ScheduledFuture<?>>> scheduledTasks = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -74,10 +74,14 @@ public class ApiSchedulerService {
     }
 
     public void refreshSchedule(String id) {
-        // Cancel existing task if scheduled
-        ScheduledFuture<?> existing = scheduledTasks.remove(id);
-        if (existing != null) {
-            existing.cancel(false);
+        // Cancel existing tasks if scheduled
+        List<ScheduledFuture<?>> existingList = scheduledTasks.remove(id);
+        if (existingList != null) {
+            for (ScheduledFuture<?> future : existingList) {
+                if (future != null) {
+                    future.cancel(false);
+                }
+            }
         }
 
         Optional<ApiSchedulerConfig> opt = repository.findById(id);
@@ -89,18 +93,32 @@ public class ApiSchedulerService {
 
         Runnable task = () -> executeAndSaveSchedule(id);
 
-        try {
-            String cron = config.getCronExpression().trim();
-            ScheduledFuture<?> future;
+        // Support multiple cron expressions separated by ';', ',', or newlines
+        String rawCrons = config.getCronExpression().trim();
+        String[] cronArray = rawCrons.split("[;,\\n]+");
+        List<ScheduledFuture<?>> futures = new ArrayList<>();
+
+        for (String singleCron : cronArray) {
+            String cron = singleCron.trim();
+            if (cron.isEmpty()) continue;
+
             if (cron.startsWith("EVERY_")) {
                 cron = convertPresetToSpringCron(cron);
             }
-            future = taskScheduler.schedule(task, new CronTrigger(cron));
-            scheduledTasks.put(id, future);
-            logger.info("Successfully scheduled API Ingestion job [{}] with Spring Cron [{}]", config.getName(), cron);
-        } catch (Exception e) {
-            logger.error("Failed to schedule API Ingestion job [{}]: {}", config.getName(), e.getMessage());
-            repository.updateLastRun(id, "FAILED", "Cron schedule error: " + e.getMessage());
+
+            try {
+                ScheduledFuture<?> future = taskScheduler.schedule(task, new CronTrigger(cron));
+                futures.add(future);
+                logger.info("Successfully scheduled API Ingestion job [{}] with Spring Cron [{}]", config.getName(), cron);
+            } catch (Exception e) {
+                logger.error("Failed to schedule API Ingestion job [{}] with cron [{}]: {}", config.getName(), cron, e.getMessage());
+            }
+        }
+
+        if (!futures.isEmpty()) {
+            scheduledTasks.put(id, futures);
+        } else {
+            repository.updateLastRun(id, "FAILED", "Invalid Spring Cron expression(s)");
         }
     }
 
@@ -117,9 +135,13 @@ public class ApiSchedulerService {
     }
 
     public void stopSchedule(String id) {
-        ScheduledFuture<?> existing = scheduledTasks.remove(id);
-        if (existing != null) {
-            existing.cancel(false);
+        List<ScheduledFuture<?>> existingList = scheduledTasks.remove(id);
+        if (existingList != null) {
+            for (ScheduledFuture<?> future : existingList) {
+                if (future != null) {
+                    future.cancel(false);
+                }
+            }
         }
     }
 

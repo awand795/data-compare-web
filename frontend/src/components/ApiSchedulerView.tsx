@@ -92,6 +92,9 @@ export const ApiSchedulerView: React.FC = () => {
   // Separate Notification Platform selection (none | TELEGRAM | DISCORD)
   const [selectedNotifPlatform, setSelectedNotifPlatform] = useState<'none' | 'TELEGRAM' | 'DISCORD'>('none');
 
+  // Multiple Spring Cron Triggers State
+  const [cronTriggers, setCronTriggers] = useState<string[]>(['0 */5 * * * *']);
+
   // Insomnia Tabs State
   const [activeReqTab, setActiveReqTab] = useState<'params' | 'headers' | 'auth' | 'body' | 'target' | 'schedule'>('params');
   const [queryParamsList, setQueryParamsList] = useState<KeyValuePair[]>([{ key: '', value: '', enabled: true }]);
@@ -148,6 +151,7 @@ export const ApiSchedulerView: React.FC = () => {
       active: true,
     });
     setSelectedNotifPlatform('none');
+    setCronTriggers(['0 */5 * * * *']);
     setQueryParamsList([{ key: '', value: '', enabled: true }]);
     setHeadersList([
       { key: 'Content-Type', value: 'application/json', enabled: true },
@@ -160,6 +164,14 @@ export const ApiSchedulerView: React.FC = () => {
 
   const openEditEditor = (cfg: ApiSchedulerConfig) => {
     setCurrentConfig(cfg);
+
+    // Parse Cron Triggers
+    if (cfg.cronExpression) {
+      const list = cfg.cronExpression.split(/[;,\n]+/).map(c => c.trim()).filter(Boolean);
+      setCronTriggers(list.length > 0 ? list : ['0 */5 * * * *']);
+    } else {
+      setCronTriggers(['0 */5 * * * *']);
+    }
 
     // Detect selected notification platform
     if (cfg.notificationChannelId) {
@@ -228,6 +240,7 @@ export const ApiSchedulerView: React.FC = () => {
       ...currentConfig,
       queryParams: compileListToJson(queryParamsList),
       headers: compileListToJson(headersList),
+      cronExpression: cronTriggers.filter(c => c && c.trim()).join('; '),
     };
 
     try {
@@ -267,6 +280,7 @@ export const ApiSchedulerView: React.FC = () => {
       url: currentConfig.url.trim(),
       queryParams: compileListToJson(queryParamsList),
       headers: compileListToJson(headersList),
+      cronExpression: cronTriggers.filter(c => c && c.trim()).join('; '),
       notificationChannelId: selectedNotifPlatform === 'none' ? '' : currentConfig.notificationChannelId,
     };
 
@@ -818,58 +832,59 @@ export const ApiSchedulerView: React.FC = () => {
                 {activeReqTab === 'schedule' && (
                   <div className="space-y-6 max-w-xl">
                     
-                    {/* Spring Cron Expression Section (Pure Custom Input Only) */}
-                    <div className="space-y-3">
+                    {/* Spring Cron Expression Section (Multiple Triggers Supported) */}
+                    <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <h4 className="text-xs font-bold text-text-main">Custom Spring Cron Expression Schedule</h4>
-                          <p className="text-[11px] text-text-muted">Standard 6-field Spring Cron expression (Seconds Minutes Hours Day Month Weekday)</p>
+                          <h4 className="text-xs font-bold text-text-main">Spring Cron Schedule Triggers</h4>
+                          <p className="text-[11px] text-text-muted">Standard 6-field Spring Cron (sec min hr day month weekday). Add multiple rules to schedule multiple periodic triggers.</p>
                         </div>
-                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20 font-bold">
-                          Spring Cron
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCronTriggers([...cronTriggers, '0 0 12 * * *'])}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-xs font-semibold transition-colors border border-amber-500/20 shadow-sm"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Cron Trigger</span>
+                        </button>
                       </div>
 
-                      <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner space-y-3">
-                        <label className="block text-xs font-bold text-amber-300">Spring Cron Expression Input</label>
-                        <input
-                          type="text"
-                          placeholder="0 */5 * * * *"
-                          value={currentConfig.cronExpression || ''}
-                          onChange={(e) => setCurrentConfig({ ...currentConfig, cronExpression: e.target.value })}
-                          className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2.5 text-sm font-mono text-amber-300 focus:outline-none focus:border-amber-500 shadow-sm"
-                        />
-                        
-                        {/* Spring Cron Examples Cheat Sheet */}
-                        <div className="pt-2 border-t border-border-main text-[11px] text-text-muted space-y-1.5">
-                          <p className="font-bold text-text-main">📌 Spring Cron Format Guide & Examples:</p>
-                          <div className="grid grid-cols-2 gap-2 font-mono text-[10px]">
-                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
-                              <span className="text-amber-400 font-bold">0 */1 * * * *</span>
-                              <p className="text-text-muted font-sans">Every 1 minute</p>
+                      <div className="space-y-2.5">
+                        {cronTriggers.map((cron, idx) => (
+                          <div key={idx} className="flex items-center gap-2.5 group">
+                            <div className="flex-1 bg-bg-main p-3 border border-border-main rounded-xl shadow-inner flex items-center gap-2">
+                              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                              <input
+                                type="text"
+                                placeholder="e.g. 0 */5 * * * * or 0 0 12 * * *"
+                                value={cron}
+                                onChange={(e) => {
+                                  const copy = [...cronTriggers];
+                                  copy[idx] = e.target.value;
+                                  setCronTriggers(copy);
+                                }}
+                                className="w-full bg-transparent border-0 text-xs font-mono font-bold text-amber-300 focus:outline-none focus:ring-0 placeholder:text-text-muted"
+                              />
                             </div>
-                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
-                              <span className="text-amber-400 font-bold">0 */5 * * * *</span>
-                              <p className="text-text-muted font-sans">Every 5 minutes</p>
-                            </div>
-                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
-                              <span className="text-amber-400 font-bold">0 */15 * * * *</span>
-                              <p className="text-text-muted font-sans">Every 15 minutes</p>
-                            </div>
-                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
-                              <span className="text-amber-400 font-bold">0 0 * * * *</span>
-                              <p className="text-text-muted font-sans">Every 1 hour</p>
-                            </div>
-                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
-                              <span className="text-amber-400 font-bold">0 0 12 * * *</span>
-                              <p className="text-text-muted font-sans">Everyday at 12:00 PM</p>
-                            </div>
-                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
-                              <span className="text-amber-400 font-bold">0 0 0 * * *</span>
-                              <p className="text-text-muted font-sans">Everyday at 00:00 (Midnight)</p>
-                            </div>
+                            {cronTriggers.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => setCronTriggers(cronTriggers.filter((_, i) => i !== idx))}
+                                className="p-2.5 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/20"
+                                title="Remove Cron Trigger"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
-                        </div>
+                        ))}
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 flex items-start gap-2.5">
+                        <Zap className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <span className="leading-relaxed">
+                          Setiap aturan Spring Cron di atas akan mengeksekusi fetch API secara mandiri, memasukkan data ke tabel target, dan mengirim notifikasi jika terjadi kegagalan.
+                        </span>
                       </div>
                     </div>
 
