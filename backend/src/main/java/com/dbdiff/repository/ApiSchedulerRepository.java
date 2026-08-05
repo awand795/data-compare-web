@@ -26,23 +26,23 @@ public class ApiSchedulerRepository {
     public void initTable() {
         try {
             String sql = "CREATE TABLE IF NOT EXISTS api_scheduler_configs (" +
-                    "id VARCHAR(64) PRIMARY KEY, " +
+                    "id VARCHAR(255) PRIMARY KEY, " +
                     "name VARCHAR(255) NOT NULL, " +
-                    "method VARCHAR(10) NOT NULL, " +
+                    "method VARCHAR(50) NOT NULL, " +
                     "url TEXT NOT NULL, " +
                     "query_params TEXT, " +
                     "headers TEXT, " +
-                    "auth_type VARCHAR(20), " +
+                    "auth_type VARCHAR(100), " +
                     "auth_username VARCHAR(255), " +
                     "auth_password VARCHAR(255), " +
                     "auth_token TEXT, " +
-                    "body_type VARCHAR(20), " +
+                    "body_type VARCHAR(50), " +
                     "body_content TEXT, " +
-                    "target_connection_id VARCHAR(64), " +
+                    "target_connection_id VARCHAR(255), " +
                     "target_table VARCHAR(255), " +
                     "kode_data VARCHAR(255), " +
-                    "cron_expression VARCHAR(100), " +
-                    "notification_channel_id VARCHAR(64), " +
+                    "cron_expression VARCHAR(255), " +
+                    "notification_channel_id TEXT, " +
                     "is_active BOOLEAN DEFAULT TRUE, " +
                     "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
                     "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
@@ -51,9 +51,22 @@ public class ApiSchedulerRepository {
                     "last_run_message TEXT" +
                     ")";
             jdbcTemplate.execute(sql);
-            try {
-                jdbcTemplate.execute("ALTER TABLE api_scheduler_configs ADD COLUMN notification_channel_id VARCHAR(64)");
-            } catch (Exception ignored) {}
+            
+            String[] alterSqls = {
+                "ALTER TABLE api_scheduler_configs ADD COLUMN notification_channel_id TEXT",
+                "ALTER TABLE api_scheduler_configs ALTER COLUMN notification_channel_id TYPE TEXT",
+                "ALTER TABLE api_scheduler_configs ALTER COLUMN target_connection_id TYPE VARCHAR(255)",
+                "ALTER TABLE api_scheduler_configs ALTER COLUMN id TYPE VARCHAR(255)",
+                "ALTER TABLE api_scheduler_configs ALTER COLUMN cron_expression TYPE VARCHAR(255)",
+                "ALTER TABLE api_scheduler_configs ALTER COLUMN auth_type TYPE VARCHAR(100)",
+                "ALTER TABLE api_scheduler_configs ALTER COLUMN method TYPE VARCHAR(50)",
+                "ALTER TABLE api_scheduler_configs ALTER COLUMN body_type TYPE VARCHAR(50)"
+            };
+            for (String alterSql : alterSqls) {
+                try {
+                    jdbcTemplate.execute(alterSql);
+                } catch (Exception ignored) {}
+            }
             logger.info("Successfully initialized table api_scheduler_configs");
         } catch (Exception e) {
             logger.warn("Initialization of table api_scheduler_configs skipped or failed: " + e.getMessage());
