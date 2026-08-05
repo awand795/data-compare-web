@@ -81,7 +81,7 @@ public class ConnectionDetails {
             case "sqlserver":
                 return "jdbc:sqlserver://" + effectiveHost + ":" + effectivePort + ";databaseName=" + database;
             case "clickhouse":
-                return "jdbc:ch://" + effectiveHost + ":" + effectivePort + "/" + database + "?compress=0&decompress=0";
+                return "jdbc:ch://" + effectiveHost + ":" + effectivePort + "/" + database;
             default:
                 throw new IllegalArgumentException("Unsupported database type: " + type);
         }

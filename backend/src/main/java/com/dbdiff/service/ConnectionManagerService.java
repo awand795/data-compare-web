@@ -400,13 +400,6 @@ public class ConnectionManagerService {
                 config.addDataSourceProperty("connect_timeout", String.valueOf(timeoutMs));
                 config.addDataSourceProperty("socket_timeout", "600000"); // 10 menit (cegah timeout saat DROP/ADD COLUMN)
 
-                // Fix: Docker overlay network MTU (1350) dapat menyebabkan TLS record fragmentation
-                // yang membuat Java HttpClient hang saat SSL handshake dengan ClickHouse Cloud.
-                // curl dari host berhasil karena pakai host network stack (MTU 1400).
-                // Solusi: set socket buffer lebih kecil agar TLS records tidak di-fragment,
-                // dan disable HTTP compression yang memperburuk ukuran paket.
-                config.addDataSourceProperty("compress", "0");             // Disable LZ4 request compression
-                config.addDataSourceProperty("decompress", "0");           // Disable LZ4 response decompression (prevents StreamCorruptedException: 28 of 112 bytes)
                 break;
 
             default:
