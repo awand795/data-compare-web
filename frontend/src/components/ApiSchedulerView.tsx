@@ -476,13 +476,30 @@ export const ApiSchedulerView: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                  <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                  <span>{cronTriggers.filter(c => c.trim()).join('; ') || '0 */5 * * * *'}</span>
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-mono font-bold bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30">
-                  <Database className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
-                  <span>{currentConfig.kodeData || 'API_KODE'}</span>
+                {(() => {
+                  const activeCrons = cronTriggers.filter(c => c && c.trim());
+                  const count = activeCrons.length;
+                  const label = count === 0 
+                    ? 'No Cron' 
+                    : count === 1 
+                      ? activeCrons[0] 
+                      : `${activeCrons[0]} (+${count - 1} more)`;
+                  return (
+                    <span 
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 max-w-[200px] sm:max-w-[250px]"
+                      title={activeCrons.join('\n')}
+                    >
+                      <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span className="truncate">{label}</span>
+                    </span>
+                  );
+                })()}
+                <span 
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-mono font-bold bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 max-w-[150px]"
+                  title={currentConfig.kodeData || 'API_KODE'}
+                >
+                  <Database className="w-3 h-3 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                  <span className="truncate">{currentConfig.kodeData || 'API_KODE'}</span>
                 </span>
               </div>
             </div>
