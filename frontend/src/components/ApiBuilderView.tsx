@@ -517,7 +517,7 @@ export const ApiBuilderView: React.FC = () => {
   // ─────────────────────────────────────────────
   if (viewMode === 'list') {
     return (
-      <div className="h-full flex flex-col p-6 overflow-y-auto bg-bg-main">
+      <div className="h-full flex flex-col p-6 overflow-y-auto bg-bg-main min-h-0">
         {/* HEADER & METRIC BANNER */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
           <div>
@@ -898,7 +898,7 @@ export const ApiBuilderView: React.FC = () => {
     const pythonExample = `import requests\n\nurl = "${fullUrl}${qs}"\nheaders = {\n    "Accept": "application/json",\n    ${!currentApi.isPublic ? `"Authorization": "Bearer ${currentApi.authToken}",\n    ` : ''}${currentApi.method !== 'GET' ? `"Content-Type": "application/json"` : ''}\n}\n${currentApi.method !== 'GET' && detectedParams.length > 0 ? `payload = {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n}\nresponse = requests.${currentApi.method.toLowerCase()}(url, headers=headers, json=payload)` : `response = requests.${currentApi.method.toLowerCase()}(url, headers=headers)`}\nprint(response.json())`;
 
     return (
-      <div className="h-full flex flex-col p-6 overflow-y-auto bg-bg-main">
+      <div className="h-full flex flex-col p-6 overflow-y-auto bg-bg-main min-h-0">
         <div className="flex items-center justify-between mb-8 max-w-5xl mx-auto w-full">
           <div className="flex items-center gap-4">
             <button 
