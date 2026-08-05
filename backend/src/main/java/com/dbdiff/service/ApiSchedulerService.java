@@ -6,6 +6,7 @@ import com.dbdiff.repository.ApiSchedulerRepository;
 import com.dbdiff.repository.ConnectionRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -291,6 +292,12 @@ public class ApiSchedulerService {
         String effectiveKodeData = (kodeData != null && !kodeData.trim().isEmpty()) ? kodeData.trim() : "API_DATA";
         String cleanTargetTable = targetTable.trim();
 
+        List<String> recordsToInsert = extractRecordsToInsert(responseJson);
+        if (recordsToInsert.isEmpty()) {
+            logger.info("No records found to insert for target table {}", cleanTargetTable);
+            return;
+        }
+
         try (Connection conn = ds.getConnection()) {
             if (!conn.getAutoCommit()) {
                 conn.setAutoCommit(true);
@@ -325,12 +332,15 @@ public class ApiSchedulerService {
                     throw new RuntimeException("Target table '" + cleanTargetTable + "' does not conform to standard schema. Missing required columns: " + missingCols + ". Standard schema columns required: [seq, kode_data, detail_data, input_by, input_dt].");
                 }
 
-                // Insert into ClickHouse
+                // Insert into ClickHouse (Batch Insert)
                 String insertSql = "INSERT INTO " + cleanTargetTable + " (kode_data, detail_data, input_by, input_dt) VALUES (?, ?, 'darkosync', now())";
                 try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
-                    pstmt.setString(1, effectiveKodeData);
-                    pstmt.setString(2, responseJson);
-                    pstmt.executeUpdate();
+                    for (String recordJson : recordsToInsert) {
+                        pstmt.setString(1, effectiveKodeData);
+                        pstmt.setString(2, recordJson);
+                        pstmt.addBatch();
+                    }
+                    pstmt.executeBatch();
                 }
 
             } else {
@@ -403,18 +413,65 @@ public class ApiSchedulerService {
                     throw new RuntimeException("Target table '" + cleanTargetTable + "' does not conform to standard schema. Missing required columns: " + missingCols + ". Standard schema columns required: [seq, kode_data, detail_data, input_by, input_dt].");
                 }
 
-                // Insert into PostgreSQL
+                // Insert into PostgreSQL (Batch Insert)
                 String insertSql = "INSERT INTO " + cleanTargetTable + " (kode_data, detail_data, input_by, input_dt) VALUES (?, ?, 'darkosync', CURRENT_TIMESTAMP)";
                 try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
-                    pstmt.setString(1, effectiveKodeData);
-                    pstmt.setString(2, responseJson);
-                    pstmt.executeUpdate();
+                    for (String recordJson : recordsToInsert) {
+                        pstmt.setString(1, effectiveKodeData);
+                        pstmt.setString(2, recordJson);
+                        pstmt.addBatch();
+                    }
+                    pstmt.executeBatch();
                 }
                 if (!conn.getAutoCommit()) {
                     conn.commit();
                 }
             }
         }
+    }
+
+    private List<String> extractRecordsToInsert(String responseJson) {
+        List<String> recordsToInsert = new ArrayList<>();
+        if (responseJson == null || responseJson.trim().isEmpty()) {
+            return recordsToInsert;
+        }
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(responseJson.trim());
+
+            if (rootNode.isArray()) {
+                for (JsonNode item : rootNode) {
+                    recordsToInsert.add(mapper.writeValueAsString(item));
+                }
+            } else if (rootNode.isObject()) {
+                JsonNode dataArray = null;
+                if (rootNode.has("data") && rootNode.get("data").isArray()) {
+                    dataArray = rootNode.get("data");
+                } else if (rootNode.has("items") && rootNode.get("items").isArray()) {
+                    dataArray = rootNode.get("items");
+                } else if (rootNode.has("records") && rootNode.get("records").isArray()) {
+                    dataArray = rootNode.get("records");
+                } else if (rootNode.has("results") && rootNode.get("results").isArray()) {
+                    dataArray = rootNode.get("results");
+                } else if (rootNode.has("list") && rootNode.get("list").isArray()) {
+                    dataArray = rootNode.get("list");
+                }
+
+                if (dataArray != null) {
+                    for (JsonNode item : dataArray) {
+                        recordsToInsert.add(mapper.writeValueAsString(item));
+                    }
+                } else {
+                    recordsToInsert.add(mapper.writeValueAsString(rootNode));
+                }
+            } else {
+                recordsToInsert.add(responseJson);
+            }
+        } catch (Exception e) {
+            logger.warn("Could not parse responseJson as JSON tree, using raw responseJson: {}", e.getMessage());
+            recordsToInsert.add(responseJson);
+        }
+        return recordsToInsert;
     }
 
     private String buildFullUrl(String baseUrl, String queryParamsJson) {
