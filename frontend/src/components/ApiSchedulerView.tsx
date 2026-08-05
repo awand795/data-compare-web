@@ -62,16 +62,6 @@ const getMethodBadgeClass = (method: string) => {
   }
 };
 
-const SPRING_CRON_PRESETS = [
-  { label: 'Every 1 Minute', cron: '0 */1 * * * *' },
-  { label: 'Every 5 Minutes', cron: '0 */5 * * * *' },
-  { label: 'Every 15 Minutes', cron: '0 */15 * * * *' },
-  { label: 'Every 30 Minutes', cron: '0 */30 * * * *' },
-  { label: 'Every 1 Hour', cron: '0 0 * * * *' },
-  { label: 'Everyday at 12:00 PM', cron: '0 0 12 * * *' },
-  { label: 'Every Midnight (00:00)', cron: '0 0 0 * * *' },
-];
-
 export const ApiSchedulerView: React.FC = () => {
   const { connections, addToast } = useAppStore();
   const [schedulers, setSchedulers] = useState<ApiSchedulerConfig[]>([]);
@@ -98,6 +88,9 @@ export const ApiSchedulerView: React.FC = () => {
     notificationChannelId: '',
     active: true,
   });
+
+  // Separate Notification Platform selection (none | TELEGRAM | DISCORD)
+  const [selectedNotifPlatform, setSelectedNotifPlatform] = useState<'none' | 'TELEGRAM' | 'DISCORD'>('none');
 
   // Insomnia Tabs State
   const [activeReqTab, setActiveReqTab] = useState<'params' | 'headers' | 'auth' | 'body' | 'target' | 'schedule'>('params');
@@ -151,9 +144,10 @@ export const ApiSchedulerView: React.FC = () => {
       targetTable: 'sch_sync.tb_api_data',
       kodeData: 'API_KODE_V1',
       cronExpression: '0 */5 * * * *',
-      notificationChannelId: channels.length > 0 ? channels[0].id : '',
+      notificationChannelId: '',
       active: true,
     });
+    setSelectedNotifPlatform('none');
     setQueryParamsList([{ key: '', value: '', enabled: true }]);
     setHeadersList([
       { key: 'Content-Type', value: 'application/json', enabled: true },
@@ -166,6 +160,18 @@ export const ApiSchedulerView: React.FC = () => {
 
   const openEditEditor = (cfg: ApiSchedulerConfig) => {
     setCurrentConfig(cfg);
+
+    // Detect selected notification platform
+    if (cfg.notificationChannelId) {
+      const foundChan = channels.find(c => String(c.id) === String(cfg.notificationChannelId));
+      if (foundChan) {
+        setSelectedNotifPlatform(foundChan.type);
+      } else {
+        setSelectedNotifPlatform('none');
+      }
+    } else {
+      setSelectedNotifPlatform('none');
+    }
     
     // Parse query params
     if (cfg.queryParams) {
@@ -261,6 +267,7 @@ export const ApiSchedulerView: React.FC = () => {
       url: currentConfig.url.trim(),
       queryParams: compileListToJson(queryParamsList),
       headers: compileListToJson(headersList),
+      notificationChannelId: selectedNotifPlatform === 'none' ? '' : currentConfig.notificationChannelId,
     };
 
     try {
@@ -348,17 +355,19 @@ export const ApiSchedulerView: React.FC = () => {
 
   // Render Full Screen Insomnia Editor
   if (viewMode === 'editor') {
+    const telegramChannels = channels.filter(c => c.type === 'TELEGRAM');
+    const discordChannels = channels.filter(c => c.type === 'DISCORD');
+
     return (
       <div className="h-full flex flex-col bg-bg-main text-text-main overflow-hidden animate-fadeIn">
         
-        {/* Top Navigation & Insomnia Command Bar */}
-        <div className="bg-bg-panel border-b border-border-main p-3.5 flex flex-col md:flex-row items-center justify-between gap-3 shrink-0 shadow-sm z-20">
-          
-          {/* Left: Back Button & Schedule Name */}
-          <div className="flex items-center gap-3 w-full md:w-auto">
+        {/* Top Navigation Bar (Clean & Sleek Header) */}
+        <div className="bg-bg-panel border-b border-border-main px-4 py-3 flex items-center justify-between gap-3 shrink-0 shadow-sm z-20">
+          {/* Left: Back Button & Page Title */}
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setViewMode('list')}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-bg-main hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main transition-colors text-xs font-semibold"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-bg-main hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main transition-colors text-xs font-semibold"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Schedules</span>
@@ -366,49 +375,23 @@ export const ApiSchedulerView: React.FC = () => {
 
             <div className="h-5 w-px bg-border-main hidden md:block" />
 
-            <div className="flex items-center gap-2 flex-1 md:w-64">
-              <input
-                type="text"
-                placeholder="Schedule Name e.g. Daily Weather Ingestion"
-                value={currentConfig.name || ''}
-                onChange={(e) => setCurrentConfig({ ...currentConfig, name: e.target.value })}
-                className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs font-bold text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
-              />
+            <div>
+              <h2 className="text-sm font-bold text-text-main flex items-center gap-2">
+                <Globe className="w-4 h-4 text-cyan-400" />
+                <span>{currentConfig.id ? `Edit Schedule: ${currentConfig.name || 'API Endpoint'}` : 'New API Ingestion Schedule'}</span>
+              </h2>
+              <p className="text-[11px] text-text-muted hidden md:block">
+                Configure Insomnia HTTP client, target database schema, Spring Cron, and failure alerts
+              </p>
             </div>
           </div>
 
-          {/* Middle: Method & Endpoint URL (Insomnia Style) */}
-          <div className="flex items-center gap-2 w-full md:flex-1 max-w-2xl">
-            <select
-              value={currentConfig.method || 'GET'}
-              onChange={(e) => setCurrentConfig({ ...currentConfig, method: e.target.value })}
-              className={clsx(
-                "px-3 py-2 rounded-xl text-xs font-bold tracking-wider focus:outline-none border border-border-main bg-bg-main cursor-pointer shrink-0",
-                getMethodBadgeClass(currentConfig.method || 'GET')
-              )}
-            >
-              <option value="GET">GET</option>
-              <option value="POST">POST</option>
-              <option value="PUT">PUT</option>
-              <option value="DELETE">DELETE</option>
-              <option value="PATCH">PATCH</option>
-            </select>
-
-            <input
-              type="text"
-              placeholder="https://api.example.com/v1/data..."
-              value={currentConfig.url || ''}
-              onChange={(e) => setCurrentConfig({ ...currentConfig, url: e.target.value })}
-              className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
-            />
-          </div>
-
           {/* Right Action Buttons: Test Endpoint & Save Schedule */}
-          <div className="flex items-center gap-2.5 w-full md:w-auto justify-end shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             <button
               onClick={handleTestEndpoint}
               disabled={isTesting}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all disabled:opacity-50"
               title="Send HTTP Request & View Live Response (Insomnia Console)"
             >
               {isTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-slate-950" />}
@@ -418,7 +401,7 @@ export const ApiSchedulerView: React.FC = () => {
             <button
               onClick={handleSaveSchedule}
               disabled={isSaving}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-xs shadow-md shadow-blue-500/25 hover:shadow-blue-500/40 transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-xs shadow-md shadow-blue-500/25 hover:shadow-blue-500/40 transition-all disabled:opacity-50"
             >
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               <span>Save Schedule</span>
@@ -426,538 +409,695 @@ export const ApiSchedulerView: React.FC = () => {
           </div>
         </div>
 
-        {/* Main Split Insomnia Workspace (Left: Request Config | Right: Live Response) */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 divide-y lg:divide-y-0 lg:divide-x divide-border-main overflow-hidden">
+        {/* Main Editor Body Container */}
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-4 gap-4">
           
-          {/* Left Column: Insomnia Request Workbench (7 Cols) */}
-          <div className="lg:col-span-7 flex flex-col min-h-0 bg-bg-panel">
-            
-            {/* Request Tabs Header */}
-            <div className="flex items-center gap-1 border-b border-border-main bg-bg-main px-4 pt-2.5 overflow-x-auto shrink-0 z-10">
-              {[
-                { id: 'params', label: 'Params', icon: Search },
-                { id: 'headers', label: 'Headers', icon: FileText },
-                { id: 'auth', label: 'Auth', icon: ShieldCheck },
-                { id: 'body', label: 'Body', icon: Code2 },
-                { id: 'target', label: 'Target Storage', icon: Database },
-                { id: 'schedule', label: 'Schedule & Alerts', icon: Clock },
-              ].map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveReqTab(tab.id as any)}
-                    className={clsx(
-                      "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all border-t border-x",
-                      activeReqTab === tab.id
-                        ? "bg-bg-panel text-blue-400 border-border-main border-b-transparent -mb-px font-bold shadow-sm"
-                        : "text-text-muted border-transparent hover:text-text-main hover:bg-bg-hover"
-                    )}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Tab Content Body */}
-            <div className="flex-1 p-5 overflow-y-auto">
+          {/* General Info Card: Schedule Name, Method, and Endpoint URL (Positioned Below Nav Bar as requested) */}
+          <div className="bg-bg-panel border border-border-main p-4 rounded-2xl shadow-sm shrink-0 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
               
-              {/* TAB 1: QUERY PARAMS */}
-              {activeReqTab === 'params' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-bold text-text-main">URL Query Parameters</h4>
-                      <p className="text-[11px] text-text-muted">Appended as URL query string e.g. ?page=1&limit=50</p>
-                    </div>
-                    <button
-                      onClick={() => setQueryParamsList([...queryParamsList, { key: '', value: '', enabled: true }])}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Param</span>
-                    </button>
-                  </div>
+              {/* Schedule Name Input (4 cols) */}
+              <div className="md:col-span-4">
+                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
+                  Schedule Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Daily Weather Ingestion API"
+                  value={currentConfig.name || ''}
+                  onChange={(e) => setCurrentConfig({ ...currentConfig, name: e.target.value })}
+                  className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs font-bold text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
+                />
+              </div>
 
-                  <div className="space-y-2">
-                    {queryParamsList.map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-2.5 group">
-                        <input
-                          type="checkbox"
-                          checked={item.enabled}
-                          onChange={(e) => {
-                            const copy = [...queryParamsList];
-                            copy[idx].enabled = e.target.checked;
-                            setQueryParamsList(copy);
-                          }}
-                          className="w-4 h-4 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Key (e.g. limit)"
-                          value={item.key}
-                          onChange={(e) => {
-                            const copy = [...queryParamsList];
-                            copy[idx].key = e.target.value;
-                            setQueryParamsList(copy);
-                          }}
-                          className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Value (e.g. 50)"
-                          value={item.value}
-                          onChange={(e) => {
-                            const copy = [...queryParamsList];
-                            copy[idx].value = e.target.value;
-                            setQueryParamsList(copy);
-                          }}
-                          className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
-                        />
-                        <button
-                          onClick={() => setQueryParamsList(queryParamsList.filter((_, i) => i !== idx))}
-                          className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: HTTP HEADERS */}
-              {activeReqTab === 'headers' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-bold text-text-main">HTTP Request Headers</h4>
-                      <p className="text-[11px] text-text-muted">Custom HTTP headers sent with the request</p>
-                    </div>
-                    <button
-                      onClick={() => setHeadersList([...headersList, { key: '', value: '', enabled: true }])}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Header</span>
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {headersList.map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-2.5 group">
-                        <input
-                          type="checkbox"
-                          checked={item.enabled}
-                          onChange={(e) => {
-                            const copy = [...headersList];
-                            copy[idx].enabled = e.target.checked;
-                            setHeadersList(copy);
-                          }}
-                          className="w-4 h-4 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Header (e.g. Authorization)"
-                          value={item.key}
-                          onChange={(e) => {
-                            const copy = [...headersList];
-                            copy[idx].key = e.target.value;
-                            setHeadersList(copy);
-                          }}
-                          className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Value"
-                          value={item.value}
-                          onChange={(e) => {
-                            const copy = [...headersList];
-                            copy[idx].value = e.target.value;
-                            setHeadersList(copy);
-                          }}
-                          className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
-                        />
-                        <button
-                          onClick={() => setHeadersList(headersList.filter((_, i) => i !== idx))}
-                          className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 3: AUTHENTICATION */}
-              {activeReqTab === 'auth' && (
-                <div className="space-y-5 max-w-lg">
-                  <div>
-                    <label className="block text-xs font-bold text-text-main mb-2">Authentication Mechanism</label>
-                    <div className="grid grid-cols-3 gap-2.5">
-                      {['none', 'basic', 'bearer'].map(auth => (
-                        <button
-                          key={auth}
-                          type="button"
-                          onClick={() => setCurrentConfig({ ...currentConfig, authType: auth })}
-                          className={clsx(
-                            "py-2.5 px-4 rounded-xl text-xs font-bold capitalize transition-all border text-center",
-                            currentConfig.authType === auth
-                              ? "bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-sm"
-                              : "bg-bg-main text-text-muted border-border-main hover:text-text-main hover:bg-bg-hover"
-                          )}
-                        >
-                          {auth}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {currentConfig.authType === 'basic' && (
-                    <div className="space-y-3.5 bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner">
-                      <div>
-                        <label className="block text-xs font-semibold text-text-muted mb-1">Username</label>
-                        <input
-                          type="text"
-                          value={currentConfig.authUsername || ''}
-                          onChange={(e) => setCurrentConfig({ ...currentConfig, authUsername: e.target.value })}
-                          className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-text-muted mb-1">Password</label>
-                        <input
-                          type="password"
-                          value={currentConfig.authPassword || ''}
-                          onChange={(e) => setCurrentConfig({ ...currentConfig, authPassword: e.target.value })}
-                          className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
+              {/* HTTP Method Selector (2 cols) */}
+              <div className="md:col-span-2">
+                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
+                  HTTP Method
+                </label>
+                <select
+                  value={currentConfig.method || 'GET'}
+                  onChange={(e) => setCurrentConfig({ ...currentConfig, method: e.target.value })}
+                  className={clsx(
+                    "w-full px-3 py-2 rounded-xl text-xs font-bold tracking-wider focus:outline-none border border-border-main bg-bg-main cursor-pointer",
+                    getMethodBadgeClass(currentConfig.method || 'GET')
                   )}
+                >
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="DELETE">DELETE</option>
+                  <option value="PATCH">PATCH</option>
+                </select>
+              </div>
 
-                  {currentConfig.authType === 'bearer' && (
-                    <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner">
-                      <label className="block text-xs font-semibold text-text-muted mb-1">Bearer Token</label>
-                      <input
-                        type="text"
-                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-                        value={currentConfig.authToken || ''}
-                        onChange={(e) => setCurrentConfig({ ...currentConfig, authToken: e.target.value })}
-                        className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 4: REQUEST BODY */}
-              {activeReqTab === 'body' && (
-                <div className="space-y-4 h-full flex flex-col">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-text-main">Body Payload Format:</span>
-                    {['none', 'json', 'text'].map(type => (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => setCurrentConfig({ ...currentConfig, bodyType: type })}
-                        className={clsx(
-                          "px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all border",
-                          currentConfig.bodyType === type
-                            ? "bg-blue-500/20 text-blue-400 border-blue-500/40 font-bold"
-                            : "bg-bg-main text-text-muted border-border-main hover:text-text-main"
-                        )}
-                      >
-                        {type}
-                      </button>
-                    ))}
-                  </div>
-
-                  {currentConfig.bodyType !== 'none' && (
-                    <div className="flex-1 flex flex-col min-h-[280px]">
-                      <textarea
-                        placeholder='{ "key": "value", "filter": "active" }'
-                        value={currentConfig.bodyContent || ''}
-                        onChange={(e) => setCurrentConfig({ ...currentConfig, bodyContent: e.target.value })}
-                        rows={12}
-                        className="w-full flex-1 bg-bg-main border border-border-main rounded-2xl p-4 text-xs font-mono text-emerald-400 placeholder:text-text-muted focus:outline-none focus:border-blue-500 resize-none shadow-inner"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 5: TARGET STORAGE (ClickHouse & PostgreSQL 4-Column Ingestion) */}
-              {activeReqTab === 'target' && (
-                <div className="space-y-5">
-                  <div className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 p-4 rounded-2xl flex items-start gap-3.5 shadow-sm">
-                    <Database className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
-                    <div className="text-xs text-cyan-200">
-                      <p className="font-bold text-cyan-300 mb-1 text-sm">Target Ingestion Schema Structure</p>
-                      <p className="leading-relaxed">
-                        Hasil respon JSON dari API ini akan disimpan secara otomatis ke tabel target (ClickHouse atau PostgreSQL) dengan struktur 4 kolom standar:
-                      </p>
-                      <div className="flex flex-wrap gap-2 mt-2.5 font-mono text-[11px]">
-                        <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">1. kode_data (Custom Identifier)</span>
-                        <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">2. detail_data (Raw Response JSON)</span>
-                        <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">3. input_by ('darkosync')</span>
-                        <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">4. input_dt (Timestamp)</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-text-main mb-1.5">Target Database Connection</label>
-                      <select
-                        value={currentConfig.targetConnectionId || ''}
-                        onChange={(e) => setCurrentConfig({ ...currentConfig, targetConnectionId: e.target.value })}
-                        className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-blue-500 cursor-pointer"
-                      >
-                        <option value="">Select Connection (ClickHouse / PostgreSQL)...</option>
-                        {connections.map(c => (
-                          <option key={c.id} value={c.id}>{c.name} ({c.type} - {c.host})</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-text-main mb-1.5">Target Table Name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. sch_sync.tb_api_data or public.tb_weather"
-                        value={currentConfig.targetTable || ''}
-                        onChange={(e) => setCurrentConfig({ ...currentConfig, targetTable: e.target.value })}
-                        className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-text-main mb-1.5">Kode Data Identifier (User Input)</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. KODE_WEATHER_V1 or SALES_DAILY_API"
-                      value={currentConfig.kodeData || ''}
-                      onChange={(e) => setCurrentConfig({ ...currentConfig, kodeData: e.target.value })}
-                      className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
-                    />
-                    <p className="text-[11px] text-text-muted mt-1.5">
-                      String unik ini akan disimpan di kolom `kode_data` untuk mempermudah query dan pembedaan dataset.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 6: SCHEDULE & ALERTS (Spring Cron & Telegram/Discord Notifications) */}
-              {activeReqTab === 'schedule' && (
-                <div className="space-y-6 max-w-xl">
-                  
-                  {/* Spring Cron Expression Section */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-xs font-bold text-text-main">Spring Cron Expression Schedule</h4>
-                        <p className="text-[11px] text-text-muted">Spring standard 6-field format: sec min hr day month weekday</p>
-                      </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20 font-bold">
-                        Spring Cron
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {SPRING_CRON_PRESETS.map((item, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setCurrentConfig({ ...currentConfig, cronExpression: item.cron })}
-                          className={clsx(
-                            "py-2 px-3 rounded-xl text-xs font-medium transition-all border text-left flex items-center justify-between",
-                            currentConfig.cronExpression === item.cron
-                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold shadow-sm"
-                              : "bg-bg-main text-text-muted border-border-main hover:text-text-main hover:bg-bg-hover"
-                          )}
-                        >
-                          <span className="truncate">{item.label}</span>
-                          <span className="text-[10px] font-mono text-amber-400/80 ml-1 shrink-0">{item.cron}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="bg-bg-main p-3.5 border border-border-main rounded-2xl shadow-inner space-y-2">
-                      <label className="block text-xs font-bold text-text-main">Custom Spring Cron Expression</label>
-                      <input
-                        type="text"
-                        placeholder="0 */5 * * * *"
-                        value={currentConfig.cronExpression || ''}
-                        onChange={(e) => setCurrentConfig({ ...currentConfig, cronExpression: e.target.value })}
-                        className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-amber-500"
-                      />
-                      <p className="text-[11px] text-text-muted">
-                        Format: <code className="text-amber-400 font-mono">0 */5 * * * *</code> (Detik Menit Jam Hari Bulan HariDalamMinggu)
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Telegram / Discord Notification Profile Integration */}
-                  <div className="space-y-3 pt-2 border-t border-border-main">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Bell className="w-4 h-4 text-purple-400" />
-                        <div>
-                          <h4 className="text-xs font-bold text-text-main">Execution Notification Profile</h4>
-                          <p className="text-[11px] text-text-muted">Send automatic status alerts to Telegram or Discord</p>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsChannelModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold transition-all"
-                      >
-                        <Settings className="w-3.5 h-3.5" />
-                        <span>Manage Profiles</span>
-                      </button>
-                    </div>
-
-                    <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner space-y-3">
-                      <label className="block text-xs font-bold text-text-main">Select Shared Telegram/Discord Profile</label>
-                      <select
-                        value={currentConfig.notificationChannelId || ''}
-                        onChange={(e) => setCurrentConfig({ ...currentConfig, notificationChannelId: e.target.value })}
-                        className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-purple-500 cursor-pointer"
-                      >
-                        <option value="">No Notifications (Disabled)</option>
-                        {channels.map(chan => (
-                          <option key={chan.id} value={chan.id}>
-                            {chan.type === 'DISCORD' ? '💬 Discord' : '✈️ Telegram'} — {chan.name} {chan.chatId ? `(Chat ID: ${chan.chatId})` : ''}
-                          </option>
-                        ))}
-                      </select>
-
-                      {currentConfig.notificationChannelId && (
-                        <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-200 flex items-center gap-2">
-                          <MessageCircle className="w-4 h-4 text-purple-400 shrink-0" />
-                          <span>
-                            Notifikasi ingesti akan dikirim secara otomatis ke profile terpilih setelah jadwal selesai berjalan.
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Enable Active Switch */}
-                  <div className="flex items-center justify-between bg-bg-main p-4 border border-border-main rounded-2xl shadow-sm">
-                    <div>
-                      <span className="block text-xs font-bold text-text-main">Enable Schedule Immediately</span>
-                      <span className="text-[11px] text-text-muted">Automated background execution on interval trigger</span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={currentConfig.active !== false}
-                      onChange={(e) => setCurrentConfig({ ...currentConfig, active: e.target.checked })}
-                      className="w-5 h-5 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
-                    />
-                  </div>
-
-                </div>
-              )}
+              {/* Endpoint URL Input (6 cols) */}
+              <div className="md:col-span-6">
+                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
+                  Target Endpoint URL
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://api.example.com/v1/data..."
+                  value={currentConfig.url || ''}
+                  onChange={(e) => setCurrentConfig({ ...currentConfig, url: e.target.value })}
+                  className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
+                />
+              </div>
 
             </div>
           </div>
 
-          {/* Right Column: Insomnia Live Response Console & Viewer (5 Cols) */}
-          <div className="lg:col-span-5 flex flex-col min-h-0 bg-bg-main">
+          {/* Main Split Insomnia Workspace (Left: Request Config Tabs | Right: Live Response Console) */}
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 divide-y lg:divide-y-0 lg:divide-x divide-border-main overflow-hidden bg-bg-panel border border-border-main rounded-2xl shadow-sm">
             
-            {/* Console Header Bar */}
-            <div className="p-3.5 border-b border-border-main flex items-center justify-between bg-bg-panel shrink-0 shadow-sm">
-              <div className="flex items-center gap-2.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Response Console</span>
+            {/* Left Column: Insomnia Request Workbench (7 Cols) */}
+            <div className="lg:col-span-7 flex flex-col min-h-0 bg-bg-panel">
+              
+              {/* Request Tabs Header */}
+              <div className="flex items-center gap-1 border-b border-border-main bg-bg-main px-4 pt-2.5 overflow-x-auto shrink-0 z-10">
+                {[
+                  { id: 'params', label: 'Params', icon: Search },
+                  { id: 'headers', label: 'Headers', icon: FileText },
+                  { id: 'auth', label: 'Auth', icon: ShieldCheck },
+                  { id: 'body', label: 'Body', icon: Code2 },
+                  { id: 'target', label: 'Target Storage', icon: Database },
+                  { id: 'schedule', label: 'Schedule & Alerts', icon: Clock },
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveReqTab(tab.id as any)}
+                      className={clsx(
+                        "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all border-t border-x",
+                        activeReqTab === tab.id
+                          ? "bg-bg-panel text-blue-400 border-border-main border-b-transparent -mb-px font-bold shadow-sm"
+                          : "text-text-muted border-transparent hover:text-text-main hover:bg-bg-hover"
+                      )}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Tab Content Body */}
+              <div className="flex-1 p-5 overflow-y-auto">
+                
+                {/* TAB 1: QUERY PARAMS */}
+                {activeReqTab === 'params' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold text-text-main">URL Query Parameters</h4>
+                        <p className="text-[11px] text-text-muted">Appended as URL query string e.g. ?page=1&limit=50</p>
+                      </div>
+                      <button
+                        onClick={() => setQueryParamsList([...queryParamsList, { key: '', value: '', enabled: true }])}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Param</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {queryParamsList.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-2.5 group">
+                          <input
+                            type="checkbox"
+                            checked={item.enabled}
+                            onChange={(e) => {
+                              const copy = [...queryParamsList];
+                              copy[idx].enabled = e.target.checked;
+                              setQueryParamsList(copy);
+                            }}
+                            className="w-4 h-4 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Key (e.g. limit)"
+                            value={item.key}
+                            onChange={(e) => {
+                              const copy = [...queryParamsList];
+                              copy[idx].key = e.target.value;
+                              setQueryParamsList(copy);
+                            }}
+                            className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Value (e.g. 50)"
+                            value={item.value}
+                            onChange={(e) => {
+                              const copy = [...queryParamsList];
+                              copy[idx].value = e.target.value;
+                              setQueryParamsList(copy);
+                            }}
+                            className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
+                          />
+                          <button
+                            onClick={() => setQueryParamsList(queryParamsList.filter((_, i) => i !== idx))}
+                            className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: HTTP HEADERS */}
+                {activeReqTab === 'headers' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold text-text-main">HTTP Request Headers</h4>
+                        <p className="text-[11px] text-text-muted">Custom HTTP headers sent with the request</p>
+                      </div>
+                      <button
+                        onClick={() => setHeadersList([...headersList, { key: '', value: '', enabled: true }])}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Header</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {headersList.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-2.5 group">
+                          <input
+                            type="checkbox"
+                            checked={item.enabled}
+                            onChange={(e) => {
+                              const copy = [...headersList];
+                              copy[idx].enabled = e.target.checked;
+                              setHeadersList(copy);
+                            }}
+                            className="w-4 h-4 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Header (e.g. Authorization)"
+                            value={item.key}
+                            onChange={(e) => {
+                              const copy = [...headersList];
+                              copy[idx].key = e.target.value;
+                              setHeadersList(copy);
+                            }}
+                            className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Value"
+                            value={item.value}
+                            onChange={(e) => {
+                              const copy = [...headersList];
+                              copy[idx].value = e.target.value;
+                              setHeadersList(copy);
+                            }}
+                            className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
+                          />
+                          <button
+                            onClick={() => setHeadersList(headersList.filter((_, i) => i !== idx))}
+                            className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: AUTHENTICATION */}
+                {activeReqTab === 'auth' && (
+                  <div className="space-y-5 max-w-lg">
+                    <div>
+                      <label className="block text-xs font-bold text-text-main mb-2">Authentication Mechanism</label>
+                      <div className="grid grid-cols-3 gap-2.5">
+                        {['none', 'basic', 'bearer'].map(auth => (
+                          <button
+                            key={auth}
+                            type="button"
+                            onClick={() => setCurrentConfig({ ...currentConfig, authType: auth })}
+                            className={clsx(
+                              "py-2.5 px-4 rounded-xl text-xs font-bold capitalize transition-all border text-center",
+                              currentConfig.authType === auth
+                                ? "bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-sm"
+                                : "bg-bg-main text-text-muted border-border-main hover:text-text-main hover:bg-bg-hover"
+                            )}
+                          >
+                            {auth}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {currentConfig.authType === 'basic' && (
+                      <div className="space-y-3.5 bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner">
+                        <div>
+                          <label className="block text-xs font-semibold text-text-muted mb-1">Username</label>
+                          <input
+                            type="text"
+                            value={currentConfig.authUsername || ''}
+                            onChange={(e) => setCurrentConfig({ ...currentConfig, authUsername: e.target.value })}
+                            className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-text-muted mb-1">Password</label>
+                          <input
+                            type="password"
+                            value={currentConfig.authPassword || ''}
+                            onChange={(e) => setCurrentConfig({ ...currentConfig, authPassword: e.target.value })}
+                            className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {currentConfig.authType === 'bearer' && (
+                      <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner">
+                        <label className="block text-xs font-semibold text-text-muted mb-1">Bearer Token</label>
+                        <input
+                          type="text"
+                          placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+                          value={currentConfig.authToken || ''}
+                          onChange={(e) => setCurrentConfig({ ...currentConfig, authToken: e.target.value })}
+                          className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 4: REQUEST BODY */}
+                {activeReqTab === 'body' && (
+                  <div className="space-y-4 h-full flex flex-col">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold text-text-main">Body Payload Format:</span>
+                      {['none', 'json', 'text'].map(type => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setCurrentConfig({ ...currentConfig, bodyType: type })}
+                          className={clsx(
+                            "px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all border",
+                            currentConfig.bodyType === type
+                              ? "bg-blue-500/20 text-blue-400 border-blue-500/40 font-bold"
+                              : "bg-bg-main text-text-muted border-border-main hover:text-text-main"
+                          )}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+
+                    {currentConfig.bodyType !== 'none' && (
+                      <div className="flex-1 flex flex-col min-h-[280px]">
+                        <textarea
+                          placeholder='{ "key": "value", "filter": "active" }'
+                          value={currentConfig.bodyContent || ''}
+                          onChange={(e) => setCurrentConfig({ ...currentConfig, bodyContent: e.target.value })}
+                          rows={12}
+                          className="w-full flex-1 bg-bg-main border border-border-main rounded-2xl p-4 text-xs font-mono text-emerald-400 placeholder:text-text-muted focus:outline-none focus:border-blue-500 resize-none shadow-inner"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 5: TARGET STORAGE (ClickHouse & PostgreSQL 4-Column Ingestion) */}
+                {activeReqTab === 'target' && (
+                  <div className="space-y-5">
+                    <div className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 p-4 rounded-2xl flex items-start gap-3.5 shadow-sm">
+                      <Database className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                      <div className="text-xs text-cyan-200">
+                        <p className="font-bold text-cyan-300 mb-1 text-sm">Target Ingestion Schema Structure</p>
+                        <p className="leading-relaxed">
+                          Hasil respon JSON dari API ini akan disimpan secara otomatis ke tabel target (ClickHouse atau PostgreSQL) dengan struktur 4 kolom standar:
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-2.5 font-mono text-[11px]">
+                          <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">1. kode_data (Custom Identifier)</span>
+                          <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">2. detail_data (Raw Response JSON)</span>
+                          <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">3. input_by ('darkosync')</span>
+                          <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">4. input_dt (Timestamp)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-text-main mb-1.5">Target Database Connection</label>
+                        <select
+                          value={currentConfig.targetConnectionId || ''}
+                          onChange={(e) => setCurrentConfig({ ...currentConfig, targetConnectionId: e.target.value })}
+                          className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-blue-500 cursor-pointer"
+                        >
+                          <option value="">Select Connection (ClickHouse / PostgreSQL)...</option>
+                          {connections.map(c => (
+                            <option key={c.id} value={c.id}>{c.name} ({c.type} - {c.host})</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-text-main mb-1.5">Target Table Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. sch_sync.tb_api_data or public.tb_weather"
+                          value={currentConfig.targetTable || ''}
+                          onChange={(e) => setCurrentConfig({ ...currentConfig, targetTable: e.target.value })}
+                          className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-text-main mb-1.5">Kode Data Identifier (User Input)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. KODE_WEATHER_V1 or SALES_DAILY_API"
+                        value={currentConfig.kodeData || ''}
+                        onChange={(e) => setCurrentConfig({ ...currentConfig, kodeData: e.target.value })}
+                        className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                      />
+                      <p className="text-[11px] text-text-muted mt-1.5">
+                        String unik ini akan disimpan di kolom `kode_data` untuk mempermudah query dan pembedaan dataset.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 6: SCHEDULE & ALERTS (Pure Custom Spring Cron + Separated Telegram/Discord Selection) */}
+                {activeReqTab === 'schedule' && (
+                  <div className="space-y-6 max-w-xl">
+                    
+                    {/* Spring Cron Expression Section (Pure Custom Input Only) */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-bold text-text-main">Custom Spring Cron Expression Schedule</h4>
+                          <p className="text-[11px] text-text-muted">Standard 6-field Spring Cron expression (Seconds Minutes Hours Day Month Weekday)</p>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20 font-bold">
+                          Spring Cron
+                        </span>
+                      </div>
+
+                      <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner space-y-3">
+                        <label className="block text-xs font-bold text-amber-300">Spring Cron Expression Input</label>
+                        <input
+                          type="text"
+                          placeholder="0 */5 * * * *"
+                          value={currentConfig.cronExpression || ''}
+                          onChange={(e) => setCurrentConfig({ ...currentConfig, cronExpression: e.target.value })}
+                          className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2.5 text-sm font-mono text-amber-300 focus:outline-none focus:border-amber-500 shadow-sm"
+                        />
+                        
+                        {/* Spring Cron Examples Cheat Sheet */}
+                        <div className="pt-2 border-t border-border-main text-[11px] text-text-muted space-y-1.5">
+                          <p className="font-bold text-text-main">📌 Spring Cron Format Guide & Examples:</p>
+                          <div className="grid grid-cols-2 gap-2 font-mono text-[10px]">
+                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                              <span className="text-amber-400 font-bold">0 */1 * * * *</span>
+                              <p className="text-text-muted font-sans">Every 1 minute</p>
+                            </div>
+                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                              <span className="text-amber-400 font-bold">0 */5 * * * *</span>
+                              <p className="text-text-muted font-sans">Every 5 minutes</p>
+                            </div>
+                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                              <span className="text-amber-400 font-bold">0 */15 * * * *</span>
+                              <p className="text-text-muted font-sans">Every 15 minutes</p>
+                            </div>
+                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                              <span className="text-amber-400 font-bold">0 0 * * * *</span>
+                              <p className="text-text-muted font-sans">Every 1 hour</p>
+                            </div>
+                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                              <span className="text-amber-400 font-bold">0 0 12 * * *</span>
+                              <p className="text-text-muted font-sans">Everyday at 12:00 PM</p>
+                            </div>
+                            <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                              <span className="text-amber-400 font-bold">0 0 0 * * *</span>
+                              <p className="text-text-muted font-sans">Everyday at 00:00 (Midnight)</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Telegram & Discord Notification Profile Integration (Separated Selection) */}
+                    <div className="space-y-4 pt-2 border-t border-border-main">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Bell className="w-4 h-4 text-purple-400" />
+                          <div>
+                            <h4 className="text-xs font-bold text-text-main">Failure Alert Notification Profile</h4>
+                            <p className="text-[11px] text-text-muted">Sends notification ONLY if API fetch or DB insert fails</p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsChannelModalOpen(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold transition-all"
+                        >
+                          <Settings className="w-3.5 h-3.5" />
+                          <span>Manage Profiles</span>
+                        </button>
+                      </div>
+
+                      <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner space-y-4">
+                        
+                        {/* Platform Selector Pills (Separated Platform Selection) */}
+                        <div>
+                          <label className="block text-xs font-bold text-text-main mb-2">Notification Platform</label>
+                          <div className="grid grid-cols-3 gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedNotifPlatform('none');
+                                setCurrentConfig({ ...currentConfig, notificationChannelId: '' });
+                              }}
+                              className={clsx(
+                                "py-2.5 px-3 rounded-xl text-xs font-bold transition-all border text-center flex items-center justify-center gap-1.5",
+                                selectedNotifPlatform === 'none'
+                                  ? "bg-slate-500/20 text-slate-300 border-slate-500/40 shadow-sm"
+                                  : "bg-bg-panel text-text-muted border-border-main hover:text-text-main"
+                              )}
+                            >
+                              <span>Disabled</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedNotifPlatform('TELEGRAM');
+                                const firstTg = telegramChannels[0]?.id || '';
+                                setCurrentConfig({ ...currentConfig, notificationChannelId: firstTg });
+                              }}
+                              className={clsx(
+                                "py-2.5 px-3 rounded-xl text-xs font-bold transition-all border text-center flex items-center justify-center gap-1.5",
+                                selectedNotifPlatform === 'TELEGRAM'
+                                  ? "bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-sm"
+                                  : "bg-bg-panel text-text-muted border-border-main hover:text-text-main"
+                              )}
+                            >
+                              <MessageCircle className="w-3.5 h-3.5 text-blue-400" />
+                              <span>Telegram</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedNotifPlatform('DISCORD');
+                                const firstDc = discordChannels[0]?.id || '';
+                                setCurrentConfig({ ...currentConfig, notificationChannelId: firstDc });
+                              }}
+                              className={clsx(
+                                "py-2.5 px-3 rounded-xl text-xs font-bold transition-all border text-center flex items-center justify-center gap-1.5",
+                                selectedNotifPlatform === 'DISCORD'
+                                  ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/40 shadow-sm"
+                                  : "bg-bg-panel text-text-muted border-border-main hover:text-text-main"
+                              )}
+                            >
+                              <Send className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>Discord</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Telegram Dropdown */}
+                        {selectedNotifPlatform === 'TELEGRAM' && (
+                          <div className="space-y-2 animate-fadeIn">
+                            <label className="block text-xs font-bold text-blue-400">Select Telegram Profile</label>
+                            {telegramChannels.length === 0 ? (
+                              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-300 flex items-center justify-between">
+                                <span>No Telegram profiles saved yet.</span>
+                                <button type="button" onClick={() => setIsChannelModalOpen(true)} className="underline font-bold">Add Telegram Profile</button>
+                              </div>
+                            ) : (
+                              <select
+                                value={currentConfig.notificationChannelId || ''}
+                                onChange={(e) => setCurrentConfig({ ...currentConfig, notificationChannelId: e.target.value })}
+                                className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-blue-500 cursor-pointer font-medium"
+                              >
+                                {telegramChannels.map(chan => (
+                                  <option key={chan.id} value={chan.id}>
+                                    ✈️ {chan.name} (Chat ID: {chan.chatId || '-'})
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Discord Dropdown */}
+                        {selectedNotifPlatform === 'DISCORD' && (
+                          <div className="space-y-2 animate-fadeIn">
+                            <label className="block text-xs font-bold text-indigo-400">Select Discord Webhook Profile</label>
+                            {discordChannels.length === 0 ? (
+                              <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-xs text-indigo-300 flex items-center justify-between">
+                                <span>No Discord profiles saved yet.</span>
+                                <button type="button" onClick={() => setIsChannelModalOpen(true)} className="underline font-bold">Add Discord Profile</button>
+                              </div>
+                            ) : (
+                              <select
+                                value={currentConfig.notificationChannelId || ''}
+                                onChange={(e) => setCurrentConfig({ ...currentConfig, notificationChannelId: e.target.value })}
+                                className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-indigo-500 cursor-pointer font-medium"
+                              >
+                                {discordChannels.map(chan => (
+                                  <option key={chan.id} value={chan.id}>
+                                    💬 {chan.name} (Webhook Configured)
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        )}
+
+                      </div>
+                    </div>
+
+                    {/* Enable Active Switch */}
+                    <div className="flex items-center justify-between bg-bg-main p-4 border border-border-main rounded-2xl shadow-sm">
+                      <div>
+                        <span className="block text-xs font-bold text-text-main">Enable Schedule Immediately</span>
+                        <span className="text-[11px] text-text-muted">Automated background execution on interval trigger</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={currentConfig.active !== false}
+                        onChange={(e) => setCurrentConfig({ ...currentConfig, active: e.target.checked })}
+                        className="w-5 h-5 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
+                      />
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+            </div>
+
+            {/* Right Column: Insomnia Live Response Console & Viewer (5 Cols) */}
+            <div className="lg:col-span-5 flex flex-col min-h-0 bg-bg-main">
+              
+              {/* Console Header Bar */}
+              <div className="p-3.5 border-b border-border-main flex items-center justify-between bg-bg-panel shrink-0 shadow-sm">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Response Console</span>
+                  {testResponse && (
+                    <span className={clsx(
+                      "px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm",
+                      testResponse.statusCode && testResponse.statusCode >= 200 && testResponse.statusCode < 300
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                        : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                    )}>
+                      {testResponse.statusCode} OK
+                    </span>
+                  )}
+                </div>
+
                 {testResponse && (
-                  <span className={clsx(
-                    "px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm",
-                    testResponse.statusCode && testResponse.statusCode >= 200 && testResponse.statusCode < 300
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                      : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                  )}>
-                    {testResponse.statusCode} OK
-                  </span>
+                  <div className="flex items-center gap-3 text-xs text-text-muted font-mono">
+                    <span>{testResponse.durationMs} ms</span>
+                    <button
+                      onClick={() => {
+                        if (testResponse.body) {
+                          navigator.clipboard.writeText(getPrettyJson(testResponse.body));
+                          setIsCopied(true);
+                          setTimeout(() => setIsCopied(false), 2000);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors border border-border-main"
+                      title="Copy Pretty JSON Response"
+                    >
+                      {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
                 )}
               </div>
 
-              {testResponse && (
-                <div className="flex items-center gap-3 text-xs text-text-muted font-mono">
-                  <span>{testResponse.durationMs} ms</span>
+              {/* Response Sub-Tabs (Body vs Headers) */}
+              <div className="flex items-center gap-1 border-b border-border-main bg-bg-main px-4 pt-2 shrink-0">
+                {['body', 'headers'].map(t => (
                   <button
-                    onClick={() => {
-                      if (testResponse.body) {
-                        navigator.clipboard.writeText(getPrettyJson(testResponse.body));
-                        setIsCopied(true);
-                        setTimeout(() => setIsCopied(false), 2000);
-                      }
-                    }}
-                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors border border-border-main"
-                    title="Copy Pretty JSON Response"
+                    key={t}
+                    onClick={() => setActiveRespTab(t as any)}
+                    className={clsx(
+                      "px-4 py-2 text-xs font-bold capitalize rounded-t-xl transition-all border-t border-x",
+                      activeRespTab === t
+                        ? "bg-bg-panel text-blue-400 border-border-main border-b-transparent -mb-px"
+                        : "text-text-muted border-transparent hover:text-text-main hover:bg-bg-hover"
+                    )}
                   >
-                    {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {t}
                   </button>
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
 
-            {/* Response Sub-Tabs (Body vs Headers) */}
-            <div className="flex items-center gap-1 border-b border-border-main bg-bg-main px-4 pt-2 shrink-0">
-              {['body', 'headers'].map(t => (
-                <button
-                  key={t}
-                  onClick={() => setActiveRespTab(t as any)}
-                  className={clsx(
-                    "px-4 py-2 text-xs font-bold capitalize rounded-t-xl transition-all border-t border-x",
-                    activeRespTab === t
-                      ? "bg-bg-panel text-blue-400 border-border-main border-b-transparent -mb-px"
-                      : "text-text-muted border-transparent hover:text-text-main hover:bg-bg-hover"
-                  )}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-
-            {/* Response Body Console */}
-            <div className="flex-1 p-4 overflow-auto bg-bg-main font-mono text-xs shadow-inner">
-              {isTesting ? (
-                <div className="h-full flex flex-col items-center justify-center text-text-muted p-8 text-center">
-                  <Loader2 className="w-8 h-8 animate-spin text-amber-400 mb-3" />
-                  <p className="text-xs font-semibold text-text-main">Sending HTTP Request to endpoint...</p>
-                  <p className="text-[11px] text-text-muted mt-1">Measuring latency and response payload</p>
-                </div>
-              ) : !testResponse ? (
-                <div className="h-full flex flex-col items-center justify-center text-text-muted p-8 text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-bg-panel border border-border-main flex items-center justify-center mb-3">
-                    <Zap className="w-6 h-6 text-amber-400/60" />
+              {/* Response Body Console */}
+              <div className="flex-1 p-4 overflow-auto bg-bg-main font-mono text-xs shadow-inner">
+                {isTesting ? (
+                  <div className="h-full flex flex-col items-center justify-center text-text-muted p-8 text-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-amber-400 mb-3" />
+                    <p className="text-xs font-semibold text-text-main">Sending HTTP Request to endpoint...</p>
+                    <p className="text-[11px] text-text-muted mt-1">Measuring latency and response payload</p>
                   </div>
-                  <p className="text-xs font-bold text-text-main mb-1">Insomnia Console Ready</p>
-                  <p className="text-[11px] text-text-muted max-w-xs">
-                    Click <span className="text-amber-400 font-bold">"Test Endpoint"</span> above to execute a live request and view response JSON & headers.
-                  </p>
-                </div>
-              ) : activeRespTab === 'body' ? (
-                <pre className="text-emerald-400/90 whitespace-pre-wrap break-all selection:bg-blue-500/30 leading-relaxed font-mono">
-                  {getPrettyJson(testResponse.body)}
-                </pre>
-              ) : (
-                <div className="space-y-1.5">
-                  {Object.entries(testResponse.headers || {}).map(([k, v]) => (
-                    <div key={k} className="flex gap-2 text-xs">
-                      <span className="text-blue-400 font-bold">{k}:</span>
-                      <span className="text-text-muted break-all">{v}</span>
+                ) : !testResponse ? (
+                  <div className="h-full flex flex-col items-center justify-center text-text-muted p-8 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-bg-panel border border-border-main flex items-center justify-center mb-3">
+                      <Zap className="w-6 h-6 text-amber-400/60" />
                     </div>
-                  ))}
-                </div>
-              )}
+                    <p className="text-xs font-bold text-text-main mb-1">Insomnia Console Ready</p>
+                    <p className="text-[11px] text-text-muted max-w-xs">
+                      Click <span className="text-amber-400 font-bold">"Test Endpoint"</span> above to execute a live request and view response JSON & headers.
+                    </p>
+                  </div>
+                ) : activeRespTab === 'body' ? (
+                  <pre className="text-emerald-400/90 whitespace-pre-wrap break-all selection:bg-blue-500/30 leading-relaxed font-mono">
+                    {getPrettyJson(testResponse.body)}
+                  </pre>
+                ) : (
+                  <div className="space-y-1.5">
+                    {Object.entries(testResponse.headers || {}).map(([k, v]) => (
+                      <div key={k} className="flex gap-2 text-xs">
+                        <span className="text-blue-400 font-bold">{k}:</span>
+                        <span className="text-text-muted break-all">{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
             </div>
 
           </div>
