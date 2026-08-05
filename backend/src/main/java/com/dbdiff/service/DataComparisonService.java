@@ -35,6 +35,7 @@ public class DataComparisonService {
     private DatabaseMetaDataService metaDataService;
 
     private static final int MAX_UNMATCHED_BUFFER = 10_000;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private String buildDryRunQuery(String baseQuery, String type) {
         String dbType = type != null ? type.toLowerCase() : "postgresql";
@@ -1494,7 +1495,7 @@ public class DataComparisonService {
             return java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss").format((java.time.LocalTime) val);
         } else if (val instanceof java.util.Map || val instanceof java.util.List) {
             try {
-                return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(val);
+                return OBJECT_MAPPER.writeValueAsString(val);
             } catch (Exception e) {
                 return val.toString();
             }

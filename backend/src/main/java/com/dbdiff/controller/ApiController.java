@@ -555,6 +555,8 @@ public class ApiController {
         }
     }
 
+    private static final com.fasterxml.jackson.databind.ObjectMapper OBJECT_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+
     private Object getSafeObject(java.sql.ResultSet rs, int colIdx) throws java.sql.SQLException {
         Object val = rs.getObject(colIdx);
         if (val == null) return null;
@@ -586,7 +588,7 @@ public class ApiController {
             return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX").format((java.time.OffsetDateTime) val);
         } else if (val instanceof java.util.Map || val instanceof java.util.List) {
             try {
-                return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(val);
+                return OBJECT_MAPPER.writeValueAsString(val);
             } catch (Exception e) {
                 return val.toString();
             }
