@@ -455,6 +455,12 @@ public class DatabaseExplorerService {
             return "[CLOB Data: " + c.length() + " chars]";
         } else if (val instanceof byte[]) {
             return "[BINARY Data: " + ((byte[]) val).length + " bytes]";
+        } else if (val instanceof java.util.Map || val instanceof java.util.List) {
+            try {
+                return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(val);
+            } catch (Exception e) {
+                return val.toString();
+            }
         }
         return val;
     }

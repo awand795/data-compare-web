@@ -1492,6 +1492,12 @@ public class DataComparisonService {
             return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").format((java.time.LocalDate) val);
         } else if (val instanceof java.time.LocalTime) {
             return java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss").format((java.time.LocalTime) val);
+        } else if (val instanceof java.util.Map || val instanceof java.util.List) {
+            try {
+                return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(val);
+            } catch (Exception e) {
+                return val.toString();
+            }
         }
         return val;
     }
