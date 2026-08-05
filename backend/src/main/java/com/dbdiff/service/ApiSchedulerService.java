@@ -343,6 +343,27 @@ public class ApiSchedulerService {
                 String chUser = (chCd != null && chCd.getUsername() != null) ? chCd.getUsername() : "default";
                 String chPass = (chCd != null && chCd.getPassword() != null) ? chCd.getPassword() : "";
 
+                // 3. TRUNCATE target table before insert so switching tables gives a fresh start.
+                String truncateQuery = "TRUNCATE TABLE " + cleanTargetTable;
+                String truncateUrl = "http://" + chHost + ":" + chPort
+                        + "/?database=" + URLEncoder.encode(chDatabase, StandardCharsets.UTF_8)
+                        + "&query=" + URLEncoder.encode(truncateQuery, StandardCharsets.UTF_8);
+                HttpRequest.Builder truncateReqBuilder = HttpRequest.newBuilder()
+                        .uri(URI.create(truncateUrl))
+                        .timeout(Duration.ofSeconds(30))
+                        .POST(HttpRequest.BodyPublishers.noBody());
+                if (!chUser.isEmpty()) {
+                    String authStr = chUser + ":" + chPass;
+                    truncateReqBuilder.header("Authorization", "Basic " + Base64.getEncoder().encodeToString(authStr.getBytes(StandardCharsets.UTF_8)));
+                }
+                HttpResponse<String> truncateResp = httpClient.send(truncateReqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+                if (truncateResp.statusCode() >= 400) {
+                    logger.warn("TRUNCATE TABLE {} failed (HTTP {}): {} — proceeding with insert anyway",
+                            cleanTargetTable, truncateResp.statusCode(), truncateResp.body());
+                } else {
+                    logger.info("TRUNCATE TABLE {} OK before insert", cleanTargetTable);
+                }
+
                 // detail_data formatting depends on the ClickHouse column type:
                 //   - JSON / Object('json') column: FORMAT JSONEachRow REQUIRES the raw JSON object
                 //     starting with '{'. Sending a quoted string "{\"...\"}" fails with
@@ -373,7 +394,9 @@ public class ApiSchedulerService {
                             row.put("detail_data", recordJson);
                         }
                     } else {
-                        // String column -> pass the escaped JSON string value
+                        // String column -> pass the RAW JSON string from the API response as-is.
+                        // Do NOT re-serialize via Jackson so that numeric types (0 vs 0.0),
+                        // null values, and field ordering are preserved exactly as returned by the API.
                         row.put("detail_data", recordJson);
                     }
                     row.put("input_by", "darkosync");
@@ -504,79 +527,152 @@ public class ApiSchedulerService {
 
     private List<String> extractRecordsToInsert(String responseJson) {
         List<String> recordsToInsert = new ArrayList<>();
-        if (responseJson == null || responseJson.trim().isEmpty()) {
-            return recordsToInsert;
-        }
+        if (responseJson == null || responseJson.trim().isEmpty()) return recordsToInsert;
         String trimmed = responseJson.trim();
 
+        // Step 1: Parse tree to find the best data array (uses findBestArrayNode logic)
         JsonNode rootNode;
         try {
             rootNode = objectMapper.readTree(trimmed);
         } catch (Exception e) {
-            // Response is not a single JSON document — fall back to JSON Lines
-            // (one JSON object per line, e.g. streaming / NDJSON APIs).
-            logger.warn("Response is not a single JSON document ({}), trying per-line JSON parsing...", e.getMessage());
-            int parsedLines = 0;
+            // Not valid single-JSON — try NDJSON (one JSON per line)
+            logger.warn("Response is not a single JSON document ({}), trying NDJSON...", e.getMessage());
             String[] lines = trimmed.split("\\R");
             for (String line : lines) {
                 String l = line.trim();
                 if (l.isEmpty()) continue;
                 try {
                     JsonNode item = objectMapper.readTree(l);
-                    // Only treat object/array lines as records; plain scalar lines (numbers,
-                    // booleans, prose) are skipped so multi-line text bodies are not fragmented.
                     if (item != null && (item.isObject() || item.isArray())) {
-                        recordsToInsert.add(objectMapper.writeValueAsString(item));
-                        parsedLines++;
+                        recordsToInsert.add(l); // raw line
                     }
-                } catch (Exception ignored) {
-                    // not a JSON line — skip it
-                }
+                } catch (Exception ignored) {}
             }
-            if (parsedLines > 0) {
-                return recordsToInsert;
-            }
-            // Completely unparseable payload -> store the raw body as a single record.
+            if (!recordsToInsert.isEmpty()) return recordsToInsert;
             recordsToInsert.add(trimmed);
             return recordsToInsert;
         }
 
-        // Unwrap a root-level JSON string that actually contains JSON (double-encoded payloads).
+        // Unwrap double-encoded JSON string
         if (rootNode != null && rootNode.isTextual()) {
             try {
                 JsonNode unwrapped = objectMapper.readTree(rootNode.asText());
                 if (unwrapped != null && (unwrapped.isArray() || unwrapped.isObject())) {
                     rootNode = unwrapped;
+                    trimmed = rootNode.toString();
                 }
-            } catch (Exception ignored) {
-                // keep the original text value
-            }
+            } catch (Exception ignored) {}
         }
 
-        try {
-            JsonNode targetArrayNode = findBestArrayNode(rootNode);
-
-            if (targetArrayNode != null && targetArrayNode.isArray()) {
-                logger.info("Found data array with {} element(s) to ingest", targetArrayNode.size());
-                for (JsonNode item : targetArrayNode) {
-                    if (item == null || item.isNull()) continue;
-                    recordsToInsert.add(objectMapper.writeValueAsString(item));
-                }
-            } else if (rootNode.isObject()) {
-                // Single-object response -> ingest as one record
-                recordsToInsert.add(objectMapper.writeValueAsString(rootNode));
-            } else {
-                // Scalar / primitive response -> ingest raw body as one record
-                recordsToInsert.add(trimmed);
-            }
-        } catch (Exception e) {
-            // Extremely defensive: never let a serialization hiccup block ingestion.
-            logger.warn("Failed to serialize JSON record, storing raw body as single record instead: {}", e.getMessage());
-            recordsToInsert.clear();
+        JsonNode targetArrayNode = findBestArrayNode(rootNode);
+        if (targetArrayNode == null || !targetArrayNode.isArray()) {
+            // Single object response — store raw
             recordsToInsert.add(trimmed);
+            return recordsToInsert;
+        }
+
+        int expectedCount = targetArrayNode.size();
+        logger.info("Found data array with {} element(s) to ingest", expectedCount);
+
+        // Step 2: Try raw substring extraction to preserve exact byte content
+        // (integer 0 stays "0", not "0.0"; null fields preserved; field order kept)
+        List<String> rawItems = extractRawArrayItemsFromBestField(trimmed, targetArrayNode);
+        if (rawItems.size() == expectedCount) {
+            logger.debug("Raw substring extraction succeeded for {} items", expectedCount);
+            recordsToInsert.addAll(rawItems);
+            return recordsToInsert;
+        }
+
+        // Step 3: Fallback — Jackson serialization (may normalize numbers slightly)
+        logger.warn("Raw extraction count mismatch ({} vs {}), falling back to Jackson serialization",
+                rawItems.size(), expectedCount);
+        for (JsonNode item : targetArrayNode) {
+            if (item == null || item.isNull()) continue;
+            try {
+                recordsToInsert.add(objectMapper.writeValueAsString(item));
+            } catch (Exception ex) {
+                recordsToInsert.add(item.toString());
+            }
         }
         return recordsToInsert;
     }
+
+    /**
+     * Extracts raw JSON substrings for each element in the target array by
+     * scanning the original JSON string with Jackson's streaming parser.
+     * The raw substrings are exact byte-for-byte copies from the original
+     * API response, so numeric format, null values and field order are preserved.
+     */
+    private List<String> extractRawArrayItemsFromBestField(String json, JsonNode targetArray) {
+        List<String> results = new ArrayList<>();
+        if (targetArray == null || targetArray.size() == 0) return results;
+        int expected = targetArray.size();
+        try {
+            byte[] bytes = json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            com.fasterxml.jackson.core.JsonFactory factory = objectMapper.getFactory();
+            try (com.fasterxml.jackson.core.JsonParser parser = factory.createParser(bytes)) {
+                int depth = 0;
+                boolean inTargetArray = false;
+                int arrayDepth = -1;
+                long itemStart = -1;
+                int itemDepth = -1;
+                List<String> current = new ArrayList<>();
+
+                com.fasterxml.jackson.core.JsonToken token;
+                while ((token = parser.nextToken()) != null) {
+                    switch (token) {
+                        case START_ARRAY:
+                            depth++;
+                            if (!inTargetArray) {
+                                // Peek: collect items speculatively
+                                inTargetArray = true;
+                                arrayDepth = depth;
+                                current = new ArrayList<>();
+                            }
+                            break;
+                        case END_ARRAY:
+                            if (inTargetArray && depth == arrayDepth) {
+                                inTargetArray = false;
+                                if (current.size() == expected) {
+                                    return current; // found the right array
+                                }
+                                // wrong array — reset and keep looking
+                                current = new ArrayList<>();
+                                arrayDepth = -1;
+                            }
+                            depth--;
+                            break;
+                        case START_OBJECT:
+                            depth++;
+                            if (inTargetArray && depth == arrayDepth + 1 && itemStart < 0) {
+                                // Start of array element
+                                itemStart = parser.getTokenLocation().getByteOffset();
+                                itemDepth = depth;
+                            }
+                            break;
+                        case END_OBJECT:
+                            if (inTargetArray && itemStart >= 0 && depth == itemDepth) {
+                                long itemEnd = parser.getTokenLocation().getByteOffset() + 1;
+                                String rawItem = new String(bytes, (int) itemStart, (int)(itemEnd - itemStart),
+                                        java.nio.charset.StandardCharsets.UTF_8);
+                                current.add(rawItem);
+                                itemStart = -1;
+                                itemDepth = -1;
+                            }
+                            depth--;
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("extractRawArrayItemsFromBestField failed: {}", e.getMessage());
+        }
+        return results;
+    }
+
+
 
     /**
      * Recursively finds the "most likely" data array anywhere in the JSON tree so any API
