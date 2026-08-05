@@ -517,9 +517,9 @@ export const ApiBuilderView: React.FC = () => {
   // ─────────────────────────────────────────────
   if (viewMode === 'list') {
     return (
-      <div className="h-full flex flex-col p-6 overflow-y-auto bg-bg-main min-h-0">
+      <div className="h-full flex flex-col p-4 md:p-6 overflow-hidden bg-bg-main">
         {/* HEADER & METRIC BANNER */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-6 shrink-0">
           <div>
             <div className="flex items-center gap-3">
               <div className="p-3 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl shadow-lg shadow-blue-500/20 text-white">
@@ -551,7 +551,7 @@ export const ApiBuilderView: React.FC = () => {
         </div>
 
         {/* METRICS STATS CARDS */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 shrink-0">
           <div className="bg-bg-panel border border-border-main p-4 rounded-2xl shadow-sm hover:border-blue-500/30 transition-all">
             <div className="flex items-center justify-between text-text-muted mb-2">
               <span className="text-xs font-semibold uppercase tracking-wider">Total APIs</span>
@@ -590,7 +590,7 @@ export const ApiBuilderView: React.FC = () => {
         </div>
 
         {/* SEARCH, FILTER & VIEW CONTROLS */}
-        <div className="bg-bg-panel border border-border-main p-4 rounded-2xl shadow-lg mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-bg-panel border border-border-main p-4 rounded-2xl shadow-lg mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
           <div className="flex flex-1 items-center gap-3">
             <div className="relative flex-1 max-w-md">
               <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-text-muted pointer-events-none" />
@@ -664,14 +664,14 @@ export const ApiBuilderView: React.FC = () => {
 
         {/* CONTENT DISPLAY AREA */}
         {isLoadingList ? (
-          <div className="p-20 text-center text-text-muted bg-bg-panel border border-border-main rounded-2xl shadow-xl">
+          <div className="p-20 text-center text-text-muted bg-bg-panel border border-border-main rounded-2xl shadow-xl flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center justify-center gap-4">
               <div className="w-10 h-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               <span className="text-sm font-semibold animate-pulse">Loading API Endpoints...</span>
             </div>
           </div>
         ) : filteredEndpoints.length === 0 ? (
-          <div className="p-16 text-center text-text-muted bg-bg-panel border border-border-main rounded-2xl shadow-xl">
+          <div className="p-16 text-center text-text-muted bg-bg-panel border border-border-main rounded-2xl shadow-xl flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center justify-center gap-4 max-w-md mx-auto">
               <div className="w-20 h-20 bg-blue-500/10 rounded-3xl flex items-center justify-center border border-blue-500/20 text-blue-500 shadow-inner">
                 <Server className="w-10 h-10" />
@@ -705,165 +705,167 @@ export const ApiBuilderView: React.FC = () => {
           </div>
         ) : displayMode === 'grid' ? (
           /* GRID VIEW */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredEndpoints.map(api => (
-              <div 
-                key={api.id}
-                className="bg-bg-panel border border-border-main hover:border-blue-500/40 rounded-2xl p-5 shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between group relative overflow-hidden"
-              >
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                
-                <div>
-                  {/* Card Top Header */}
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className={clsx("px-2.5 py-1 rounded-lg text-[10px] font-black tracking-widest uppercase shadow-sm", getMethodBadgeClass(api.method))}>
-                        {api.method}
-                      </span>
-                      {api.enablePagination && (
-                        <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full font-mono border border-blue-500/20" title="Auto-pagination enabled">
-                          Paginated
+          <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pb-4">
+              {filteredEndpoints.map(api => (
+                <div 
+                  key={api.id}
+                  className="bg-bg-panel border border-border-main hover:border-blue-500/40 rounded-2xl p-5 shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between group relative overflow-hidden"
+                >
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  
+                  <div>
+                    {/* Card Top Header */}
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className={clsx("px-2.5 py-1 rounded-lg text-[10px] font-black tracking-widest uppercase shadow-sm", getMethodBadgeClass(api.method))}>
+                          {api.method}
+                        </span>
+                        {api.enablePagination && (
+                          <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full font-mono border border-blue-500/20" title="Auto-pagination enabled">
+                            Paginated
+                          </span>
+                        )}
+                      </div>
+
+                      {api.isPublic ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
+                          <ShieldCheck className="w-3.5 h-3.5" /> Public
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full">
+                          <ShieldAlert className="w-3.5 h-3.5" /> Protected
                         </span>
                       )}
                     </div>
 
-                    {api.isPublic ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
-                        <ShieldCheck className="w-3.5 h-3.5" /> Public
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full">
-                        <ShieldAlert className="w-3.5 h-3.5" /> Protected
-                      </span>
-                    )}
+                    {/* API Title & Route */}
+                    <h3 className="text-lg font-bold text-text-main group-hover:text-blue-400 transition-colors truncate">
+                      {api.name}
+                    </h3>
+                    <code className="text-xs font-mono text-text-muted mt-1 block truncate bg-bg-editor px-2.5 py-1 rounded-lg border border-border-main shadow-inner">
+                      /api/data{api.endpointPath}
+                    </code>
+
+                    {/* SQL Preview Snippet */}
+                    <div className="mt-4 bg-[#0d1117] p-3 rounded-xl border border-border-main/50 font-mono text-[11px] text-slate-300 max-h-24 overflow-hidden relative group/code">
+                      <p className="line-clamp-3 text-slate-400 leading-relaxed whitespace-pre-wrap">{api.sqlQuery}</p>
+                      <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[#0d1117] to-transparent"></div>
+                    </div>
                   </div>
 
-                  {/* API Title & Route */}
-                  <h3 className="text-lg font-bold text-text-main group-hover:text-blue-400 transition-colors truncate">
-                    {api.name}
-                  </h3>
-                  <code className="text-xs font-mono text-text-muted mt-1 block truncate bg-bg-editor px-2.5 py-1 rounded-lg border border-border-main shadow-inner">
-                    /api/data{api.endpointPath}
-                  </code>
+                  {/* Card Footer Actions */}
+                  <div className="mt-5 pt-4 border-t border-border-main/60 flex items-center justify-between">
+                    <span className="text-[11px] text-text-muted font-medium truncate max-w-[140px]" title={getConnectionName(api.connectionId)}>
+                      <Database className="w-3.5 h-3.5 inline mr-1 text-purple-400" />
+                      {getConnectionName(api.connectionId).split(' ')[0]}
+                    </span>
 
-                  {/* SQL Preview Snippet */}
-                  <div className="mt-4 bg-[#0d1117] p-3 rounded-xl border border-border-main/50 font-mono text-[11px] text-slate-300 max-h-24 overflow-hidden relative group/code">
-                    <p className="line-clamp-3 text-slate-400 leading-relaxed whitespace-pre-wrap">{api.sqlQuery}</p>
-                    <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[#0d1117] to-transparent"></div>
-                  </div>
-                </div>
-
-                {/* Card Footer Actions */}
-                <div className="mt-5 pt-4 border-t border-border-main/60 flex items-center justify-between">
-                  <span className="text-[11px] text-text-muted font-medium truncate max-w-[140px]" title={getConnectionName(api.connectionId)}>
-                    <Database className="w-3.5 h-3.5 inline mr-1 text-purple-400" />
-                    {getConnectionName(api.connectionId).split(' ')[0]}
-                  </span>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleViewSpec(api)}
-                      className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-all"
-                      title="View Documentation & Spec"
-                    >
-                      <FileJson className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleClone(api)}
-                      className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-all"
-                      title="Duplicate Endpoint"
-                    >
-                      <CopyPlus className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleEdit(api)}
-                      className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
-                      title="Edit Endpoint"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteClick(api)}
-                      className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
-                      title="Delete Endpoint"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleViewSpec(api)}
+                        className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-all"
+                        title="View Documentation & Spec"
+                      >
+                        <FileJson className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleClone(api)}
+                        className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-all"
+                        title="Duplicate Endpoint"
+                      >
+                        <CopyPlus className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleEdit(api)}
+                        className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
+                        title="Edit Endpoint"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClick(api)}
+                        className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
+                        title="Delete Endpoint"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         ) : (
           /* TABLE VIEW */
-          <div className="bg-bg-panel border border-border-main rounded-2xl shadow-xl overflow-hidden">
-            <div className="overflow-x-auto w-full">
+          <div className="bg-bg-panel border border-border-main rounded-2xl shadow-xl overflow-hidden flex-1 min-h-0 flex flex-col">
+            <div className="overflow-auto w-full flex-1 min-h-0">
               <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
-              <thead className="bg-bg-editor text-text-muted font-bold border-b border-border-main">
-                <tr>
-                  <th className="p-4 uppercase tracking-wider text-xs">Name</th>
-                  <th className="p-4 uppercase tracking-wider text-xs">Method &amp; Path</th>
-                  <th className="p-4 uppercase tracking-wider text-xs">Database Connection</th>
-                  <th className="p-4 uppercase tracking-wider text-xs">Security</th>
-                  <th className="p-4 text-right uppercase tracking-wider text-xs">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEndpoints.map(api => (
-                  <tr key={api.id} className="border-b border-border-main hover:bg-bg-hover/40 transition-colors group">
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-text-main group-hover:text-blue-400 transition-colors">{api.name}</span>
-                        {api.enablePagination && (
-                          <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded font-mono border border-blue-500/20">Pg</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <span className={clsx("px-2.5 py-1 rounded-md text-[10px] font-black tracking-widest uppercase", getMethodBadgeClass(api.method))}>
-                          {api.method}
-                        </span>
-                        <code className="font-mono text-xs text-text-muted group-hover:text-blue-400 transition-colors">
-                          /api/data{api.endpointPath}
-                        </code>
-                      </div>
-                    </td>
-                    <td className="p-4 text-text-muted text-xs font-medium">
-                      <Database className="w-3.5 h-3.5 inline mr-1.5 text-purple-400" />
-                      {getConnectionName(api.connectionId)}
-                    </td>
-                    <td className="p-4">
-                      {api.isPublic ? (
-                        <span className="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
-                          <ShieldCheck className="w-3.5 h-3.5" /> Public
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-amber-400 text-xs font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
-                          <ShieldAlert className="w-3.5 h-3.5" /> Protected
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => handleViewSpec(api)} className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors" title="View Spec">
-                          <FileJson className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleClone(api)} className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors" title="Clone API">
-                          <CopyPlus className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleEdit(api)} className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit API">
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDeleteClick(api)} className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors" title="Delete API">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+                <thead className="bg-bg-editor text-text-muted font-bold border-b border-border-main sticky top-0 z-10 shadow-sm">
+                  <tr>
+                    <th className="p-4 uppercase tracking-wider text-xs">Name</th>
+                    <th className="p-4 uppercase tracking-wider text-xs">Method &amp; Path</th>
+                    <th className="p-4 uppercase tracking-wider text-xs">Database Connection</th>
+                    <th className="p-4 uppercase tracking-wider text-xs">Security</th>
+                    <th className="p-4 text-right uppercase tracking-wider text-xs">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredEndpoints.map(api => (
+                    <tr key={api.id} className="border-b border-border-main hover:bg-bg-hover/40 transition-colors group">
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-text-main group-hover:text-blue-400 transition-colors">{api.name}</span>
+                          {api.enablePagination && (
+                            <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded font-mono border border-blue-500/20">Pg</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <span className={clsx("px-2.5 py-1 rounded-md text-[10px] font-black tracking-widest uppercase", getMethodBadgeClass(api.method))}>
+                            {api.method}
+                          </span>
+                          <code className="font-mono text-xs text-text-muted group-hover:text-blue-400 transition-colors">
+                            /api/data{api.endpointPath}
+                          </code>
+                        </div>
+                      </td>
+                      <td className="p-4 text-text-muted text-xs font-medium">
+                        <Database className="w-3.5 h-3.5 inline mr-1.5 text-purple-400" />
+                        {getConnectionName(api.connectionId)}
+                      </td>
+                      <td className="p-4">
+                        {api.isPublic ? (
+                          <span className="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                            <ShieldCheck className="w-3.5 h-3.5" /> Public
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-amber-400 text-xs font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
+                            <ShieldAlert className="w-3.5 h-3.5" /> Protected
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => handleViewSpec(api)} className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors" title="View Spec">
+                            <FileJson className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleClone(api)} className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors" title="Clone API">
+                            <CopyPlus className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleEdit(api)} className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit API">
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDeleteClick(api)} className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors" title="Delete API">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
