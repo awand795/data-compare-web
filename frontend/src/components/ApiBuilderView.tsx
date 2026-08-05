@@ -223,7 +223,7 @@ export const ApiBuilderView: React.FC = () => {
       sqlQuery: 'SELECT * FROM my_table LIMIT 100;',
       parameters: '[]',
       enablePagination: false,
-      isPublic: true,
+      isPublic: false,
       authToken: generateToken()
     };
     setCurrentApi(newApi);
