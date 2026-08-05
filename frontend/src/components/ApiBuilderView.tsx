@@ -797,7 +797,8 @@ export const ApiBuilderView: React.FC = () => {
         ) : (
           /* TABLE VIEW */
           <div className="bg-bg-panel border border-border-main rounded-2xl shadow-xl overflow-hidden">
-            <table className="w-full text-left text-sm">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
               <thead className="bg-bg-editor text-text-muted font-bold border-b border-border-main">
                 <tr>
                   <th className="p-4 uppercase tracking-wider text-xs">Name</th>
@@ -863,6 +864,7 @@ export const ApiBuilderView: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>
@@ -1039,7 +1041,7 @@ export const ApiBuilderView: React.FC = () => {
                 </div>
               ) : (
                 <div className="border border-border-main rounded-2xl overflow-x-auto shadow-sm">
-                  <table className="w-full text-left text-sm">
+                  <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
                     <thead className="bg-bg-editor">
                       <tr>
                         <th className="p-3.5 border-b border-border-main font-bold text-text-main text-xs uppercase tracking-wider">Parameter</th>
@@ -1527,7 +1529,8 @@ export const ApiBuilderView: React.FC = () => {
                     </div>
                   ) : (
                     <div className="border border-border-main rounded-xl overflow-hidden shadow-sm">
-                      <table className="w-full text-left border-collapse">
+                      <div className="overflow-x-auto w-full">
+                        <table className="w-full text-left border-collapse whitespace-nowrap min-w-max">
                         <thead className="bg-bg-panel/90 border-b border-border-main">
                           <tr>
                             <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase">Param</th>
@@ -1621,6 +1624,7 @@ export const ApiBuilderView: React.FC = () => {
                           })}
                         </tbody>
                       </table>
+                      </div>
                     </div>
                   )}
                 </div>
