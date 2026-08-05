@@ -439,42 +439,14 @@ public class ApiSchedulerService {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode rootNode = mapper.readTree(responseJson.trim());
 
-            if (rootNode.isArray()) {
-                for (JsonNode item : rootNode) {
+            JsonNode targetArrayNode = findArrayNode(rootNode, 0);
+
+            if (targetArrayNode != null && targetArrayNode.isArray()) {
+                for (JsonNode item : targetArrayNode) {
                     recordsToInsert.add(mapper.writeValueAsString(item));
                 }
             } else if (rootNode.isObject()) {
-                JsonNode dataArray = null;
-
-                // 1. Check standard common array keys first
-                String[] commonKeys = {"data", "items", "records", "results", "list", "content", "payload", "rows"};
-                for (String key : commonKeys) {
-                    if (rootNode.has(key) && rootNode.get(key).isArray()) {
-                        dataArray = rootNode.get(key);
-                        break;
-                    }
-                }
-
-                // 2. If no standard key matches, scan ALL fields dynamically for the first JSON Array!
-                if (dataArray == null) {
-                    Iterator<Map.Entry<String, JsonNode>> fields = rootNode.fields();
-                    while (fields.hasNext()) {
-                        Map.Entry<String, JsonNode> field = fields.next();
-                        if (field.getValue().isArray()) {
-                            dataArray = field.getValue();
-                            logger.info("Dynamically detected array field [{}] in API response", field.getKey());
-                            break;
-                        }
-                    }
-                }
-
-                if (dataArray != null) {
-                    for (JsonNode item : dataArray) {
-                        recordsToInsert.add(mapper.writeValueAsString(item));
-                    }
-                } else {
-                    recordsToInsert.add(mapper.writeValueAsString(rootNode));
-                }
+                recordsToInsert.add(mapper.writeValueAsString(rootNode));
             } else {
                 recordsToInsert.add(responseJson);
             }
@@ -483,6 +455,46 @@ public class ApiSchedulerService {
             recordsToInsert.add(responseJson);
         }
         return recordsToInsert;
+    }
+
+    private JsonNode findArrayNode(JsonNode node, int depth) {
+        if (node == null || depth > 5) return null;
+
+        if (node.isArray()) {
+            return node;
+        }
+
+        if (node.isObject()) {
+            // 1. Check standard common array keys first
+            String[] commonKeys = {"data", "items", "records", "results", "list", "content", "payload", "rows", "data_list"};
+            for (String key : commonKeys) {
+                if (node.has(key) && node.get(key).isArray()) {
+                    return node.get(key);
+                }
+            }
+
+            // 2. Check any array field at current level
+            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                if (field.getValue().isArray()) {
+                    return field.getValue();
+                }
+            }
+
+            // 3. Deep recursive search inside child objects
+            fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                if (field.getValue().isObject()) {
+                    JsonNode childArray = findArrayNode(field.getValue(), depth + 1);
+                    if (childArray != null) {
+                        return childArray;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private String buildFullUrl(String baseUrl, String queryParamsJson) {
