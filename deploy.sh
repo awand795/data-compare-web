@@ -5,7 +5,7 @@ git pull origin main
 
 echo "🚀 Menjalankan Zero-Downtime Deployment via Docker Hub..."
 # Gunakan --with-registry-auth agar Swarm bisa mengecek digest terbaru dari Docker Hub
-export $(grep -v '^#' .env | xargs 2>/dev/null) && sudo -E docker stack deploy --with-registry-auth -c docker-compose-app.yml darkosync
+export $(grep -v '^#' .env | xargs) && sudo -E docker stack deploy --with-registry-auth -c docker-compose.yml darkosync
 sudo docker service update --image awandadarkotech/darkosync-frontend:latest --force darkosync_frontend
 sudo docker service update --image awandadarkotech/darkosync-backend:latest --force darkosync_backend
 
