@@ -405,7 +405,8 @@ public class ConnectionManagerService {
                 // curl dari host berhasil karena pakai host network stack (MTU 1400).
                 // Solusi: set socket buffer lebih kecil agar TLS records tidak di-fragment,
                 // dan disable HTTP compression yang memperburuk ukuran paket.
-                config.addDataSourceProperty("compress", "0");             // Disable LZ4 compression
+                config.addDataSourceProperty("compress", "0");             // Disable LZ4 request compression
+                config.addDataSourceProperty("decompress", "0");           // Disable LZ4 response decompression (prevents StreamCorruptedException: 28 of 112 bytes)
                 break;
 
             default:
