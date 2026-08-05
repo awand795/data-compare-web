@@ -181,6 +181,7 @@ public class DataComparisonService {
         List<Map<String, Object>> results = new ArrayList<>(Math.min(5_000, MAX_SYNC_ROWS));
         try (Connection conn = ds.getConnection()) {
             conn.setAutoCommit(false);
+            boolean success = false;
             try {
                 try (PreparedStatement ps = conn.prepareStatement(sql,
                         ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
@@ -200,8 +201,16 @@ public class DataComparisonService {
                         }
                     }
                 }
+                success = true;
             } finally {
-                try { conn.rollback(); } catch (Exception ignored) {}
+                // Commit on success so that any side-effect functions invoked inside the
+                // query (e.g. INSERT via SELECT ... function()) are persisted.
+                // Only rollback when the query itself threw an exception.
+                if (success) {
+                    try { conn.commit(); } catch (Exception ignored) {}
+                } else {
+                    try { conn.rollback(); } catch (Exception ignored) {}
+                }
                 try { conn.setAutoCommit(true); } catch (Exception ignored) {}
             }
         } catch (Exception e) {
@@ -526,6 +535,7 @@ public class DataComparisonService {
                  Connection tConn = targetDs.getConnection()) {
                 sConn.setAutoCommit(false);
                 tConn.setAutoCommit(false);
+                boolean querySuccess = false;
                 try {
                     try (PreparedStatement psSource = sConn.prepareStatement(sourceQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
                          PreparedStatement psTarget = tConn.prepareStatement(targetQuery, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
@@ -609,9 +619,18 @@ public class DataComparisonService {
                                 totalSourceRows[0], totalTargetRows[0], differences[0]);
                         }
                     }
+                    querySuccess = true;
                 } finally {
-                    try { sConn.rollback(); } catch (Exception ignored) {}
-                    try { tConn.rollback(); } catch (Exception ignored) {}
+                    // Commit on success so that side-effect functions called inside the query
+                    // (e.g. SELECT function_that_inserts()) are persisted to the database.
+                    // Only rollback when the query itself threw an exception.
+                    if (querySuccess) {
+                        try { sConn.commit(); } catch (Exception ignored) {}
+                        try { tConn.commit(); } catch (Exception ignored) {}
+                    } else {
+                        try { sConn.rollback(); } catch (Exception ignored) {}
+                        try { tConn.rollback(); } catch (Exception ignored) {}
+                    }
                 }
             }
         } catch (InterruptedException e) {
