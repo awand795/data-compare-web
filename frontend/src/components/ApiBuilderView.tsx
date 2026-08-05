@@ -5,7 +5,7 @@ import {
   Webhook, Plus, Save, ArrowLeft, Play, ShieldCheck, ShieldAlert, 
   FileJson, Pencil, Trash2, Copy, Check, Share2, Database, Server, 
   Settings2, ChevronDown, ChevronUp, X, AlertCircle, Loader2, 
-  Search, Filter, Eraser, Code2, BookTemplate, 
+  Search, Eraser, Code2, 
   ListRestart, Bug, SquareTerminal, CopyPlus, FileCode,
   LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal
 } from 'lucide-react';
@@ -37,17 +37,6 @@ type ValidationError = {
   field: string;
   message: string;
 };
-
-const QUERY_TEMPLATES = [
-  { name: 'Get All Records', sql: 'SELECT * FROM my_table LIMIT 100', icon: Search, desc: 'Fetch top 100 rows from target table' },
-  { name: 'Find By ID', sql: 'SELECT * FROM my_table WHERE id = :id', icon: Filter, desc: 'Query single record matching primary ID' },
-  { name: 'Search & Filter', sql: 'SELECT * FROM my_table WHERE name ILIKE :search_term\nORDER BY id DESC\nLIMIT :limit\nOFFSET :offset', icon: Search, desc: 'Case-insensitive search with pagination' },
-  { name: 'Aggregated Metrics', sql: 'SELECT category, COUNT(*) as total_count, AVG(price) as avg_price\nFROM my_table\nGROUP BY category\nORDER BY total_count DESC', icon: Code2, desc: 'Group by categories with stats' },
-  { name: 'Paginated Feed', sql: 'SELECT * FROM my_table\nORDER BY created_at DESC\nLIMIT :limit\nOFFSET :offset', icon: ListRestart, desc: 'Standard offset-based pagination query' },
-  { name: 'Insert Record', sql: 'INSERT INTO my_table (name, status)\nVALUES (:name, :status)\nRETURNING *', icon: Plus, desc: 'Create new entry and return new object' },
-  { name: 'Update Record', sql: 'UPDATE my_table\nSET name = :name, status = :status\nWHERE id = :id\nRETURNING *', icon: Pencil, desc: 'Update existing record by ID' },
-  { name: 'Soft Delete Record', sql: 'UPDATE my_table\nSET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP\nWHERE id = :id\nRETURNING *', icon: Trash2, desc: 'Mark record as deleted' },
-];
 
 const getMethodBadgeClass = (method: string) => {
   switch (method) {
@@ -111,7 +100,6 @@ export const ApiBuilderView: React.FC = () => {
   const [paramCount, setParamCount] = useState(0);
   const [generatedShareUrl, setGeneratedShareUrl] = useState<string | null>(null);
   const [activeSpecTab, setActiveSpecTab] = useState<'curl' | 'postman' | 'bruno' | 'js' | 'python'>('curl');
-  const [showTemplates, setShowTemplates] = useState(false);
   const [isPrettyPrint, setIsPrettyPrint] = useState(true);
   const [testExecutionTime, setTestExecutionTime] = useState<number | null>(null);
 
@@ -488,13 +476,6 @@ export const ApiBuilderView: React.FC = () => {
     } catch {
       addToast({ type: 'error', title: 'Error', message: 'Failed to generate share link.' });
     }
-  };
-
-  const applyTemplate = (template: typeof QUERY_TEMPLATES[0]) => {
-    if (!currentApi) return;
-    setCurrentApi({ ...currentApi, sqlQuery: template.sql });
-    setShowTemplates(false);
-    addToast({ type: 'info', title: 'Template Applied', message: `Inserted "${template.name}" query.` });
   };
 
   const getConnectionName = (connectionId: string): string => {
@@ -1359,38 +1340,6 @@ export const ApiBuilderView: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowTemplates(!showTemplates)}
-                      className="text-xs font-bold text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 px-2.5 py-1 rounded-lg border border-purple-500/20 flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <BookTemplate className="w-3.5 h-3.5" /> Templates
-                    </button>
-
-                    {showTemplates && (
-                      <div className="absolute top-full right-0 mt-2 w-72 bg-bg-panel border border-border-main rounded-2xl shadow-2xl z-30 overflow-hidden">
-                        <div className="p-3 border-b border-border-main bg-bg-editor">
-                          <p className="text-xs uppercase font-extrabold text-text-muted tracking-wider">Quick SQL Templates</p>
-                        </div>
-                        <div className="p-1.5 max-h-72 overflow-y-auto">
-                          {QUERY_TEMPLATES.map((template, i) => (
-                            <button
-                              key={i}
-                              onClick={() => applyTemplate(template)}
-                              className="w-full text-left p-2.5 hover:bg-bg-hover rounded-xl transition-colors flex items-start gap-2.5 group cursor-pointer"
-                            >
-                              <template.icon className="w-4 h-4 text-text-muted group-hover:text-blue-400 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="text-xs font-bold text-text-main block">{template.name}</span>
-                                <span className="text-[11px] text-text-muted block mt-0.5">{template.desc}</span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
                   <div className="text-[11px] font-bold text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20 font-mono hidden sm:block">
                     <code className="text-blue-300 font-bold">:param</code> extract
                   </div>
