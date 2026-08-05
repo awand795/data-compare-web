@@ -332,15 +332,28 @@ public class ApiSchedulerService {
                     throw new RuntimeException("Target table '" + cleanTargetTable + "' does not conform to standard schema. Missing required columns: " + missingCols + ". Standard schema columns required: [seq, kode_data, detail_data, input_by, input_dt].");
                 }
 
-                // Insert into ClickHouse using FORMAT JSONEachRow to avoid JSON column type casting issues.
-                // PreparedStatement.setString() wraps value in quotes which ClickHouse JSON type rejects.
-                // Instead we build raw newline-delimited JSON rows and send via Statement.execute().
+                // Insert into ClickHouse via HTTP API — bypasses JDBC driver entirely.
+                // JDBC Statement.execute() with FORMAT JSONEachRow still processes the SQL string
+                // and can mangle JSON data (escaping, encoding) before it reaches ClickHouse.
+                // Direct HTTP POST sends raw UTF-8 bytes exactly as ClickHouse expects.
+                //
+                // Settings applied:
+                //   async_insert=0                                   — synchronous insert, errors surface immediately
+                //   date_time_input_format=best_effort               — handles ISO 8601 timestamps with +07:00 timezone
+                //   input_format_json_infer_incomplete_types_as_strings=1 — handles null-only fields in JSON type
+                ConnectionDetails chCd = connectionRepository.findById(connectionId);
+                String chHost = (chCd != null && chCd.getHost() != null) ? chCd.getHost() : "localhost";
+                int chPort = (chCd != null && chCd.getPort() > 0) ? chCd.getPort() : 8123;
+                String chDatabase = (chCd != null && chCd.getDatabase() != null && !chCd.getDatabase().isEmpty()) ? chCd.getDatabase() : "default";
+                String chUser = (chCd != null && chCd.getUsername() != null) ? chCd.getUsername() : "default";
+                String chPass = (chCd != null && chCd.getPassword() != null) ? chCd.getPassword() : "";
+
                 ObjectMapper chMapper = new ObjectMapper();
                 StringBuilder jsonRows = new StringBuilder();
                 for (String recordJson : recordsToInsert) {
                     Map<String, Object> row = new java.util.LinkedHashMap<>();
                     row.put("kode_data", effectiveKodeData);
-                    // detail_data must be raw JSON object/value, not a string
+                    // detail_data: parse as JsonNode so Jackson serializes it as a nested JSON object (not a quoted string)
                     JsonNode detailNode;
                     try {
                         detailNode = chMapper.readTree(recordJson);
@@ -352,12 +365,32 @@ public class ApiSchedulerService {
                     row.put("input_dt", java.time.Instant.now().toString());
                     jsonRows.append(chMapper.writeValueAsString(row)).append("\n");
                 }
-                String chInsertSql = "INSERT INTO " + cleanTargetTable
-                        + " (kode_data, detail_data, input_by, input_dt) FORMAT JSONEachRow\n"
-                        + jsonRows;
-                try (Statement stmt = conn.createStatement()) {
-                    stmt.execute(chInsertSql);
+
+                String chInsertQuery = "INSERT INTO " + cleanTargetTable
+                        + " (kode_data, detail_data, input_by, input_dt) FORMAT JSONEachRow";
+                String chHttpUrl = "http://" + chHost + ":" + chPort
+                        + "/?database=" + URLEncoder.encode(chDatabase, StandardCharsets.UTF_8)
+                        + "&query=" + URLEncoder.encode(chInsertQuery, StandardCharsets.UTF_8)
+                        + "&async_insert=0"
+                        + "&date_time_input_format=best_effort"
+                        + "&input_format_json_infer_incomplete_types_as_strings=1";
+
+                HttpRequest.Builder chReqBuilder = HttpRequest.newBuilder()
+                        .uri(URI.create(chHttpUrl))
+                        .timeout(Duration.ofSeconds(120))
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonRows.toString(), StandardCharsets.UTF_8))
+                        .header("Content-Type", "application/octet-stream");
+
+                if (!chUser.isEmpty()) {
+                    String authStr = chUser + ":" + chPass;
+                    chReqBuilder.header("Authorization", "Basic " + Base64.getEncoder().encodeToString(authStr.getBytes(StandardCharsets.UTF_8)));
                 }
+
+                HttpResponse<String> chHttpResponse = httpClient.send(chReqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+                if (chHttpResponse.statusCode() >= 400) {
+                    throw new RuntimeException("ClickHouse HTTP insert failed (HTTP " + chHttpResponse.statusCode() + "): " + chHttpResponse.body());
+                }
+                logger.info("ClickHouse insert OK via HTTP API: {} records into {}", recordsToInsert.size(), cleanTargetTable);
 
             } else {
                 // PostgreSQL or standard SQL Database Ingestion (Do NOT CREATE TABLE automatically)
