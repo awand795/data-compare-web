@@ -343,25 +343,22 @@ public class ApiSchedulerService {
                 String chUser = (chCd != null && chCd.getUsername() != null) ? chCd.getUsername() : "default";
                 String chPass = (chCd != null && chCd.getPassword() != null) ? chCd.getPassword() : "";
 
+                // detail_data is ALWAYS pre-stringified into an escaped JSON string before insert.
+                // This is the definitive fix for ClickHouse "Code: 117 ... Cannot parse JSON object here":
+                //   - For String / Nullable(String) columns, FORMAT JSONEachRow REQUIRES a quoted string
+                //     value; sending a raw JSON object {...} is rejected with INCORRECT_DATA.
+                //   - For the experimental JSON/Object column a string value is also accepted, and it
+                //     sidesteps type-inference failures on null fields and ISO timestamps with timezone
+                //     offsets (e.g. "2017-01-31T17:05:47.629+07:00") inside the nested payload.
                 String detailType = colTypes.getOrDefault("detail_data", "string");
-                boolean isJsonColumn = detailType.contains("json") || detailType.contains("object");
+                logger.info("ClickHouse target table {} detail_data column type: {}", cleanTargetTable, detailType);
 
                 ObjectMapper chMapper = new ObjectMapper();
                 StringBuilder jsonRows = new StringBuilder();
                 for (String recordJson : recordsToInsert) {
                     Map<String, Object> row = new java.util.LinkedHashMap<>();
                     row.put("kode_data", effectiveKodeData);
-                    if (isJsonColumn) {
-                        // Target detail_data is a JSON/Object column -> pass nested JSON object {...}
-                        try {
-                            row.put("detail_data", chMapper.readTree(recordJson));
-                        } catch (Exception ex) {
-                            row.put("detail_data", recordJson);
-                        }
-                    } else {
-                        // Target detail_data is String/Nullable(String) -> pass raw JSON string "..."
-                        row.put("detail_data", recordJson);
-                    }
+                    row.put("detail_data", recordJson); // Jackson serializes it as "detail_data":"{...escaped...}"
                     row.put("input_by", "darkosync");
                     row.put("input_dt", java.time.Instant.now().toString());
                     jsonRows.append(chMapper.writeValueAsString(row)).append("\n");
@@ -374,6 +371,10 @@ public class ApiSchedulerService {
                         + "&query=" + URLEncoder.encode(chInsertQuery, StandardCharsets.UTF_8)
                         + "&async_insert=0"
                         + "&date_time_input_format=best_effort"
+                        + "&input_format_null_as_default=1"
+                        + "&input_format_json_read_numbers_as_strings=1"
+                        + "&input_format_json_try_infer_numbers_from_strings=1"
+                        + "&input_format_json_defaults_for_missing_elements_in_named_tuple=1"
                         + "&input_format_json_infer_incomplete_types_as_strings=1";
 
                 HttpRequest.Builder chReqBuilder = HttpRequest.newBuilder()
