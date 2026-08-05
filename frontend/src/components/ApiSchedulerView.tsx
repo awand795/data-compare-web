@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
 import { 
   Globe, Plus, Save, Play, Pencil, Trash2, Check, Copy, 
-  Search, Clock, Database, X, Loader2, 
+  Search, Clock, Database, Loader2, ArrowLeft,
   RefreshCw, FileText, Code2, ShieldCheck,
   Zap, CheckCircle2, AlertCircle
 } from 'lucide-react';
@@ -59,8 +59,10 @@ export const ApiSchedulerView: React.FC = () => {
   const [methodFilter, setMethodFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  // Modal / Editor State (Insomnia UI)
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Full Screen View Mode: 'list' | 'editor'
+  const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');
+
+  // Current Active Configuration for Insomnia Editor
   const [currentConfig, setCurrentConfig] = useState<Partial<ApiSchedulerConfig>>({
     method: 'GET',
     url: '',
@@ -81,7 +83,7 @@ export const ApiSchedulerView: React.FC = () => {
     { key: 'Accept', value: 'application/json', enabled: true }
   ]);
 
-  // Test Response State
+  // Test Response State (Insomnia Response Console)
   const [isTesting, setIsTesting] = useState(false);
   const [testResponse, setTestResponse] = useState<{
     statusCode?: number;
@@ -92,6 +94,7 @@ export const ApiSchedulerView: React.FC = () => {
   const [activeRespTab, setActiveRespTab] = useState<'body' | 'headers'>('body');
   const [isCopied, setIsCopied] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const fetchSchedulers = async () => {
     setLoading(true);
@@ -111,7 +114,7 @@ export const ApiSchedulerView: React.FC = () => {
     fetchSchedulers();
   }, []);
 
-  const openNewModal = () => {
+  const openNewEditor = () => {
     setCurrentConfig({
       method: 'GET',
       url: '',
@@ -131,10 +134,10 @@ export const ApiSchedulerView: React.FC = () => {
     ]);
     setTestResponse(null);
     setActiveReqTab('params');
-    setIsModalOpen(true);
+    setViewMode('editor');
   };
 
-  const openEditModal = (cfg: ApiSchedulerConfig) => {
+  const openEditEditor = (cfg: ApiSchedulerConfig) => {
     setCurrentConfig(cfg);
     
     // Parse query params
@@ -165,7 +168,7 @@ export const ApiSchedulerView: React.FC = () => {
 
     setTestResponse(null);
     setActiveReqTab('params');
-    setIsModalOpen(true);
+    setViewMode('editor');
   };
 
   // Helper to compile KeyValuePair to JSON string
@@ -224,6 +227,7 @@ export const ApiSchedulerView: React.FC = () => {
       return;
     }
 
+    setIsSaving(true);
     const finalConfig = {
       ...currentConfig,
       name: currentConfig.name.trim(),
@@ -240,10 +244,12 @@ export const ApiSchedulerView: React.FC = () => {
         await axios.post('/api/api-schedulers', finalConfig);
         addToast({ type: 'success', title: 'Schedule Created', message: `Successfully created [${finalConfig.name}]` });
       }
-      setIsModalOpen(false);
+      setViewMode('list');
       fetchSchedulers();
     } catch (err: any) {
       addToast({ type: 'error', title: 'Save Failed', message: err.response?.data?.error || err.message });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -313,6 +319,575 @@ export const ApiSchedulerView: React.FC = () => {
     }
   };
 
+  // Render Full Screen Insomnia Editor
+  if (viewMode === 'editor') {
+    return (
+      <div className="h-full flex flex-col bg-bg-main text-text-main overflow-hidden animate-fadeIn">
+        
+        {/* Top Navigation & Insomnia Command Bar */}
+        <div className="bg-bg-panel border-b border-border-main p-3.5 flex flex-col md:flex-row items-center justify-between gap-3 shrink-0 shadow-sm z-20">
+          
+          {/* Left: Back Button & Schedule Name */}
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <button
+              onClick={() => setViewMode('list')}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-bg-main hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main transition-colors text-xs font-semibold"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Schedules</span>
+            </button>
+
+            <div className="h-5 w-px bg-border-main hidden md:block" />
+
+            <div className="flex items-center gap-2 flex-1 md:w-64">
+              <input
+                type="text"
+                placeholder="Schedule Name e.g. Daily Weather Ingestion"
+                value={currentConfig.name || ''}
+                onChange={(e) => setCurrentConfig({ ...currentConfig, name: e.target.value })}
+                className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs font-bold text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
+              />
+            </div>
+          </div>
+
+          {/* Middle: Method & Endpoint URL (Insomnia Style) */}
+          <div className="flex items-center gap-2 w-full md:flex-1 max-w-2xl">
+            <select
+              value={currentConfig.method || 'GET'}
+              onChange={(e) => setCurrentConfig({ ...currentConfig, method: e.target.value })}
+              className={clsx(
+                "px-3 py-2 rounded-xl text-xs font-bold tracking-wider focus:outline-none border border-border-main bg-bg-main cursor-pointer shrink-0",
+                getMethodBadgeClass(currentConfig.method || 'GET')
+              )}
+            >
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="DELETE">DELETE</option>
+              <option value="PATCH">PATCH</option>
+            </select>
+
+            <input
+              type="text"
+              placeholder="https://api.example.com/v1/data..."
+              value={currentConfig.url || ''}
+              onChange={(e) => setCurrentConfig({ ...currentConfig, url: e.target.value })}
+              className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
+            />
+          </div>
+
+          {/* Right Action Buttons: Test Endpoint & Save Schedule */}
+          <div className="flex items-center gap-2.5 w-full md:w-auto justify-end shrink-0">
+            <button
+              onClick={handleTestEndpoint}
+              disabled={isTesting}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all disabled:opacity-50"
+              title="Send HTTP Request & View Live Response (Insomnia Console)"
+            >
+              {isTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-slate-950" />}
+              <span>Test Endpoint</span>
+            </button>
+
+            <button
+              onClick={handleSaveSchedule}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-xs shadow-md shadow-blue-500/25 hover:shadow-blue-500/40 transition-all disabled:opacity-50"
+            >
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              <span>Save Schedule</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Main Split Insomnia Workspace (Left: Request Config | Right: Live Response) */}
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 divide-y lg:divide-y-0 lg:divide-x divide-border-main overflow-hidden">
+          
+          {/* Left Column: Insomnia Request Workbench (7 Cols) */}
+          <div className="lg:col-span-7 flex flex-col min-h-0 bg-bg-panel">
+            
+            {/* Request Tabs Header */}
+            <div className="flex items-center gap-1 border-b border-border-main bg-bg-main px-4 pt-2.5 overflow-x-auto shrink-0 z-10">
+              {[
+                { id: 'params', label: 'Params', icon: Search },
+                { id: 'headers', label: 'Headers', icon: FileText },
+                { id: 'auth', label: 'Auth', icon: ShieldCheck },
+                { id: 'body', label: 'Body', icon: Code2 },
+                { id: 'target', label: 'Target Storage', icon: Database },
+                { id: 'schedule', label: 'Schedule & Cron', icon: Clock },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveReqTab(tab.id as any)}
+                    className={clsx(
+                      "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all border-t border-x",
+                      activeReqTab === tab.id
+                        ? "bg-bg-panel text-blue-400 border-border-main border-b-transparent -mb-px font-bold shadow-sm"
+                        : "text-text-muted border-transparent hover:text-text-main hover:bg-bg-hover"
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Tab Content Body */}
+            <div className="flex-1 p-5 overflow-y-auto">
+              
+              {/* TAB 1: QUERY PARAMS */}
+              {activeReqTab === 'params' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-text-main">URL Query Parameters</h4>
+                      <p className="text-[11px] text-text-muted">Appended as URL query string e.g. ?page=1&limit=50</p>
+                    </div>
+                    <button
+                      onClick={() => setQueryParamsList([...queryParamsList, { key: '', value: '', enabled: true }])}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Param</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {queryParamsList.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-2.5 group">
+                        <input
+                          type="checkbox"
+                          checked={item.enabled}
+                          onChange={(e) => {
+                            const copy = [...queryParamsList];
+                            copy[idx].enabled = e.target.checked;
+                            setQueryParamsList(copy);
+                          }}
+                          className="w-4 h-4 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Key (e.g. limit)"
+                          value={item.key}
+                          onChange={(e) => {
+                            const copy = [...queryParamsList];
+                            copy[idx].key = e.target.value;
+                            setQueryParamsList(copy);
+                          }}
+                          className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Value (e.g. 50)"
+                          value={item.value}
+                          onChange={(e) => {
+                            const copy = [...queryParamsList];
+                            copy[idx].value = e.target.value;
+                            setQueryParamsList(copy);
+                          }}
+                          className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
+                        />
+                        <button
+                          onClick={() => setQueryParamsList(queryParamsList.filter((_, i) => i !== idx))}
+                          className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: HTTP HEADERS */}
+              {activeReqTab === 'headers' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-text-main">HTTP Request Headers</h4>
+                      <p className="text-[11px] text-text-muted">Custom HTTP headers sent with the request</p>
+                    </div>
+                    <button
+                      onClick={() => setHeadersList([...headersList, { key: '', value: '', enabled: true }])}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Header</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {headersList.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-2.5 group">
+                        <input
+                          type="checkbox"
+                          checked={item.enabled}
+                          onChange={(e) => {
+                            const copy = [...headersList];
+                            copy[idx].enabled = e.target.checked;
+                            setHeadersList(copy);
+                          }}
+                          className="w-4 h-4 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Header (e.g. Authorization)"
+                          value={item.key}
+                          onChange={(e) => {
+                            const copy = [...headersList];
+                            copy[idx].key = e.target.value;
+                            setHeadersList(copy);
+                          }}
+                          className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Value"
+                          value={item.value}
+                          onChange={(e) => {
+                            const copy = [...headersList];
+                            copy[idx].value = e.target.value;
+                            setHeadersList(copy);
+                          }}
+                          className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
+                        />
+                        <button
+                          onClick={() => setHeadersList(headersList.filter((_, i) => i !== idx))}
+                          className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: AUTHENTICATION */}
+              {activeReqTab === 'auth' && (
+                <div className="space-y-5 max-w-lg">
+                  <div>
+                    <label className="block text-xs font-bold text-text-main mb-2">Authentication Mechanism</label>
+                    <div className="grid grid-cols-3 gap-2.5">
+                      {['none', 'basic', 'bearer'].map(auth => (
+                        <button
+                          key={auth}
+                          type="button"
+                          onClick={() => setCurrentConfig({ ...currentConfig, authType: auth })}
+                          className={clsx(
+                            "py-2.5 px-4 rounded-xl text-xs font-bold capitalize transition-all border text-center",
+                            currentConfig.authType === auth
+                              ? "bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-sm"
+                              : "bg-bg-main text-text-muted border-border-main hover:text-text-main hover:bg-bg-hover"
+                          )}
+                        >
+                          {auth}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {currentConfig.authType === 'basic' && (
+                    <div className="space-y-3.5 bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner">
+                      <div>
+                        <label className="block text-xs font-semibold text-text-muted mb-1">Username</label>
+                        <input
+                          type="text"
+                          value={currentConfig.authUsername || ''}
+                          onChange={(e) => setCurrentConfig({ ...currentConfig, authUsername: e.target.value })}
+                          className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-text-muted mb-1">Password</label>
+                        <input
+                          type="password"
+                          value={currentConfig.authPassword || ''}
+                          onChange={(e) => setCurrentConfig({ ...currentConfig, authPassword: e.target.value })}
+                          className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs text-text-main focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {currentConfig.authType === 'bearer' && (
+                    <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner">
+                      <label className="block text-xs font-semibold text-text-muted mb-1">Bearer Token</label>
+                      <input
+                        type="text"
+                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+                        value={currentConfig.authToken || ''}
+                        onChange={(e) => setCurrentConfig({ ...currentConfig, authToken: e.target.value })}
+                        className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 4: REQUEST BODY */}
+              {activeReqTab === 'body' && (
+                <div className="space-y-4 h-full flex flex-col">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-text-main">Body Payload Format:</span>
+                    {['none', 'json', 'text'].map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setCurrentConfig({ ...currentConfig, bodyType: type })}
+                        className={clsx(
+                          "px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all border",
+                          currentConfig.bodyType === type
+                            ? "bg-blue-500/20 text-blue-400 border-blue-500/40 font-bold"
+                            : "bg-bg-main text-text-muted border-border-main hover:text-text-main"
+                        )}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+
+                  {currentConfig.bodyType !== 'none' && (
+                    <div className="flex-1 flex flex-col min-h-[280px]">
+                      <textarea
+                        placeholder='{ "key": "value", "filter": "active" }'
+                        value={currentConfig.bodyContent || ''}
+                        onChange={(e) => setCurrentConfig({ ...currentConfig, bodyContent: e.target.value })}
+                        rows={12}
+                        className="w-full flex-1 bg-bg-main border border-border-main rounded-2xl p-4 text-xs font-mono text-emerald-400 placeholder:text-text-muted focus:outline-none focus:border-blue-500 resize-none shadow-inner"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 5: TARGET STORAGE (ClickHouse & PostgreSQL 4-Column Ingestion) */}
+              {activeReqTab === 'target' && (
+                <div className="space-y-5">
+                  <div className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 p-4 rounded-2xl flex items-start gap-3.5 shadow-sm">
+                    <Database className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                    <div className="text-xs text-cyan-200">
+                      <p className="font-bold text-cyan-300 mb-1 text-sm">Target Ingestion Schema Structure</p>
+                      <p className="leading-relaxed">
+                        Hasil respon JSON dari API ini akan disimpan secara otomatis ke tabel target (ClickHouse atau PostgreSQL) dengan struktur 4 kolom standar:
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-2.5 font-mono text-[11px]">
+                        <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">1. kode_data (Custom Identifier)</span>
+                        <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">2. detail_data (Raw Response JSON)</span>
+                        <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">3. input_by ('darkosync')</span>
+                        <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">4. input_dt (Timestamp)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-text-main mb-1.5">Target Database Connection</label>
+                      <select
+                        value={currentConfig.targetConnectionId || ''}
+                        onChange={(e) => setCurrentConfig({ ...currentConfig, targetConnectionId: e.target.value })}
+                        className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="">Select Connection (ClickHouse / PostgreSQL)...</option>
+                        {connections.map(c => (
+                          <option key={c.id} value={c.id}>{c.name} ({c.type} - {c.host})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-text-main mb-1.5">Target Table Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. sch_sync.tb_api_data or public.tb_weather"
+                        value={currentConfig.targetTable || ''}
+                        onChange={(e) => setCurrentConfig({ ...currentConfig, targetTable: e.target.value })}
+                        className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-text-main mb-1.5">Kode Data Identifier (User Input)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. KODE_WEATHER_V1 or SALES_DAILY_API"
+                      value={currentConfig.kodeData || ''}
+                      onChange={(e) => setCurrentConfig({ ...currentConfig, kodeData: e.target.value })}
+                      className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                    />
+                    <p className="text-[11px] text-text-muted mt-1.5">
+                      String unik ini akan disimpan di kolom `kode_data` untuk mempermudah query dan pembedaan dataset.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 6: SCHEDULE & CRON */}
+              {activeReqTab === 'schedule' && (
+                <div className="space-y-5 max-w-lg">
+                  <div>
+                    <label className="block text-xs font-bold text-text-main mb-2">Automated Execution Interval</label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {[
+                        { id: 'EVERY_1M', label: 'Every 1 Minute' },
+                        { id: 'EVERY_5M', label: 'Every 5 Minutes' },
+                        { id: 'EVERY_15M', label: 'Every 15 Minutes' },
+                        { id: 'EVERY_1H', label: 'Every 1 Hour' },
+                        { id: 'EVERY_1D', label: 'Every 1 Day' },
+                        { id: 'CUSTOM', label: 'Custom Cron' },
+                      ].map(item => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setCurrentConfig({ ...currentConfig, cronExpression: item.id })}
+                          className={clsx(
+                            "py-2.5 px-3.5 rounded-xl text-xs font-bold transition-all border text-left flex items-center justify-between",
+                            currentConfig.cronExpression === item.id || (item.id === 'CUSTOM' && currentConfig.cronExpression && !currentConfig.cronExpression.startsWith('EVERY_'))
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm"
+                              : "bg-bg-main text-text-muted border-border-main hover:text-text-main hover:bg-bg-hover"
+                          )}
+                        >
+                          <span>{item.label}</span>
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {currentConfig.cronExpression && !currentConfig.cronExpression.startsWith('EVERY_') && (
+                    <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner">
+                      <label className="block text-xs font-bold text-text-main mb-1.5">Custom Cron Expression</label>
+                      <input
+                        type="text"
+                        placeholder="0 */5 * * * *"
+                        value={currentConfig.cronExpression || ''}
+                        onChange={(e) => setCurrentConfig({ ...currentConfig, cronExpression: e.target.value })}
+                        className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between bg-bg-main p-4 border border-border-main rounded-2xl shadow-sm">
+                    <div>
+                      <span className="block text-xs font-bold text-text-main">Enable Schedule Immediately</span>
+                      <span className="text-[11px] text-text-muted">Automated background execution on interval trigger</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={currentConfig.active !== false}
+                      onChange={(e) => setCurrentConfig({ ...currentConfig, active: e.target.checked })}
+                      className="w-5 h-5 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+
+          {/* Right Column: Insomnia Live Response Console & Viewer (5 Cols) */}
+          <div className="lg:col-span-5 flex flex-col min-h-0 bg-bg-main">
+            
+            {/* Console Header Bar */}
+            <div className="p-3.5 border-b border-border-main flex items-center justify-between bg-bg-panel shrink-0 shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Response Console</span>
+                {testResponse && (
+                  <span className={clsx(
+                    "px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm",
+                    testResponse.statusCode && testResponse.statusCode >= 200 && testResponse.statusCode < 300
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                  )}>
+                    {testResponse.statusCode} OK
+                  </span>
+                )}
+              </div>
+
+              {testResponse && (
+                <div className="flex items-center gap-3 text-xs text-text-muted font-mono">
+                  <span>{testResponse.durationMs} ms</span>
+                  <button
+                    onClick={() => {
+                      if (testResponse.body) {
+                        navigator.clipboard.writeText(getPrettyJson(testResponse.body));
+                        setIsCopied(true);
+                        setTimeout(() => setIsCopied(false), 2000);
+                      }
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors border border-border-main"
+                    title="Copy Pretty JSON Response"
+                  >
+                    {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Response Sub-Tabs (Body vs Headers) */}
+            <div className="flex items-center gap-1 border-b border-border-main bg-bg-main px-4 pt-2 shrink-0">
+              {['body', 'headers'].map(t => (
+                <button
+                  key={t}
+                  onClick={() => setActiveRespTab(t as any)}
+                  className={clsx(
+                    "px-4 py-2 text-xs font-bold capitalize rounded-t-xl transition-all border-t border-x",
+                    activeRespTab === t
+                      ? "bg-bg-panel text-blue-400 border-border-main border-b-transparent -mb-px"
+                      : "text-text-muted border-transparent hover:text-text-main hover:bg-bg-hover"
+                  )}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            {/* Response Body Console */}
+            <div className="flex-1 p-4 overflow-auto bg-bg-main font-mono text-xs shadow-inner">
+              {isTesting ? (
+                <div className="h-full flex flex-col items-center justify-center text-text-muted p-8 text-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-amber-400 mb-3" />
+                  <p className="text-xs font-semibold text-text-main">Sending HTTP Request to endpoint...</p>
+                  <p className="text-[11px] text-text-muted mt-1">Measuring latency and response payload</p>
+                </div>
+              ) : !testResponse ? (
+                <div className="h-full flex flex-col items-center justify-center text-text-muted p-8 text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-bg-panel border border-border-main flex items-center justify-center mb-3">
+                    <Zap className="w-6 h-6 text-amber-400/60" />
+                  </div>
+                  <p className="text-xs font-bold text-text-main mb-1">Insomnia Console Ready</p>
+                  <p className="text-[11px] text-text-muted max-w-xs">
+                    Click <span className="text-amber-400 font-bold">"Test Endpoint"</span> above to execute a live request and view response JSON & headers.
+                  </p>
+                </div>
+              ) : activeRespTab === 'body' ? (
+                <pre className="text-emerald-400/90 whitespace-pre-wrap break-all selection:bg-blue-500/30 leading-relaxed font-mono">
+                  {getPrettyJson(testResponse.body)}
+                </pre>
+              ) : (
+                <div className="space-y-1.5">
+                  {Object.entries(testResponse.headers || {}).map(([k, v]) => (
+                    <div key={k} className="flex gap-2 text-xs">
+                      <span className="text-blue-400 font-bold">{k}:</span>
+                      <span className="text-text-muted break-all">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    );
+  }
+
+  // Default List / Table View
   return (
     <div className="h-full flex flex-col bg-bg-main text-text-main p-4 md:p-6 overflow-hidden">
       {/* Top Banner Header */}
@@ -343,8 +918,8 @@ export const ApiSchedulerView: React.FC = () => {
           </button>
 
           <button
-            onClick={openNewModal}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-medium shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all text-sm"
+            onClick={openNewEditor}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all text-xs"
           >
             <Plus className="w-4.5 h-4.5" />
             <span>New API Schedule</span>
@@ -362,19 +937,19 @@ export const ApiSchedulerView: React.FC = () => {
               placeholder="Search by name, URL, kode_data, or target table..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-bg-main border border-border-main rounded-xl pl-9 pr-4 py-2 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full bg-bg-main border border-border-main rounded-xl pl-9 pr-4 py-2 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
             />
           </div>
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-          <div className="flex items-center gap-1.5 bg-bg-main border border-border-main p-1 rounded-xl">
+          <div className="flex items-center gap-1 bg-bg-main border border-border-main p-1 rounded-xl">
             {['ALL', 'GET', 'POST', 'PUT', 'DELETE'].map(method => (
               <button
                 key={method}
                 onClick={() => setMethodFilter(method)}
                 className={clsx(
-                  "px-3 py-1 rounded-lg text-xs font-semibold transition-all",
+                  "px-3 py-1 rounded-lg text-[11px] font-bold transition-all",
                   methodFilter === method ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "text-text-muted hover:text-text-main"
                 )}
               >
@@ -383,13 +958,13 @@ export const ApiSchedulerView: React.FC = () => {
             ))}
           </div>
 
-          <div className="flex items-center gap-1.5 bg-bg-main border border-border-main p-1 rounded-xl">
+          <div className="flex items-center gap-1 bg-bg-main border border-border-main p-1 rounded-xl">
             {['ALL', 'Active', 'Paused'].map(status => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
                 className={clsx(
-                  "px-3 py-1 rounded-lg text-xs font-semibold transition-all",
+                  "px-3 py-1 rounded-lg text-[11px] font-bold transition-all",
                   statusFilter === status ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" : "text-text-muted hover:text-text-main"
                 )}
               >
@@ -400,16 +975,16 @@ export const ApiSchedulerView: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Table View (Default View as requested) */}
+      {/* Main Table View */}
       <div className="flex-1 bg-bg-panel border border-border-main rounded-2xl overflow-hidden shadow-sm flex flex-col min-h-0">
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-text-muted">
             <Loader2 className="w-8 h-8 animate-spin text-blue-400 mb-3" />
-            <p className="text-sm">Loading API Schedulers...</p>
+            <p className="text-xs">Loading API Schedulers...</p>
           </div>
         ) : filteredSchedulers.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-text-muted">
-            <div className="w-14 h-14 rounded-2xl bg-bg-hover flex items-center justify-center mb-3 text-text-muted">
+            <div className="w-14 h-14 rounded-2xl bg-bg-hover flex items-center justify-center mb-3 text-text-muted border border-border-main">
               <Globe className="w-7 h-7" />
             </div>
             <h3 className="text-base font-semibold text-text-main mb-1">No API Schedulers Found</h3>
@@ -419,8 +994,8 @@ export const ApiSchedulerView: React.FC = () => {
                 : "Create your first API Scheduler to start ingesting automated HTTP endpoints into ClickHouse or PostgreSQL."}
             </p>
             <button
-              onClick={openNewModal}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs transition-colors"
+              onClick={openNewEditor}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-colors shadow-md shadow-blue-500/20"
             >
               <Plus className="w-4 h-4" />
               <span>Create New API Schedule</span>
@@ -429,7 +1004,7 @@ export const ApiSchedulerView: React.FC = () => {
         ) : (
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left border-collapse min-w-[900px]">
-              <thead className="sticky top-0 bg-bg-main/90 backdrop-blur-md border-b border-border-main text-xs font-semibold text-text-muted uppercase tracking-wider z-10">
+              <thead className="sticky top-0 bg-bg-main/90 backdrop-blur-md border-b border-border-main text-[11px] font-bold text-text-muted uppercase tracking-wider z-10">
                 <tr>
                   <th className="py-3.5 px-4 w-16 text-center">Status</th>
                   <th className="py-3.5 px-4">Schedule & Endpoint</th>
@@ -439,7 +1014,7 @@ export const ApiSchedulerView: React.FC = () => {
                   <th className="py-3.5 px-4 text-right pr-6">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-main text-sm">
+              <tbody className="divide-y divide-border-main text-xs">
                 {filteredSchedulers.map((cfg) => {
                   const conn = connections.find(c => String(c.id) === String(cfg.targetConnectionId));
                   return (
@@ -468,11 +1043,11 @@ export const ApiSchedulerView: React.FC = () => {
                             <span className={clsx("px-2 py-0.5 rounded text-[10px] font-bold tracking-wide", getMethodBadgeClass(cfg.method))}>
                               {cfg.method}
                             </span>
-                            <span className="font-bold text-text-main group-hover:text-blue-400 transition-colors">
+                            <span className="font-bold text-text-main group-hover:text-blue-400 transition-colors text-xs">
                               {cfg.name}
                             </span>
                           </div>
-                          <span className="text-xs font-mono text-text-muted truncate max-w-md" title={cfg.url}>
+                          <span className="text-[11px] font-mono text-text-muted truncate max-w-md" title={cfg.url}>
                             {cfg.url}
                           </span>
                         </div>
@@ -506,17 +1081,17 @@ export const ApiSchedulerView: React.FC = () => {
                       <td className="py-3.5 px-4">
                         <div className="flex flex-col gap-1">
                           {cfg.lastRunStatus === 'SUCCESS' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 w-fit">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 w-fit">
                               <CheckCircle2 className="w-3 h-3" />
                               SUCCESS
                             </span>
                           ) : cfg.lastRunStatus === 'FAILED' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30 w-fit" title={cfg.lastRunMessage}>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 w-fit" title={cfg.lastRunMessage}>
                               <AlertCircle className="w-3 h-3" />
                               FAILED
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-500/15 text-slate-400 border border-slate-500/30 w-fit">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/15 text-slate-400 border border-slate-500/30 w-fit">
                               PENDING
                             </span>
                           )}
@@ -539,7 +1114,7 @@ export const ApiSchedulerView: React.FC = () => {
                           </button>
 
                           <button
-                            onClick={() => openEditModal(cfg)}
+                            onClick={() => openEditEditor(cfg)}
                             className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/20 transition-all"
                             title="Edit Insomnia HTTP Client & Schedule"
                           >
@@ -563,534 +1138,6 @@ export const ApiSchedulerView: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Insomnia-Style Modal / Screen */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-2 md:p-6 animate-fadeIn">
-          <div className="bg-bg-panel border border-border-main rounded-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden shadow-2xl">
-            
-            {/* Modal Top Header (Insomnia URL Bar) */}
-            <div className="bg-bg-main border-b border-border-main p-3.5 flex flex-col md:flex-row items-center gap-3 shrink-0">
-              <div className="flex items-center gap-2 w-full md:w-auto">
-                <select
-                  value={currentConfig.method || 'GET'}
-                  onChange={(e) => setCurrentConfig({ ...currentConfig, method: e.target.value })}
-                  className={clsx(
-                    "px-3 py-2 rounded-xl text-xs font-bold tracking-wider focus:outline-none border border-border-main bg-bg-panel cursor-pointer",
-                    getMethodBadgeClass(currentConfig.method || 'GET')
-                  )}
-                >
-                  <option value="GET">GET</option>
-                  <option value="POST">POST</option>
-                  <option value="PUT">PUT</option>
-                  <option value="DELETE">DELETE</option>
-                  <option value="PATCH">PATCH</option>
-                </select>
-
-                <input
-                  type="text"
-                  placeholder="https://api.example.com/v1/resource..."
-                  value={currentConfig.url || ''}
-                  onChange={(e) => setCurrentConfig({ ...currentConfig, url: e.target.value })}
-                  className="flex-1 bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
-                />
-              </div>
-
-              <div className="flex items-center justify-between md:justify-end gap-2 w-full md:w-auto">
-                <input
-                  type="text"
-                  placeholder="Schedule Name e.g. Weather API Daily"
-                  value={currentConfig.name || ''}
-                  onChange={(e) => setCurrentConfig({ ...currentConfig, name: e.target.value })}
-                  className="bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors w-48 md:w-56"
-                />
-
-                <button
-                  onClick={handleTestEndpoint}
-                  disabled={isTesting}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all disabled:opacity-50"
-                  title="Test HTTP Request (Insomnia Console)"
-                >
-                  {isTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 fill-slate-950" />}
-                  <span>Test Endpoint</span>
-                </button>
-
-                <button
-                  onClick={handleSaveSchedule}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>Save Schedule</span>
-                </button>
-
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="p-2 rounded-xl hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors ml-1"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Main Split Panel (Request Tabs Left / Response Viewer Right) */}
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 divide-y lg:divide-y-0 lg:divide-x divide-border-main overflow-hidden">
-              
-              {/* Left Column: Request Configuration (Insomnia Tabs) */}
-              <div className="lg:col-span-7 flex flex-col min-h-0 bg-bg-panel">
-                {/* Request Tabs Header */}
-                <div className="flex items-center gap-1 border-b border-border-main bg-bg-main px-3 pt-2 overflow-x-auto shrink-0">
-                  {[
-                    { id: 'params', label: 'Params', icon: Search },
-                    { id: 'headers', label: 'Headers', icon: FileText },
-                    { id: 'auth', label: 'Auth', icon: ShieldCheck },
-                    { id: 'body', label: 'Body', icon: Code2 },
-                    { id: 'target', label: 'Target Storage', icon: Database },
-                    { id: 'schedule', label: 'Schedule', icon: Clock },
-                  ].map((tab) => {
-                    const Icon = tab.icon;
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => setActiveReqTab(tab.id as any)}
-                        className={clsx(
-                          "flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-t-xl transition-all border-t border-x",
-                          activeReqTab === tab.id
-                            ? "bg-bg-panel text-blue-400 border-border-main border-b-transparent -mb-px"
-                            : "text-text-muted border-transparent hover:text-text-main hover:bg-bg-hover"
-                        )}
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                        <span>{tab.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Tab Content Body */}
-                <div className="flex-1 p-4 overflow-y-auto">
-                  {/* TAB 1: PARAMS */}
-                  {activeReqTab === 'params' && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-text-muted">URL Query Parameters</span>
-                        <button
-                          onClick={() => setQueryParamsList([...queryParamsList, { key: '', value: '', enabled: true }])}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-xs font-medium hover:bg-blue-500/20 transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Param</span>
-                        </button>
-                      </div>
-
-                      {queryParamsList.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={item.enabled}
-                            onChange={(e) => {
-                              const copy = [...queryParamsList];
-                              copy[idx].enabled = e.target.checked;
-                              setQueryParamsList(copy);
-                            }}
-                            className="rounded border-border-main text-blue-500 focus:ring-0"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Key (e.g. limit)"
-                            value={item.key}
-                            onChange={(e) => {
-                              const copy = [...queryParamsList];
-                              copy[idx].key = e.target.value;
-                              setQueryParamsList(copy);
-                            }}
-                            className="flex-1 bg-bg-main border border-border-main rounded-xl px-3 py-1.5 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Value (e.g. 50)"
-                            value={item.value}
-                            onChange={(e) => {
-                              const copy = [...queryParamsList];
-                              copy[idx].value = e.target.value;
-                              setQueryParamsList(copy);
-                            }}
-                            className="flex-1 bg-bg-main border border-border-main rounded-xl px-3 py-1.5 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500"
-                          />
-                          <button
-                            onClick={() => setQueryParamsList(queryParamsList.filter((_, i) => i !== idx))}
-                            className="p-1.5 text-text-muted hover:text-rose-400 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* TAB 2: HEADERS */}
-                  {activeReqTab === 'headers' && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-text-muted">HTTP Request Headers</span>
-                        <button
-                          onClick={() => setHeadersList([...headersList, { key: '', value: '', enabled: true }])}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-xs font-medium hover:bg-blue-500/20 transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Header</span>
-                        </button>
-                      </div>
-
-                      {headersList.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={item.enabled}
-                            onChange={(e) => {
-                              const copy = [...headersList];
-                              copy[idx].enabled = e.target.checked;
-                              setHeadersList(copy);
-                            }}
-                            className="rounded border-border-main text-blue-500 focus:ring-0"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Header (e.g. Content-Type)"
-                            value={item.key}
-                            onChange={(e) => {
-                              const copy = [...headersList];
-                              copy[idx].key = e.target.value;
-                              setHeadersList(copy);
-                            }}
-                            className="flex-1 bg-bg-main border border-border-main rounded-xl px-3 py-1.5 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Value"
-                            value={item.value}
-                            onChange={(e) => {
-                              const copy = [...headersList];
-                              copy[idx].value = e.target.value;
-                              setHeadersList(copy);
-                            }}
-                            className="flex-1 bg-bg-main border border-border-main rounded-xl px-3 py-1.5 text-xs text-text-main font-mono placeholder:text-text-muted focus:outline-none focus:border-blue-500"
-                          />
-                          <button
-                            onClick={() => setHeadersList(headersList.filter((_, i) => i !== idx))}
-                            className="p-1.5 text-text-muted hover:text-rose-400 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* TAB 3: AUTH */}
-                  {activeReqTab === 'auth' && (
-                    <div className="space-y-4 max-w-md">
-                      <div>
-                        <label className="block text-xs font-semibold text-text-muted mb-1.5">Authentication Type</label>
-                        <div className="grid grid-cols-3 gap-2">
-                          {['none', 'basic', 'bearer'].map(auth => (
-                            <button
-                              key={auth}
-                              type="button"
-                              onClick={() => setCurrentConfig({ ...currentConfig, authType: auth })}
-                              className={clsx(
-                                "py-2 px-3 rounded-xl text-xs font-bold capitalize transition-all border",
-                                currentConfig.authType === auth
-                                  ? "bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-sm"
-                                  : "bg-bg-main text-text-muted border-border-main hover:text-text-main"
-                              )}
-                            >
-                              {auth}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {currentConfig.authType === 'basic' && (
-                        <div className="space-y-3 bg-bg-main p-3.5 border border-border-main rounded-xl">
-                          <div>
-                            <label className="block text-xs text-text-muted mb-1">Username</label>
-                            <input
-                              type="text"
-                              value={currentConfig.authUsername || ''}
-                              onChange={(e) => setCurrentConfig({ ...currentConfig, authUsername: e.target.value })}
-                              className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-1.5 text-xs text-text-main focus:outline-none focus:border-blue-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-text-muted mb-1">Password</label>
-                            <input
-                              type="password"
-                              value={currentConfig.authPassword || ''}
-                              onChange={(e) => setCurrentConfig({ ...currentConfig, authPassword: e.target.value })}
-                              className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-1.5 text-xs text-text-main focus:outline-none focus:border-blue-500"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {currentConfig.authType === 'bearer' && (
-                        <div className="bg-bg-main p-3.5 border border-border-main rounded-xl">
-                          <label className="block text-xs text-text-muted mb-1">Bearer Token</label>
-                          <input
-                            type="text"
-                            placeholder="eyJhbGciOiJIUzI1NiIsIn..."
-                            value={currentConfig.authToken || ''}
-                            onChange={(e) => setCurrentConfig({ ...currentConfig, authToken: e.target.value })}
-                            className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-1.5 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* TAB 4: BODY */}
-                  {activeReqTab === 'body' && (
-                    <div className="space-y-3 h-full flex flex-col">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-semibold text-text-muted">Body Format:</span>
-                        {['none', 'json', 'text'].map(type => (
-                          <button
-                            key={type}
-                            type="button"
-                            onClick={() => setCurrentConfig({ ...currentConfig, bodyType: type })}
-                            className={clsx(
-                              "px-2.5 py-1 rounded-lg text-xs font-semibold capitalize transition-all border",
-                              currentConfig.bodyType === type
-                                ? "bg-blue-500/20 text-blue-400 border-blue-500/40"
-                                : "bg-bg-main text-text-muted border-border-main hover:text-text-main"
-                            )}
-                          >
-                            {type}
-                          </button>
-                        ))}
-                      </div>
-
-                      {currentConfig.bodyType !== 'none' && (
-                        <textarea
-                          placeholder='{ "key": "value" }'
-                          value={currentConfig.bodyContent || ''}
-                          onChange={(e) => setCurrentConfig({ ...currentConfig, bodyContent: e.target.value })}
-                          rows={10}
-                          className="w-full flex-1 bg-bg-main border border-border-main rounded-xl p-3 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500 resize-none"
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {/* TAB 5: TARGET STORAGE (Crucial User Requirement!) */}
-                  {activeReqTab === 'target' && (
-                    <div className="space-y-4">
-                      <div className="bg-cyan-500/10 border border-cyan-500/30 p-3.5 rounded-2xl flex items-start gap-3">
-                        <Database className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
-                        <div className="text-xs text-cyan-200">
-                          <p className="font-semibold text-cyan-300 mb-1">Target Ingestion Schema Structure</p>
-                          <p>
-                            Hasil respon JSON dari API akan disimpan secara otomatis ke tabel target (ClickHouse atau PostgreSQL) dengan struktur 4 kolom standar:
-                          </p>
-                          <div className="flex flex-wrap gap-2 mt-2 font-mono text-[11px]">
-                            <span className="bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">kode_data (Custom Code)</span>
-                            <span className="bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">detail_data (Raw JSON Output)</span>
-                            <span className="bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">input_by ('darkosync')</span>
-                            <span className="bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">input_dt (Ingestion Timestamp)</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-text-muted mb-1">Target Connection Database</label>
-                          <select
-                            value={currentConfig.targetConnectionId || ''}
-                            onChange={(e) => setCurrentConfig({ ...currentConfig, targetConnectionId: e.target.value })}
-                            className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-xs text-text-main focus:outline-none focus:border-blue-500"
-                          >
-                            <option value="">Select Connection (ClickHouse / PostgreSQL)...</option>
-                            {connections.map(c => (
-                              <option key={c.id} value={c.id}>{c.name} ({c.type} - {c.host})</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-semibold text-text-muted mb-1">Target Table Name</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. sch_sync.tb_api_data or public.tb_weather"
-                            value={currentConfig.targetTable || ''}
-                            onChange={(e) => setCurrentConfig({ ...currentConfig, targetTable: e.target.value })}
-                            className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-text-muted mb-1">Kode Data Identifier (User Input)</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. KODE_WEATHER_V1 or SALES_DAILY_API"
-                          value={currentConfig.kodeData || ''}
-                          onChange={(e) => setCurrentConfig({ ...currentConfig, kodeData: e.target.value })}
-                          className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
-                        />
-                        <p className="text-[11px] text-text-muted mt-1">
-                          String unik ini akan disimpan di kolom `kode_data` untuk mempermudah query dan pembedaan dataset.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* TAB 6: SCHEDULE */}
-                  {activeReqTab === 'schedule' && (
-                    <div className="space-y-4 max-w-md">
-                      <div>
-                        <label className="block text-xs font-semibold text-text-muted mb-1">Interval Preset</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          {[
-                            { id: 'EVERY_1M', label: 'Every 1 Minute' },
-                            { id: 'EVERY_5M', label: 'Every 5 Minutes' },
-                            { id: 'EVERY_15M', label: 'Every 15 Minutes' },
-                            { id: 'EVERY_1H', label: 'Every 1 Hour' },
-                            { id: 'EVERY_1D', label: 'Every 1 Day' },
-                            { id: 'CUSTOM', label: 'Custom Cron' },
-                          ].map(item => (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => setCurrentConfig({ ...currentConfig, cronExpression: item.id })}
-                              className={clsx(
-                                "py-2 px-3 rounded-xl text-xs font-semibold transition-all border text-left",
-                                currentConfig.cronExpression === item.id || (item.id === 'CUSTOM' && currentConfig.cronExpression && !currentConfig.cronExpression.startsWith('EVERY_'))
-                                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm"
-                                  : "bg-bg-main text-text-muted border-border-main hover:text-text-main"
-                              )}
-                            >
-                              {item.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {currentConfig.cronExpression && !currentConfig.cronExpression.startsWith('EVERY_') && (
-                        <div>
-                          <label className="block text-xs font-semibold text-text-muted mb-1">Custom Cron Expression</label>
-                          <input
-                            type="text"
-                            placeholder="0 */5 * * * *"
-                            value={currentConfig.cronExpression || ''}
-                            onChange={(e) => setCurrentConfig({ ...currentConfig, cronExpression: e.target.value })}
-                            className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
-                          />
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between bg-bg-main p-3.5 border border-border-main rounded-xl">
-                        <div>
-                          <span className="block text-xs font-semibold text-text-main">Enable Schedule Immediately</span>
-                          <span className="text-[11px] text-text-muted">Automated periodic background execution</span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={currentConfig.active !== false}
-                          onChange={(e) => setCurrentConfig({ ...currentConfig, active: e.target.checked })}
-                          className="w-5 h-5 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Right Column: Insomnia Response Console & Viewer */}
-              <div className="lg:col-span-5 flex flex-col min-h-0 bg-bg-main">
-                <div className="p-3 border-b border-border-main flex items-center justify-between bg-bg-panel shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Response</span>
-                    {testResponse && (
-                      <span className={clsx(
-                        "px-2.5 py-0.5 rounded-full text-xs font-bold",
-                        testResponse.statusCode && testResponse.statusCode >= 200 && testResponse.statusCode < 300
-                          ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                          : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                      )}>
-                        {testResponse.statusCode} OK
-                      </span>
-                    )}
-                  </div>
-
-                  {testResponse && (
-                    <div className="flex items-center gap-3 text-xs text-text-muted">
-                      <span>{testResponse.durationMs} ms</span>
-                      <button
-                        onClick={() => {
-                          if (testResponse.body) {
-                            navigator.clipboard.writeText(getPrettyJson(testResponse.body));
-                            setIsCopied(true);
-                            setTimeout(() => setIsCopied(false), 2000);
-                          }
-                        }}
-                        className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors"
-                        title="Copy JSON Response"
-                      >
-                        {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Response Tabs Header */}
-                <div className="flex items-center gap-1 border-b border-border-main bg-bg-main px-3 pt-1.5 shrink-0">
-                  {['body', 'headers'].map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setActiveRespTab(t as any)}
-                      className={clsx(
-                        "px-3 py-1.5 text-xs font-semibold capitalize rounded-t-lg transition-all",
-                        activeRespTab === t ? "bg-bg-panel text-blue-400 border-t border-x border-border-main" : "text-text-muted hover:text-text-main"
-                      )}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Response Content Body */}
-                <div className="flex-1 p-3 overflow-auto bg-bg-main font-mono text-xs">
-                  {isTesting ? (
-                    <div className="h-full flex flex-col items-center justify-center text-text-muted p-6">
-                      <Loader2 className="w-7 h-7 animate-spin text-amber-400 mb-2" />
-                      <p className="text-xs">Sending HTTP Request to endpoint...</p>
-                    </div>
-                  ) : !testResponse ? (
-                    <div className="h-full flex flex-col items-center justify-center text-text-muted p-6 text-center">
-                      <Zap className="w-8 h-8 text-text-muted/40 mb-2" />
-                      <p className="text-xs font-medium text-text-muted">Click "Test Endpoint" above to preview API response</p>
-                    </div>
-                  ) : activeRespTab === 'body' ? (
-                    <pre className="text-emerald-400/90 whitespace-pre-wrap break-all selection:bg-blue-500/30">
-                      {getPrettyJson(testResponse.body)}
-                    </pre>
-                  ) : (
-                    <div className="space-y-1">
-                      {Object.entries(testResponse.headers || {}).map(([k, v]) => (
-                        <div key={k} className="flex gap-2">
-                          <span className="text-blue-400 font-semibold">{k}:</span>
-                          <span className="text-text-muted">{v}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
