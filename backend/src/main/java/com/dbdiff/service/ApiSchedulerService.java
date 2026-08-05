@@ -251,7 +251,6 @@ public class ApiSchedulerService {
             String successMsg = "Successfully ingested API response (HTTP " + statusCode + ", " + testRes.get("durationMs") + "ms)";
             logger.info("Schedule [{}] completed successfully", config.getName());
             repository.updateLastRun(id, "SUCCESS", successMsg);
-            sendNotificationIfConfigured(config, "SUCCESS", successMsg);
 
         } catch (Exception e) {
             String errMsg = "Execution error: " + e.getMessage();
@@ -262,34 +261,35 @@ public class ApiSchedulerService {
     }
 
     private void sendNotificationIfConfigured(ApiSchedulerConfig config, String status, String message) {
+        // Only send notification if status is FAILED (API fetch error or DB insert failure)
+        if (!"FAILED".equalsIgnoreCase(status)) {
+            return;
+        }
         if (config.getNotificationChannelId() == null || config.getNotificationChannelId().trim().isEmpty()) {
             return;
         }
         try {
-            String statusIcon = "SUCCESS".equalsIgnoreCase(status) ? "✅" : "❌";
             String notificationMsg = String.format(
-                "%s <b>[API Ingestion Scheduler]</b>\n" +
+                "❌ <b>[API Ingestion Failure Alert]</b>\n" +
                 "<b>Job Name:</b> %s\n" +
                 "<b>Method & URL:</b> %s %s\n" +
-                "<b>Status:</b> %s\n" +
+                "<b>Status:</b> FAILED\n" +
                 "<b>Target Table:</b> %s\n" +
                 "<b>Kode Data:</b> %s\n" +
-                "<b>Message:</b> %s\n" +
+                "<b>Error Detail:</b> %s\n" +
                 "<b>Timestamp:</b> %s",
-                statusIcon,
                 config.getName(),
                 config.getMethod(),
                 config.getUrl(),
-                status,
                 config.getTargetTable() != null ? config.getTargetTable() : "-",
                 config.getKodeData() != null ? config.getKodeData() : "-",
                 message,
                 java.time.LocalDateTime.now().toString()
             );
             notificationService.sendToChannel(config.getNotificationChannelId(), notificationMsg);
-            logger.info("Sent API Scheduler notification to channel [{}]", config.getNotificationChannelId());
+            logger.info("Sent API Scheduler FAILURE alert notification to channel [{}]", config.getNotificationChannelId());
         } catch (Exception e) {
-            logger.warn("Failed to send API Scheduler notification: {}", e.getMessage());
+            logger.warn("Failed to send API Scheduler failure notification: {}", e.getMessage());
         }
     }
 
