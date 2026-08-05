@@ -53,12 +53,12 @@ interface NotificationChannel {
 
 const getMethodBadgeClass = (method: string) => {
   switch (method.toUpperCase()) {
-    case 'GET': return 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
-    case 'POST': return 'bg-blue-500/15 text-blue-400 border border-blue-500/30';
-    case 'PUT': return 'bg-amber-500/15 text-amber-400 border border-amber-500/30';
-    case 'PATCH': return 'bg-purple-500/15 text-purple-400 border border-purple-500/30';
-    case 'DELETE': return 'bg-rose-500/15 text-rose-400 border border-rose-500/30';
-    default: return 'bg-slate-500/15 text-slate-400 border border-slate-500/30';
+    case 'GET': return 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30';
+    case 'POST': return 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30';
+    case 'PUT': return 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30';
+    case 'PATCH': return 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30';
+    case 'DELETE': return 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30';
+    default: return 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/30';
   }
 };
 
@@ -89,8 +89,9 @@ export const ApiSchedulerView: React.FC = () => {
     active: true,
   });
 
-  // Separate Notification Platform selection (none | TELEGRAM | DISCORD)
-  const [selectedNotifPlatform, setSelectedNotifPlatform] = useState<'none' | 'TELEGRAM' | 'DISCORD'>('none');
+  // Simultaneous Telegram & Discord Channels State
+  const [selectedTgChannelId, setSelectedTgChannelId] = useState<string>('');
+  const [selectedDcChannelId, setSelectedDcChannelId] = useState<string>('');
 
   // Multiple Spring Cron Triggers State
   const [cronTriggers, setCronTriggers] = useState<string[]>(['0 */5 * * * *']);
@@ -150,7 +151,8 @@ export const ApiSchedulerView: React.FC = () => {
       notificationChannelId: '',
       active: true,
     });
-    setSelectedNotifPlatform('none');
+    setSelectedTgChannelId('');
+    setSelectedDcChannelId('');
     setCronTriggers(['0 */5 * * * *']);
     setQueryParamsList([{ key: '', value: '', enabled: true }]);
     setHeadersList([
@@ -173,16 +175,23 @@ export const ApiSchedulerView: React.FC = () => {
       setCronTriggers(['0 */5 * * * *']);
     }
 
-    // Detect selected notification platform
+    // Parse Notification Channel IDs (Detect both Telegram and Discord)
     if (cfg.notificationChannelId) {
-      const foundChan = channels.find(c => String(c.id) === String(cfg.notificationChannelId));
-      if (foundChan) {
-        setSelectedNotifPlatform(foundChan.type);
-      } else {
-        setSelectedNotifPlatform('none');
-      }
+      const ids = cfg.notificationChannelId.split(/[;,\n]+/).map(i => i.trim()).filter(Boolean);
+      let tgId = '';
+      let dcId = '';
+      ids.forEach(id => {
+        const chan = channels.find(c => String(c.id) === String(id));
+        if (chan) {
+          if (chan.type === 'TELEGRAM') tgId = chan.id;
+          if (chan.type === 'DISCORD') dcId = chan.id;
+        }
+      });
+      setSelectedTgChannelId(tgId);
+      setSelectedDcChannelId(dcId);
     } else {
-      setSelectedNotifPlatform('none');
+      setSelectedTgChannelId('');
+      setSelectedDcChannelId('');
     }
     
     // Parse query params
@@ -227,6 +236,13 @@ export const ApiSchedulerView: React.FC = () => {
     return JSON.stringify(obj);
   };
 
+  const getCompiledNotificationChannelId = () => {
+    const ids = [];
+    if (selectedTgChannelId) ids.push(selectedTgChannelId);
+    if (selectedDcChannelId) ids.push(selectedDcChannelId);
+    return ids.join('; ');
+  };
+
   const handleTestEndpoint = async () => {
     if (!currentConfig.url || !currentConfig.url.trim()) {
       addToast({ type: 'warning', title: 'URL Required', message: 'Please enter a valid HTTP endpoint URL' });
@@ -241,6 +257,7 @@ export const ApiSchedulerView: React.FC = () => {
       queryParams: compileListToJson(queryParamsList),
       headers: compileListToJson(headersList),
       cronExpression: cronTriggers.filter(c => c && c.trim()).join('; '),
+      notificationChannelId: getCompiledNotificationChannelId(),
     };
 
     try {
@@ -281,7 +298,7 @@ export const ApiSchedulerView: React.FC = () => {
       queryParams: compileListToJson(queryParamsList),
       headers: compileListToJson(headersList),
       cronExpression: cronTriggers.filter(c => c && c.trim()).join('; '),
-      notificationChannelId: selectedNotifPlatform === 'none' ? '' : currentConfig.notificationChannelId,
+      notificationChannelId: getCompiledNotificationChannelId(),
     };
 
     try {
@@ -391,7 +408,7 @@ export const ApiSchedulerView: React.FC = () => {
 
             <div>
               <h2 className="text-sm font-bold text-text-main flex items-center gap-2">
-                <Globe className="w-4 h-4 text-cyan-400" />
+                <Globe className="w-4 h-4 text-cyan-500" />
                 <span>{currentConfig.id ? `Edit Schedule: ${currentConfig.name || 'API Endpoint'}` : 'New API Ingestion Schedule'}</span>
               </h2>
               <p className="text-[11px] text-text-muted hidden md:block">
@@ -426,8 +443,8 @@ export const ApiSchedulerView: React.FC = () => {
         {/* Main Editor Body Container */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-4 gap-4">
           
-          {/* Ultra-Premium Insomnia Request Command Header Card */}
-          <div className="relative bg-gradient-to-r from-slate-900/95 via-slate-900/98 to-slate-900/95 border border-slate-800 p-4 md:p-5 rounded-2xl shadow-xl backdrop-blur-xl shrink-0 space-y-3.5 overflow-hidden">
+          {/* Theme-Aware Insomnia Request Command Header Card */}
+          <div className="relative bg-bg-panel border border-border-main p-4 md:p-5 rounded-2xl shadow-sm shrink-0 space-y-3.5 overflow-hidden">
             
             {/* Top Ambient Glow Line */}
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-indigo-500" />
@@ -435,7 +452,7 @@ export const ApiSchedulerView: React.FC = () => {
             {/* Row 1: Schedule Name Input & Live Badges */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2 flex-1 max-w-xl">
-                <div className="p-1.5 rounded-lg bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
+                <div className="p-1.5 rounded-lg bg-blue-500/15 text-blue-500 border border-blue-500/30 shrink-0">
                   <Pencil className="w-3.5 h-3.5" />
                 </div>
                 <input
@@ -443,24 +460,24 @@ export const ApiSchedulerView: React.FC = () => {
                   placeholder="Schedule Identifier Name (e.g. Daily Weather Ingestion API)"
                   value={currentConfig.name || ''}
                   onChange={(e) => setCurrentConfig({ ...currentConfig, name: e.target.value })}
-                  className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs font-bold text-cyan-300 placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 transition-all shadow-inner"
+                  className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs font-bold text-text-main placeholder:text-text-muted focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all shadow-inner"
                 />
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-mono font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
-                  <Clock className="w-3 h-3 text-amber-400" />
-                  <span>{currentConfig.cronExpression || '0 */5 * * * *'}</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                  <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                  <span>{cronTriggers.filter(c => c.trim()).join('; ') || '0 */5 * * * *'}</span>
                 </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-mono font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
-                  <Database className="w-3 h-3 text-cyan-400" />
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-mono font-bold bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30">
+                  <Database className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
                   <span>{currentConfig.kodeData || 'API_KODE'}</span>
                 </span>
               </div>
             </div>
 
             {/* Row 2: Unified Insomnia HTTP Omnibar (Method + URL) */}
-            <div className="flex items-center bg-slate-950/90 border border-slate-700/80 rounded-xl p-1.5 shadow-inner focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/30 transition-all">
+            <div className="flex items-center bg-bg-main border border-border-main rounded-xl p-1.5 shadow-inner focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/30 transition-all">
               
               {/* HTTP Method Dropdown Pill */}
               <div className="relative shrink-0">
@@ -472,11 +489,11 @@ export const ApiSchedulerView: React.FC = () => {
                     getMethodBadgeClass(currentConfig.method || 'GET')
                   )}
                 >
-                  <option value="GET" className="bg-slate-900 text-emerald-400 font-bold">GET</option>
-                  <option value="POST" className="bg-slate-900 text-blue-400 font-bold">POST</option>
-                  <option value="PUT" className="bg-slate-900 text-amber-400 font-bold">PUT</option>
-                  <option value="DELETE" className="bg-slate-900 text-rose-400 font-bold">DELETE</option>
-                  <option value="PATCH" className="bg-slate-900 text-purple-400 font-bold">PATCH</option>
+                  <option value="GET" className="bg-bg-panel text-emerald-600 dark:text-emerald-400 font-bold">GET</option>
+                  <option value="POST" className="bg-bg-panel text-blue-600 dark:text-blue-400 font-bold">POST</option>
+                  <option value="PUT" className="bg-bg-panel text-amber-600 dark:text-amber-400 font-bold">PUT</option>
+                  <option value="DELETE" className="bg-bg-panel text-rose-600 dark:text-rose-400 font-bold">DELETE</option>
+                  <option value="PATCH" className="bg-bg-panel text-purple-600 dark:text-purple-400 font-bold">PATCH</option>
                 </select>
                 <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-current opacity-70 text-[9px]">
                   ▼
@@ -484,17 +501,17 @@ export const ApiSchedulerView: React.FC = () => {
               </div>
 
               {/* Vertical Divider */}
-              <div className="h-6 w-px bg-slate-800 mx-2 shrink-0" />
+              <div className="h-6 w-px bg-border-main mx-2 shrink-0" />
 
               {/* Endpoint URL Field */}
               <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
-                <Globe className="w-4 h-4 text-cyan-400 shrink-0 ml-1 opacity-80" />
+                <Globe className="w-4 h-4 text-cyan-500 shrink-0 ml-1 opacity-80" />
                 <input
                   type="text"
                   placeholder="https://api.example.com/v1/data..."
                   value={currentConfig.url || ''}
                   onChange={(e) => setCurrentConfig({ ...currentConfig, url: e.target.value })}
-                  className="w-full bg-transparent border-0 text-xs font-mono font-medium text-emerald-300 placeholder:text-slate-600 focus:outline-none focus:ring-0 selection:bg-blue-500/40"
+                  className="w-full bg-transparent border-0 text-xs font-mono font-bold text-text-main dark:text-emerald-300 placeholder:text-text-muted focus:outline-none focus:ring-0 selection:bg-blue-500/40"
                 />
               </div>
 
@@ -526,7 +543,7 @@ export const ApiSchedulerView: React.FC = () => {
                       className={clsx(
                         "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all border-t border-x",
                         activeReqTab === tab.id
-                          ? "bg-bg-panel text-blue-400 border-border-main border-b-transparent -mb-px font-bold shadow-sm"
+                          ? "bg-bg-panel text-blue-500 dark:text-blue-400 border-border-main border-b-transparent -mb-px font-bold shadow-sm"
                           : "text-text-muted border-transparent hover:text-text-main hover:bg-bg-hover"
                       )}
                     >
@@ -550,7 +567,7 @@ export const ApiSchedulerView: React.FC = () => {
                       </div>
                       <button
                         onClick={() => setQueryParamsList([...queryParamsList, { key: '', value: '', enabled: true }])}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Add Param</span>
@@ -594,7 +611,7 @@ export const ApiSchedulerView: React.FC = () => {
                           />
                           <button
                             onClick={() => setQueryParamsList(queryParamsList.filter((_, i) => i !== idx))}
-                            className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                            className="p-2 text-text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -614,7 +631,7 @@ export const ApiSchedulerView: React.FC = () => {
                       </div>
                       <button
                         onClick={() => setHeadersList([...headersList, { key: '', value: '', enabled: true }])}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Add Header</span>
@@ -658,7 +675,7 @@ export const ApiSchedulerView: React.FC = () => {
                           />
                           <button
                             onClick={() => setHeadersList(headersList.filter((_, i) => i !== idx))}
-                            className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                            className="p-2 text-text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -682,7 +699,7 @@ export const ApiSchedulerView: React.FC = () => {
                             className={clsx(
                               "py-2.5 px-4 rounded-xl text-xs font-bold capitalize transition-all border text-center",
                               currentConfig.authType === auth
-                                ? "bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-sm"
+                                ? "bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/40 shadow-sm"
                                 : "bg-bg-main text-text-muted border-border-main hover:text-text-main hover:bg-bg-hover"
                             )}
                           >
@@ -743,7 +760,7 @@ export const ApiSchedulerView: React.FC = () => {
                           className={clsx(
                             "px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all border",
                             currentConfig.bodyType === type
-                              ? "bg-blue-500/20 text-blue-400 border-blue-500/40 font-bold"
+                              ? "bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/40 font-bold"
                               : "bg-bg-main text-text-muted border-border-main hover:text-text-main"
                           )}
                         >
@@ -759,7 +776,7 @@ export const ApiSchedulerView: React.FC = () => {
                           value={currentConfig.bodyContent || ''}
                           onChange={(e) => setCurrentConfig({ ...currentConfig, bodyContent: e.target.value })}
                           rows={12}
-                          className="w-full flex-1 bg-bg-main border border-border-main rounded-2xl p-4 text-xs font-mono text-emerald-400 placeholder:text-text-muted focus:outline-none focus:border-blue-500 resize-none shadow-inner"
+                          className="w-full flex-1 bg-bg-main border border-border-main rounded-2xl p-4 text-xs font-mono text-emerald-600 dark:text-emerald-400 placeholder:text-text-muted focus:outline-none focus:border-blue-500 resize-none shadow-inner"
                         />
                       </div>
                     )}
@@ -769,18 +786,18 @@ export const ApiSchedulerView: React.FC = () => {
                 {/* TAB 5: TARGET STORAGE (ClickHouse & PostgreSQL 4-Column Ingestion) */}
                 {activeReqTab === 'target' && (
                   <div className="space-y-5">
-                    <div className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 p-4 rounded-2xl flex items-start gap-3.5 shadow-sm">
-                      <Database className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
-                      <div className="text-xs text-cyan-200">
-                        <p className="font-bold text-cyan-300 mb-1 text-sm">Target Ingestion Schema Structure</p>
-                        <p className="leading-relaxed">
+                    <div className="bg-cyan-500/10 border border-cyan-500/30 p-4 rounded-2xl flex items-start gap-3.5 shadow-sm">
+                      <Database className="w-5 h-5 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
+                      <div className="text-xs text-text-main">
+                        <p className="font-bold text-cyan-700 dark:text-cyan-300 mb-1 text-sm">Target Ingestion Schema Structure</p>
+                        <p className="leading-relaxed text-text-muted">
                           Hasil respon JSON dari API ini akan disimpan secara otomatis ke tabel target (ClickHouse atau PostgreSQL) dengan struktur 4 kolom standar:
                         </p>
                         <div className="flex flex-wrap gap-2 mt-2.5 font-mono text-[11px]">
-                          <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">1. kode_data (Custom Identifier)</span>
-                          <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">2. detail_data (Raw Response JSON)</span>
-                          <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">3. input_by ('darkosync')</span>
-                          <span className="bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 font-bold">4. input_dt (Timestamp)</span>
+                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">1. kode_data (Custom Identifier)</span>
+                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">2. detail_data (Raw Response JSON)</span>
+                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">3. input_by ('darkosync')</span>
+                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">4. input_dt (Timestamp)</span>
                         </div>
                       </div>
                     </div>
@@ -791,7 +808,7 @@ export const ApiSchedulerView: React.FC = () => {
                         <select
                           value={currentConfig.targetConnectionId || ''}
                           onChange={(e) => setCurrentConfig({ ...currentConfig, targetConnectionId: e.target.value })}
-                          className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-blue-500 cursor-pointer"
+                          className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-blue-500 cursor-pointer font-medium"
                         >
                           <option value="">Select Connection (ClickHouse / PostgreSQL)...</option>
                           {connections.map(c => (
@@ -828,9 +845,9 @@ export const ApiSchedulerView: React.FC = () => {
                   </div>
                 )}
 
-                {/* TAB 6: SCHEDULE & ALERTS (Pure Custom Spring Cron + Separated Telegram/Discord Selection) */}
+                {/* TAB 6: SCHEDULE & ALERTS (Multiple Spring Cron Triggers + Dual Telegram & Discord Selection) */}
                 {activeReqTab === 'schedule' && (
-                  <div className="space-y-6 max-w-xl">
+                  <div className="space-y-6 max-w-2xl">
                     
                     {/* Spring Cron Expression Section (Multiple Triggers Supported) */}
                     <div className="space-y-4">
@@ -842,7 +859,7 @@ export const ApiSchedulerView: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setCronTriggers([...cronTriggers, '0 0 12 * * *'])}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-xs font-semibold transition-colors border border-amber-500/20 shadow-sm"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-colors border border-amber-500/30 shadow-sm"
                         >
                           <Plus className="w-3.5 h-3.5" />
                           <span>Add Cron Trigger</span>
@@ -853,7 +870,7 @@ export const ApiSchedulerView: React.FC = () => {
                         {cronTriggers.map((cron, idx) => (
                           <div key={idx} className="flex items-center gap-2.5 group">
                             <div className="flex-1 bg-bg-main p-3 border border-border-main rounded-xl shadow-inner flex items-center gap-2">
-                              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                              <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                               <input
                                 type="text"
                                 placeholder="e.g. 0 */5 * * * * or 0 0 12 * * *"
@@ -863,14 +880,14 @@ export const ApiSchedulerView: React.FC = () => {
                                   copy[idx] = e.target.value;
                                   setCronTriggers(copy);
                                 }}
-                                className="w-full bg-transparent border-0 text-xs font-mono font-bold text-amber-300 focus:outline-none focus:ring-0 placeholder:text-text-muted"
+                                className="w-full bg-transparent border-0 text-xs font-mono font-bold text-amber-700 dark:text-amber-300 focus:outline-none focus:ring-0 placeholder:text-text-muted"
                               />
                             </div>
                             {cronTriggers.length > 1 && (
                               <button
                                 type="button"
                                 onClick={() => setCronTriggers(cronTriggers.filter((_, i) => i !== idx))}
-                                className="p-2.5 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/20"
+                                className="p-2.5 text-text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/20"
                                 title="Remove Cron Trigger"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -880,146 +897,151 @@ export const ApiSchedulerView: React.FC = () => {
                         ))}
                       </div>
 
-                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 flex items-start gap-2.5">
-                        <Zap className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                        <span className="leading-relaxed">
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2.5">
+                        <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <span className="leading-relaxed font-medium">
                           Setiap aturan Spring Cron di atas akan mengeksekusi fetch API secara mandiri, memasukkan data ke tabel target, dan mengirim notifikasi jika terjadi kegagalan.
                         </span>
                       </div>
                     </div>
 
-                    {/* Telegram & Discord Notification Profile Integration (Separated Selection) */}
-                    <div className="space-y-4 pt-2 border-t border-border-main">
+                    {/* Telegram & Discord Notification Profile Integration (Simultaneous Dual Activation) */}
+                    <div className="space-y-4 pt-4 border-t border-border-main">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <Bell className="w-4 h-4 text-purple-400" />
+                          <Bell className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                           <div>
-                            <h4 className="text-xs font-bold text-text-main">Failure Alert Notification Profile</h4>
-                            <p className="text-[11px] text-text-muted">Sends notification ONLY if API fetch or DB insert fails</p>
+                            <h4 className="text-xs font-bold text-text-main">Failure Alert Notification Profiles</h4>
+                            <p className="text-[11px] text-text-muted">Sends failure alert to Telegram, Discord, or BOTH simultaneously</p>
                           </div>
                         </div>
 
                         <button
                           type="button"
                           onClick={() => setIsChannelModalOpen(true)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold transition-all"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-700 dark:text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold transition-all"
                         >
                           <Settings className="w-3.5 h-3.5" />
                           <span>Manage Profiles</span>
                         </button>
                       </div>
 
-                      <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         
-                        {/* Platform Selector Pills (Separated Platform Selection) */}
-                        <div>
-                          <label className="block text-xs font-bold text-text-main mb-2">Notification Platform</label>
-                          <div className="grid grid-cols-3 gap-2.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedNotifPlatform('none');
-                                setCurrentConfig({ ...currentConfig, notificationChannelId: '' });
+                        {/* Telegram Profile Card */}
+                        <div className={clsx(
+                          "p-4 rounded-2xl border transition-all space-y-3",
+                          selectedTgChannelId 
+                            ? "bg-blue-500/10 border-blue-500/40 shadow-sm" 
+                            : "bg-bg-main border-border-main"
+                        )}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <MessageCircle className="w-4 h-4 text-blue-500" />
+                              <span className="text-xs font-bold text-text-main">✈️ Telegram Alerts</span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={!!selectedTgChannelId}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  const firstTg = telegramChannels[0]?.id || '';
+                                  setSelectedTgChannelId(firstTg);
+                                } else {
+                                  setSelectedTgChannelId('');
+                                }
                               }}
-                              className={clsx(
-                                "py-2.5 px-3 rounded-xl text-xs font-bold transition-all border text-center flex items-center justify-center gap-1.5",
-                                selectedNotifPlatform === 'none'
-                                  ? "bg-slate-500/20 text-slate-300 border-slate-500/40 shadow-sm"
-                                  : "bg-bg-panel text-text-muted border-border-main hover:text-text-main"
-                              )}
-                            >
-                              <span>Disabled</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedNotifPlatform('TELEGRAM');
-                                const firstTg = telegramChannels[0]?.id || '';
-                                setCurrentConfig({ ...currentConfig, notificationChannelId: firstTg });
-                              }}
-                              className={clsx(
-                                "py-2.5 px-3 rounded-xl text-xs font-bold transition-all border text-center flex items-center justify-center gap-1.5",
-                                selectedNotifPlatform === 'TELEGRAM'
-                                  ? "bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-sm"
-                                  : "bg-bg-panel text-text-muted border-border-main hover:text-text-main"
-                              )}
-                            >
-                              <MessageCircle className="w-3.5 h-3.5 text-blue-400" />
-                              <span>Telegram</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedNotifPlatform('DISCORD');
-                                const firstDc = discordChannels[0]?.id || '';
-                                setCurrentConfig({ ...currentConfig, notificationChannelId: firstDc });
-                              }}
-                              className={clsx(
-                                "py-2.5 px-3 rounded-xl text-xs font-bold transition-all border text-center flex items-center justify-center gap-1.5",
-                                selectedNotifPlatform === 'DISCORD'
-                                  ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/40 shadow-sm"
-                                  : "bg-bg-panel text-text-muted border-border-main hover:text-text-main"
-                              )}
-                            >
-                              <Send className="w-3.5 h-3.5 text-indigo-400" />
-                              <span>Discord</span>
-                            </button>
+                              className="w-4.5 h-4.5 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
+                            />
                           </div>
+
+                          {selectedTgChannelId !== '' && (
+                            <div className="space-y-1.5 animate-fadeIn">
+                              <label className="block text-[11px] font-semibold text-text-muted">Select Telegram Profile</label>
+                              {telegramChannels.length === 0 ? (
+                                <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-600 dark:text-blue-300 flex items-center justify-between">
+                                  <span>No Telegram profiles saved.</span>
+                                  <button type="button" onClick={() => setIsChannelModalOpen(true)} className="underline font-bold">Add Profile</button>
+                                </div>
+                              ) : (
+                                <select
+                                  value={selectedTgChannelId}
+                                  onChange={(e) => setSelectedTgChannelId(e.target.value)}
+                                  className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-medium text-text-main focus:outline-none focus:border-blue-500 cursor-pointer"
+                                >
+                                  {telegramChannels.map(chan => (
+                                    <option key={chan.id} value={chan.id}>
+                                      {chan.name} (Chat ID: {chan.chatId || '-'})
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          )}
                         </div>
 
-                        {/* Telegram Dropdown */}
-                        {selectedNotifPlatform === 'TELEGRAM' && (
-                          <div className="space-y-2 animate-fadeIn">
-                            <label className="block text-xs font-bold text-blue-400">Select Telegram Profile</label>
-                            {telegramChannels.length === 0 ? (
-                              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-300 flex items-center justify-between">
-                                <span>No Telegram profiles saved yet.</span>
-                                <button type="button" onClick={() => setIsChannelModalOpen(true)} className="underline font-bold">Add Telegram Profile</button>
-                              </div>
-                            ) : (
-                              <select
-                                value={currentConfig.notificationChannelId || ''}
-                                onChange={(e) => setCurrentConfig({ ...currentConfig, notificationChannelId: e.target.value })}
-                                className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-blue-500 cursor-pointer font-medium"
-                              >
-                                {telegramChannels.map(chan => (
-                                  <option key={chan.id} value={chan.id}>
-                                    ✈️ {chan.name} (Chat ID: {chan.chatId || '-'})
-                                  </option>
-                                ))}
-                              </select>
-                            )}
+                        {/* Discord Profile Card */}
+                        <div className={clsx(
+                          "p-4 rounded-2xl border transition-all space-y-3",
+                          selectedDcChannelId 
+                            ? "bg-indigo-500/10 border-indigo-500/40 shadow-sm" 
+                            : "bg-bg-main border-border-main"
+                        )}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Send className="w-4 h-4 text-indigo-500" />
+                              <span className="text-xs font-bold text-text-main">💬 Discord Webhook Alerts</span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={!!selectedDcChannelId}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  const firstDc = discordChannels[0]?.id || '';
+                                  setSelectedDcChannelId(firstDc);
+                                } else {
+                                  setSelectedDcChannelId('');
+                                }
+                              }}
+                              className="w-4.5 h-4.5 rounded border-border-main text-indigo-500 focus:ring-0 cursor-pointer"
+                            />
                           </div>
-                        )}
 
-                        {/* Discord Dropdown */}
-                        {selectedNotifPlatform === 'DISCORD' && (
-                          <div className="space-y-2 animate-fadeIn">
-                            <label className="block text-xs font-bold text-indigo-400">Select Discord Webhook Profile</label>
-                            {discordChannels.length === 0 ? (
-                              <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-xs text-indigo-300 flex items-center justify-between">
-                                <span>No Discord profiles saved yet.</span>
-                                <button type="button" onClick={() => setIsChannelModalOpen(true)} className="underline font-bold">Add Discord Profile</button>
-                              </div>
-                            ) : (
-                              <select
-                                value={currentConfig.notificationChannelId || ''}
-                                onChange={(e) => setCurrentConfig({ ...currentConfig, notificationChannelId: e.target.value })}
-                                className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-indigo-500 cursor-pointer font-medium"
-                              >
-                                {discordChannels.map(chan => (
-                                  <option key={chan.id} value={chan.id}>
-                                    💬 {chan.name} (Webhook Configured)
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        )}
+                          {selectedDcChannelId !== '' && (
+                            <div className="space-y-1.5 animate-fadeIn">
+                              <label className="block text-[11px] font-semibold text-text-muted">Select Discord Webhook Profile</label>
+                              {discordChannels.length === 0 ? (
+                                <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-xs text-indigo-600 dark:text-indigo-300 flex items-center justify-between">
+                                  <span>No Discord profiles saved.</span>
+                                  <button type="button" onClick={() => setIsChannelModalOpen(true)} className="underline font-bold">Add Profile</button>
+                                </div>
+                              ) : (
+                                <select
+                                  value={selectedDcChannelId}
+                                  onChange={(e) => setSelectedDcChannelId(e.target.value)}
+                                  className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-medium text-text-main focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                >
+                                  {discordChannels.map(chan => (
+                                    <option key={chan.id} value={chan.id}>
+                                      {chan.name} (Webhook Configured)
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          )}
+                        </div>
 
                       </div>
+
+                      {(selectedTgChannelId || selectedDcChannelId) && (
+                        <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-700 dark:text-purple-200 flex items-center gap-2">
+                          <Bell className="w-4 h-4 text-purple-500 shrink-0" />
+                          <span>
+                            Notifikasi alert kegagalan (FAILED) akan dikirimkan secara bersamaan ke: <b>{[selectedTgChannelId && 'Telegram', selectedDcChannelId && 'Discord'].filter(Boolean).join(' & ')}</b>.
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Enable Active Switch */}
@@ -1053,8 +1075,8 @@ export const ApiSchedulerView: React.FC = () => {
                     <span className={clsx(
                       "px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm",
                       testResponse.statusCode && testResponse.statusCode >= 200 && testResponse.statusCode < 300
-                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                        : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                        ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                        : "bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30"
                     )}>
                       {testResponse.statusCode} OK
                     </span>
@@ -1075,7 +1097,7 @@ export const ApiSchedulerView: React.FC = () => {
                       className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors border border-border-main"
                       title="Copy Pretty JSON Response"
                     >
-                      {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {isCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                     </button>
                   </div>
                 )}
@@ -1090,7 +1112,7 @@ export const ApiSchedulerView: React.FC = () => {
                     className={clsx(
                       "px-4 py-2 text-xs font-bold capitalize rounded-t-xl transition-all border-t border-x",
                       activeRespTab === t
-                        ? "bg-bg-panel text-blue-400 border-border-main border-b-transparent -mb-px"
+                        ? "bg-bg-panel text-blue-500 dark:text-blue-400 border-border-main border-b-transparent -mb-px font-bold shadow-sm"
                         : "text-text-muted border-transparent hover:text-text-main hover:bg-bg-hover"
                     )}
                   >
@@ -1103,29 +1125,29 @@ export const ApiSchedulerView: React.FC = () => {
               <div className="flex-1 p-4 overflow-auto bg-bg-main font-mono text-xs shadow-inner">
                 {isTesting ? (
                   <div className="h-full flex flex-col items-center justify-center text-text-muted p-8 text-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-amber-400 mb-3" />
+                    <Loader2 className="w-8 h-8 animate-spin text-amber-500 mb-3" />
                     <p className="text-xs font-semibold text-text-main">Sending HTTP Request to endpoint...</p>
                     <p className="text-[11px] text-text-muted mt-1">Measuring latency and response payload</p>
                   </div>
                 ) : !testResponse ? (
                   <div className="h-full flex flex-col items-center justify-center text-text-muted p-8 text-center">
                     <div className="w-12 h-12 rounded-2xl bg-bg-panel border border-border-main flex items-center justify-center mb-3">
-                      <Zap className="w-6 h-6 text-amber-400/60" />
+                      <Zap className="w-6 h-6 text-amber-500/60" />
                     </div>
                     <p className="text-xs font-bold text-text-main mb-1">Insomnia Console Ready</p>
                     <p className="text-[11px] text-text-muted max-w-xs">
-                      Click <span className="text-amber-400 font-bold">"Test Endpoint"</span> above to execute a live request and view response JSON & headers.
+                      Click <span className="text-amber-600 dark:text-amber-400 font-bold">"Test Endpoint"</span> above to execute a live request and view response JSON & headers.
                     </p>
                   </div>
                 ) : activeRespTab === 'body' ? (
-                  <pre className="text-emerald-400/90 whitespace-pre-wrap break-all selection:bg-blue-500/30 leading-relaxed font-mono">
+                  <pre className="text-emerald-700 dark:text-emerald-400 whitespace-pre-wrap break-all selection:bg-blue-500/30 leading-relaxed font-mono font-medium">
                     {getPrettyJson(testResponse.body)}
                   </pre>
                 ) : (
                   <div className="space-y-1.5">
                     {Object.entries(testResponse.headers || {}).map(([k, v]) => (
                       <div key={k} className="flex gap-2 text-xs">
-                        <span className="text-blue-400 font-bold">{k}:</span>
+                        <span className="text-blue-500 font-bold">{k}:</span>
                         <span className="text-text-muted break-all">{v}</span>
                       </div>
                     ))}
@@ -1164,7 +1186,7 @@ export const ApiSchedulerView: React.FC = () => {
               <Globe className="w-5.5 h-5.5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-indigo-400 via-cyan-300 to-blue-400 bg-clip-text text-transparent">
+              <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-indigo-500 via-cyan-400 to-blue-500 bg-clip-text text-transparent">
                 API Ingestion & Scheduler
               </h1>
               <p className="text-xs md:text-sm text-text-muted">
@@ -1177,16 +1199,16 @@ export const ApiSchedulerView: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsChannelModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-purple-300 border border-border-main transition-all text-xs font-semibold"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-purple-500 border border-border-main transition-all text-xs font-semibold shadow-sm"
             title="Manage Telegram & Discord Profiles"
           >
-            <Bell className="w-4 h-4 text-purple-400" />
+            <Bell className="w-4 h-4 text-purple-500" />
             <span>Notification Profiles</span>
           </button>
 
           <button
             onClick={fetchSchedulers}
-            className="p-2.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main transition-all"
+            className="p-2.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main transition-all shadow-sm"
             title="Refresh List"
           >
             <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
@@ -1212,7 +1234,7 @@ export const ApiSchedulerView: React.FC = () => {
               placeholder="Search by name, URL, kode_data, or target table..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-bg-main border border-border-main rounded-xl pl-9 pr-4 py-2 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full bg-bg-main border border-border-main rounded-xl pl-9 pr-4 py-2 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
             />
           </div>
         </div>
@@ -1225,7 +1247,7 @@ export const ApiSchedulerView: React.FC = () => {
                 onClick={() => setMethodFilter(method)}
                 className={clsx(
                   "px-3 py-1 rounded-lg text-[11px] font-bold transition-all",
-                  methodFilter === method ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "text-text-muted hover:text-text-main"
+                  methodFilter === method ? "bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30" : "text-text-muted hover:text-text-main"
                 )}
               >
                 {method}
@@ -1240,7 +1262,7 @@ export const ApiSchedulerView: React.FC = () => {
                 onClick={() => setStatusFilter(status)}
                 className={clsx(
                   "px-3 py-1 rounded-lg text-[11px] font-bold transition-all",
-                  statusFilter === status ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" : "text-text-muted hover:text-text-main"
+                  statusFilter === status ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30" : "text-text-muted hover:text-text-main"
                 )}
               >
                 {status}
@@ -1254,7 +1276,7 @@ export const ApiSchedulerView: React.FC = () => {
       <div className="flex-1 bg-bg-panel border border-border-main rounded-2xl overflow-hidden shadow-sm flex flex-col min-h-0">
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-text-muted">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-400 mb-3" />
+            <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-3" />
             <p className="text-xs">Loading API Schedulers...</p>
           </div>
         ) : filteredSchedulers.length === 0 ? (
@@ -1285,7 +1307,7 @@ export const ApiSchedulerView: React.FC = () => {
                   <th className="py-3.5 px-4">Schedule & Endpoint</th>
                   <th className="py-3.5 px-4">Target Storage</th>
                   <th className="py-3.5 px-4">Spring Cron</th>
-                  <th className="py-3.5 px-4">Notification Profile</th>
+                  <th className="py-3.5 px-4">Notification Profiles</th>
                   <th className="py-3.5 px-4">Last Run Status</th>
                   <th className="py-3.5 px-4 text-right pr-6">Actions</th>
                 </tr>
@@ -1293,7 +1315,6 @@ export const ApiSchedulerView: React.FC = () => {
               <tbody className="divide-y divide-border-main text-xs">
                 {filteredSchedulers.map((cfg) => {
                   const conn = connections.find(c => String(c.id) === String(cfg.targetConnectionId));
-                  const chan = channels.find(c => String(c.id) === String(cfg.notificationChannelId));
                   return (
                     <tr key={cfg.id} className="hover:bg-bg-hover/60 transition-colors group">
                       {/* Active Status Switch */}
@@ -1302,7 +1323,7 @@ export const ApiSchedulerView: React.FC = () => {
                           onClick={() => handleToggleActive(cfg)}
                           className={clsx(
                             "w-9 h-5 rounded-full p-0.5 transition-colors relative inline-block",
-                            cfg.active ? "bg-emerald-500" : "bg-slate-700"
+                            cfg.active ? "bg-emerald-500" : "bg-slate-400 dark:bg-slate-700"
                           )}
                           title={cfg.active ? "Click to Pause" : "Click to Activate"}
                         >
@@ -1320,7 +1341,7 @@ export const ApiSchedulerView: React.FC = () => {
                             <span className={clsx("px-2 py-0.5 rounded text-[10px] font-bold tracking-wide", getMethodBadgeClass(cfg.method))}>
                               {cfg.method}
                             </span>
-                            <span className="font-bold text-text-main group-hover:text-blue-400 transition-colors text-xs">
+                            <span className="font-bold text-text-main group-hover:text-blue-500 transition-colors text-xs">
                               {cfg.name}
                             </span>
                           </div>
@@ -1334,12 +1355,12 @@ export const ApiSchedulerView: React.FC = () => {
                       <td className="py-3.5 px-4">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-1.5 text-xs text-text-main font-medium">
-                            <Database className="w-3.5 h-3.5 text-cyan-400" />
+                            <Database className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                             <span>{conn ? conn.name : 'Target DB'}</span>
                             <span className="text-text-muted font-mono">({cfg.targetTable || 'sch_sync.tb_api_data'})</span>
                           </div>
                           <div className="flex items-center gap-1">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20">
                               kode_data: {cfg.kodeData || 'API_KODE'}
                             </span>
                           </div>
@@ -1348,18 +1369,30 @@ export const ApiSchedulerView: React.FC = () => {
 
                       {/* Spring Cron */}
                       <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-1.5 text-xs font-mono text-amber-300">
-                          <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{cfg.cronExpression || '0 */5 * * * *'}</span>
+                        <div className="flex flex-col gap-1 text-xs font-mono text-amber-700 dark:text-amber-300">
+                          {(cfg.cronExpression || '0 */5 * * * *').split(/[;,\n]+/).map((c, i) => (
+                            <div key={i} className="flex items-center gap-1.5">
+                              <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                              <span>{c.trim()}</span>
+                            </div>
+                          ))}
                         </div>
                       </td>
 
-                      {/* Notification Channel */}
+                      {/* Notification Profiles */}
                       <td className="py-3.5 px-4">
-                        {chan ? (
-                          <div className="flex items-center gap-1.5 text-xs text-purple-300 font-medium">
-                            {chan.type === 'DISCORD' ? <Send className="w-3.5 h-3.5 text-indigo-400" /> : <MessageCircle className="w-3.5 h-3.5 text-blue-400" />}
-                            <span>{chan.name}</span>
+                        {cfg.notificationChannelId ? (
+                          <div className="flex flex-col gap-1 text-xs font-medium">
+                            {cfg.notificationChannelId.split(/[;,\n]+/).map((id, i) => {
+                              const chan = channels.find(c => String(c.id) === String(id.trim()));
+                              if (!chan) return null;
+                              return (
+                                <div key={i} className="flex items-center gap-1.5 text-purple-700 dark:text-purple-300">
+                                  {chan.type === 'DISCORD' ? <Send className="w-3.5 h-3.5 text-indigo-500" /> : <MessageCircle className="w-3.5 h-3.5 text-blue-500" />}
+                                  <span>{chan.name}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
                           <span className="text-text-muted text-[11px] font-mono">Disabled</span>
@@ -1370,17 +1403,17 @@ export const ApiSchedulerView: React.FC = () => {
                       <td className="py-3.5 px-4">
                         <div className="flex flex-col gap-1">
                           {cfg.lastRunStatus === 'SUCCESS' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 w-fit">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 w-fit">
                               <CheckCircle2 className="w-3 h-3" />
                               SUCCESS
                             </span>
                           ) : cfg.lastRunStatus === 'FAILED' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 w-fit" title={cfg.lastRunMessage}>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 w-fit" title={cfg.lastRunMessage}>
                               <AlertCircle className="w-3 h-3" />
                               FAILED
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/15 text-slate-400 border border-slate-500/30 w-fit">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/30 w-fit">
                               PENDING
                             </span>
                           )}
@@ -1396,15 +1429,15 @@ export const ApiSchedulerView: React.FC = () => {
                           <button
                             onClick={() => handleRunNow(cfg)}
                             disabled={runningId === cfg.id}
-                            className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-emerald-500/20 transition-all"
+                            className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 transition-all"
                             title="Run Immediately & Ingest Data"
                           >
-                            {runningId === cfg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-emerald-400/20" />}
+                            {runningId === cfg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-emerald-500/20" />}
                           </button>
 
                           <button
                             onClick={() => openEditEditor(cfg)}
-                            className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/20 transition-all"
+                            className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 transition-all"
                             title="Edit Insomnia HTTP Client & Schedule"
                           >
                             <Pencil className="w-4 h-4" />
@@ -1412,7 +1445,7 @@ export const ApiSchedulerView: React.FC = () => {
 
                           <button
                             onClick={() => handleDelete(cfg.id!, cfg.name)}
-                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 transition-all"
+                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 transition-all"
                             title="Delete Schedule"
                           >
                             <Trash2 className="w-4 h-4" />

@@ -290,28 +290,36 @@ public class ApiSchedulerService {
         if (config.getNotificationChannelId() == null || config.getNotificationChannelId().trim().isEmpty()) {
             return;
         }
-        try {
-            String notificationMsg = String.format(
-                "❌ <b>[API Ingestion Failure Alert]</b>\n" +
-                "<b>Job Name:</b> %s\n" +
-                "<b>Method & URL:</b> %s %s\n" +
-                "<b>Status:</b> FAILED\n" +
-                "<b>Target Table:</b> %s\n" +
-                "<b>Kode Data:</b> %s\n" +
-                "<b>Error Detail:</b> %s\n" +
-                "<b>Timestamp:</b> %s",
-                config.getName(),
-                config.getMethod(),
-                config.getUrl(),
-                config.getTargetTable() != null ? config.getTargetTable() : "-",
-                config.getKodeData() != null ? config.getKodeData() : "-",
-                message,
-                java.time.LocalDateTime.now().toString()
-            );
-            notificationService.sendToChannel(config.getNotificationChannelId(), notificationMsg);
-            logger.info("Sent API Scheduler FAILURE alert notification to channel [{}]", config.getNotificationChannelId());
-        } catch (Exception e) {
-            logger.warn("Failed to send API Scheduler failure notification: {}", e.getMessage());
+        String rawChannels = config.getNotificationChannelId().trim();
+        String[] channelIds = rawChannels.split("[;,\\n]+");
+
+        String notificationMsg = String.format(
+            "❌ <b>[API Ingestion Failure Alert]</b>\n" +
+            "<b>Job Name:</b> %s\n" +
+            "<b>Method & URL:</b> %s %s\n" +
+            "<b>Status:</b> FAILED\n" +
+            "<b>Target Table:</b> %s\n" +
+            "<b>Kode Data:</b> %s\n" +
+            "<b>Error Detail:</b> %s\n" +
+            "<b>Timestamp:</b> %s",
+            config.getName(),
+            config.getMethod(),
+            config.getUrl(),
+            config.getTargetTable() != null ? config.getTargetTable() : "-",
+            config.getKodeData() != null ? config.getKodeData() : "-",
+            message,
+            java.time.LocalDateTime.now().toString()
+        );
+
+        for (String chanId : channelIds) {
+            String trimmedId = chanId.trim();
+            if (trimmedId.isEmpty()) continue;
+            try {
+                notificationService.sendToChannel(trimmedId, notificationMsg);
+                logger.info("Sent API Scheduler FAILURE alert notification to channel [{}]", trimmedId);
+            } catch (Exception e) {
+                logger.warn("Failed to send API Scheduler failure notification to channel [{}]: {}", trimmedId, e.getMessage());
+            }
         }
     }
 
