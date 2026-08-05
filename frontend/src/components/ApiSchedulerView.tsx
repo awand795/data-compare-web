@@ -811,21 +811,22 @@ export const ApiSchedulerView: React.FC = () => {
                   </div>
                 )}
 
-                {/* TAB 5: TARGET STORAGE (ClickHouse & PostgreSQL 4-Column Ingestion) */}
+                {/* TAB 5: TARGET STORAGE (ClickHouse & PostgreSQL 5-Column Ingestion Validation) */}
                 {activeReqTab === 'target' && (
                   <div className="space-y-5">
                     <div className="bg-cyan-500/10 border border-cyan-500/30 p-4 rounded-2xl flex items-start gap-3.5 shadow-sm">
                       <Database className="w-5 h-5 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
-                      <div className="text-xs text-text-main">
-                        <p className="font-bold text-cyan-700 dark:text-cyan-300 mb-1 text-sm">Target Ingestion Schema Structure</p>
+                      <div className="text-xs text-text-main space-y-2">
+                        <p className="font-bold text-cyan-700 dark:text-cyan-300 text-sm">Strict Target Schema Requirement (Manual DDL)</p>
                         <p className="leading-relaxed text-text-muted">
-                          Hasil respon JSON dari API ini akan disimpan secara otomatis ke tabel target (ClickHouse atau PostgreSQL) dengan struktur 4 kolom standar:
+                          Tabel target <b>wajib dibuat secara manual terlebih dahulu</b> di ClickHouse / PostgreSQL dengan 5 kolom standar berikut. Jika tabel tidak ada atau kolom tidak sesuai standar, ingest data akan gagal dan notifikasi alert kegagalan akan dikirim ke Telegram & Discord:
                         </p>
-                        <div className="flex flex-wrap gap-2 mt-2.5 font-mono text-[11px]">
-                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">1. kode_data (Custom Identifier)</span>
-                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">2. detail_data (Raw Response JSON)</span>
-                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">3. input_by ('darkosync')</span>
-                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">4. input_dt (Timestamp)</span>
+                        <div className="flex flex-wrap gap-2 font-mono text-[11px]">
+                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">1. seq (Primary Key / Sequence)</span>
+                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">2. kode_data (Custom Identifier)</span>
+                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">3. detail_data (Raw Response JSON)</span>
+                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">4. input_by ('darkosync')</span>
+                          <span className="bg-bg-panel px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold">5. input_dt (Timestamp)</span>
                         </div>
                       </div>
                     </div>

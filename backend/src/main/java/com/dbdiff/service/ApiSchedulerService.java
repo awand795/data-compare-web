@@ -23,7 +23,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
 import java.util.*;
@@ -159,114 +161,90 @@ public class ApiSchedulerService {
 
     public Map<String, Object> testHttpEndpoint(ApiSchedulerConfig config) throws Exception {
         long startTime = System.currentTimeMillis();
+        Map<String, Object> result = new HashMap<>();
 
-        // 1. Build URL with Query Parameters
-        String fullUrl = config.getUrl() != null ? config.getUrl().trim() : "";
-        if (config.getQueryParams() != null && !config.getQueryParams().trim().isEmpty()) {
-            try {
-                Map<String, String> queryMap = objectMapper.readValue(config.getQueryParams(), new TypeReference<Map<String, String>>() {});
-                if (!queryMap.isEmpty()) {
-                    StringBuilder sb = new StringBuilder(fullUrl);
-                    sb.append(fullUrl.contains("?") ? "&" : "?");
-                    int i = 0;
-                    for (Map.Entry<String, String> entry : queryMap.entrySet()) {
-                        if (i > 0) sb.append("&");
-                        sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
-                          .append("=")
-                          .append(URLEncoder.encode(entry.getValue() != null ? entry.getValue() : "", StandardCharsets.UTF_8));
-                        i++;
-                    }
-                    fullUrl = sb.toString();
+        try {
+            String fullUrl = buildFullUrl(config.getUrl(), config.getQueryParams());
+            HttpRequest.Builder reqBuilder = HttpRequest.newBuilder().uri(URI.create(fullUrl));
+
+            // Set Headers
+            if (config.getHeaders() != null && !config.getHeaders().trim().isEmpty()) {
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    Map<String, String> headersMap = mapper.readValue(config.getHeaders(), new TypeReference<Map<String, String>>() {});
+                    headersMap.forEach(reqBuilder::header);
+                } catch (Exception e) {
+                    logger.warn("Failed to parse request headers JSON: {}", e.getMessage());
                 }
-            } catch (Exception e) {
-                logger.warn("Failed to parse queryParams JSON: " + e.getMessage());
             }
-        }
 
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(fullUrl))
-                .timeout(Duration.ofSeconds(30));
-
-        // 2. Set Headers
-        builder.header("User-Agent", "Darkosync-ApiScheduler/1.0");
-        if (config.getHeaders() != null && !config.getHeaders().trim().isEmpty()) {
-            try {
-                Map<String, String> headerMap = objectMapper.readValue(config.getHeaders(), new TypeReference<Map<String, String>>() {});
-                for (Map.Entry<String, String> entry : headerMap.entrySet()) {
-                    if (entry.getKey() != null && !entry.getKey().trim().isEmpty()) {
-                        builder.header(entry.getKey().trim(), entry.getValue() != null ? entry.getValue() : "");
-                    }
-                }
-            } catch (Exception e) {
-                logger.warn("Failed to parse headers JSON: " + e.getMessage());
+            // Set Auth
+            if ("basic".equalsIgnoreCase(config.getAuthType()) && config.getAuthUsername() != null && config.getAuthPassword() != null) {
+                String authStr = config.getAuthUsername() + ":" + config.getAuthPassword();
+                String encodedAuth = Base64.getEncoder().encodeToString(authStr.getBytes(StandardCharsets.UTF_8));
+                reqBuilder.header("Authorization", "Basic " + encodedAuth);
+            } else if ("bearer".equalsIgnoreCase(config.getAuthType()) && config.getAuthToken() != null) {
+                reqBuilder.header("Authorization", "Bearer " + config.getAuthToken().trim());
             }
+
+            // Set Method & Body
+            String method = config.getMethod() != null ? config.getMethod().toUpperCase() : "GET";
+            String bodyContent = config.getBodyContent() != null ? config.getBodyContent() : "";
+
+            if ("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method)) {
+                reqBuilder.method(method, HttpRequest.BodyPublishers.ofString(bodyContent));
+            } else if ("DELETE".equals(method)) {
+                reqBuilder.method("DELETE", HttpRequest.BodyPublishers.noBody());
+            } else {
+                reqBuilder.GET();
+            }
+
+            HttpResponse<String> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+            long durationMs = System.currentTimeMillis() - startTime;
+
+            result.put("statusCode", response.statusCode());
+            result.put("durationMs", durationMs);
+            result.put("body", response.body());
+
+            Map<String, String> respHeaders = new HashMap<>();
+            response.headers().map().forEach((k, v) -> respHeaders.put(k, String.join(", ", v)));
+            result.put("headers", respHeaders);
+
+            return result;
+
+        } catch (Exception e) {
+            long durationMs = System.currentTimeMillis() - startTime;
+            result.put("statusCode", 500);
+            result.put("durationMs", durationMs);
+            result.put("body", "Failed to connect to endpoint: " + e.getMessage());
+            return result;
         }
-
-        // 3. Set Auth
-        if ("basic".equalsIgnoreCase(config.getAuthType())) {
-            String userPass = (config.getAuthUsername() != null ? config.getAuthUsername() : "") + ":" + (config.getAuthPassword() != null ? config.getAuthPassword() : "");
-            String encoded = Base64.getEncoder().encodeToString(userPass.getBytes(StandardCharsets.UTF_8));
-            builder.header("Authorization", "Basic " + encoded);
-        } else if ("bearer".equalsIgnoreCase(config.getAuthType()) && config.getAuthToken() != null && !config.getAuthToken().trim().isEmpty()) {
-            builder.header("Authorization", "Bearer " + config.getAuthToken().trim());
-        }
-
-        // 4. Set Method & Body
-        String method = config.getMethod() != null ? config.getMethod().toUpperCase().trim() : "GET";
-        String bodyPayload = config.getBodyContent() != null ? config.getBodyContent() : "";
-
-        if ("POST".equals(method)) {
-            if ("json".equalsIgnoreCase(config.getBodyType())) builder.header("Content-Type", "application/json");
-            builder.POST(HttpRequest.BodyPublishers.ofString(bodyPayload, StandardCharsets.UTF_8));
-        } else if ("PUT".equals(method)) {
-            if ("json".equalsIgnoreCase(config.getBodyType())) builder.header("Content-Type", "application/json");
-            builder.PUT(HttpRequest.BodyPublishers.ofString(bodyPayload, StandardCharsets.UTF_8));
-        } else if ("PATCH".equals(method)) {
-            if ("json".equalsIgnoreCase(config.getBodyType())) builder.header("Content-Type", "application/json");
-            builder.method("PATCH", HttpRequest.BodyPublishers.ofString(bodyPayload, StandardCharsets.UTF_8));
-        } else if ("DELETE".equals(method)) {
-            builder.DELETE();
-        } else {
-            builder.GET();
-        }
-
-        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-        long duration = System.currentTimeMillis() - startTime;
-
-        Map<String, String> respHeaders = new LinkedHashMap<>();
-        response.headers().map().forEach((k, v) -> respHeaders.put(k, String.join(", ", v)));
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("statusCode", response.statusCode());
-        result.put("durationMs", duration);
-        result.put("body", response.body());
-        result.put("headers", respHeaders);
-        return result;
     }
 
     public void executeAndSaveSchedule(String id) {
         Optional<ApiSchedulerConfig> opt = repository.findById(id);
-        if (opt.isEmpty()) return;
+        if (opt.isEmpty()) {
+            logger.error("Schedule ID [{}] not found", id);
+            return;
+        }
         ApiSchedulerConfig config = opt.get();
 
-        logger.info("Executing API Ingestion Schedule [{}]...", config.getName());
+        logger.info("Executing API Ingestion Schedule [{}] - {} {}", config.getName(), config.getMethod(), config.getUrl());
         try {
             Map<String, Object> testRes = testHttpEndpoint(config);
             int statusCode = (int) testRes.get("statusCode");
             String responseBody = (String) testRes.get("body");
 
             if (statusCode < 200 || statusCode >= 300) {
-                String errMsg = "API call returned HTTP status " + statusCode;
-                logger.warn("Schedule [{}] failed: {}", config.getName(), errMsg);
+                String errMsg = "HTTP Request failed with status code " + statusCode + ": " + (responseBody != null ? responseBody : "");
+                logger.error("Schedule [{}] failed: {}", config.getName(), errMsg);
                 repository.updateLastRun(id, "FAILED", errMsg);
                 sendNotificationIfConfigured(config, "FAILED", errMsg);
                 return;
             }
 
-            // Save response to target database
-            if (config.getTargetConnectionId() != null && !config.getTargetConnectionId().trim().isEmpty() &&
-                config.getTargetTable() != null && !config.getTargetTable().trim().isEmpty()) {
-                
+            // Ingest Response JSON to Target Database
+            if (config.getTargetConnectionId() != null && config.getTargetTable() != null && !config.getTargetTable().trim().isEmpty()) {
                 saveResponseToTargetDatabase(config.getTargetConnectionId(), config.getTargetTable().trim(), config.getKodeData(), responseBody);
             }
 
@@ -283,42 +261,17 @@ public class ApiSchedulerService {
     }
 
     private void sendNotificationIfConfigured(ApiSchedulerConfig config, String status, String message) {
-        // Only send notification if status is FAILED (API fetch error or DB insert failure)
-        if (!"FAILED".equalsIgnoreCase(status)) {
+        if (!"FAILED".equalsIgnoreCase(status) || config.getNotificationChannelId() == null || config.getNotificationChannelId().trim().isEmpty()) {
             return;
         }
-        if (config.getNotificationChannelId() == null || config.getNotificationChannelId().trim().isEmpty()) {
-            return;
-        }
-        String rawChannels = config.getNotificationChannelId().trim();
-        String[] channelIds = rawChannels.split("[;,\\n]+");
-
-        String notificationMsg = String.format(
-            "❌ <b>[API Ingestion Failure Alert]</b>\n" +
-            "<b>Job Name:</b> %s\n" +
-            "<b>Method & URL:</b> %s %s\n" +
-            "<b>Status:</b> FAILED\n" +
-            "<b>Target Table:</b> %s\n" +
-            "<b>Kode Data:</b> %s\n" +
-            "<b>Error Detail:</b> %s\n" +
-            "<b>Timestamp:</b> %s",
-            config.getName(),
-            config.getMethod(),
-            config.getUrl(),
-            config.getTargetTable() != null ? config.getTargetTable() : "-",
-            config.getKodeData() != null ? config.getKodeData() : "-",
-            message,
-            java.time.LocalDateTime.now().toString()
-        );
+        String[] channelIds = config.getNotificationChannelId().split("[;,\\n]+");
+        String notificationMsg = String.format("❌ [API Failure Alert] Job: %s, Error: %s", config.getName(), message);
 
         for (String chanId : channelIds) {
-            String trimmedId = chanId.trim();
-            if (trimmedId.isEmpty()) continue;
             try {
-                notificationService.sendToChannel(trimmedId, notificationMsg);
-                logger.info("Sent API Scheduler FAILURE alert notification to channel [{}]", trimmedId);
+                notificationService.sendToChannel(chanId.trim(), notificationMsg);
             } catch (Exception e) {
-                logger.warn("Failed to send API Scheduler failure notification to channel [{}]: {}", trimmedId, e.getMessage());
+                logger.warn("Failed to send notification to [{}]: {}", chanId, e.getMessage());
             }
         }
     }
@@ -329,48 +282,163 @@ public class ApiSchedulerService {
             throw new RuntimeException("Target connection ID [" + connectionId + "] not found");
         }
 
+        if (targetTable == null || targetTable.trim().isEmpty()) {
+            throw new RuntimeException("Target table name is required");
+        }
+
         DataSource ds = connectionManagerService.getDataSource(connDetails);
         String dbType = connDetails.getType() != null ? connDetails.getType().toLowerCase() : "postgresql";
         String effectiveKodeData = (kodeData != null && !kodeData.trim().isEmpty()) ? kodeData.trim() : "API_DATA";
+        String cleanTargetTable = targetTable.trim();
 
         try (Connection conn = ds.getConnection()) {
             if ("clickhouse".contains(dbType)) {
-                // ClickHouse ingestion
-                String ddl = "CREATE TABLE IF NOT EXISTS " + targetTable + " (" +
-                        "kode_data String, " +
-                        "detail_data String, " +
-                        "input_by String DEFAULT 'darkosync', " +
-                        "input_dt DateTime DEFAULT now() " +
-                        ") ENGINE = MergeTree() ORDER BY (input_dt, kode_data)";
-                try (Statement stmt = conn.createStatement()) {
-                    stmt.execute(ddl);
+                // ClickHouse Ingestion (Do NOT CREATE TABLE automatically)
+                // 1. Verify Table Existence
+                try (Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("EXISTS TABLE " + cleanTargetTable)) {
+                    if (rs.next() && rs.getInt(1) == 0) {
+                        throw new RuntimeException("Target table '" + cleanTargetTable + "' does not exist in ClickHouse. Table must be created manually first.");
+                    }
                 }
 
-                String insertSql = "INSERT INTO " + targetTable + " (kode_data, detail_data, input_by, input_dt) VALUES (?, ?, 'darkosync', now())";
+                // 2. Verify Required Standard Columns: seq, kode_data, detail_data, input_by, input_dt
+                Set<String> existingCols = new HashSet<>();
+                try (Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("DESCRIBE TABLE " + cleanTargetTable)) {
+                    while (rs.next()) {
+                        existingCols.add(rs.getString("name").toLowerCase());
+                    }
+                }
+
+                String[] requiredCols = {"seq", "kode_data", "detail_data", "input_by", "input_dt"};
+                List<String> missingCols = new ArrayList<>();
+                for (String col : requiredCols) {
+                    if (!existingCols.contains(col)) {
+                        missingCols.add(col);
+                    }
+                }
+                if (!missingCols.isEmpty()) {
+                    throw new RuntimeException("Target table '" + cleanTargetTable + "' does not conform to standard schema. Missing required columns: " + missingCols + ". Standard schema columns required: [seq, kode_data, detail_data, input_by, input_dt].");
+                }
+
+                // Insert into ClickHouse
+                String insertSql = "INSERT INTO " + cleanTargetTable + " (kode_data, detail_data, input_by, input_dt) VALUES (?, ?, 'darkosync', now())";
                 try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
                     pstmt.setString(1, effectiveKodeData);
                     pstmt.setString(2, responseJson);
                     pstmt.executeUpdate();
                 }
+
             } else {
-                // PostgreSQL or standard SQL database
-                String ddl = "CREATE TABLE IF NOT EXISTS " + targetTable + " (" +
-                        "kode_data VARCHAR(255), " +
-                        "detail_data TEXT, " +
-                        "input_by VARCHAR(100) DEFAULT 'darkosync', " +
-                        "input_dt TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
-                        ")";
-                try (Statement stmt = conn.createStatement()) {
-                    stmt.execute(ddl);
+                // PostgreSQL or standard SQL Database Ingestion (Do NOT CREATE TABLE automatically)
+                DatabaseMetaData meta = conn.getMetaData();
+                String schemaName = null;
+                String tableName = cleanTargetTable;
+                if (cleanTargetTable.contains(".")) {
+                    String[] parts = cleanTargetTable.split("\\.", 2);
+                    schemaName = parts[0];
+                    tableName = parts[1];
                 }
 
-                String insertSql = "INSERT INTO " + targetTable + " (kode_data, detail_data, input_by, input_dt) VALUES (?, ?, 'darkosync', CURRENT_TIMESTAMP)";
+                // 1. Verify Table Existence
+                boolean tableExists = false;
+                try (ResultSet rs = meta.getTables(null, schemaName, tableName, null)) {
+                    if (rs.next()) {
+                        tableExists = true;
+                    }
+                }
+                if (!tableExists && schemaName != null) {
+                    try (ResultSet rs = meta.getTables(null, schemaName.toLowerCase(), tableName.toLowerCase(), null)) {
+                        if (rs.next()) {
+                            tableExists = true;
+                        }
+                    }
+                }
+                if (!tableExists) {
+                    try (ResultSet rs = meta.getTables(null, null, tableName, null)) {
+                        if (rs.next()) {
+                            tableExists = true;
+                        }
+                    }
+                }
+
+                if (!tableExists) {
+                    throw new RuntimeException("Target table '" + cleanTargetTable + "' does not exist in target database. Table must be created manually first.");
+                }
+
+                // 2. Verify Required Standard Columns: seq, kode_data, detail_data, input_by, input_dt
+                Set<String> existingCols = new HashSet<>();
+                try (ResultSet rsCols = meta.getColumns(null, schemaName, tableName, null)) {
+                    while (rsCols.next()) {
+                        existingCols.add(rsCols.getString("COLUMN_NAME").toLowerCase());
+                    }
+                }
+                if (existingCols.isEmpty() && schemaName != null) {
+                    try (ResultSet rsCols = meta.getColumns(null, schemaName.toLowerCase(), tableName.toLowerCase(), null)) {
+                        while (rsCols.next()) {
+                            existingCols.add(rsCols.getString("COLUMN_NAME").toLowerCase());
+                        }
+                    }
+                }
+                if (existingCols.isEmpty()) {
+                    try (ResultSet rsCols = meta.getColumns(null, null, tableName.toLowerCase(), null)) {
+                        while (rsCols.next()) {
+                            existingCols.add(rsCols.getString("COLUMN_NAME").toLowerCase());
+                        }
+                    }
+                }
+
+                String[] requiredCols = {"seq", "kode_data", "detail_data", "input_by", "input_dt"};
+                List<String> missingCols = new ArrayList<>();
+                for (String col : requiredCols) {
+                    if (!existingCols.contains(col)) {
+                        missingCols.add(col);
+                    }
+                }
+                if (!missingCols.isEmpty()) {
+                    throw new RuntimeException("Target table '" + cleanTargetTable + "' does not conform to standard schema. Missing required columns: " + missingCols + ". Standard schema columns required: [seq, kode_data, detail_data, input_by, input_dt].");
+                }
+
+                // Insert into PostgreSQL
+                String insertSql = "INSERT INTO " + cleanTargetTable + " (kode_data, detail_data, input_by, input_dt) VALUES (?, ?, 'darkosync', CURRENT_TIMESTAMP)";
                 try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
                     pstmt.setString(1, effectiveKodeData);
                     pstmt.setString(2, responseJson);
                     pstmt.executeUpdate();
                 }
             }
+        }
+    }
+
+    private String buildFullUrl(String baseUrl, String queryParamsJson) {
+        if (queryParamsJson == null || queryParamsJson.trim().isEmpty()) {
+            return baseUrl;
+        }
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, String> params = mapper.readValue(queryParamsJson, new TypeReference<Map<String, String>>() {});
+            if (params.isEmpty()) return baseUrl;
+
+            StringBuilder sb = new StringBuilder(baseUrl);
+            if (!baseUrl.contains("?")) {
+                sb.append("?");
+            } else if (!baseUrl.endsWith("&") && !baseUrl.endsWith("?")) {
+                sb.append("&");
+            }
+
+            boolean first = true;
+            for (Map.Entry<String, String> entry : params.entrySet()) {
+                if (!first) sb.append("&");
+                sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8));
+                sb.append("=");
+                sb.append(URLEncoder.encode(entry.getValue() != null ? entry.getValue() : "", StandardCharsets.UTF_8));
+                first = false;
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            logger.warn("Failed to parse query params JSON: {}", e.getMessage());
+            return baseUrl;
         }
     }
 }
