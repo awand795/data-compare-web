@@ -400,6 +400,10 @@ public class ConnectionManagerService {
                 config.addDataSourceProperty("connect_timeout", String.valueOf(timeoutMs));
                 config.addDataSourceProperty("socket_timeout", "600000"); // 10 menit (cegah timeout saat DROP/ADD COLUMN)
 
+                // Disable LZ4 compression/decompression wrappers to prevent LZ4 magic header mismatch error
+                // ("Magic is not correct - expect [-126] but got [37]") when server sends uncompressed responses.
+                config.addDataSourceProperty("compress", "false");
+                config.addDataSourceProperty("decompress", "false");
                 break;
 
             default:
