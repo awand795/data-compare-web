@@ -356,8 +356,14 @@ public class ApiSchedulerService {
 
                 ObjectMapper chMapper = new ObjectMapper();
                 StringBuilder jsonRows = new StringBuilder();
+                // ClickHouse has no AUTO_INCREMENT — seq must be supplied explicitly.
+                // Use epoch-millis * 1000 + rowIndex so seq is always unique across runs.
+                long seqBase = System.currentTimeMillis() * 1000L;
+                int rowIndex = 0;
                 for (String recordJson : recordsToInsert) {
                     Map<String, Object> row = new java.util.LinkedHashMap<>();
+                    row.put("seq", seqBase + rowIndex);
+                    rowIndex++;
                     row.put("kode_data", effectiveKodeData);
                     if (isJsonColumn) {
                         // JSON column -> pass the parsed JSON object/array so the value starts with '{'/'['.
@@ -376,7 +382,7 @@ public class ApiSchedulerService {
                 }
 
                 String chInsertQuery = "INSERT INTO " + cleanTargetTable
-                        + " (kode_data, detail_data, input_by, input_dt) FORMAT JSONEachRow";
+                        + " (seq, kode_data, detail_data, input_by, input_dt) FORMAT JSONEachRow";
                 // allow_simdjson=0: on the production ClickHouse server the simdjson parser fails with
                 // UNSUPPORTED_ARCHITECTURE (all JSON parsing breaks, incl. the JSON column type).
                 // Forcing the fallback parser (RapidJSON) makes JSONEachRow inserts work reliably.
