@@ -530,70 +530,33 @@ public class ApiSchedulerService {
         if (responseJson == null || responseJson.trim().isEmpty()) return recordsToInsert;
         String trimmed = responseJson.trim();
 
-        // Step 1: Parse tree to find the best data array (uses findBestArrayNode logic)
-        JsonNode rootNode;
-        try {
-            rootNode = objectMapper.readTree(trimmed);
-        } catch (Exception e) {
-            // Not valid single-JSON — try NDJSON (one JSON per line)
-            logger.warn("Response is not a single JSON document ({}), trying NDJSON...", e.getMessage());
-            String[] lines = trimmed.split("\\R");
-            for (String line : lines) {
-                String l = line.trim();
-                if (l.isEmpty()) continue;
-                try {
-                    JsonNode item = objectMapper.readTree(l);
-                    if (item != null && (item.isObject() || item.isArray())) {
-                        recordsToInsert.add(l); // raw line
-                    }
-                } catch (Exception ignored) {}
-            }
-            if (!recordsToInsert.isEmpty()) return recordsToInsert;
-            recordsToInsert.add(trimmed);
-            return recordsToInsert;
-        }
-
-        // Unwrap double-encoded JSON string
-        if (rootNode != null && rootNode.isTextual()) {
+        // Unwrap double-encoded JSON string if needed
+        if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
             try {
-                JsonNode unwrapped = objectMapper.readTree(rootNode.asText());
-                if (unwrapped != null && (unwrapped.isArray() || unwrapped.isObject())) {
-                    rootNode = unwrapped;
-                    trimmed = rootNode.toString();
+                JsonNode unwrapped = objectMapper.readTree(trimmed);
+                if (unwrapped != null && unwrapped.isTextual()) {
+                    trimmed = unwrapped.asText().trim();
                 }
             } catch (Exception ignored) {}
         }
 
-        JsonNode targetArrayNode = findBestArrayNode(rootNode);
-        if (targetArrayNode == null || !targetArrayNode.isArray()) {
-            // Single object response — store raw
-            recordsToInsert.add(trimmed);
-            return recordsToInsert;
-        }
-
-        int expectedCount = targetArrayNode.size();
-        logger.info("Found data array with {} element(s) to ingest", expectedCount);
-
-        // Step 2: Try raw substring extraction to preserve exact byte content
-        // (integer 0 stays "0", not "0.0"; null fields preserved; field order kept)
-        List<String> rawItems = extractRawArrayItemsFromBestField(trimmed, targetArrayNode);
-        if (rawItems.size() == expectedCount) {
-            logger.debug("Raw substring extraction succeeded for {} items", expectedCount);
-            recordsToInsert.addAll(rawItems);
-            return recordsToInsert;
-        }
-
-        // Step 3: Fallback — Jackson serialization (may normalize numbers slightly)
-        logger.warn("Raw extraction count mismatch ({} vs {}), falling back to Jackson serialization",
-                rawItems.size(), expectedCount);
-        for (JsonNode item : targetArrayNode) {
-            if (item == null || item.isNull()) continue;
+        // Bundle complete API response into JSON array format [{...}]
+        String bundledJson;
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            bundledJson = trimmed;
+        } else if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            bundledJson = "[" + trimmed + "]";
+        } else {
             try {
-                recordsToInsert.add(objectMapper.writeValueAsString(item));
-            } catch (Exception ex) {
-                recordsToInsert.add(item.toString());
+                JsonNode parsed = objectMapper.readTree(trimmed);
+                bundledJson = "[" + objectMapper.writeValueAsString(parsed) + "]";
+            } catch (Exception e) {
+                bundledJson = "[\"" + trimmed.replace("\"", "\\\"") + "\"]";
             }
         }
+
+        logger.info("Bundled API response into complete JSON array for data_detail (length: {})", bundledJson.length());
+        recordsToInsert.add(bundledJson);
         return recordsToInsert;
     }
 
