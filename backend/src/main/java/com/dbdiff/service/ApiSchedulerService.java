@@ -343,22 +343,33 @@ public class ApiSchedulerService {
                 String chUser = (chCd != null && chCd.getUsername() != null) ? chCd.getUsername() : "default";
                 String chPass = (chCd != null && chCd.getPassword() != null) ? chCd.getPassword() : "";
 
-                // detail_data is ALWAYS pre-stringified into an escaped JSON string before insert.
-                // This is the definitive fix for ClickHouse "Code: 117 ... Cannot parse JSON object here":
-                //   - For String / Nullable(String) columns, FORMAT JSONEachRow REQUIRES a quoted string
-                //     value; sending a raw JSON object {...} is rejected with INCORRECT_DATA.
-                //   - For the experimental JSON/Object column a string value is also accepted, and it
-                //     sidesteps type-inference failures on null fields and ISO timestamps with timezone
-                //     offsets (e.g. "2017-01-31T17:05:47.629+07:00") inside the nested payload.
+                // detail_data formatting depends on the ClickHouse column type:
+                //   - JSON / Object('json') column: FORMAT JSONEachRow REQUIRES the raw JSON object
+                //     starting with '{'. Sending a quoted string "{\"...\"}" fails with
+                //     Code 117 "JSON object should start with '{'" (CAST(string, JSON) is rejected).
+                //   - String / Nullable(String) column: REQUIRES a quoted string; sending a raw
+                //     JSON object {...} fails with Code 117 "Cannot parse JSON object here".
                 String detailType = colTypes.getOrDefault("detail_data", "string");
-                logger.info("ClickHouse target table {} detail_data column type: {}", cleanTargetTable, detailType);
+                boolean isJsonColumn = detailType.contains("json") || detailType.contains("object");
+                logger.info("ClickHouse target table {} detail_data column type: {} (jsonColumn={})",
+                        cleanTargetTable, detailType, isJsonColumn);
 
                 ObjectMapper chMapper = new ObjectMapper();
                 StringBuilder jsonRows = new StringBuilder();
                 for (String recordJson : recordsToInsert) {
                     Map<String, Object> row = new java.util.LinkedHashMap<>();
                     row.put("kode_data", effectiveKodeData);
-                    row.put("detail_data", recordJson); // Jackson serializes it as "detail_data":"{...escaped...}"
+                    if (isJsonColumn) {
+                        // JSON column -> pass the parsed JSON object/array so the value starts with '{'/'['.
+                        try {
+                            row.put("detail_data", chMapper.readTree(recordJson));
+                        } catch (Exception ex) {
+                            row.put("detail_data", recordJson);
+                        }
+                    } else {
+                        // String column -> pass the escaped JSON string value
+                        row.put("detail_data", recordJson);
+                    }
                     row.put("input_by", "darkosync");
                     row.put("input_dt", java.time.Instant.now().toString());
                     jsonRows.append(chMapper.writeValueAsString(row)).append("\n");
@@ -366,11 +377,15 @@ public class ApiSchedulerService {
 
                 String chInsertQuery = "INSERT INTO " + cleanTargetTable
                         + " (kode_data, detail_data, input_by, input_dt) FORMAT JSONEachRow";
+                // allow_simdjson=0: on the production ClickHouse server the simdjson parser fails with
+                // UNSUPPORTED_ARCHITECTURE (all JSON parsing breaks, incl. the JSON column type).
+                // Forcing the fallback parser (RapidJSON) makes JSONEachRow inserts work reliably.
                 String chHttpUrl = "http://" + chHost + ":" + chPort
                         + "/?database=" + URLEncoder.encode(chDatabase, StandardCharsets.UTF_8)
                         + "&query=" + URLEncoder.encode(chInsertQuery, StandardCharsets.UTF_8)
                         + "&async_insert=0"
                         + "&date_time_input_format=best_effort"
+                        + "&allow_simdjson=0"
                         + "&input_format_null_as_default=1"
                         + "&input_format_json_read_numbers_as_strings=1"
                         + "&input_format_json_try_infer_numbers_from_strings=1"
