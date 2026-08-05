@@ -39,6 +39,7 @@ public class ApiSchedulerService {
     private final ConnectionRepository connectionRepository;
     private final ConnectionManagerService connectionManagerService;
     private final TaskScheduler taskScheduler;
+    private final NotificationService notificationService;
 
     private final Map<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -52,11 +53,13 @@ public class ApiSchedulerService {
     public ApiSchedulerService(ApiSchedulerRepository repository,
                                ConnectionRepository connectionRepository,
                                ConnectionManagerService connectionManagerService,
-                               TaskScheduler taskScheduler) {
+                               TaskScheduler taskScheduler,
+                               NotificationService notificationService) {
         this.repository = repository;
         this.connectionRepository = connectionRepository;
         this.connectionManagerService = connectionManagerService;
         this.taskScheduler = taskScheduler;
+        this.notificationService = notificationService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -90,17 +93,26 @@ public class ApiSchedulerService {
             String cron = config.getCronExpression().trim();
             ScheduledFuture<?> future;
             if (cron.startsWith("EVERY_")) {
-                // Preset interval helper e.g. EVERY_1m, EVERY_5m, EVERY_1h, EVERY_1d
-                long seconds = parseIntervalToSeconds(cron);
-                future = taskScheduler.scheduleAtFixedRate(task, Duration.ofSeconds(seconds));
-            } else {
-                future = taskScheduler.schedule(task, new CronTrigger(cron));
+                cron = convertPresetToSpringCron(cron);
             }
+            future = taskScheduler.schedule(task, new CronTrigger(cron));
             scheduledTasks.put(id, future);
-            logger.info("Successfully scheduled API Ingestion job [{}] with cron/interval [{}]", config.getName(), cron);
+            logger.info("Successfully scheduled API Ingestion job [{}] with Spring Cron [{}]", config.getName(), cron);
         } catch (Exception e) {
             logger.error("Failed to schedule API Ingestion job [{}]: {}", config.getName(), e.getMessage());
             repository.updateLastRun(id, "FAILED", "Cron schedule error: " + e.getMessage());
+        }
+    }
+
+    private String convertPresetToSpringCron(String preset) {
+        switch (preset.toUpperCase()) {
+            case "EVERY_1M": return "0 */1 * * * *";
+            case "EVERY_5M": return "0 */5 * * * *";
+            case "EVERY_15M": return "0 */15 * * * *";
+            case "EVERY_30M": return "0 */30 * * * *";
+            case "EVERY_1H": return "0 0 * * * *";
+            case "EVERY_1D": return "0 0 0 * * *";
+            default: return "0 */5 * * * *";
         }
     }
 
@@ -225,6 +237,7 @@ public class ApiSchedulerService {
                 String errMsg = "API call returned HTTP status " + statusCode;
                 logger.warn("Schedule [{}] failed: {}", config.getName(), errMsg);
                 repository.updateLastRun(id, "FAILED", errMsg);
+                sendNotificationIfConfigured(config, "FAILED", errMsg);
                 return;
             }
 
@@ -238,10 +251,45 @@ public class ApiSchedulerService {
             String successMsg = "Successfully ingested API response (HTTP " + statusCode + ", " + testRes.get("durationMs") + "ms)";
             logger.info("Schedule [{}] completed successfully", config.getName());
             repository.updateLastRun(id, "SUCCESS", successMsg);
+            sendNotificationIfConfigured(config, "SUCCESS", successMsg);
 
         } catch (Exception e) {
+            String errMsg = "Execution error: " + e.getMessage();
             logger.error("Error executing API Ingestion Schedule [{}]: {}", config.getName(), e.getMessage(), e);
-            repository.updateLastRun(id, "FAILED", "Execution error: " + e.getMessage());
+            repository.updateLastRun(id, "FAILED", errMsg);
+            sendNotificationIfConfigured(config, "FAILED", errMsg);
+        }
+    }
+
+    private void sendNotificationIfConfigured(ApiSchedulerConfig config, String status, String message) {
+        if (config.getNotificationChannelId() == null || config.getNotificationChannelId().trim().isEmpty()) {
+            return;
+        }
+        try {
+            String statusIcon = "SUCCESS".equalsIgnoreCase(status) ? "✅" : "❌";
+            String notificationMsg = String.format(
+                "%s <b>[API Ingestion Scheduler]</b>\n" +
+                "<b>Job Name:</b> %s\n" +
+                "<b>Method & URL:</b> %s %s\n" +
+                "<b>Status:</b> %s\n" +
+                "<b>Target Table:</b> %s\n" +
+                "<b>Kode Data:</b> %s\n" +
+                "<b>Message:</b> %s\n" +
+                "<b>Timestamp:</b> %s",
+                statusIcon,
+                config.getName(),
+                config.getMethod(),
+                config.getUrl(),
+                status,
+                config.getTargetTable() != null ? config.getTargetTable() : "-",
+                config.getKodeData() != null ? config.getKodeData() : "-",
+                message,
+                java.time.LocalDateTime.now().toString()
+            );
+            notificationService.sendToChannel(config.getNotificationChannelId(), notificationMsg);
+            logger.info("Sent API Scheduler notification to channel [{}]", config.getNotificationChannelId());
+        } catch (Exception e) {
+            logger.warn("Failed to send API Scheduler notification: {}", e.getMessage());
         }
     }
 

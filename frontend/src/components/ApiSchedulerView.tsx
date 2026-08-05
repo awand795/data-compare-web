@@ -5,9 +5,10 @@ import {
   Globe, Plus, Save, Play, Pencil, Trash2, Check, Copy, 
   Search, Clock, Database, Loader2, ArrowLeft,
   RefreshCw, FileText, Code2, ShieldCheck,
-  Zap, CheckCircle2, AlertCircle
+  Zap, CheckCircle2, AlertCircle, Bell, MessageCircle, Send, Settings
 } from 'lucide-react';
 import clsx from 'clsx';
+import { NotificationChannelsModal } from './NotificationChannelsModal';
 
 interface ApiSchedulerConfig {
   id?: string;
@@ -26,6 +27,7 @@ interface ApiSchedulerConfig {
   targetTable?: string;
   kodeData?: string;
   cronExpression?: string;
+  notificationChannelId?: string;
   active?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -40,6 +42,15 @@ interface KeyValuePair {
   enabled: boolean;
 }
 
+interface NotificationChannel {
+  id: string;
+  name: string;
+  type: 'TELEGRAM' | 'DISCORD';
+  botToken?: string;
+  chatId?: string;
+  webhookUrl?: string;
+}
+
 const getMethodBadgeClass = (method: string) => {
   switch (method.toUpperCase()) {
     case 'GET': return 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
@@ -51,13 +62,25 @@ const getMethodBadgeClass = (method: string) => {
   }
 };
 
+const SPRING_CRON_PRESETS = [
+  { label: 'Every 1 Minute', cron: '0 */1 * * * *' },
+  { label: 'Every 5 Minutes', cron: '0 */5 * * * *' },
+  { label: 'Every 15 Minutes', cron: '0 */15 * * * *' },
+  { label: 'Every 30 Minutes', cron: '0 */30 * * * *' },
+  { label: 'Every 1 Hour', cron: '0 0 * * * *' },
+  { label: 'Everyday at 12:00 PM', cron: '0 0 12 * * *' },
+  { label: 'Every Midnight (00:00)', cron: '0 0 0 * * *' },
+];
+
 export const ApiSchedulerView: React.FC = () => {
   const { connections, addToast } = useAppStore();
   const [schedulers, setSchedulers] = useState<ApiSchedulerConfig[]>([]);
+  const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [methodFilter, setMethodFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
 
   // Full Screen View Mode: 'list' | 'editor'
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');
@@ -71,7 +94,8 @@ export const ApiSchedulerView: React.FC = () => {
     bodyType: 'json',
     targetTable: 'sch_sync.tb_api_data',
     kodeData: 'API_KODE_DATA_V1',
-    cronExpression: 'EVERY_5M',
+    cronExpression: '0 */5 * * * *',
+    notificationChannelId: '',
     active: true,
   });
 
@@ -99,12 +123,14 @@ export const ApiSchedulerView: React.FC = () => {
   const fetchSchedulers = async () => {
     setLoading(true);
     try {
-      const res = await axios.get('/api/api-schedulers');
-      if (Array.isArray(res.data)) {
-        setSchedulers(res.data);
-      }
+      const [schedRes, chanRes] = await Promise.all([
+        axios.get('/api/api-schedulers'),
+        axios.get('/api/notification-channels')
+      ]);
+      if (Array.isArray(schedRes.data)) setSchedulers(schedRes.data);
+      if (Array.isArray(chanRes.data)) setChannels(chanRes.data);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Error', message: 'Failed to load API schedulers' });
+      addToast({ type: 'error', title: 'Error', message: 'Failed to load API schedulers or notification profiles' });
     } finally {
       setLoading(false);
     }
@@ -124,7 +150,8 @@ export const ApiSchedulerView: React.FC = () => {
       targetConnectionId: connections.length > 0 ? connections[0].id : '',
       targetTable: 'sch_sync.tb_api_data',
       kodeData: 'API_KODE_V1',
-      cronExpression: 'EVERY_5M',
+      cronExpression: '0 */5 * * * *',
+      notificationChannelId: channels.length > 0 ? channels[0].id : '',
       active: true,
     });
     setQueryParamsList([{ key: '', value: '', enabled: true }]);
@@ -413,7 +440,7 @@ export const ApiSchedulerView: React.FC = () => {
                 { id: 'auth', label: 'Auth', icon: ShieldCheck },
                 { id: 'body', label: 'Body', icon: Code2 },
                 { id: 'target', label: 'Target Storage', icon: Database },
-                { id: 'schedule', label: 'Schedule & Cron', icon: Clock },
+                { id: 'schedule', label: 'Schedule & Alerts', icon: Clock },
               ].map((tab) => {
                 const Icon = tab.icon;
                 return (
@@ -725,51 +752,104 @@ export const ApiSchedulerView: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 6: SCHEDULE & CRON */}
+              {/* TAB 6: SCHEDULE & ALERTS (Spring Cron & Telegram/Discord Notifications) */}
               {activeReqTab === 'schedule' && (
-                <div className="space-y-5 max-w-lg">
-                  <div>
-                    <label className="block text-xs font-bold text-text-main mb-2">Automated Execution Interval</label>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {[
-                        { id: 'EVERY_1M', label: 'Every 1 Minute' },
-                        { id: 'EVERY_5M', label: 'Every 5 Minutes' },
-                        { id: 'EVERY_15M', label: 'Every 15 Minutes' },
-                        { id: 'EVERY_1H', label: 'Every 1 Hour' },
-                        { id: 'EVERY_1D', label: 'Every 1 Day' },
-                        { id: 'CUSTOM', label: 'Custom Cron' },
-                      ].map(item => (
+                <div className="space-y-6 max-w-xl">
+                  
+                  {/* Spring Cron Expression Section */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold text-text-main">Spring Cron Expression Schedule</h4>
+                        <p className="text-[11px] text-text-muted">Spring standard 6-field format: sec min hr day month weekday</p>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20 font-bold">
+                        Spring Cron
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {SPRING_CRON_PRESETS.map((item, idx) => (
                         <button
-                          key={item.id}
+                          key={idx}
                           type="button"
-                          onClick={() => setCurrentConfig({ ...currentConfig, cronExpression: item.id })}
+                          onClick={() => setCurrentConfig({ ...currentConfig, cronExpression: item.cron })}
                           className={clsx(
-                            "py-2.5 px-3.5 rounded-xl text-xs font-bold transition-all border text-left flex items-center justify-between",
-                            currentConfig.cronExpression === item.id || (item.id === 'CUSTOM' && currentConfig.cronExpression && !currentConfig.cronExpression.startsWith('EVERY_'))
-                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm"
+                            "py-2 px-3 rounded-xl text-xs font-medium transition-all border text-left flex items-center justify-between",
+                            currentConfig.cronExpression === item.cron
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold shadow-sm"
                               : "bg-bg-main text-text-muted border-border-main hover:text-text-main hover:bg-bg-hover"
                           )}
                         >
-                          <span>{item.label}</span>
-                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          <span className="truncate">{item.label}</span>
+                          <span className="text-[10px] font-mono text-amber-400/80 ml-1 shrink-0">{item.cron}</span>
                         </button>
                       ))}
                     </div>
-                  </div>
 
-                  {currentConfig.cronExpression && !currentConfig.cronExpression.startsWith('EVERY_') && (
-                    <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner">
-                      <label className="block text-xs font-bold text-text-main mb-1.5">Custom Cron Expression</label>
+                    <div className="bg-bg-main p-3.5 border border-border-main rounded-2xl shadow-inner space-y-2">
+                      <label className="block text-xs font-bold text-text-main">Custom Spring Cron Expression</label>
                       <input
                         type="text"
                         placeholder="0 */5 * * * *"
                         value={currentConfig.cronExpression || ''}
                         onChange={(e) => setCurrentConfig({ ...currentConfig, cronExpression: e.target.value })}
-                        className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                        className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-amber-500"
                       />
+                      <p className="text-[11px] text-text-muted">
+                        Format: <code className="text-amber-400 font-mono">0 */5 * * * *</code> (Detik Menit Jam Hari Bulan HariDalamMinggu)
+                      </p>
                     </div>
-                  )}
+                  </div>
 
+                  {/* Telegram / Discord Notification Profile Integration */}
+                  <div className="space-y-3 pt-2 border-t border-border-main">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Bell className="w-4 h-4 text-purple-400" />
+                        <div>
+                          <h4 className="text-xs font-bold text-text-main">Execution Notification Profile</h4>
+                          <p className="text-[11px] text-text-muted">Send automatic status alerts to Telegram or Discord</p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsChannelModalOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold transition-all"
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                        <span>Manage Profiles</span>
+                      </button>
+                    </div>
+
+                    <div className="bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner space-y-3">
+                      <label className="block text-xs font-bold text-text-main">Select Shared Telegram/Discord Profile</label>
+                      <select
+                        value={currentConfig.notificationChannelId || ''}
+                        onChange={(e) => setCurrentConfig({ ...currentConfig, notificationChannelId: e.target.value })}
+                        className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2.5 text-xs text-text-main focus:outline-none focus:border-purple-500 cursor-pointer"
+                      >
+                        <option value="">No Notifications (Disabled)</option>
+                        {channels.map(chan => (
+                          <option key={chan.id} value={chan.id}>
+                            {chan.type === 'DISCORD' ? '💬 Discord' : '✈️ Telegram'} — {chan.name} {chan.chatId ? `(Chat ID: ${chan.chatId})` : ''}
+                          </option>
+                        ))}
+                      </select>
+
+                      {currentConfig.notificationChannelId && (
+                        <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-200 flex items-center gap-2">
+                          <MessageCircle className="w-4 h-4 text-purple-400 shrink-0" />
+                          <span>
+                            Notifikasi ingesti akan dikirim secara otomatis ke profile terpilih setelah jadwal selesai berjalan.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Enable Active Switch */}
                   <div className="flex items-center justify-between bg-bg-main p-4 border border-border-main rounded-2xl shadow-sm">
                     <div>
                       <span className="block text-xs font-bold text-text-main">Enable Schedule Immediately</span>
@@ -782,6 +862,7 @@ export const ApiSchedulerView: React.FC = () => {
                       className="w-5 h-5 rounded border-border-main text-blue-500 focus:ring-0 cursor-pointer"
                     />
                   </div>
+
                 </div>
               )}
 
@@ -883,6 +964,16 @@ export const ApiSchedulerView: React.FC = () => {
 
         </div>
 
+        {/* Modal for Managing Shared Notification Profiles (Telegram & Discord) */}
+        {isChannelModalOpen && (
+          <NotificationChannelsModal
+            onClose={() => {
+              setIsChannelModalOpen(false);
+              fetchSchedulers();
+            }}
+          />
+        )}
+
       </div>
     );
   }
@@ -909,6 +1000,15 @@ export const ApiSchedulerView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsChannelModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-purple-300 border border-border-main transition-all text-xs font-semibold"
+            title="Manage Telegram & Discord Profiles"
+          >
+            <Bell className="w-4 h-4 text-purple-400" />
+            <span>Notification Profiles</span>
+          </button>
+
           <button
             onClick={fetchSchedulers}
             className="p-2.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main transition-all"
@@ -1009,7 +1109,8 @@ export const ApiSchedulerView: React.FC = () => {
                   <th className="py-3.5 px-4 w-16 text-center">Status</th>
                   <th className="py-3.5 px-4">Schedule & Endpoint</th>
                   <th className="py-3.5 px-4">Target Storage</th>
-                  <th className="py-3.5 px-4">Interval</th>
+                  <th className="py-3.5 px-4">Spring Cron</th>
+                  <th className="py-3.5 px-4">Notification Profile</th>
                   <th className="py-3.5 px-4">Last Run Status</th>
                   <th className="py-3.5 px-4 text-right pr-6">Actions</th>
                 </tr>
@@ -1017,6 +1118,7 @@ export const ApiSchedulerView: React.FC = () => {
               <tbody className="divide-y divide-border-main text-xs">
                 {filteredSchedulers.map((cfg) => {
                   const conn = connections.find(c => String(c.id) === String(cfg.targetConnectionId));
+                  const chan = channels.find(c => String(c.id) === String(cfg.notificationChannelId));
                   return (
                     <tr key={cfg.id} className="hover:bg-bg-hover/60 transition-colors group">
                       {/* Active Status Switch */}
@@ -1069,12 +1171,24 @@ export const ApiSchedulerView: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Interval */}
+                      {/* Spring Cron */}
                       <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
+                        <div className="flex items-center gap-1.5 text-xs font-mono text-amber-300">
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{cfg.cronExpression || 'EVERY_5M'}</span>
+                          <span>{cfg.cronExpression || '0 */5 * * * *'}</span>
                         </div>
+                      </td>
+
+                      {/* Notification Channel */}
+                      <td className="py-3.5 px-4">
+                        {chan ? (
+                          <div className="flex items-center gap-1.5 text-xs text-purple-300 font-medium">
+                            {chan.type === 'DISCORD' ? <Send className="w-3.5 h-3.5 text-indigo-400" /> : <MessageCircle className="w-3.5 h-3.5 text-blue-400" />}
+                            <span>{chan.name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-text-muted text-[11px] font-mono">Disabled</span>
+                        )}
                       </td>
 
                       {/* Last Run Status */}
@@ -1138,6 +1252,16 @@ export const ApiSchedulerView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal for Managing Shared Notification Profiles (Telegram & Discord) */}
+      {isChannelModalOpen && (
+        <NotificationChannelsModal
+          onClose={() => {
+            setIsChannelModalOpen(false);
+            fetchSchedulers();
+          }}
+        />
+      )}
     </div>
   );
 };

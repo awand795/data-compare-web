@@ -42,6 +42,7 @@ public class ApiSchedulerRepository {
                     "target_table VARCHAR(255), " +
                     "kode_data VARCHAR(255), " +
                     "cron_expression VARCHAR(100), " +
+                    "notification_channel_id VARCHAR(64), " +
                     "is_active BOOLEAN DEFAULT TRUE, " +
                     "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
                     "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
@@ -50,6 +51,9 @@ public class ApiSchedulerRepository {
                     "last_run_message TEXT" +
                     ")";
             jdbcTemplate.execute(sql);
+            try {
+                jdbcTemplate.execute("ALTER TABLE api_scheduler_configs ADD COLUMN notification_channel_id VARCHAR(64)");
+            } catch (Exception ignored) {}
             logger.info("Successfully initialized table api_scheduler_configs");
         } catch (Exception e) {
             logger.warn("Initialization of table api_scheduler_configs skipped or failed: " + e.getMessage());
@@ -76,6 +80,7 @@ public class ApiSchedulerRepository {
             cfg.setTargetTable(rs.getString("target_table"));
             cfg.setKodeData(rs.getString("kode_data"));
             cfg.setCronExpression(rs.getString("cron_expression"));
+            cfg.setNotificationChannelId(rs.getString("notification_channel_id"));
             cfg.setActive(rs.getBoolean("is_active"));
 
             if (rs.getTimestamp("created_at") != null) {
@@ -105,26 +110,26 @@ public class ApiSchedulerRepository {
     public int insert(ApiSchedulerConfig cfg) {
         String sql = "INSERT INTO api_scheduler_configs (" +
                 "id, name, method, url, query_params, headers, auth_type, auth_username, auth_password, auth_token, " +
-                "body_type, body_content, target_connection_id, target_table, kode_data, cron_expression, is_active, " +
-                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
+                "body_type, body_content, target_connection_id, target_table, kode_data, cron_expression, notification_channel_id, is_active, " +
+                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
         return jdbcTemplate.update(sql,
                 cfg.getId(), cfg.getName(), cfg.getMethod(), cfg.getUrl(), cfg.getQueryParams(), cfg.getHeaders(),
                 cfg.getAuthType(), cfg.getAuthUsername(), cfg.getAuthPassword(), cfg.getAuthToken(),
                 cfg.getBodyType(), cfg.getBodyContent(), cfg.getTargetConnectionId(), cfg.getTargetTable(),
-                cfg.getKodeData(), cfg.getCronExpression(), cfg.isActive());
+                cfg.getKodeData(), cfg.getCronExpression(), cfg.getNotificationChannelId(), cfg.isActive());
     }
 
     public int update(ApiSchedulerConfig cfg) {
         String sql = "UPDATE api_scheduler_configs SET " +
                 "name = ?, method = ?, url = ?, query_params = ?, headers = ?, auth_type = ?, auth_username = ?, " +
                 "auth_password = ?, auth_token = ?, body_type = ?, body_content = ?, target_connection_id = ?, " +
-                "target_table = ?, kode_data = ?, cron_expression = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP " +
+                "target_table = ?, kode_data = ?, cron_expression = ?, notification_channel_id = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP " +
                 "WHERE id = ?";
         return jdbcTemplate.update(sql,
                 cfg.getName(), cfg.getMethod(), cfg.getUrl(), cfg.getQueryParams(), cfg.getHeaders(),
                 cfg.getAuthType(), cfg.getAuthUsername(), cfg.getAuthPassword(), cfg.getAuthToken(),
                 cfg.getBodyType(), cfg.getBodyContent(), cfg.getTargetConnectionId(), cfg.getTargetTable(),
-                cfg.getKodeData(), cfg.getCronExpression(), cfg.isActive(), cfg.getId());
+                cfg.getKodeData(), cfg.getCronExpression(), cfg.getNotificationChannelId(), cfg.isActive(), cfg.getId());
     }
 
     public int updateLastRun(String id, String status, String message) {

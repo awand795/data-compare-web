@@ -21,6 +21,7 @@ public class ApiSchedulerConfig {
     private String kodeData; // Custom user identifier code
     
     private String cronExpression; // e.g. "0 */5 * * * *" or interval string
+    private String notificationChannelId; // Shared Telegram/Discord Notification Channel ID
     private boolean active = true;
     
     private LocalDateTime createdAt;
@@ -155,6 +156,14 @@ public class ApiSchedulerConfig {
 
     public void setCronExpression(String cronExpression) {
         this.cronExpression = cronExpression;
+    }
+
+    public String getNotificationChannelId() {
+        return notificationChannelId;
+    }
+
+    public void setNotificationChannelId(String notificationChannelId) {
+        this.notificationChannelId = notificationChannelId;
     }
 
     public boolean isActive() {
