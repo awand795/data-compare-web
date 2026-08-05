@@ -445,16 +445,27 @@ public class ApiSchedulerService {
                 }
             } else if (rootNode.isObject()) {
                 JsonNode dataArray = null;
-                if (rootNode.has("data") && rootNode.get("data").isArray()) {
-                    dataArray = rootNode.get("data");
-                } else if (rootNode.has("items") && rootNode.get("items").isArray()) {
-                    dataArray = rootNode.get("items");
-                } else if (rootNode.has("records") && rootNode.get("records").isArray()) {
-                    dataArray = rootNode.get("records");
-                } else if (rootNode.has("results") && rootNode.get("results").isArray()) {
-                    dataArray = rootNode.get("results");
-                } else if (rootNode.has("list") && rootNode.get("list").isArray()) {
-                    dataArray = rootNode.get("list");
+
+                // 1. Check standard common array keys first
+                String[] commonKeys = {"data", "items", "records", "results", "list", "content", "payload", "rows"};
+                for (String key : commonKeys) {
+                    if (rootNode.has(key) && rootNode.get(key).isArray()) {
+                        dataArray = rootNode.get(key);
+                        break;
+                    }
+                }
+
+                // 2. If no standard key matches, scan ALL fields dynamically for the first JSON Array!
+                if (dataArray == null) {
+                    Iterator<Map.Entry<String, JsonNode>> fields = rootNode.fields();
+                    while (fields.hasNext()) {
+                        Map.Entry<String, JsonNode> field = fields.next();
+                        if (field.getValue().isArray()) {
+                            dataArray = field.getValue();
+                            logger.info("Dynamically detected array field [{}] in API response", field.getKey());
+                            break;
+                        }
+                    }
                 }
 
                 if (dataArray != null) {
