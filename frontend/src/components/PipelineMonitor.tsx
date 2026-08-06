@@ -15,7 +15,7 @@ interface Pipeline {
 }
 
 export const PipelineMonitor: React.FC = () => {
-  const { addToast, showAlert } = useAppStore();
+  const { connections, addToast, showAlert } = useAppStore();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTrace, setSelectedTrace] = useState<string | null>(null);
@@ -633,66 +633,121 @@ export const PipelineMonitor: React.FC = () => {
                     </div>
                   )}
 
-                  {groupPipelines.map(p => (
-                    <div key={p.name} className="bg-bg-panel border border-border-main rounded-lg p-3 hover:border-indigo-500/30 transition-colors">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex flex-col flex-1 min-w-0 pr-3">
-                          <span className="font-bold text-[13px] text-text-main break-all" title={p.name}>{p.name}</span>
-                          <span className="text-[11px] text-text-muted mt-0.5 flex items-center gap-2">
-                            <span>Type: {p.type}</span>
-                            {p.lag !== undefined && (
-                              <span className={clsx("px-1.5 py-0.5 rounded font-bold", p.lag > 0 ? "bg-amber-500/10 text-amber-500" : "bg-emerald-500/10 text-emerald-500")}>
-                                {p.lag > 0 ? `⚠️ Lagging: ${p.lag.toLocaleString()} records` : `⚡ Synced`}
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-                          <StatusBadge state={p.state} />
-                          {p.task_state && p.task_state !== p.state && <StatusBadge state={p.task_state} />}
-                        </div>
-                      </div>
+                  {groupPipelines.map(p => {
+                    const info = (() => {
+                      if (p.name.startsWith('sink-clickhouse-')) {
+                        const parts = p.name.split('-');
+                        const targetTable = parts.slice(2, -1).join('-') || parts.slice(2).join('-');
+                        return {
+                          title: `ClickHouse Sink → ${targetTable}`,
+                          rawName: p.name,
+                          badge: 'CLICKHOUSE TARGET',
+                          badgeClass: 'bg-amber-500/10 text-amber-500 border border-amber-500/20',
+                          isSink: true
+                        };
+                      }
+                      
+                      if (p.name.startsWith('source-')) {
+                        let rawDb = p.name.replace(/^source-/, '').replace(/-shared$/, '');
+                        const lastDash = rawDb.lastIndexOf('-');
+                        if (lastDash > 0 && !isNaN(Number(rawDb.slice(lastDash + 1)))) {
+                          rawDb = rawDb.slice(0, lastDash);
+                        }
+                        
+                        const conn = connections.find((c: any) => {
+                          const cleanCName = (c.name || '').replaceAll(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+                          return cleanCName === rawDb.toLowerCase() || String(c.id) === rawDb || cleanCName.startsWith(rawDb.toLowerCase());
+                        });
 
-                      <div className="flex items-center justify-between mt-3">
-                        <div className="flex items-center gap-1.5">
-                          <button onClick={() => handleAction(p.name, 'pause')} disabled={p.state === 'PAUSED'} className="p-1.5 rounded-md hover:bg-amber-500/10 text-text-muted hover:text-amber-500 disabled:opacity-30 tooltip" title="Pause">
-                            <Pause className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleAction(p.name, 'resume')} disabled={p.state === 'RUNNING'} className="p-1.5 rounded-md hover:bg-emerald-500/10 text-text-muted hover:text-emerald-500 disabled:opacity-30 tooltip" title="Resume">
-                            <Play className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleAction(p.name, 'restart')} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="Restart">
-                            <RotateCcw className="w-4 h-4" />
-                          </button>
-                          <div className="w-px h-4 bg-border-main mx-1" />
-                          <button onClick={() => handleDelete(p.name)} className="p-1.5 rounded-md hover:bg-red-500/10 text-text-muted hover:text-red-500 tooltip" title="Delete">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                          <div className="w-px h-4 bg-border-main mx-1" />
-                          <button onClick={() => openConfig(p.name)} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="Edit Config">
-                            <Settings className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => openPeek(p.name)} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="Peek Data (Kafka)">
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          {p.lag !== undefined && (
-                            <button onClick={() => setStatsModalOpen(p)} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="View Lag Stats">
-                              <BarChart2 className="w-4 h-4" />
+                        const displayName = conn ? conn.name : rawDb.replace(/_/g, ' ').toUpperCase();
+                        const dbType = conn ? conn.type.toUpperCase() : 'SOURCE DB';
+
+                        return {
+                          title: `Source DB: ${displayName}`,
+                          rawName: p.name,
+                          badge: dbType,
+                          badgeClass: 'bg-blue-500/10 text-blue-500 border border-blue-500/20',
+                          isSink: false
+                        };
+                      }
+
+                      return {
+                        title: p.name,
+                        rawName: p.name,
+                        badge: 'CONNECTOR',
+                        badgeClass: 'bg-gray-500/10 text-gray-500 border border-gray-500/20',
+                        isSink: false
+                      };
+                    })();
+
+                    return (
+                      <div key={p.name} className="bg-bg-panel border border-border-main rounded-lg p-3 hover:border-indigo-500/30 transition-colors shadow-sm">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex flex-col flex-1 min-w-0 pr-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-[13px] text-text-main truncate" title={p.name}>
+                                {info.title}
+                              </span>
+                              <span className={clsx("px-2 py-0.5 rounded text-[9px] font-black tracking-wider uppercase shrink-0", info.badgeClass)}>
+                                {info.badge}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-text-muted mt-0.5 flex items-center gap-2 font-mono">
+                              <span className="truncate" title={p.name}>Name: {p.name}</span>
+                              {p.lag !== undefined && (
+                                <span className={clsx("px-1.5 py-0.5 rounded font-bold shrink-0", p.lag > 0 ? "bg-amber-500/10 text-amber-500" : "bg-emerald-500/10 text-emerald-500")}>
+                                  {p.lag > 0 ? `⚠️ Lagging: ${p.lag.toLocaleString()} records` : `⚡ Synced`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                            <StatusBadge state={p.state} />
+                            {p.task_state && p.task_state !== p.state && <StatusBadge state={p.task_state} />}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between mt-3">
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => handleAction(p.name, 'pause')} disabled={p.state === 'PAUSED'} className="p-1.5 rounded-md hover:bg-amber-500/10 text-text-muted hover:text-amber-500 disabled:opacity-30 tooltip" title="Pause">
+                              <Pause className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleAction(p.name, 'resume')} disabled={p.state === 'RUNNING'} className="p-1.5 rounded-md hover:bg-emerald-500/10 text-text-muted hover:text-emerald-500 disabled:opacity-30 tooltip" title="Resume">
+                              <Play className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleAction(p.name, 'restart')} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="Restart">
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+                            <div className="w-px h-4 bg-border-main mx-1" />
+                            <button onClick={() => handleDelete(p.name)} className="p-1.5 rounded-md hover:bg-red-500/10 text-text-muted hover:text-red-500 tooltip" title="Delete">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                            <div className="w-px h-4 bg-border-main mx-1" />
+                            <button onClick={() => openConfig(p.name)} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="Edit Config">
+                              <Settings className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => openPeek(p.name)} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="Peek Data (Kafka)">
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            {p.lag !== undefined && (
+                              <button onClick={() => setStatsModalOpen(p)} className="p-1.5 rounded-md hover:bg-indigo-500/10 text-text-muted hover:text-indigo-500 tooltip" title="View Lag Stats">
+                                <BarChart2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                          
+                          {p.trace && (
+                            <button 
+                              onClick={() => setSelectedTrace(p.trace || null)}
+                              className="text-[11px] text-red-400 hover:text-red-300 underline font-semibold"
+                            >
+                              View Error Trace
                             </button>
                           )}
                         </div>
-                        
-                        {p.trace && (
-                          <button 
-                            onClick={() => setSelectedTrace(p.trace || null)}
-                            className="text-[11px] text-red-400 hover:text-red-300 underline font-semibold"
-                          >
-                            View Error Trace
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   </div>
                 )}
               </div>
