@@ -110,4 +110,46 @@ public class ApiSchedulerController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
     }
+
+    // =========================================================================
+    // AUTOMATED MATERIALIZED VIEW (AUTO-MV) EXTRACTOR ENDPOINTS
+    // =========================================================================
+
+    @GetMapping("/mv-pipelines/inspect")
+    public ResponseEntity<?> inspectJsonSchema(
+            @RequestParam(defaultValue = "api_test") String sourceTable,
+            @RequestParam(required = false) String kodeData) {
+        try {
+            return ResponseEntity.ok(service.inspectJsonSchema(sourceTable, kodeData));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
+        }
+    }
+
+    @PostMapping("/mv-pipelines/deploy")
+    public ResponseEntity<?> deployAutoMvPipeline(@RequestBody Map<String, Object> req) {
+        try {
+            return ResponseEntity.ok(service.deployAutoMvPipeline(req));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
+        }
+    }
+
+    @GetMapping("/mv-pipelines")
+    public ResponseEntity<?> getAllAutoMvPipelines() {
+        try {
+            return ResponseEntity.ok(service.getAllAutoMvPipelines());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
+        }
+    }
+
+    @DeleteMapping("/mv-pipelines/{mvName}")
+    public ResponseEntity<?> deleteAutoMvPipeline(@PathVariable String mvName) {
+        try {
+            return ResponseEntity.ok(service.deleteAutoMvPipeline(mvName));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
+        }
+    }
 }

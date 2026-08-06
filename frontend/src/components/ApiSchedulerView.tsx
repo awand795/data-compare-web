@@ -5,7 +5,7 @@ import {
   Globe, Plus, Save, Play, Pencil, Trash2, Check, Copy, 
   Search, Clock, Database, Loader2, ArrowLeft,
   RefreshCw, FileText, Code2, ShieldCheck,
-  Zap, CheckCircle2, AlertCircle, Bell, MessageCircle, Send, Settings
+  Zap, CheckCircle2, AlertCircle, Bell, MessageCircle, Send, Settings, X
 } from 'lucide-react';
 import clsx from 'clsx';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
@@ -119,6 +119,171 @@ export const ApiSchedulerView: React.FC = () => {
   const [runningId, setRunningId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Main Tab & Auto-MV Extractor State
+  const [activeMainTab, setActiveMainTab] = useState<'schedules' | 'mv_pipelines'>('schedules');
+  const [mvPipelines, setMvPipelines] = useState<Array<{ mvName: string; targetTable: string; query: string; syncedRecords: number }>>([]);
+  const [loadingMvPipelines, setLoadingMvPipelines] = useState(false);
+  const [isAutoMvModalOpen, setIsAutoMvModalOpen] = useState(false);
+  const [inspectingSchema, setInspectingSchema] = useState(false);
+  const [deployingMv, setDeployingMv] = useState(false);
+  const [viewQueryModal, setViewQueryModal] = useState<{ name: string; query: string } | null>(null);
+  const [isCopiedDdl, setIsCopiedDdl] = useState(false);
+
+  const formatSql = (rawSql?: string) => {
+    if (!rawSql) return '';
+    let sql = rawSql.trim();
+    return sql
+      .replace(/\b(CREATE MATERIALIZED VIEW|CREATE TABLE|CREATE VIEW)\b/gi, '$1\n')
+      .replace(/\bTO\b/gi, '\nTO')
+      .replace(/\bAS\b/gi, '\nAS\n')
+      .replace(/\bSELECT\b/gi, 'SELECT\n  ')
+      .replace(/\bFROM\b/gi, '\nFROM\n  ')
+      .replace(/\bWHERE\b/gi, '\nWHERE\n  ')
+      .replace(/\bORDER BY\b/gi, '\nORDER BY\n  ')
+      .replace(/,\s*/g, ',\n  ');
+  };
+
+  const handleCopyDdl = (text: string) => {
+    const formatted = formatSql(text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(formatted);
+    } else {
+      const textArea = document.createElement('textarea');
+      textArea.value = formatted;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
+    setIsCopiedDdl(true);
+    addToast({ type: 'success', title: 'Copied', message: 'Formatted DDL Query copied to clipboard' });
+    setTimeout(() => setIsCopiedDdl(false), 2000);
+  };
+
+  const [autoMvForm, setAutoMvForm] = useState<{
+    sourceTable: string;
+    kodeData: string;
+    targetTable: string;
+    createNewTable: boolean;
+    backfillHistorical: boolean;
+    orderByStr: string;
+    existingTables: string[];
+    fields: Array<{ name: string; type: string; jsonKey: string; enabled: boolean }>;
+  }>({
+    sourceTable: 'api_test',
+    kodeData: 'API_KODE_V1',
+    targetTable: 'target_cabang_api',
+    createNewTable: true,
+    backfillHistorical: true,
+    orderByStr: 'kode_perusahaan, kode_cabang',
+    existingTables: [],
+    fields: []
+  });
+
+  const fetchMvPipelines = async () => {
+    setLoadingMvPipelines(true);
+    try {
+      const res = await axios.get('/api/api-schedulers/mv-pipelines');
+      if (Array.isArray(res.data)) {
+        setMvPipelines(res.data);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch Auto-MV Pipelines', err);
+    } finally {
+      setLoadingMvPipelines(false);
+    }
+  };
+
+  const handleInspectSchema = async (srcTable?: string, kData?: string) => {
+    const sTable = srcTable || autoMvForm.sourceTable || 'api_test';
+    const kd = kData || autoMvForm.kodeData || 'API_KODE_V1';
+    setInspectingSchema(true);
+    try {
+      const res = await axios.get(`/api/api-schedulers/mv-pipelines/inspect?sourceTable=${encodeURIComponent(sTable)}&kodeData=${encodeURIComponent(kd)}`);
+      const data = res.data;
+      if (data) {
+        const detected = (data.fields || []).map((f: any) => ({ ...f, enabled: true }));
+        setAutoMvForm(prev => ({
+          ...prev,
+          existingTables: data.existingTables || [],
+          targetTable: prev.targetTable || data.suggestedTargetTable || 'target_api_data',
+          fields: detected.length > 0 ? detected : prev.fields
+        }));
+        if (detected.length > 0) {
+          addToast({ type: 'success', title: 'Schema Inspected', message: `Detected ${detected.length} JSON fields for [${kd}]` });
+        } else {
+          addToast({ type: 'warning', title: 'No Fields Detected', message: `No sample JSON data found in [${sTable}] for [${kd}]` });
+        }
+      }
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Inspection Failed', message: err.message });
+    } finally {
+      setInspectingSchema(false);
+    }
+  };
+
+  const handleDeployMvPipeline = async () => {
+    if (!autoMvForm.kodeData || !autoMvForm.kodeData.trim()) {
+      addToast({ type: 'warning', title: 'Validation Error', message: 'kode_data is required' });
+      return;
+    }
+    if (!autoMvForm.targetTable || !autoMvForm.targetTable.trim()) {
+      addToast({ type: 'warning', title: 'Validation Error', message: 'Target Table Name is required' });
+      return;
+    }
+    const selectedFields = autoMvForm.fields.filter(f => f.enabled);
+    if (selectedFields.length === 0) {
+      addToast({ type: 'warning', title: 'Validation Error', message: 'Select at least 1 field to extract' });
+      return;
+    }
+
+    setDeployingMv(true);
+    try {
+      const payload = {
+        sourceTable: autoMvForm.sourceTable,
+        kodeData: autoMvForm.kodeData,
+        targetTable: autoMvForm.targetTable,
+        createNewTable: autoMvForm.createNewTable,
+        backfillHistorical: autoMvForm.backfillHistorical,
+        orderBy: autoMvForm.orderByStr.split(/[;,\s]+/).filter(Boolean),
+        fields: selectedFields.map(f => ({ name: f.name, type: f.type, jsonKey: f.jsonKey }))
+      };
+
+      const res = await axios.post('/api/api-schedulers/mv-pipelines/deploy', payload);
+      if (res.data && res.data.success) {
+        addToast({
+          type: 'success',
+          title: 'Pipeline Deployed',
+          message: `${res.data.message} (${res.data.backfilledRecords || 0} records backfilled)`
+        });
+        setIsAutoMvModalOpen(false);
+        fetchMvPipelines();
+      }
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Deployment Failed', message: err.response?.data?.error || err.message });
+    } finally {
+      setDeployingMv(false);
+    }
+  };
+
+  const handleDeleteMvPipeline = (mvName: string) => {
+    showAlert({
+      title: 'Delete Materialized View',
+      message: `Are you sure you want to drop Materialized View "${mvName}"? This will stop automatic extraction to the target table.`,
+      type: 'error',
+      confirmLabel: 'Drop View',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`/api/api-schedulers/mv-pipelines/${mvName}`);
+          addToast({ type: 'success', title: 'View Dropped', message: `Materialized View [${mvName}] removed` });
+          fetchMvPipelines();
+        } catch (err: any) {
+          addToast({ type: 'error', title: 'Delete Failed', message: err.message });
+        }
+      }
+    });
+  };
+
   const fetchSchedulers = async () => {
     setLoading(true);
     try {
@@ -137,6 +302,7 @@ export const ApiSchedulerView: React.FC = () => {
 
   useEffect(() => {
     fetchSchedulers();
+    fetchMvPipelines();
   }, []);
 
   const openNewEditor = () => {
@@ -1327,11 +1493,11 @@ export const ApiSchedulerView: React.FC = () => {
           </button>
 
           <button
-            onClick={fetchSchedulers}
+            onClick={() => { fetchSchedulers(); fetchMvPipelines(); }}
             className="p-2.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main transition-all shadow-sm"
             title="Refresh List"
           >
-            <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
+            <RefreshCw className={clsx("w-4 h-4", (loading || loadingMvPipelines) && "animate-spin")} />
           </button>
 
           <button
@@ -1344,8 +1510,39 @@ export const ApiSchedulerView: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-bg-panel border border-border-main p-3 rounded-2xl mb-4 shadow-sm shrink-0">
+      {/* Main Sub-Navigation Tabs (Option A) */}
+      <div className="flex items-center gap-2 mb-4 shrink-0">
+        <button
+          onClick={() => setActiveMainTab('schedules')}
+          className={clsx(
+            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm",
+            activeMainTab === 'schedules'
+              ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30"
+              : "bg-bg-panel text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
+          )}
+        >
+          <Globe className="w-4 h-4" />
+          <span>API Schedules List ({schedulers.length})</span>
+        </button>
+
+        <button
+          onClick={() => { setActiveMainTab('mv_pipelines'); fetchMvPipelines(); }}
+          className={clsx(
+            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm",
+            activeMainTab === 'mv_pipelines'
+              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+              : "bg-bg-panel text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
+          )}
+        >
+          <Zap className="w-4 h-4 text-amber-500" />
+          <span>Auto-MV Extractor Pipelines ({mvPipelines.length})</span>
+        </button>
+      </div>
+
+      {activeMainTab === 'schedules' ? (
+        <>
+          {/* Filter Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-bg-panel border border-border-main p-3 rounded-2xl mb-4 shadow-sm shrink-0">
         <div className="flex items-center gap-3 w-full sm:w-auto flex-1 max-w-md">
           <div className="relative w-full">
             <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1621,6 +1818,376 @@ export const ApiSchedulerView: React.FC = () => {
           </div>
         )}
       </div>
+    </>
+  ) : (
+        /* Tab 2: Auto-MV Extractor Pipelines Panel (Option A) */
+        <div className="flex-1 bg-bg-panel border border-border-main rounded-2xl p-4 md:p-6 overflow-auto shadow-sm flex flex-col min-h-0">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6 shrink-0 border-b border-border-main pb-4">
+            <div>
+              <h3 className="text-base font-bold text-text-main flex items-center gap-2">
+                <Zap className="w-5 h-5 text-amber-500" />
+                Automated Materialized View Extractor Pipelines
+              </h3>
+              <p className="text-xs text-text-muted mt-0.5">
+                Active ClickHouse Materialized Views automatically unpacking raw JSON from source tables into target tables
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                setIsAutoMvModalOpen(true);
+                handleInspectSchema('api_test', 'API_KODE_V1');
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-colors shadow-lg shadow-amber-500/20"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create New Auto-MV Pipeline</span>
+            </button>
+          </div>
+
+          {loadingMvPipelines ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-text-muted">
+              <Loader2 className="w-8 h-8 animate-spin text-amber-500 mb-3" />
+              <p className="text-xs">Loading Auto-MV Pipelines from ClickHouse...</p>
+            </div>
+          ) : mvPipelines.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-text-muted">
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-3 text-amber-500 border border-amber-500/20">
+                <Zap className="w-7 h-7" />
+              </div>
+              <h3 className="text-base font-semibold text-text-main mb-1">No Auto-MV Pipelines Found</h3>
+              <p className="text-xs max-w-sm mb-4">
+                Create an Automated Materialized View to unpack raw JSON responses (from api_test) into clean, structured target tables.
+              </p>
+              <button
+                onClick={() => {
+                  setIsAutoMvModalOpen(true);
+                  handleInspectSchema('api_test', 'API_KODE_V1');
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-colors shadow-md shadow-amber-500/20"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Setup First Auto-MV Extractor</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {mvPipelines.map((mv) => (
+                <div key={mv.mvName} className="bg-bg-main border border-border-main rounded-xl p-4 hover:border-amber-500/40 transition-all shadow-sm flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                          <Zap className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <h4 className="font-bold text-xs text-text-main truncate max-w-[180px]" title={mv.mvName}>
+                            {mv.mvName}
+                          </h4>
+                          <span className="text-[10px] text-text-muted font-mono">
+                            Target: {mv.targetTable}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                        ACTIVE
+                      </span>
+                    </div>
+
+                    <div className="bg-bg-panel border border-border-main p-2.5 rounded-lg my-3 space-y-1 text-[11px] font-mono">
+                      <div className="flex justify-between items-center text-text-muted">
+                        <span>Target Table:</span>
+                        <span className="text-text-main font-bold">{mv.targetTable}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-text-muted">
+                        <span>Synced Records:</span>
+                        <span className="text-amber-500 font-bold">{mv.syncedRecords.toLocaleString()} rows</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-border-main mt-2">
+                    <button
+                      onClick={() => setViewQueryModal({ name: mv.mvName, query: mv.query })}
+                      className="flex items-center gap-1 text-[11px] text-blue-500 hover:text-blue-400 font-semibold"
+                    >
+                      <Code2 className="w-3.5 h-3.5" />
+                      <span>View DDL Query</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleDeleteMvPipeline(mv.mvName)}
+                      className="p-1.5 rounded-lg hover:bg-rose-500/10 text-text-muted hover:text-rose-500 transition-colors"
+                      title="Drop Materialized View"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal for Setup Automated Materialized View Extractor */}
+      {isAutoMvModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-bg-panel border border-border-main rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-border-main flex items-center justify-between bg-bg-header/50">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-text-main">Automated Materialized View Extractor</h3>
+                  <p className="text-xs text-text-muted">Unpack raw JSON from source table into clean ClickHouse target table</p>
+                </div>
+              </div>
+              <button onClick={() => setIsAutoMvModalOpen(false)} className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-main">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-text-muted font-bold mb-1">Source Raw Table</label>
+                  <input
+                    type="text"
+                    value={autoMvForm.sourceTable}
+                    onChange={(e) => setAutoMvForm({ ...autoMvForm, sourceTable: e.target.value })}
+                    placeholder="api_test"
+                    className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-text-muted font-bold mb-1">Filter kode_data</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={autoMvForm.kodeData}
+                      onChange={(e) => setAutoMvForm({ ...autoMvForm, kodeData: e.target.value })}
+                      placeholder="API_KODE_V1"
+                      className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleInspectSchema(autoMvForm.sourceTable, autoMvForm.kodeData)}
+                      disabled={inspectingSchema}
+                      className="px-3 py-2 rounded-xl bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white font-bold shrink-0 transition-colors border border-amber-500/20"
+                      title="Inspect JSON Schema"
+                    >
+                      {inspectingSchema ? <Loader2 className="w-4 h-4 animate-spin" /> : "Inspect"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Target Table Settings */}
+              <div className="bg-bg-main border border-border-main p-4 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-text-main flex items-center gap-2">
+                    <Database className="w-4 h-4 text-amber-500" />
+                    Target Table Selection
+                  </span>
+                  <div className="flex items-center gap-2 text-xs">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="tableMode"
+                        checked={autoMvForm.createNewTable}
+                        onChange={() => setAutoMvForm({ ...autoMvForm, createNewTable: true })}
+                        className="accent-amber-500"
+                      />
+                      <span>Create New Table</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer ml-3">
+                      <input
+                        type="radio"
+                        name="tableMode"
+                        checked={!autoMvForm.createNewTable}
+                        onChange={() => setAutoMvForm({ ...autoMvForm, createNewTable: false })}
+                        className="accent-amber-500"
+                      />
+                      <span>Use Existing Table</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-text-muted mb-1 font-semibold">Target Table Name</label>
+                  {autoMvForm.createNewTable ? (
+                    <input
+                      type="text"
+                      value={autoMvForm.targetTable}
+                      onChange={(e) => setAutoMvForm({ ...autoMvForm, targetTable: e.target.value })}
+                      placeholder="target_cabang_api"
+                      className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  ) : (
+                    <select
+                      value={autoMvForm.targetTable}
+                      onChange={(e) => setAutoMvForm({ ...autoMvForm, targetTable: e.target.value })}
+                      className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
+                    >
+                      {autoMvForm.existingTables.length === 0 ? (
+                        <option value={autoMvForm.targetTable}>{autoMvForm.targetTable}</option>
+                      ) : (
+                        autoMvForm.existingTables.map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))
+                      )}
+                    </select>
+                  )}
+                </div>
+
+                {autoMvForm.createNewTable && (
+                  <div>
+                    <label className="block text-text-muted mb-1 font-semibold">PRIMARY KEY / ORDER BY Columns</label>
+                    <input
+                      type="text"
+                      value={autoMvForm.orderByStr}
+                      onChange={(e) => setAutoMvForm({ ...autoMvForm, orderByStr: e.target.value })}
+                      placeholder="kode_perusahaan, kode_cabang"
+                      className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Fields List */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-bold text-text-main">
+                    Detected Fields to Extract ({autoMvForm.fields.filter(f => f.enabled).length}/{autoMvForm.fields.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allSelected = autoMvForm.fields.every(f => f.enabled);
+                      setAutoMvForm({
+                        ...autoMvForm,
+                        fields: autoMvForm.fields.map(f => ({ ...f, enabled: !allSelected }))
+                      });
+                    }}
+                    className="text-[11px] text-amber-500 hover:underline"
+                  >
+                    Toggle All
+                  </button>
+                </div>
+
+                <div className="bg-bg-main border border-border-main rounded-xl p-3 max-h-48 overflow-y-auto space-y-2">
+                  {autoMvForm.fields.length === 0 ? (
+                    <p className="text-text-muted italic text-center py-4">Click "Inspect" to auto-detect JSON fields from sample data...</p>
+                  ) : (
+                    autoMvForm.fields.map((f, idx) => (
+                      <div key={idx} className="flex items-center justify-between bg-bg-panel p-2 rounded-lg border border-border-main">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={f.enabled}
+                            onChange={(e) => {
+                              const next = [...autoMvForm.fields];
+                              next[idx].enabled = e.target.checked;
+                              setAutoMvForm({ ...autoMvForm, fields: next });
+                            }}
+                            className="accent-amber-500 rounded"
+                          />
+                          <span className="font-mono text-text-main font-semibold">{f.name}</span>
+                        </label>
+
+                        <select
+                          value={f.type}
+                          onChange={(e) => {
+                            const next = [...autoMvForm.fields];
+                            next[idx].type = e.target.value;
+                            setAutoMvForm({ ...autoMvForm, fields: next });
+                          }}
+                          className="bg-bg-main border border-border-main rounded px-2 py-1 font-mono text-[11px] text-amber-500 font-bold"
+                        >
+                          <option value="String">String</option>
+                          <option value="UInt8">UInt8</option>
+                          <option value="UInt64">UInt64</option>
+                          <option value="Float64">Float64</option>
+                        </select>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Backfill Option */}
+              <label className="flex items-center gap-2 text-text-main font-semibold cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={autoMvForm.backfillHistorical}
+                  onChange={(e) => setAutoMvForm({ ...autoMvForm, backfillHistorical: e.target.checked })}
+                  className="accent-amber-500 w-4 h-4"
+                />
+                <span>Backfill existing historical records from {autoMvForm.sourceTable} immediately</span>
+              </label>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-border-main bg-bg-header/50 flex items-center justify-between shrink-0">
+              <button
+                onClick={() => setIsAutoMvModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-bg-main hover:bg-bg-hover text-text-muted font-bold text-xs"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleDeployMvPipeline}
+                disabled={deployingMv || autoMvForm.fields.filter(f => f.enabled).length === 0}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-lg shadow-amber-500/20 disabled:opacity-40 transition-all"
+              >
+                {deployingMv ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-white" />}
+                <span>Deploy Auto-MV Pipeline</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DDL Query Modal Viewer */}
+      {viewQueryModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-bg-panel border border-border-main rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-border-main flex items-center justify-between bg-bg-header/50">
+              <div className="flex items-center gap-2">
+                <Code2 className="w-5 h-5 text-blue-500" />
+                <h3 className="font-bold text-sm text-text-main">DDL Query: {viewQueryModal.name}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleCopyDdl(viewQueryModal.query)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 text-xs font-bold transition-all"
+                  title="Copy DDL Query"
+                >
+                  {isCopiedDdl ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{isCopiedDdl ? "Copied!" : "Copy DDL"}</span>
+                </button>
+                <button onClick={() => setViewQueryModal(null)} className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-main">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-950 text-emerald-400 font-mono text-xs overflow-auto max-h-[65vh] leading-relaxed shadow-inner">
+              <pre className="whitespace-pre-wrap">{formatSql(viewQueryModal.query)}</pre>
+            </div>
+            <div className="px-6 py-3 border-t border-border-main flex justify-end">
+              <button onClick={() => setViewQueryModal(null)} className="px-4 py-2 rounded-xl bg-bg-main hover:bg-bg-hover text-text-main text-xs font-bold">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal for Managing Shared Notification Profiles (Telegram & Discord) */}
       {isChannelModalOpen && (

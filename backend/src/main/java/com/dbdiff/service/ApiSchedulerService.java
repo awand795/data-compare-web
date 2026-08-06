@@ -708,4 +708,321 @@ public class ApiSchedulerService {
             return baseUrl;
         }
     }
+
+    // =========================================================================
+    // AUTOMATED MATERIALIZED VIEW (AUTO-MV) EXTRACTOR PIPELINES
+    // =========================================================================
+
+    public Connection getClickHouseConnection() throws Exception {
+        ConnectionDetails clickhouseConn = connectionRepository.findAll().stream()
+                .filter(c -> "clickhouse".equalsIgnoreCase(c.getType()))
+                .findFirst()
+                .orElse(null);
+
+        if (clickhouseConn != null) {
+            DataSource ds = connectionManagerService.getDataSource(clickhouseConn);
+            return ds.getConnection();
+        }
+
+        ConnectionDetails fallbackConn = new ConnectionDetails();
+        fallbackConn.setType("clickhouse");
+        fallbackConn.setHost(System.getenv().getOrDefault("CLICKHOUSE_HOST", "clickhouse"));
+        fallbackConn.setPort(Integer.parseInt(System.getenv().getOrDefault("CLICKHOUSE_PORT", "8123")));
+        fallbackConn.setDatabase(System.getenv().getOrDefault("CLICKHOUSE_DATABASE", "default"));
+        fallbackConn.setUsername(System.getenv().getOrDefault("CLICKHOUSE_USER", "darkosync"));
+        fallbackConn.setPassword(System.getenv().getOrDefault("CLICKHOUSE_PASSWORD", "darkoSync9292"));
+
+        DataSource ds = connectionManagerService.getDataSource(fallbackConn);
+        return ds.getConnection();
+    }
+
+    public Map<String, Object> inspectJsonSchema(String sourceTable, String kodeData) throws Exception {
+        String cleanSource = (sourceTable != null && !sourceTable.trim().isEmpty()) 
+                ? sourceTable.trim().replaceAll("[^a-zA-Z0-9_]", "_") 
+                : "api_test";
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, String>> detectedFields = new ArrayList<>();
+        List<String> existingTables = new ArrayList<>();
+
+        try (Connection conn = getClickHouseConnection();
+             Statement stmt = conn.createStatement()) {
+
+            // Get existing tables
+            try (ResultSet rsTables = stmt.executeQuery("SELECT name FROM system.tables WHERE database = 'default' AND engine != 'MaterializedView' ORDER BY name")) {
+                while (rsTables.next()) {
+                    existingTables.add(rsTables.getString("name"));
+                }
+            }
+
+            // Fetch sample detail_data
+            String sampleQuery = "SELECT detail_data FROM default." + cleanSource + " WHERE detail_data != ''";
+            if (kodeData != null && !kodeData.trim().isEmpty()) {
+                sampleQuery += " AND kode_data = '" + kodeData.trim().replaceAll("[^a-zA-Z0-9_-]", "") + "'";
+            }
+            sampleQuery += " LIMIT 5";
+
+            List<String> rawSamples = new ArrayList<>();
+            try (ResultSet rs = stmt.executeQuery(sampleQuery)) {
+                while (rs.next()) {
+                    String d = rs.getString("detail_data");
+                    if (d != null && !d.trim().isEmpty()) {
+                        rawSamples.add(d);
+                    }
+                }
+            }
+
+            if (!rawSamples.isEmpty()) {
+                for (String rawJson : rawSamples) {
+                    try {
+                        JsonNode root = objectMapper.readTree(rawJson);
+                        JsonNode itemsNode = null;
+                        if (root.isArray() && root.size() > 0) {
+                            JsonNode first = root.get(0);
+                            if (first.has("data") && first.get("data").isArray() && first.get("data").size() > 0) {
+                                itemsNode = first.get("data").get(0);
+                            } else {
+                                itemsNode = first;
+                            }
+                        } else if (root.isObject()) {
+                            if (root.has("data") && root.get("data").isArray() && root.get("data").size() > 0) {
+                                itemsNode = root.get("data").get(0);
+                            } else {
+                                itemsNode = root;
+                            }
+                        }
+
+                        if (itemsNode != null && itemsNode.isObject()) {
+                            Iterator<Map.Entry<String, JsonNode>> fields = itemsNode.fields();
+                            while (fields.hasNext()) {
+                                Map.Entry<String, JsonNode> entry = fields.next();
+                                String k = entry.getKey();
+                                JsonNode v = entry.getValue();
+                                String type = inferClickHouseType(v);
+
+                                boolean exists = detectedFields.stream().anyMatch(f -> f.get("name").equals(k));
+                                if (!exists) {
+                                    Map<String, String> fInfo = new HashMap<>();
+                                    fInfo.put("name", k);
+                                    fInfo.put("type", type);
+                                    fInfo.put("jsonKey", k);
+                                    detectedFields.add(fInfo);
+                                }
+                            }
+                            break;
+                        }
+                    } catch (Exception ex) {
+                        logger.warn("Could not parse JSON sample: {}", ex.getMessage());
+                    }
+                }
+            }
+        }
+
+        result.put("fields", detectedFields);
+        result.put("existingTables", existingTables);
+        String suggestedName = "target_" + (kodeData != null ? kodeData.toLowerCase().replaceAll("[^a-z0-9_]", "_") : "api") + "_api";
+        result.put("suggestedTargetTable", suggestedName);
+        result.put("sampleCount", detectedFields.size());
+        return result;
+    }
+
+    private String inferClickHouseType(JsonNode v) {
+        if (v == null || v.isNull()) return "String";
+        if (v.isBoolean()) return "UInt8";
+        if (v.isIntegralNumber()) return "UInt64";
+        if (v.isFloatingPointNumber()) return "Float64";
+        return "String";
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> deployAutoMvPipeline(Map<String, Object> req) throws Exception {
+        String sourceTable = (String) req.getOrDefault("sourceTable", "api_test");
+        String kodeData = (String) req.get("kodeData");
+        String targetTable = (String) req.get("targetTable");
+        boolean createNewTable = Boolean.TRUE.equals(req.get("createNewTable"));
+        boolean backfillHistorical = Boolean.TRUE.equals(req.get("backfillHistorical"));
+        List<String> orderBy = (List<String>) req.getOrDefault("orderBy", List.of("kode_data"));
+        List<Map<String, String>> fields = (List<Map<String, String>>) req.get("fields");
+
+        if (kodeData == null || kodeData.trim().isEmpty()) {
+            throw new IllegalArgumentException("kodeData is required");
+        }
+        if (targetTable == null || targetTable.trim().isEmpty()) {
+            throw new IllegalArgumentException("targetTable is required");
+        }
+        if (fields == null || fields.isEmpty()) {
+            throw new IllegalArgumentException("At least one field must be selected for extraction");
+        }
+
+        String cleanTarget = targetTable.trim().replaceAll("[^a-zA-Z0-9_]", "_");
+        String cleanSource = sourceTable.trim().replaceAll("[^a-zA-Z0-9_]", "_");
+        String mvName = cleanTarget.startsWith("mv_extractor_") ? cleanTarget : "mv_extractor_" + cleanTarget;
+
+        try (Connection conn = getClickHouseConnection();
+             Statement stmt = conn.createStatement()) {
+
+            stmt.execute("SET allow_simdjson = 0");
+
+            // 1. Create Target Table if createNewTable is true
+            if (createNewTable) {
+                StringBuilder createTableSql = new StringBuilder();
+                createTableSql.append("CREATE TABLE IF NOT EXISTS default.").append(cleanTarget).append(" (\n");
+                createTableSql.append("    kode_data String,\n");
+                for (Map<String, String> f : fields) {
+                    String fname = f.get("name").replaceAll("[^a-zA-Z0-9_]", "_");
+                    String ftype = f.getOrDefault("type", "String");
+                    createTableSql.append("    ").append(fname).append(" ").append(ftype).append(",\n");
+                }
+                createTableSql.append("    sync_dt String DEFAULT toString(now())\n");
+                createTableSql.append(") ENGINE = ReplacingMergeTree()\n");
+                
+                String orderCols = (orderBy != null && !orderBy.isEmpty()) 
+                        ? String.join(", ", orderBy) 
+                        : "kode_data";
+                createTableSql.append("ORDER BY (").append(orderCols).append(")");
+
+                logger.info("Executing Target Table Creation: {}", createTableSql);
+                stmt.execute(createTableSql.toString());
+            }
+
+            // 2. Create Materialized View
+            StringBuilder mvSql = new StringBuilder();
+            mvSql.append("CREATE MATERIALIZED VIEW IF NOT EXISTS default.").append(mvName);
+            mvSql.append(" TO default.").append(cleanTarget).append(" AS\n");
+            mvSql.append("SELECT\n");
+            mvSql.append("    kode_data,\n");
+
+            for (Map<String, String> f : fields) {
+                String fname = f.get("name").replaceAll("[^a-zA-Z0-9_]", "_");
+                String jsonKey = f.getOrDefault("jsonKey", fname);
+                String ftype = f.getOrDefault("type", "String");
+
+                if ("UInt8".equalsIgnoreCase(ftype)) {
+                    mvSql.append("    toUInt8OrZero(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
+                } else if ("UInt64".equalsIgnoreCase(ftype) || "Int64".equalsIgnoreCase(ftype)) {
+                    mvSql.append("    toUInt64OrZero(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
+                } else if ("Float64".equalsIgnoreCase(ftype)) {
+                    mvSql.append("    toFloat64OrZero(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
+                } else {
+                    mvSql.append("    JSONExtractString(item, '").append(jsonKey).append("') AS ").append(fname).append(",\n");
+                }
+            }
+            mvSql.append("    toString(now()) AS sync_dt\n");
+            mvSql.append("FROM (\n");
+            mvSql.append("    SELECT kode_data, arrayJoin(JSONExtractArrayRaw(detail_data, 1, 'data')) AS item\n");
+            mvSql.append("    FROM default.").append(cleanSource).append("\n");
+            mvSql.append(")\n");
+            mvSql.append("WHERE kode_data = '").append(kodeData.trim()).append("'");
+
+            logger.info("Executing Materialized View Creation: {}", mvSql);
+            stmt.execute(mvSql.toString());
+
+            // 3. Backfill Historical Data if requested
+            int backfilledCount = 0;
+            if (backfillHistorical) {
+                StringBuilder insertSql = new StringBuilder();
+                insertSql.append("INSERT INTO default.").append(cleanTarget).append("\n");
+                insertSql.append("SELECT\n");
+                insertSql.append("    kode_data,\n");
+                for (Map<String, String> f : fields) {
+                    String fname = f.get("name").replaceAll("[^a-zA-Z0-9_]", "_");
+                    String jsonKey = f.getOrDefault("jsonKey", fname);
+                    String ftype = f.getOrDefault("type", "String");
+
+                    if ("UInt8".equalsIgnoreCase(ftype)) {
+                        insertSql.append("    toUInt8OrZero(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
+                    } else if ("UInt64".equalsIgnoreCase(ftype) || "Int64".equalsIgnoreCase(ftype)) {
+                        insertSql.append("    toUInt64OrZero(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
+                    } else if ("Float64".equalsIgnoreCase(ftype)) {
+                        insertSql.append("    toFloat64OrZero(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
+                    } else {
+                        insertSql.append("    JSONExtractString(item, '").append(jsonKey).append("') AS ").append(fname).append(",\n");
+                    }
+                }
+                insertSql.append("    toString(now()) AS sync_dt\n");
+                insertSql.append("FROM (\n");
+                insertSql.append("    SELECT kode_data, arrayJoin(JSONExtractArrayRaw(detail_data, 1, 'data')) AS item\n");
+                insertSql.append("    FROM default.").append(cleanSource).append("\n");
+                insertSql.append("    WHERE kode_data = '").append(kodeData.trim()).append("'\n");
+                insertSql.append(")");
+
+                logger.info("Executing Historical Backfill: {}", insertSql);
+                try {
+                    backfilledCount = stmt.executeUpdate(insertSql.toString());
+                } catch (Exception ex) {
+                    logger.warn("Historical backfill completed with warning: {}", ex.getMessage());
+                }
+            }
+
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", true);
+            res.put("targetTable", cleanTarget);
+            res.put("mvName", mvName);
+            res.put("backfilledRecords", backfilledCount);
+            res.put("message", "Auto-MV Pipeline deployed successfully for target [" + cleanTarget + "]!");
+            return res;
+        }
+    }
+
+    public List<Map<String, Object>> getAllAutoMvPipelines() throws Exception {
+        List<Map<String, Object>> list = new ArrayList<>();
+        try (Connection conn = getClickHouseConnection();
+             Statement stmt = conn.createStatement()) {
+
+            String query = "SELECT name, create_table_query FROM system.tables WHERE database = 'default' AND engine = 'MaterializedView' AND (name LIKE 'mv_extractor_%' OR name LIKE 'mv_%') ORDER BY name";
+            try (ResultSet rs = stmt.executeQuery(query)) {
+                while (rs.next()) {
+                    String mvName = rs.getString("name");
+                    String sql = rs.getString("create_table_query");
+                    if (sql == null) continue;
+
+                    String sqlUpper = sql.toUpperCase();
+                    // Filter: Strictly include only Auto-MV Extractor views (contain JSONExtract or arrayJoin or created with mv_extractor_ prefix)
+                    boolean isExtractorMv = mvName.startsWith("mv_extractor_") || 
+                                           (sqlUpper.contains("JSONEXTRACT") && sqlUpper.contains("ARRAYJOIN")) || 
+                                           (sqlUpper.contains("JSONEXTRACT") && sqlUpper.contains("KODE_DATA"));
+
+                    if (!isExtractorMv) {
+                        // Skip generic Data Warehouse CDC Materialized Views
+                        continue;
+                    }
+
+                    String targetTable = mvName.replaceFirst("^mv_(extractor_)?", "");
+                    
+                    if (sqlUpper.contains(" TO ")) {
+                        int idx = sqlUpper.indexOf(" TO ");
+                        String rest = sql.substring(idx + 4).trim();
+                        String[] parts = rest.split("\\s+");
+                        if (parts.length > 0) {
+                            targetTable = parts[0].replace("default.", "").replace("`", "");
+                        }
+                    }
+
+                    long rowCount = 0;
+                    try (Statement cntStmt = conn.createStatement();
+                         ResultSet cntRs = cntStmt.executeQuery("SELECT count() FROM default." + targetTable)) {
+                        if (cntRs.next()) {
+                            rowCount = cntRs.getLong(1);
+                        }
+                    } catch (Exception ignored) {}
+
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("mvName", mvName);
+                    map.put("targetTable", targetTable);
+                    map.put("query", sql);
+                    map.put("syncedRecords", rowCount);
+                    list.add(map);
+                }
+            }
+        }
+        return list;
+    }
+
+    public Map<String, Object> deleteAutoMvPipeline(String mvName) throws Exception {
+        String cleanMv = mvName.trim().replaceAll("[^a-zA-Z0-9_]", "_");
+        try (Connection conn = getClickHouseConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("DROP VIEW IF EXISTS default." + cleanMv);
+            return Map.of("success", true, "message", "Materialized View [" + cleanMv + "] deleted successfully");
+        }
+    }
 }
