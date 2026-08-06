@@ -63,7 +63,7 @@ const getMethodBadgeClass = (method: string) => {
 };
 
 export const ApiSchedulerView: React.FC = () => {
-  const { connections, addToast } = useAppStore();
+  const { connections, addToast, showAlert } = useAppStore();
   const [schedulers, setSchedulers] = useState<ApiSchedulerConfig[]>([]);
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -347,15 +347,22 @@ export const ApiSchedulerView: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete API schedule "${name}"?`)) return;
-    try {
-      await axios.delete(`/api/api-schedulers/${id}`);
-      addToast({ type: 'success', title: 'Deleted', message: `Schedule [${name}] removed` });
-      fetchSchedulers();
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Delete Failed', message: err.message });
-    }
+  const handleDelete = (id: string, name: string) => {
+    showAlert({
+      title: 'Delete API Schedule',
+      message: `Are you sure you want to delete the API schedule "${name}"? This action cannot be undone.`,
+      type: 'error',
+      confirmLabel: 'Delete Schedule',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`/api/api-schedulers/${id}`);
+          addToast({ type: 'success', title: 'Deleted', message: `Schedule [${name}] removed` });
+          fetchSchedulers();
+        } catch (err: any) {
+          addToast({ type: 'error', title: 'Delete Failed', message: err.message });
+        }
+      }
+    });
   };
 
   const handleToggleActive = async (cfg: ApiSchedulerConfig) => {
