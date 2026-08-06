@@ -715,9 +715,9 @@ public class ApiSchedulerService {
 
     public Connection getClickHouseConnection(String connectionId) throws Exception {
         if (connectionId != null && !connectionId.trim().isEmpty()) {
-            Optional<ConnectionDetails> targetOpt = connectionRepository.findById(connectionId);
-            if (targetOpt.isPresent()) {
-                DataSource ds = connectionManagerService.getDataSource(targetOpt.get());
+            ConnectionDetails targetConn = connectionRepository.findById(connectionId);
+            if (targetConn != null) {
+                DataSource ds = connectionManagerService.getDataSource(targetConn);
                 return ds.getConnection();
             }
         }
