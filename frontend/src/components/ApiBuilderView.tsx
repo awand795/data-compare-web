@@ -519,20 +519,20 @@ export const ApiBuilderView: React.FC = () => {
     return (
       <div className="h-full flex flex-col p-4 md:p-6 overflow-hidden bg-bg-main">
         {/* HEADER & METRIC BANNER */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-6 shrink-0">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 shrink-0">
           <div>
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl shadow-lg shadow-blue-500/20 text-white">
-                <Webhook className="w-7 h-7 animate-pulse" />
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
+                <Webhook className="w-5.5 h-5.5 text-white" />
               </div>
               <div>
-                <h1 className="text-3xl font-black text-text-main tracking-tight flex items-center gap-3">
+                <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-indigo-500 via-cyan-400 to-blue-500 bg-clip-text text-transparent flex items-center gap-2.5">
                   API Builder Studio
-                  <span className="text-xs font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1 rounded-full uppercase tracking-wider">
+                  <span className="text-[10px] md:text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                     v2.0 Realtime
                   </span>
                 </h1>
-                <p className="text-text-muted text-sm mt-1 max-w-xl leading-relaxed">
+                <p className="text-xs md:text-sm text-text-muted">
                   Design, test, and expose instant database-backed HTTP endpoints with automated security &amp; pagination.
                 </p>
               </div>
