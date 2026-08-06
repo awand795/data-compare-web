@@ -2698,7 +2698,49 @@ public class DataWarehouseService {
     }
 
     public java.util.Map<String, Object> getPipelineMetadata(String deployId) {
-        return pipelineMetadataRepository.getPipelineMetadata(deployId);
+        java.util.Map<String, Object> meta = pipelineMetadataRepository.getPipelineMetadata(deployId);
+        if (meta != null && !meta.isEmpty()) {
+            return meta;
+        }
+
+        // Fallback reconstruction for legacy / existing pipelines
+        try {
+            String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+            if (connectors != null) {
+                String targetTable = null;
+                for (String c : connectors) {
+                    if (c.contains(deployId)) {
+                        String[] parts = c.split("-");
+                        if (parts.length >= 4) {
+                            targetTable = parts[2];
+                        }
+                    }
+                }
+
+                String query = getOriginalQuery(deployId);
+                if (targetTable != null || query != null) {
+                    java.util.Map<String, Object> fallbackMeta = new java.util.HashMap<>();
+                    fallbackMeta.put("deploy_id", deployId);
+                    fallbackMeta.put("query", query != null ? query : "");
+                    fallbackMeta.put("target_table", targetTable != null ? targetTable : "legacy_table");
+                    
+                    ConnectionDetails srcConn = connectionRepository.findAll().stream().findFirst().orElse(null);
+                    ConnectionDetails chConn = connectionRepository.findAll().stream()
+                            .filter(c -> "clickhouse".equalsIgnoreCase(c.getType()))
+                            .findFirst()
+                            .orElse(null);
+
+                    fallbackMeta.put("source_connection_id", srcConn != null ? srcConn.getId() : "");
+                    fallbackMeta.put("target_connection_id", chConn != null ? chConn.getId() : "");
+                    fallbackMeta.put("target_database", chConn != null ? chConn.getDatabase() : "default");
+                    return fallbackMeta;
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Could not reconstruct pipeline metadata for deployId: " + deployId, e);
+        }
+
+        return null;
     }
 
     public void updatePipelineQuery(String deployId, String newQuery, SseEmitter emitter) throws Exception {
@@ -3091,7 +3133,44 @@ public class DataWarehouseService {
     }
 
     public String getOriginalQuery(String deployId) {
-        return pipelineMetadataRepository.getOriginalQuery(deployId);
+        String query = pipelineMetadataRepository.getOriginalQuery(deployId);
+        if (query != null && !query.trim().isEmpty()) {
+            return query;
+        }
+
+        // Fallback: Reconstruct query from ClickHouse system.tables (Materialized View DDL)
+        try {
+            ConnectionDetails targetConn = connectionRepository.findAll().stream()
+                    .filter(c -> "clickhouse".equalsIgnoreCase(c.getType()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (targetConn != null) {
+                DataSource ds = connectionManagerService.getDataSource(targetConn);
+                try (Connection conn = ds.getConnection();
+                     Statement stmt = conn.createStatement()) {
+
+                    String q = "SELECT name, create_table_query FROM system.tables WHERE engine = 'MaterializedView'";
+                    try (ResultSet rs = stmt.executeQuery(q)) {
+                        while (rs.next()) {
+                            String mvName = rs.getString("name");
+                            String ddl = rs.getString("create_table_query");
+
+                            if ((deployId != null && mvName.contains(deployId)) || (ddl != null && ddl.contains(deployId))) {
+                                if (ddl != null && ddl.toUpperCase().contains(" AS ")) {
+                                    int asIdx = ddl.toUpperCase().indexOf(" AS ");
+                                    return ddl.substring(asIdx + 4).trim();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed fallback query retrieval for deployId: " + deployId, e);
+        }
+
+        return null;
     }
 
 
