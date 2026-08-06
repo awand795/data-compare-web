@@ -291,6 +291,48 @@ export const ApiSchedulerView: React.FC = () => {
     }
   };
 
+  const handleCopyResponse = async () => {
+    if (!testResponse) return;
+    const contentToCopy = activeRespTab === 'headers'
+      ? (typeof testResponse.headers === 'object' ? JSON.stringify(testResponse.headers, null, 2) : String(testResponse.headers || ''))
+      : getPrettyJson(testResponse.body);
+
+    if (!contentToCopy) {
+      addToast({ type: 'warning', title: 'Empty Content', message: 'No response content to copy' });
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(contentToCopy);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = contentToCopy;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+      addToast({
+        type: 'info',
+        title: 'Copied to Clipboard',
+        message: `API response ${activeRespTab} copied successfully`
+      });
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Copy Failed',
+        message: 'Could not copy response to clipboard'
+      });
+    }
+  };
+
   const handleSaveSchedule = async () => {
     if (!currentConfig.url || !currentConfig.url.trim()) {
       addToast({ type: 'warning', title: 'Validation Error', message: 'URL is required' });
@@ -1171,15 +1213,9 @@ export const ApiSchedulerView: React.FC = () => {
                   <div className="flex items-center gap-3 text-xs text-text-muted font-mono">
                     <span>{testResponse.durationMs} ms</span>
                     <button
-                      onClick={() => {
-                        if (testResponse.body) {
-                          navigator.clipboard.writeText(getPrettyJson(testResponse.body));
-                          setIsCopied(true);
-                          setTimeout(() => setIsCopied(false), 2000);
-                        }
-                      }}
+                      onClick={handleCopyResponse}
                       className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors border border-border-main"
-                      title="Copy Pretty JSON Response"
+                      title={`Copy ${activeRespTab.toUpperCase()} Response`}
                     >
                       {isCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                     </button>
