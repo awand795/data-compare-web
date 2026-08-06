@@ -29,9 +29,22 @@ public class SshTunnelService implements DisposableBean {
         return connectionLocks.computeIfAbsent(connId, k -> new ReentrantLock());
     }
 
-    // Auto-reconnect disabled by user request
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 30000)
     public void checkAndReconnectTunnels() {
-        // Disabled
+        for (String connId : permanentTunnels) {
+            if (!isTunnelHealthy(connId)) {
+                logger.warn("Auto-Heal: SSH tunnel {} is dead. Attempting to reconnect...", connId);
+                ConnectionDetails details = connectionDetailsMap.get(connId);
+                if (details != null) {
+                    try {
+                        getOrOpenTunnel(details, connId);
+                        logger.info("Auto-Heal: Successfully reconnected SSH tunnel {}", connId);
+                    } catch (Exception e) {
+                        logger.error("Auto-Heal: Failed to reconnect SSH tunnel {}: {}", connId, e.getMessage());
+                    }
+                }
+            }
+        }
     }
 
     public int getOrOpenTunnel(ConnectionDetails details, String connId) throws Exception {
