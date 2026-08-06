@@ -911,11 +911,11 @@ export const ApiBuilderView: React.FC = () => {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-3xl font-black text-text-main flex items-center gap-3">
-                <FileJson className="w-8 h-8 text-purple-500" />
+              <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-indigo-500 via-cyan-400 to-blue-500 bg-clip-text text-transparent flex items-center gap-3">
+                <FileJson className="w-6 h-6 text-purple-400" />
                 API Specification &amp; Docs
               </h1>
-              <p className="text-text-muted text-sm mt-1 font-medium">{currentApi.name}</p>
+              <p className="text-text-muted text-xs md:text-sm mt-0.5 font-medium">{currentApi.name}</p>
             </div>
           </div>
 
