@@ -2029,11 +2029,17 @@ export const ApiSchedulerView: React.FC = () => {
                   <label className="block text-text-muted font-bold mb-1">Source Raw Table</label>
                   <input
                     type="text"
+                    list="source-tables-list"
                     value={autoMvForm.sourceTable}
                     onChange={(e) => setAutoMvForm({ ...autoMvForm, sourceTable: e.target.value })}
                     placeholder="e.g. api_test"
                     className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
                   />
+                  <datalist id="source-tables-list">
+                    {autoMvForm.existingTables.map(t => (
+                      <option key={t} value={t} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div>
