@@ -381,7 +381,7 @@ public class ApiSchedulerService {
                         row.put("detail_data", recordJson);
                     }
                     row.put("input_by", "darkosync");
-                    row.put("input_dt", java.time.Instant.now().toString());
+                    row.put("input_dt", java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
                     jsonRows.append(chMapper.writeValueAsString(row)).append("\n");
                 }
 
