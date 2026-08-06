@@ -1393,7 +1393,7 @@ export const ApiSchedulerView: React.FC = () => {
                 {filteredSchedulers.map((cfg) => {
                   const conn = connections.find(c => String(c.id) === String(cfg.targetConnectionId));
                   return (
-                    <tr key={cfg.id} className="hover:bg-bg-hover/60 transition-colors group">
+                    <tr key={cfg.id} className="hover:bg-bg-hover/60 transition-colors group relative hover:z-30">
                       {/* Active Status Switch */}
                       <td className="py-3.5 px-4 text-center">
                         <button
@@ -1445,7 +1445,7 @@ export const ApiSchedulerView: React.FC = () => {
                       </td>
 
                       {/* Spring Cron */}
-                      <td className="py-3.5 px-4">
+                      <td className="py-3.5 px-4 relative">
                         {(() => {
                           const crons = (cfg.cronExpression || '0 */5 * * * *')
                             .split(/[;,\n]+/)
@@ -1473,9 +1473,9 @@ export const ApiSchedulerView: React.FC = () => {
                                 )}
                               </div>
 
-                              {/* Hover Popover Tooltip for Multiple Crons */}
+                              {/* Hover Popover Tooltip for Multiple Crons (Drops Downward with High Z-Index) */}
                               {extraCount > 0 && (
-                                <div className="absolute left-0 bottom-full mb-1.5 hidden group-hover/cron:flex flex-col z-50 min-w-[220px] p-2.5 bg-slate-900/95 dark:bg-slate-950/95 text-white rounded-xl shadow-xl border border-amber-500/30 backdrop-blur-md">
+                                <div className="absolute left-0 top-full mt-1.5 hidden group-hover/cron:flex flex-col z-50 min-w-[230px] p-2.5 bg-slate-900/95 dark:bg-slate-950/95 text-white rounded-xl shadow-2xl border border-amber-500/30 backdrop-blur-md pointer-events-none">
                                   <div className="text-[10px] font-bold text-amber-400 mb-1.5 border-b border-amber-500/20 pb-1 flex items-center justify-between">
                                     <span className="flex items-center gap-1">
                                       <Clock className="w-3 h-3 text-amber-400" />
