@@ -543,6 +543,24 @@ export const PipelineMonitor: React.FC = () => {
 
               const isSpecialGroup = deployId === 'Legacy' || deployId.startsWith('Shared:');
 
+              // Compute list of Source DB names for this pipeline
+              const sourceDbNames = Array.from(new Set(
+                pipelines
+                  .filter(p => p.name.startsWith('source-'))
+                  .map(p => {
+                    let rawDb = p.name.replace(/^source-/, '').replace(/-shared$/, '');
+                    const lastDash = rawDb.lastIndexOf('-');
+                    if (lastDash > 0 && !isNaN(Number(rawDb.slice(lastDash + 1)))) {
+                      rawDb = rawDb.slice(0, lastDash);
+                    }
+                    const conn = connections.find((c: any) => {
+                      const cleanCName = (c.name || '').replaceAll(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+                      return cleanCName === rawDb.toLowerCase() || String(c.id) === rawDb || cleanCName.startsWith(rawDb.toLowerCase());
+                    });
+                    return conn ? conn.name : rawDb.replace(/_/g, ' ').toUpperCase();
+                  })
+              ));
+
               return (
               <div key={deployId} className="bg-bg-main border border-border-main rounded-xl overflow-hidden">
                 <div 
@@ -638,8 +656,10 @@ export const PipelineMonitor: React.FC = () => {
                       if (p.name.startsWith('sink-clickhouse-')) {
                         const parts = p.name.split('-');
                         const targetTable = parts.slice(2, -1).join('-') || parts.slice(2).join('-');
+                        const sourcesText = sourceDbNames.length > 0 ? sourceDbNames.join(', ') : '';
                         return {
                           title: `ClickHouse Sink → ${targetTable}`,
+                          sourcesInfo: sourcesText ? `Consuming CDC streams from: ${sourcesText}` : '',
                           rawName: p.name,
                           badge: 'CLICKHOUSE TARGET',
                           badgeClass: 'bg-amber-500/10 text-amber-500 border border-amber-500/20',
@@ -664,6 +684,7 @@ export const PipelineMonitor: React.FC = () => {
 
                         return {
                           title: `Source DB: ${displayName}`,
+                          sourcesInfo: '',
                           rawName: p.name,
                           badge: dbType,
                           badgeClass: 'bg-blue-500/10 text-blue-500 border border-blue-500/20',
@@ -673,6 +694,7 @@ export const PipelineMonitor: React.FC = () => {
 
                       return {
                         title: p.name,
+                        sourcesInfo: '',
                         rawName: p.name,
                         badge: 'CONNECTOR',
                         badgeClass: 'bg-gray-500/10 text-gray-500 border border-gray-500/20',
@@ -692,6 +714,12 @@ export const PipelineMonitor: React.FC = () => {
                                 {info.badge}
                               </span>
                             </div>
+                            {info.isSink && info.sourcesInfo && (
+                              <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1.5">
+                                <Database className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span>{info.sourcesInfo}</span>
+                              </div>
+                            )}
                             <div className="text-[11px] text-text-muted mt-0.5 flex items-center gap-2 font-mono">
                               <span className="truncate" title={p.name}>Name: {p.name}</span>
                               {p.lag !== undefined && (
