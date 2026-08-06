@@ -748,6 +748,28 @@ public class ApiSchedulerService {
         return getClickHouseConnection(null);
     }
 
+    public List<String> getExistingTables(String connectionId) throws Exception {
+        List<String> tables = new ArrayList<>();
+        try (Connection conn = getClickHouseConnection(connectionId);
+             Statement stmt = conn.createStatement()) {
+
+            String dbName = "default";
+            try (ResultSet rsDb = stmt.executeQuery("SELECT currentDatabase()")) {
+                if (rsDb.next() && rsDb.getString(1) != null) {
+                    dbName = rsDb.getString(1);
+                }
+            } catch (Exception ignored) {}
+
+            String q = "SELECT DISTINCT name FROM system.tables WHERE (database = '" + dbName + "' OR database = 'default') AND engine != 'MaterializedView' ORDER BY name";
+            try (ResultSet rs = stmt.executeQuery(q)) {
+                while (rs.next()) {
+                    tables.add(rs.getString("name"));
+                }
+            }
+        }
+        return tables;
+    }
+
     public Map<String, Object> inspectJsonSchema(String sourceTable, String kodeData) throws Exception {
         return inspectJsonSchema(sourceTable, kodeData, null);
     }
@@ -758,17 +780,10 @@ public class ApiSchedulerService {
                 : "api_test";
         Map<String, Object> result = new HashMap<>();
         List<Map<String, String>> detectedFields = new ArrayList<>();
-        List<String> existingTables = new ArrayList<>();
+        List<String> existingTables = getExistingTables(connectionId);
 
         try (Connection conn = getClickHouseConnection(connectionId);
              Statement stmt = conn.createStatement()) {
-
-            // Get existing tables
-            try (ResultSet rsTables = stmt.executeQuery("SELECT name FROM system.tables WHERE database = 'default' AND engine != 'MaterializedView' ORDER BY name")) {
-                while (rsTables.next()) {
-                    existingTables.add(rsTables.getString("name"));
-                }
-            }
 
             // Fetch sample detail_data
             String sampleQuery = "SELECT detail_data FROM default." + cleanSource + " WHERE detail_data != ''";

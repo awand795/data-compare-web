@@ -182,6 +182,18 @@ export const ApiSchedulerView: React.FC = () => {
     fields: []
   });
 
+  const fetchExistingTables = async (connId?: string) => {
+    const cid = connId !== undefined ? connId : autoMvForm.connectionId;
+    try {
+      const res = await axios.get(`/api/api-schedulers/mv-pipelines/tables${cid ? `?connectionId=${encodeURIComponent(cid)}` : ''}`);
+      if (Array.isArray(res.data)) {
+        setAutoMvForm(prev => ({ ...prev, existingTables: res.data }));
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch existing ClickHouse tables', err);
+    }
+  };
+
   const openNewAutoMvModal = () => {
     const chConns = connections.filter(c => (c.type && c.type.toUpperCase().includes('CLICKHOUSE')) || (c.name && c.name.toLowerCase().includes('clickhouse')));
     const defaultConnId = chConns.length > 0 ? chConns[0].id : '';
@@ -198,6 +210,7 @@ export const ApiSchedulerView: React.FC = () => {
       fields: []
     });
     setIsAutoMvModalOpen(true);
+    fetchExistingTables(defaultConnId);
   };
 
   const fetchMvPipelines = async (connId?: string) => {
@@ -2069,7 +2082,10 @@ export const ApiSchedulerView: React.FC = () => {
                         type="radio"
                         name="tableMode"
                         checked={!autoMvForm.createNewTable}
-                        onChange={() => setAutoMvForm({ ...autoMvForm, createNewTable: false })}
+                        onChange={() => {
+                          setAutoMvForm(prev => ({ ...prev, createNewTable: false }));
+                          fetchExistingTables();
+                        }}
                         className="accent-amber-500"
                       />
                       <span>Use Existing Table</span>
@@ -2084,22 +2100,19 @@ export const ApiSchedulerView: React.FC = () => {
                       type="text"
                       value={autoMvForm.targetTable}
                       onChange={(e) => setAutoMvForm({ ...autoMvForm, targetTable: e.target.value })}
-                      placeholder="target_cabang_api"
+                      placeholder="e.g. target_cabang_api"
                       className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
                     />
                   ) : (
                     <select
                       value={autoMvForm.targetTable}
                       onChange={(e) => setAutoMvForm({ ...autoMvForm, targetTable: e.target.value })}
-                      className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
+                      className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500 text-xs"
                     >
-                      {autoMvForm.existingTables.length === 0 ? (
-                        <option value={autoMvForm.targetTable}>{autoMvForm.targetTable}</option>
-                      ) : (
-                        autoMvForm.existingTables.map(t => (
-                          <option key={t} value={t}>{t}</option>
-                        ))
-                      )}
+                      <option value="">-- Select Existing Target Table ({autoMvForm.existingTables.length} available) --</option>
+                      {autoMvForm.existingTables.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
                     </select>
                   )}
                 </div>

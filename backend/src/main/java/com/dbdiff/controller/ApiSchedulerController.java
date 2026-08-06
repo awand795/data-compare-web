@@ -115,6 +115,15 @@ public class ApiSchedulerController {
     // AUTOMATED MATERIALIZED VIEW (AUTO-MV) EXTRACTOR ENDPOINTS
     // =========================================================================
 
+    @GetMapping("/mv-pipelines/tables")
+    public ResponseEntity<?> getExistingTables(@RequestParam(required = false) String connectionId) {
+        try {
+            return ResponseEntity.ok(service.getExistingTables(connectionId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
+        }
+    }
+
     @GetMapping("/mv-pipelines/inspect")
     public ResponseEntity<?> inspectJsonSchema(
             @RequestParam(defaultValue = "api_test") String sourceTable,
