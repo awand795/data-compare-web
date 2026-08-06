@@ -1,28 +1,32 @@
 package com.dbdiff.service;
 
 import com.dbdiff.model.ConnectionDetails;
-import com.jcraft.jsch.JSch;
-import com.jcraft.jsch.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.DisposableBean;
 
-import java.net.Socket;
+import java.net.ServerSocket;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
-
-import org.springframework.beans.factory.DisposableBean;
 
 @Service
 public class SshTunnelService implements DisposableBean {
 
     private static final Logger logger = LoggerFactory.getLogger(SshTunnelService.class);
 
-    private final Map<String, Session> activeSessions = new ConcurrentHashMap<>();
+    private final Map<String, Process> activeAutossh = new ConcurrentHashMap<>();
     private final Map<String, Integer> localPorts = new ConcurrentHashMap<>();
     private final Map<String, ConnectionDetails> connectionDetailsMap = new ConcurrentHashMap<>();
-    private final java.util.Set<String> permanentTunnels = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final Set<String> permanentTunnels = ConcurrentHashMap.newKeySet();
     private final Map<String, ReentrantLock> connectionLocks = new ConcurrentHashMap<>();
 
     private ReentrantLock getLock(String connId) {
@@ -33,14 +37,14 @@ public class SshTunnelService implements DisposableBean {
     public void checkAndReconnectTunnels() {
         for (String connId : permanentTunnels) {
             if (!isTunnelHealthy(connId)) {
-                logger.warn("Auto-Heal: SSH tunnel {} is dead. Attempting to reconnect...", connId);
+                logger.warn("Auto-Heal: autossh process {} is dead. Attempting to restart...", connId);
                 ConnectionDetails details = connectionDetailsMap.get(connId);
                 if (details != null) {
                     try {
                         getOrOpenTunnel(details, connId);
-                        logger.info("Auto-Heal: Successfully reconnected SSH tunnel {}", connId);
+                        logger.info("Auto-Heal: Successfully restarted autossh for {}", connId);
                     } catch (Exception e) {
-                        logger.error("Auto-Heal: Failed to reconnect SSH tunnel {}: {}", connId, e.getMessage());
+                        logger.error("Auto-Heal: Failed to restart autossh {}: {}", connId, e.getMessage());
                     }
                 }
             }
@@ -60,79 +64,97 @@ public class SshTunnelService implements DisposableBean {
         }
     }
 
+    private int findFreePort() throws Exception {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            socket.setReuseAddress(true);
+            return socket.getLocalPort();
+        }
+    }
+
     private int getOrOpenTunnelInternal(ConnectionDetails details, String connId) throws Exception {
-        if (activeSessions.containsKey(connId) && activeSessions.get(connId).isConnected()) {
-            int cachedPort = localPorts.get(connId);
-            logger.debug("Reusing existing SSH tunnel for {} on localhost:{}", connId, cachedPort);
-            return cachedPort;
+        if (activeAutossh.containsKey(connId)) {
+            Process p = activeAutossh.get(connId);
+            if (p.isAlive()) {
+                int cachedPort = localPorts.get(connId);
+                logger.debug("Reusing existing autossh process for {} on localhost:{}", connId, cachedPort);
+                return cachedPort;
+            } else {
+                closeTunnelInternal(connId);
+            }
         }
 
-        closeTunnelInternal(connId);
-
-        JSch jsch = new JSch();
-        
-        if ("key".equalsIgnoreCase(details.getSshAuthMode()) && details.getSshKeyFile() != null && !details.getSshKeyFile().trim().isEmpty()) {
-            byte[] prvk = details.getSshKeyFile().getBytes();
-            byte[] passphrase = (details.getSshPassphrase() != null && !details.getSshPassphrase().isEmpty()) 
-                                    ? details.getSshPassphrase().getBytes() 
-                                    : null;
-            jsch.addIdentity("ssh-key", prvk, null, passphrase);
-        }
-
+        int assignedLocalPort = localPorts.containsKey(connId) ? localPorts.get(connId) : findFreePort();
         int sshPort = (details.getSshPort() != null && details.getSshPort() > 0) ? details.getSshPort() : 22;
-        Session session = jsch.getSession(details.getSshUsername(), details.getSshHost(), sshPort);
 
+        List<String> cmd = new ArrayList<>();
+        
+        String keyPath = null;
         if ("password".equalsIgnoreCase(details.getSshAuthMode())) {
-            session.setPassword(details.getSshPassword());
+            cmd.add("sshpass");
+            cmd.add("-p");
+            cmd.add(details.getSshPassword());
+        } else if ("key".equalsIgnoreCase(details.getSshAuthMode()) && details.getSshKeyFile() != null) {
+            keyPath = "/tmp/key_" + connId + ".pem";
+            Files.writeString(Paths.get(keyPath), details.getSshKeyFile());
+            try {
+                Set<PosixFilePermission> perms = PosixFilePermissions.fromString("rw-------");
+                Files.setPosixFilePermissions(Paths.get(keyPath), perms);
+            } catch (Exception e) {
+                // Ignore on non-POSIX systems (e.g. Windows local run)
+            }
         }
 
-        // SSH keepalive agar tunnel tidak mati di tengah streaming lama
-        // FORCE 'no' for headless docker environment to prevent "reject HostKey" exception
-        session.setConfig("StrictHostKeyChecking", "no");
-        session.setConfig("PreferredAuthentications", "publickey,password");
-        session.setConfig("PubkeyAcceptedAlgorithms", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
-        session.setConfig("server_host_key", "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa");
-        session.setConfig("kex", "curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512,diffie-hellman-group-exchange-sha256");
-        session.setConfig("TCPKeepAlive", "yes"); // Let OS handle keep-alive to avoid blocking during heavy data stream
-        session.setServerAliveInterval(15000);    // 15 detik (agar cepat mendeteksi tunnel putus)
-        session.setServerAliveCountMax(3);        // 3 kali gagal = 45 detik
+        cmd.add("autossh");
+        cmd.add("-M");
+        cmd.add("0"); // Use ServerAliveInterval instead of monitor port
+        cmd.add("-N");
+        cmd.add("-o"); cmd.add("StrictHostKeyChecking=no");
+        cmd.add("-o"); cmd.add("ServerAliveInterval=15");
+        cmd.add("-o"); cmd.add("ServerAliveCountMax=3");
+        cmd.add("-o"); cmd.add("ExitOnForwardFailure=yes");
         
-        logger.info("Opening SSH tunnel to {}@{}:{}", details.getSshUsername(), details.getSshHost(), sshPort);
-        session.connect(10000);  // 10 detik timeout max untuk mencegah blocking berlarut-larut
+        if (keyPath != null) {
+            cmd.add("-i");
+            cmd.add(keyPath);
+        }
+        
+        cmd.add("-p");
+        cmd.add(String.valueOf(sshPort));
+        cmd.add("-L");
+        cmd.add("0.0.0.0:" + assignedLocalPort + ":" + details.getHost() + ":" + details.getPort());
+        cmd.add(details.getSshUsername() + "@" + details.getSshHost());
 
-        int portToUse = localPorts.containsKey(connId) ? localPorts.get(connId) : 0;
-        int assignedLocalPort = session.setPortForwardingL("0.0.0.0", portToUse, details.getHost(), details.getPort());
+        // Do not print password in logs
+        List<String> logCmd = new ArrayList<>(cmd);
+        if ("password".equalsIgnoreCase(details.getSshAuthMode())) {
+            logCmd.set(2, "****");
+        }
+        logger.info("Spawning autossh: {}", String.join(" ", logCmd));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
         
-        activeSessions.put(connId, session);
+        // Wait briefly to see if it immediately crashes (auth failure, bad port, etc)
+        Thread.sleep(1500);
+        if (!process.isAlive()) {
+            String output = new String(process.getInputStream().readAllBytes());
+            throw new RuntimeException("autossh failed to start: " + output);
+        }
+        
+        activeAutossh.put(connId, process);
         localPorts.put(connId, assignedLocalPort);
         connectionDetailsMap.put(connId, details);
 
-        logger.info("SSH tunnel established: localhost:{} → {}:{} via {}@{}",
+        logger.info("autossh tunnel established: localhost:{} → {}:{} via {}@{}",
             assignedLocalPort, details.getHost(), details.getPort(), details.getSshUsername(), details.getSshHost());
 
         return assignedLocalPort;
     }
 
-    /**
-     * Cek apakah SSH tunnel masih benar-benar hidup.
-     * Menggunakan session.sendKeepAliveMsg() lebih akurat daripada sekadar probe TCP lokal
-     * karena JSch tetap membuka port lokal meskipun koneksi ke server SSH sudah terputus.
-     */
     public boolean isTunnelHealthy(String connId) {
-        Session session = activeSessions.get(connId);
-
-        if (session == null || !session.isConnected()) {
-            return false;
-        }
-
-        try {
-            // Mengirim global request SSH-level keepalive ke server
-            session.sendKeepAliveMsg();
-            return true;
-        } catch (Exception e) {
-            logger.warn("SSH tunnel health-check FAILED for {}: {}", connId, e.getMessage());
-            return false;
-        }
+        Process p = activeAutossh.get(connId);
+        return p != null && p.isAlive();
     }
 
     public void markTunnelAsPermanent(String connectionId) {
@@ -166,31 +188,37 @@ public class SshTunnelService implements DisposableBean {
     }
 
     private void closeTunnelInternal(String connectionId) {
-        Session session = activeSessions.remove(connectionId);
-        if (session != null) {
+        Process p = activeAutossh.remove(connectionId);
+        if (p != null) {
             try {
-                if (session.isConnected()) {
-                    session.disconnect();
+                if (p.isAlive()) {
+                    p.destroyForcibly();
                 }
-            } catch (Exception ignored) {
-                // abaikan error saat menutup session yang sudah mati
-            }
+            } catch (Exception ignored) {}
         }
+        
+        try {
+            Files.deleteIfExists(Paths.get("/tmp/key_" + connectionId + ".pem"));
+        } catch (Exception ignored) {}
+        
         localPorts.remove(connectionId);
     }
 
     @Override
     public void destroy() throws Exception {
-        logger.info("Shutting down all active SSH tunnels during application exit...");
-        for (Map.Entry<String, Session> entry : activeSessions.entrySet()) {
-            if (entry.getValue() != null && entry.getValue().isConnected()) {
+        logger.info("Shutting down all active autossh processes during application exit...");
+        for (Map.Entry<String, Process> entry : activeAutossh.entrySet()) {
+            if (entry.getValue() != null && entry.getValue().isAlive()) {
                 try {
-                    entry.getValue().disconnect();
+                    entry.getValue().destroyForcibly();
                 } catch (Exception ignored) {}
-                logger.info("Closed SSH tunnel for {}", entry.getKey());
+                logger.info("Killed autossh for {}", entry.getKey());
             }
+            try {
+                Files.deleteIfExists(Paths.get("/tmp/key_" + entry.getKey() + ".pem"));
+            } catch (Exception ignored) {}
         }
-        activeSessions.clear();
+        activeAutossh.clear();
         localPorts.clear();
     }
 }

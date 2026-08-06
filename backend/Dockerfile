@@ -11,6 +11,9 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 
+# Install autossh, openssh-client, and sshpass
+RUN apk add --no-cache openssh-client autossh sshpass
+
 # Create logs directory
 RUN mkdir -p /app/logs
 
