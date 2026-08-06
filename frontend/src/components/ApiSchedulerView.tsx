@@ -1446,14 +1446,56 @@ export const ApiSchedulerView: React.FC = () => {
 
                       {/* Spring Cron */}
                       <td className="py-3.5 px-4">
-                        <div className="flex flex-col gap-1 text-xs font-mono text-amber-700 dark:text-amber-300">
-                          {(cfg.cronExpression || '0 */5 * * * *').split(/[;,\n]+/).map((c, i) => (
-                            <div key={i} className="flex items-center gap-1.5">
-                              <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
-                              <span>{c.trim()}</span>
+                        {(() => {
+                          const crons = (cfg.cronExpression || '0 */5 * * * *')
+                            .split(/[;,\n]+/)
+                            .map(c => c.trim())
+                            .filter(Boolean);
+                          const count = crons.length;
+                          if (count === 0) {
+                            return <span className="text-text-muted text-[11px] font-mono">No Cron</span>;
+                          }
+                          const firstCron = crons[0];
+                          const extraCount = count - 1;
+
+                          return (
+                            <div className="relative group/cron inline-block">
+                              <div 
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 max-w-[220px] sm:max-w-[260px] cursor-pointer shadow-sm hover:bg-amber-500/20 transition-colors"
+                                title={crons.join('\n')}
+                              >
+                                <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                <span className="truncate">{firstCron}</span>
+                                {extraCount > 0 && (
+                                  <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 dark:bg-amber-500/30 text-amber-900 dark:text-amber-200 text-[10px] font-extrabold shrink-0">
+                                    +{extraCount} more
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Hover Popover Tooltip for Multiple Crons */}
+                              {extraCount > 0 && (
+                                <div className="absolute left-0 bottom-full mb-1.5 hidden group-hover/cron:flex flex-col z-50 min-w-[220px] p-2.5 bg-slate-900/95 dark:bg-slate-950/95 text-white rounded-xl shadow-xl border border-amber-500/30 backdrop-blur-md">
+                                  <div className="text-[10px] font-bold text-amber-400 mb-1.5 border-b border-amber-500/20 pb-1 flex items-center justify-between">
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3 text-amber-400" />
+                                      Active Cron Triggers
+                                    </span>
+                                    <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-extrabold">{count} Total</span>
+                                  </div>
+                                  <div className="space-y-1 font-mono text-[11px]">
+                                    {crons.map((cron, idx) => (
+                                      <div key={idx} className="flex items-center gap-1.5 text-amber-100 bg-amber-500/10 px-2 py-1 rounded-md border border-amber-500/10">
+                                        <span className="text-[9px] text-amber-400 font-bold shrink-0">#{idx + 1}</span>
+                                        <span className="truncate">{cron}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Notification Profiles */}
