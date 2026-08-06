@@ -3133,6 +3133,10 @@ public class DataWarehouseService {
     }
 
     public String getOriginalQuery(String deployId) {
+        if (deployId == null || deployId.trim().isEmpty()) {
+            return null;
+        }
+
         String query = pipelineMetadataRepository.getOriginalQuery(deployId);
         if (query != null && !query.trim().isEmpty()) {
             return query;
@@ -3150,13 +3154,17 @@ public class DataWarehouseService {
                 try (Connection conn = ds.getConnection();
                      Statement stmt = conn.createStatement()) {
 
+                    String cleanKey = deployId.toLowerCase().trim();
                     String q = "SELECT name, create_table_query FROM system.tables WHERE engine = 'MaterializedView'";
                     try (ResultSet rs = stmt.executeQuery(q)) {
                         while (rs.next()) {
                             String mvName = rs.getString("name");
                             String ddl = rs.getString("create_table_query");
 
-                            if ((deployId != null && mvName.contains(deployId)) || (ddl != null && ddl.contains(deployId))) {
+                            String mvLower = mvName != null ? mvName.toLowerCase() : "";
+                            String ddlLower = ddl != null ? ddl.toLowerCase() : "";
+
+                            if (mvLower.contains(cleanKey) || ddlLower.contains("to default." + cleanKey) || ddlLower.contains("to `" + cleanKey + "`") || ddlLower.contains("to " + cleanKey)) {
                                 if (ddl != null && ddl.toUpperCase().contains(" AS ")) {
                                     int asIdx = ddl.toUpperCase().indexOf(" AS ");
                                     return ddl.substring(asIdx + 4).trim();

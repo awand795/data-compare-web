@@ -510,18 +510,22 @@ export const PipelineMonitor: React.FC = () => {
                 const tsStr = p.name.slice(lastDash + 1);
                 const isTimestamp = lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10;
                 
+                let deployId = '';
                 if (isTimestamp) {
                   const ts = Number(tsStr);
-                  // Find if there is an existing group within 2 seconds (to handle legacy connectors)
-                  const existingKey = Object.keys(acc).find(k => !k.startsWith('Shared:') && k !== 'Legacy' && Math.abs(Number(k) - ts) <= 2000);
-                  const deployId = existingKey ? existingKey : tsStr;
-                  
-                  if (!acc[deployId]) acc[deployId] = [];
-                  acc[deployId].push(p);
+                  const existingKey = Object.keys(acc).find(k => !k.startsWith('Shared:') && !isNaN(Number(k)) && Math.abs(Number(k) - ts) <= 2000);
+                  deployId = existingKey ? existingKey : tsStr;
+                } else if (p.name.startsWith('sink-clickhouse-')) {
+                  deployId = p.name.replace('sink-clickhouse-', '');
+                } else if (p.name.startsWith('source-')) {
+                  const parts = p.name.split('-');
+                  deployId = parts.length >= 3 ? parts.slice(2).join('-') : p.name;
                 } else {
-                  if (!acc['Legacy']) acc['Legacy'] = [];
-                  acc['Legacy'].push(p);
+                  deployId = p.name;
                 }
+
+                if (!acc[deployId]) acc[deployId] = [];
+                acc[deployId].push(p);
                 return acc;
               }, {} as Record<string, Pipeline[]>)
             ).sort((a, b) => b[0].localeCompare(a[0])).map(([deployId, groupPipelines]) => {
@@ -534,14 +538,17 @@ export const PipelineMonitor: React.FC = () => {
                 folderName = `Shared DB Source Connector (${dbName})`;
                 icon = "⚡";
               } else if (sink) {
-                const parts = sink.name.split('-');
-                if (parts.length >= 3) {
-                  const targetTable = parts.slice(2, -1).join('-');
-                  folderName = `Pipeline: ${targetTable}`;
-                }
+                const lastDash = sink.name.lastIndexOf('-');
+                const tsStr = sink.name.slice(lastDash + 1);
+                const hasTimestamp = lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10;
+
+                const targetTable = hasTimestamp ? sink.name.slice('sink-clickhouse-'.length, lastDash) : sink.name.slice('sink-clickhouse-'.length);
+                folderName = `Pipeline: ${targetTable || deployId}`;
+              } else {
+                folderName = `Pipeline: ${deployId}`;
               }
 
-              const isSpecialGroup = deployId === 'Legacy' || deployId.startsWith('Shared:');
+              const isSpecialGroup = deployId.startsWith('Shared:');
 
               // Compute list of Source DB names for this pipeline
               const sourceDbNames = Array.from(new Set(
