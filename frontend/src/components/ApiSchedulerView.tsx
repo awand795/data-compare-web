@@ -1462,7 +1462,6 @@ export const ApiSchedulerView: React.FC = () => {
                             <div className="relative group/cron inline-block">
                               <div 
                                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 max-w-[220px] sm:max-w-[260px] cursor-pointer shadow-sm hover:bg-amber-500/20 transition-colors"
-                                title={crons.join('\n')}
                               >
                                 <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                                 <span className="truncate">{firstCron}</span>
