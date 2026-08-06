@@ -118,9 +118,10 @@ public class ApiSchedulerController {
     @GetMapping("/mv-pipelines/inspect")
     public ResponseEntity<?> inspectJsonSchema(
             @RequestParam(defaultValue = "api_test") String sourceTable,
-            @RequestParam(required = false) String kodeData) {
+            @RequestParam(required = false) String kodeData,
+            @RequestParam(required = false) String connectionId) {
         try {
-            return ResponseEntity.ok(service.inspectJsonSchema(sourceTable, kodeData));
+            return ResponseEntity.ok(service.inspectJsonSchema(sourceTable, kodeData, connectionId));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
         }
@@ -136,18 +137,20 @@ public class ApiSchedulerController {
     }
 
     @GetMapping("/mv-pipelines")
-    public ResponseEntity<?> getAllAutoMvPipelines() {
+    public ResponseEntity<?> getAllAutoMvPipelines(@RequestParam(required = false) String connectionId) {
         try {
-            return ResponseEntity.ok(service.getAllAutoMvPipelines());
+            return ResponseEntity.ok(service.getAllAutoMvPipelines(connectionId));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
         }
     }
 
     @DeleteMapping("/mv-pipelines/{mvName}")
-    public ResponseEntity<?> deleteAutoMvPipeline(@PathVariable String mvName) {
+    public ResponseEntity<?> deleteAutoMvPipeline(
+            @PathVariable String mvName,
+            @RequestParam(required = false) String connectionId) {
         try {
-            return ResponseEntity.ok(service.deleteAutoMvPipeline(mvName));
+            return ResponseEntity.ok(service.deleteAutoMvPipeline(mvName, connectionId));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
         }

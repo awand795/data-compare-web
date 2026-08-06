@@ -161,6 +161,7 @@ export const ApiSchedulerView: React.FC = () => {
   };
 
   const [autoMvForm, setAutoMvForm] = useState<{
+    connectionId: string;
     sourceTable: string;
     kodeData: string;
     targetTable: string;
@@ -170,20 +171,40 @@ export const ApiSchedulerView: React.FC = () => {
     existingTables: string[];
     fields: Array<{ name: string; type: string; jsonKey: string; enabled: boolean }>;
   }>({
-    sourceTable: 'api_test',
-    kodeData: 'API_KODE_V1',
-    targetTable: 'target_cabang_api',
+    connectionId: '',
+    sourceTable: '',
+    kodeData: '',
+    targetTable: '',
     createNewTable: true,
     backfillHistorical: true,
-    orderByStr: 'kode_perusahaan, kode_cabang',
+    orderByStr: '',
     existingTables: [],
     fields: []
   });
 
-  const fetchMvPipelines = async () => {
+  const openNewAutoMvModal = () => {
+    const chConns = connections.filter(c => (c.type && c.type.toUpperCase().includes('CLICKHOUSE')) || (c.name && c.name.toLowerCase().includes('clickhouse')));
+    const defaultConnId = chConns.length > 0 ? chConns[0].id : '';
+
+    setAutoMvForm({
+      connectionId: defaultConnId,
+      sourceTable: '',
+      kodeData: '',
+      targetTable: '',
+      createNewTable: true,
+      backfillHistorical: true,
+      orderByStr: '',
+      existingTables: [],
+      fields: []
+    });
+    setIsAutoMvModalOpen(true);
+  };
+
+  const fetchMvPipelines = async (connId?: string) => {
+    const cid = connId !== undefined ? connId : autoMvForm.connectionId;
     setLoadingMvPipelines(true);
     try {
-      const res = await axios.get('/api/api-schedulers/mv-pipelines');
+      const res = await axios.get(`/api/api-schedulers/mv-pipelines${cid ? `?connectionId=${encodeURIComponent(cid)}` : ''}`);
       if (Array.isArray(res.data)) {
         setMvPipelines(res.data);
       }
@@ -194,25 +215,36 @@ export const ApiSchedulerView: React.FC = () => {
     }
   };
 
-  const handleInspectSchema = async (srcTable?: string, kData?: string) => {
-    const sTable = srcTable || autoMvForm.sourceTable || 'api_test';
-    const kd = kData || autoMvForm.kodeData || 'API_KODE_V1';
+  const handleInspectSchema = async (srcTable?: string, kData?: string, connId?: string) => {
+    const sTable = srcTable !== undefined ? srcTable : autoMvForm.sourceTable;
+    const kd = kData !== undefined ? kData : autoMvForm.kodeData;
+    const cid = connId !== undefined ? connId : autoMvForm.connectionId;
+
+    if (!sTable || !sTable.trim()) {
+      addToast({ type: 'warning', title: 'Validation Error', message: 'Please enter a Source Raw Table name first' });
+      return;
+    }
     setInspectingSchema(true);
     try {
-      const res = await axios.get(`/api/api-schedulers/mv-pipelines/inspect?sourceTable=${encodeURIComponent(sTable)}&kodeData=${encodeURIComponent(kd)}`);
+      const queryParams = new URLSearchParams({
+        sourceTable: sTable.trim(),
+        kodeData: (kd || '').trim(),
+        connectionId: cid || ''
+      });
+      const res = await axios.get(`/api/api-schedulers/mv-pipelines/inspect?${queryParams.toString()}`);
       const data = res.data;
       if (data) {
         const detected = (data.fields || []).map((f: any) => ({ ...f, enabled: true }));
         setAutoMvForm(prev => ({
           ...prev,
           existingTables: data.existingTables || [],
-          targetTable: prev.targetTable || data.suggestedTargetTable || 'target_api_data',
+          targetTable: prev.targetTable || data.suggestedTargetTable || '',
           fields: detected.length > 0 ? detected : prev.fields
         }));
         if (detected.length > 0) {
-          addToast({ type: 'success', title: 'Schema Inspected', message: `Detected ${detected.length} JSON fields for [${kd}]` });
+          addToast({ type: 'success', title: 'Schema Inspected', message: `Detected ${detected.length} JSON fields for [${kd || 'All Data'}]` });
         } else {
-          addToast({ type: 'warning', title: 'No Fields Detected', message: `No sample JSON data found in [${sTable}] for [${kd}]` });
+          addToast({ type: 'warning', title: 'No Fields Detected', message: `No sample JSON data found in [${sTable}]` });
         }
       }
     } catch (err: any) {
@@ -223,6 +255,10 @@ export const ApiSchedulerView: React.FC = () => {
   };
 
   const handleDeployMvPipeline = async () => {
+    if (!autoMvForm.sourceTable || !autoMvForm.sourceTable.trim()) {
+      addToast({ type: 'warning', title: 'Validation Error', message: 'Source Raw Table is required' });
+      return;
+    }
     if (!autoMvForm.kodeData || !autoMvForm.kodeData.trim()) {
       addToast({ type: 'warning', title: 'Validation Error', message: 'kode_data is required' });
       return;
@@ -240,6 +276,7 @@ export const ApiSchedulerView: React.FC = () => {
     setDeployingMv(true);
     try {
       const payload = {
+        connectionId: autoMvForm.connectionId,
         sourceTable: autoMvForm.sourceTable,
         kodeData: autoMvForm.kodeData,
         targetTable: autoMvForm.targetTable,
@@ -257,7 +294,7 @@ export const ApiSchedulerView: React.FC = () => {
           message: `${res.data.message} (${res.data.backfilledRecords || 0} records backfilled)`
         });
         setIsAutoMvModalOpen(false);
-        fetchMvPipelines();
+        fetchMvPipelines(autoMvForm.connectionId);
       }
     } catch (err: any) {
       addToast({ type: 'error', title: 'Deployment Failed', message: err.response?.data?.error || err.message });
@@ -274,9 +311,9 @@ export const ApiSchedulerView: React.FC = () => {
       confirmLabel: 'Drop View',
       onConfirm: async () => {
         try {
-          await axios.delete(`/api/api-schedulers/mv-pipelines/${mvName}`);
+          await axios.delete(`/api/api-schedulers/mv-pipelines/${mvName}?connectionId=${encodeURIComponent(autoMvForm.connectionId || '')}`);
           addToast({ type: 'success', title: 'View Dropped', message: `Materialized View [${mvName}] removed` });
-          fetchMvPipelines();
+          fetchMvPipelines(autoMvForm.connectionId);
         } catch (err: any) {
           addToast({ type: 'error', title: 'Delete Failed', message: err.message });
         }
@@ -1834,10 +1871,7 @@ export const ApiSchedulerView: React.FC = () => {
             </div>
 
             <button
-              onClick={() => {
-                setIsAutoMvModalOpen(true);
-                handleInspectSchema('api_test', 'API_KODE_V1');
-              }}
+              onClick={openNewAutoMvModal}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-colors shadow-lg shadow-amber-500/20"
             >
               <Plus className="w-4 h-4" />
@@ -1857,13 +1891,10 @@ export const ApiSchedulerView: React.FC = () => {
               </div>
               <h3 className="text-base font-semibold text-text-main mb-1">No Auto-MV Pipelines Found</h3>
               <p className="text-xs max-w-sm mb-4">
-                Create an Automated Materialized View to unpack raw JSON responses (from api_test) into clean, structured target tables.
+                Create an Automated Materialized View to unpack raw JSON responses (from source raw table) into clean, structured target tables.
               </p>
               <button
-                onClick={() => {
-                  setIsAutoMvModalOpen(true);
-                  handleInspectSchema('api_test', 'API_KODE_V1');
-                }}
+                onClick={openNewAutoMvModal}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-colors shadow-md shadow-amber-500/20"
               >
                 <Plus className="w-4 h-4" />
@@ -1952,6 +1983,34 @@ export const ApiSchedulerView: React.FC = () => {
 
             {/* Body */}
             <div className="p-6 overflow-y-auto space-y-4 text-xs">
+              {/* ClickHouse Connection & Database Selector */}
+              <div className="bg-amber-500/5 border border-amber-500/20 p-3 rounded-xl">
+                <label className="block text-text-main font-bold mb-1 flex items-center gap-1.5">
+                  <Database className="w-4 h-4 text-amber-500" />
+                  <span>ClickHouse Target Database Connection</span>
+                </label>
+                <select
+                  value={autoMvForm.connectionId}
+                  onChange={(e) => {
+                    const newConnId = e.target.value;
+                    setAutoMvForm(prev => ({ ...prev, connectionId: newConnId }));
+                    if (autoMvForm.sourceTable) {
+                      handleInspectSchema(autoMvForm.sourceTable, autoMvForm.kodeData, newConnId);
+                    }
+                  }}
+                  className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-text-main font-mono text-xs focus:outline-none focus:border-amber-500 shadow-sm"
+                >
+                  <option value="">Default Server Connection (Local / Server)</option>
+                  {connections
+                    .filter(c => (c.type && c.type.toUpperCase().includes('CLICKHOUSE')) || (c.name && c.name.toLowerCase().includes('clickhouse')))
+                    .map(c => (
+                      <option key={c.id} value={c.id}>
+                        ⚡ {c.name} ({c.database || 'default'}) - {c.host}:{c.port}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-text-muted font-bold mb-1">Source Raw Table</label>
@@ -1959,7 +2018,7 @@ export const ApiSchedulerView: React.FC = () => {
                     type="text"
                     value={autoMvForm.sourceTable}
                     onChange={(e) => setAutoMvForm({ ...autoMvForm, sourceTable: e.target.value })}
-                    placeholder="api_test"
+                    placeholder="e.g. api_test"
                     className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -1971,12 +2030,12 @@ export const ApiSchedulerView: React.FC = () => {
                       type="text"
                       value={autoMvForm.kodeData}
                       onChange={(e) => setAutoMvForm({ ...autoMvForm, kodeData: e.target.value })}
-                      placeholder="API_KODE_V1"
+                      placeholder="e.g. API_KODE_V1"
                       className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
                     />
                     <button
                       type="button"
-                      onClick={() => handleInspectSchema(autoMvForm.sourceTable, autoMvForm.kodeData)}
+                      onClick={() => handleInspectSchema(autoMvForm.sourceTable, autoMvForm.kodeData, autoMvForm.connectionId)}
                       disabled={inspectingSchema}
                       className="px-3 py-2 rounded-xl bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white font-bold shrink-0 transition-colors border border-amber-500/20"
                       title="Inspect JSON Schema"

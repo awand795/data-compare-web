@@ -713,7 +713,15 @@ public class ApiSchedulerService {
     // AUTOMATED MATERIALIZED VIEW (AUTO-MV) EXTRACTOR PIPELINES
     // =========================================================================
 
-    public Connection getClickHouseConnection() throws Exception {
+    public Connection getClickHouseConnection(String connectionId) throws Exception {
+        if (connectionId != null && !connectionId.trim().isEmpty()) {
+            Optional<ConnectionDetails> targetOpt = connectionRepository.findById(connectionId);
+            if (targetOpt.isPresent()) {
+                DataSource ds = connectionManagerService.getDataSource(targetOpt.get());
+                return ds.getConnection();
+            }
+        }
+
         ConnectionDetails clickhouseConn = connectionRepository.findAll().stream()
                 .filter(c -> "clickhouse".equalsIgnoreCase(c.getType()))
                 .findFirst()
@@ -736,7 +744,15 @@ public class ApiSchedulerService {
         return ds.getConnection();
     }
 
+    public Connection getClickHouseConnection() throws Exception {
+        return getClickHouseConnection(null);
+    }
+
     public Map<String, Object> inspectJsonSchema(String sourceTable, String kodeData) throws Exception {
+        return inspectJsonSchema(sourceTable, kodeData, null);
+    }
+
+    public Map<String, Object> inspectJsonSchema(String sourceTable, String kodeData, String connectionId) throws Exception {
         String cleanSource = (sourceTable != null && !sourceTable.trim().isEmpty()) 
                 ? sourceTable.trim().replaceAll("[^a-zA-Z0-9_]", "_") 
                 : "api_test";
@@ -744,7 +760,7 @@ public class ApiSchedulerService {
         List<Map<String, String>> detectedFields = new ArrayList<>();
         List<String> existingTables = new ArrayList<>();
 
-        try (Connection conn = getClickHouseConnection();
+        try (Connection conn = getClickHouseConnection(connectionId);
              Statement stmt = conn.createStatement()) {
 
             // Get existing tables
@@ -843,6 +859,8 @@ public class ApiSchedulerService {
         List<String> orderBy = (List<String>) req.getOrDefault("orderBy", List.of("kode_data"));
         List<Map<String, String>> fields = (List<Map<String, String>>) req.get("fields");
 
+        String connectionId = (String) req.get("connectionId");
+
         if (kodeData == null || kodeData.trim().isEmpty()) {
             throw new IllegalArgumentException("kodeData is required");
         }
@@ -857,7 +875,7 @@ public class ApiSchedulerService {
         String cleanSource = sourceTable.trim().replaceAll("[^a-zA-Z0-9_]", "_");
         String mvName = cleanTarget.startsWith("mv_extractor_") ? cleanTarget : "mv_extractor_" + cleanTarget;
 
-        try (Connection conn = getClickHouseConnection();
+        try (Connection conn = getClickHouseConnection(connectionId);
              Statement stmt = conn.createStatement()) {
 
             stmt.execute("SET allow_simdjson = 0");
@@ -964,8 +982,12 @@ public class ApiSchedulerService {
     }
 
     public List<Map<String, Object>> getAllAutoMvPipelines() throws Exception {
+        return getAllAutoMvPipelines(null);
+    }
+
+    public List<Map<String, Object>> getAllAutoMvPipelines(String connectionId) throws Exception {
         List<Map<String, Object>> list = new ArrayList<>();
-        try (Connection conn = getClickHouseConnection();
+        try (Connection conn = getClickHouseConnection(connectionId);
              Statement stmt = conn.createStatement()) {
 
             String query = "SELECT name, create_table_query FROM system.tables WHERE database = 'default' AND engine = 'MaterializedView' AND (name LIKE 'mv_extractor_%' OR name LIKE 'mv_%') ORDER BY name";
@@ -1018,8 +1040,12 @@ public class ApiSchedulerService {
     }
 
     public Map<String, Object> deleteAutoMvPipeline(String mvName) throws Exception {
+        return deleteAutoMvPipeline(mvName, null);
+    }
+
+    public Map<String, Object> deleteAutoMvPipeline(String mvName, String connectionId) throws Exception {
         String cleanMv = mvName.trim().replaceAll("[^a-zA-Z0-9_]", "_");
-        try (Connection conn = getClickHouseConnection();
+        try (Connection conn = getClickHouseConnection(connectionId);
              Statement stmt = conn.createStatement()) {
             stmt.execute("DROP VIEW IF EXISTS default." + cleanMv);
             return Map.of("success", true, "message", "Materialized View [" + cleanMv + "] deleted successfully");
