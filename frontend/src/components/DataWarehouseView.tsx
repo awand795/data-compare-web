@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Database, Play, Loader2, Table as TableIcon, Server, Cpu, Sparkles, Activity, Key } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
@@ -16,12 +16,28 @@ export const DataWarehouseView: React.FC = () => {
   const [sourceConnId, setSourceConnId] = useState('');
   const [sourceConnIds, setSourceConnIds] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [targetConnId, setTargetConnId] = useState('');
   const [query, setQuery] = useState('-- Define the data to sync via Debezium\nSELECT * FROM source_schema.source_table');
   const [targetTable, setTargetTable] = useState('');
   const [targetDatabase, setTargetDatabase] = useState('');
   const [primaryKeys, setPrimaryKeys] = useState('');
   const [activeTab, setActiveTab] = useState<'console' | 'monitor'>('monitor');
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
 
   const toggleSourceConn = (id: string) => {
     setSourceConnIds(prev => {
@@ -136,7 +152,7 @@ export const DataWarehouseView: React.FC = () => {
                       </span>
                     )}
                   </label>
-                  <div className="relative">
+                  <div className="relative" ref={dropdownRef}>
                     <button
                       type="button"
                       onClick={() => setIsDropdownOpen(!isDropdownOpen)}
