@@ -423,7 +423,7 @@ export const ApiSchedulerView: React.FC = () => {
                 <span>{currentConfig.id ? `Edit Schedule: ${currentConfig.name || 'API Endpoint'}` : 'New API Ingestion Schedule'}</span>
               </h2>
               <p className="text-[11px] text-text-muted hidden md:block">
-                Configure Insomnia HTTP client, target database schema, Spring Cron, and failure alerts
+                Configure HTTP client, target database schema, Spring Cron, and failure alerts
               </p>
             </div>
           </div>
@@ -434,7 +434,7 @@ export const ApiSchedulerView: React.FC = () => {
               onClick={handleTestEndpoint}
               disabled={isTesting}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all disabled:opacity-50"
-              title="Send HTTP Request & View Live Response (Insomnia Console)"
+              title="Send HTTP Request & View Live Response"
             >
               {isTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-slate-950" />}
               <span>Test Endpoint</span>
@@ -1211,7 +1211,7 @@ export const ApiSchedulerView: React.FC = () => {
                     <div className="w-12 h-12 rounded-2xl bg-bg-panel border border-border-main flex items-center justify-center mb-3">
                       <Zap className="w-6 h-6 text-amber-500/60" />
                     </div>
-                    <p className="text-xs font-bold text-text-main mb-1">Insomnia Console Ready</p>
+                    <p className="text-xs font-bold text-text-main mb-1">Live Console Ready</p>
                     <p className="text-[11px] text-text-muted max-w-xs">
                       Click <span className="text-amber-600 dark:text-amber-400 font-bold">"Test Endpoint"</span> above to execute a live request and view response JSON & headers.
                     </p>
@@ -1267,7 +1267,7 @@ export const ApiSchedulerView: React.FC = () => {
                 API Ingestion & Scheduler
               </h1>
               <p className="text-xs md:text-sm text-text-muted">
-                Insomnia-style HTTP Client with automated periodic ingestion into ClickHouse & PostgreSQL
+                Advanced HTTP Client with automated periodic ingestion into ClickHouse & PostgreSQL
               </p>
             </div>
           </div>
@@ -1515,7 +1515,7 @@ export const ApiSchedulerView: React.FC = () => {
                           <button
                             onClick={() => openEditEditor(cfg)}
                             className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 transition-all"
-                            title="Edit Insomnia HTTP Client & Schedule"
+                            title="Edit HTTP Client & Schedule"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
