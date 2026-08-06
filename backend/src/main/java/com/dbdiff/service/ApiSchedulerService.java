@@ -343,26 +343,7 @@ public class ApiSchedulerService {
                 String chUser = (chCd != null && chCd.getUsername() != null) ? chCd.getUsername() : "default";
                 String chPass = (chCd != null && chCd.getPassword() != null) ? chCd.getPassword() : "";
 
-                // 3. TRUNCATE target table before insert so switching tables gives a fresh start.
-                String truncateQuery = "TRUNCATE TABLE " + cleanTargetTable;
-                String truncateUrl = "http://" + chHost + ":" + chPort
-                        + "/?database=" + URLEncoder.encode(chDatabase, StandardCharsets.UTF_8)
-                        + "&query=" + URLEncoder.encode(truncateQuery, StandardCharsets.UTF_8);
-                HttpRequest.Builder truncateReqBuilder = HttpRequest.newBuilder()
-                        .uri(URI.create(truncateUrl))
-                        .timeout(Duration.ofSeconds(30))
-                        .POST(HttpRequest.BodyPublishers.noBody());
-                if (!chUser.isEmpty()) {
-                    String authStr = chUser + ":" + chPass;
-                    truncateReqBuilder.header("Authorization", "Basic " + Base64.getEncoder().encodeToString(authStr.getBytes(StandardCharsets.UTF_8)));
-                }
-                HttpResponse<String> truncateResp = httpClient.send(truncateReqBuilder.build(), HttpResponse.BodyHandlers.ofString());
-                if (truncateResp.statusCode() >= 400) {
-                    logger.warn("TRUNCATE TABLE {} failed (HTTP {}): {} — proceeding with insert anyway",
-                            cleanTargetTable, truncateResp.statusCode(), truncateResp.body());
-                } else {
-                    logger.info("TRUNCATE TABLE {} OK before insert", cleanTargetTable);
-                }
+                // 3. Note: TRUNCATE TABLE is removed to allow accumulating data from multiple runs.
 
                 // detail_data formatting depends on the ClickHouse column type:
                 //   - JSON / Object('json') column: FORMAT JSONEachRow REQUIRES the raw JSON object
