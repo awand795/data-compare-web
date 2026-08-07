@@ -1306,7 +1306,8 @@ public class DataWarehouseService {
                     String rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
 
                     
-                    String insertSql = "INSERT INTO `" + chDb + "`.`" + request.getTargetTable() + "` " + rewrittenSql;
+                    String settingsClause = " SETTINGS max_threads = 2, max_memory_usage = 0, join_algorithm = 'grace_hash,hash'";
+                    String insertSql = "INSERT INTO `" + chDb + "`.`" + request.getTargetTable() + "` " + rewrittenSql + settingsClause;
                     logger.info("Executing initial snapshot populate SQL:\n{}", insertSql);
                     stmt.execute(insertSql);
                     sendLog(emitter, "Initial snapshot data populated into `" + request.getTargetTable() + "`.");
