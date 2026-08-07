@@ -2081,6 +2081,8 @@ public class DataWarehouseService {
                     try (ResultSet rs = srcPs.executeQuery();
                          Connection targetConn = targetDs.getConnection();
                          Statement targetStmt = targetConn.createStatement()) {
+                        try { targetStmt.execute("SET max_memory_usage = 500000000"); } catch (Exception ignored) {}
+                        try { targetStmt.execute("SET max_threads = 1"); } catch (Exception ignored) {}
                         
                         StringBuilder valuesBuilder = new StringBuilder();
                         String insertHeader = "INSERT INTO `" + chDb + "`.`" + landingTable + "` (`" + 
@@ -2115,7 +2117,7 @@ public class DataWarehouseService {
                                 sendLog(emitter, "Backfilled " + rowCount + " rows into landing table `" + landingTable + "`...");
                             }
                             
-                            if (batchRows >= 5000) {
+                            if (batchRows >= 2000) {
                                 targetStmt.execute(valuesBuilder.toString());
                                 valuesBuilder = new StringBuilder();
                                 valuesBuilder.append(insertHeader);
