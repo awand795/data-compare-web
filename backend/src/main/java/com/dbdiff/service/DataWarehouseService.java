@@ -47,7 +47,7 @@ public class DataWarehouseService {
     private static final String DEBEZIUM_URL = DEBEZIUM_BASE_URL + "/connectors";
     private static final String KAFKA_BOOTSTRAP_SERVERS = System.getenv()
             .getOrDefault("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092");
-    private static final String KAFKA_CONNECT_OFFSET_TOPIC = "my_connect_offsets";
+    private static final String KAFKA_CONNECT_OFFSET_TOPIC = "connect-offsets";
 
     public DataWarehouseService() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -130,24 +130,32 @@ public class DataWarehouseService {
 
         try (AdminClient admin = AdminClient.create(properties)) {
             Set<String> topics = admin.listTopics().names().get(10, TimeUnit.SECONDS);
-            if (!topics.contains(KAFKA_CONNECT_OFFSET_TOPIC)) {
-                throw new IllegalStateException("Kafka Connect offset topic '"
-                        + KAFKA_CONNECT_OFFSET_TOPIC + "' is not ready");
+            String foundTopic = null;
+            for (String t : new String[]{"connect-offsets", "my_connect_offsets", "connect_offsets"}) {
+                if (topics.contains(t)) {
+                    foundTopic = t;
+                    break;
+                }
+            }
+            if (foundTopic == null) {
+                foundTopic = topics.stream()
+                        .filter(t -> t.contains("connect") && t.contains("offset"))
+                        .findFirst().orElse(null);
             }
 
-            // Check offset topic exists by describing it (more lightweight than listOffsets)
-            // listOffsets with OffsetSpec.latest() on an empty topic can cause
-            // TimeoutException on freshly created topics with no data yet.
+            if (foundTopic == null && !topics.contains("connect-configs")) {
+                throw new IllegalStateException("Kafka Connect offset topic is not ready");
+            }
+
+            String targetTopic = foundTopic != null ? foundTopic : KAFKA_CONNECT_OFFSET_TOPIC;
             try {
-                TopicPartition offsetPartition = new TopicPartition(KAFKA_CONNECT_OFFSET_TOPIC, 0);
+                TopicPartition offsetPartition = new TopicPartition(targetTopic, 0);
                 admin.listOffsets(Map.of(offsetPartition, OffsetSpec.latest()))
                         .all()
                         .get(10, TimeUnit.SECONDS);
             } catch (Exception offsetEx) {
-                // If the topic exists but listOffsets fails (e.g. empty topic),
-                // we still consider storage as ready. The topic existence was already verified.
                 logger.warn("Offset topic '{}' exists but listOffsets failed (likely empty topic): {}",
-                        KAFKA_CONNECT_OFFSET_TOPIC, offsetEx.getMessage());
+                        targetTopic, offsetEx.getMessage());
             }
         }
     }
