@@ -116,37 +116,44 @@ public class DynamicApiController {
             String sql = endpoint.getSqlQuery();
 
             // ── Raw SQL Condition Support (Opsi 1) ──────────────────────────────────
-            if (endpoint.isAllowRawSql()) {
-                String rawCondition = null;
-                for (String key : new String[]{"where_condition", "raw_sql", "condition", "whereCondition"}) {
-                    if (allParams.containsKey(key) && allParams.get(key) != null) {
-                        rawCondition = allParams.remove(key).toString().trim();
-                        break;
+            String rawCondition = null;
+            for (String key : new String[]{"where_condition", "raw_sql", "condition", "whereCondition"}) {
+                if (allParams.containsKey(key) && allParams.get(key) != null) {
+                    rawCondition = allParams.get(key).toString().trim();
+                    break;
+                }
+            }
+            
+            // Remove raw condition keys from params so NamedParameterJdbcTemplate never expects them
+            allParams.remove("where_condition");
+            allParams.remove("raw_sql");
+            allParams.remove("condition");
+            allParams.remove("whereCondition");
+
+            boolean hasRawPlaceholder = sql.contains(":where_condition") || sql.contains("{{where_condition}}")
+                                     || sql.contains(":raw_sql") || sql.contains("{{raw_sql}}");
+
+            if (rawCondition != null && !rawCondition.isEmpty()) {
+                if (hasRawPlaceholder) {
+                    sql = sql.replace(":where_condition", rawCondition)
+                             .replace("{{where_condition}}", rawCondition)
+                             .replace(":raw_sql", rawCondition)
+                             .replace("{{raw_sql}}", rawCondition);
+                } else if (endpoint.isAllowRawSql()) {
+                    String trimmed = sql.trim();
+                    if (trimmed.endsWith(";")) trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
+                    if (trimmed.toUpperCase().contains(" WHERE ")) {
+                        sql = trimmed + " AND (" + rawCondition + ")";
+                    } else {
+                        sql = trimmed + " WHERE " + rawCondition;
                     }
                 }
-                
-                if (rawCondition != null && !rawCondition.isEmpty()) {
-                    if (sql.contains(":where_condition")) sql = sql.replace(":where_condition", rawCondition);
-                    else if (sql.contains("{{where_condition}}")) sql = sql.replace("{{where_condition}}", rawCondition);
-                    else if (sql.contains(":raw_sql")) sql = sql.replace(":raw_sql", rawCondition);
-                    else if (sql.contains("{{raw_sql}}")) sql = sql.replace("{{raw_sql}}", rawCondition);
-                    else {
-                        // Clean trailing semicolon before appending condition
-                        String trimmed = sql.trim();
-                        if (trimmed.endsWith(";")) trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
-                        if (trimmed.toUpperCase().contains(" WHERE ")) {
-                            sql = trimmed + " AND (" + rawCondition + ")";
-                        } else {
-                            sql = trimmed + " WHERE " + rawCondition;
-                        }
-                    }
-                } else {
-                    // Replace placeholders with 1=1 if no condition supplied
-                    sql = sql.replace(":where_condition", "1=1")
-                             .replace("{{where_condition}}", "1=1")
-                             .replace(":raw_sql", "1=1")
-                             .replace("{{raw_sql}}", "1=1");
-                }
+            } else {
+                // Replace any placeholders with 1=1 if no condition supplied
+                sql = sql.replace(":where_condition", "1=1")
+                         .replace("{{where_condition}}", "1=1")
+                         .replace(":raw_sql", "1=1")
+                         .replace("{{raw_sql}}", "1=1");
             }
             // ───────────────────────────────────────────────────────────────────────
 

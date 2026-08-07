@@ -60,6 +60,8 @@ public class ApiParameterValidator {
                         errors.add("Missing required parameter: " + name);
                     } else if (def.defaultValue != null && !def.defaultValue.trim().isEmpty()) {
                         resultParams.put(name, def.defaultValue);
+                    } else {
+                        resultParams.put(name, null);
                     }
                 } else {
                     try {
