@@ -209,6 +209,15 @@ public class DataWarehouseService {
         throw lastError;
     }
 
+    private String resolveTunnelHost() {
+        try {
+            java.net.InetAddress.getByName("tasks.backend");
+            return "tasks.backend";
+        } catch (Exception ignored) {
+            return "127.0.0.1";
+        }
+    }
+
     private void deleteConnectorWithWait(String connectorName) {
         try {
             restTemplate.delete(DEBEZIUM_URL + "/" + connectorName);
@@ -896,9 +905,9 @@ public class DataWarehouseService {
                 try {
                     int tunnelPort = sshTunnelService.getOrOpenTunnel(request.getSourceConnection(), String.valueOf(request.getSourceConnection().getId()));
                     sshTunnelService.markTunnelAsPermanent(String.valueOf(request.getSourceConnection().getId()));
-                    dbHost = "tasks.backend";
+                    dbHost = resolveTunnelHost();
                     dbPort = String.valueOf(tunnelPort);
-                    sendLog(emitter, "Source connection uses SSH tunnel. Routing Debezium through tasks.backend:" + tunnelPort);
+                    sendLog(emitter, "Source connection uses SSH tunnel. Routing Debezium through " + dbHost + ":" + tunnelPort);
                 } catch (Exception ex) {
                     logger.error("Failed to establish SSH tunnel for Debezium source connector", ex);
                     sendLog(emitter, "WARNING: Failed to open SSH tunnel for Debezium: " + ex.getMessage());
@@ -3680,7 +3689,7 @@ public class DataWarehouseService {
                     
                     String dbHostname = (String) cfg.get("database.hostname");
                     String dbPortStr = (String) cfg.get("database.port");
-                    if (("backend".equals(dbHostname) || "tasks.backend".equals(dbHostname) || "172.21.0.1".equals(dbHostname)) && dbPortStr != null) {
+                    if (("backend".equals(dbHostname) || "tasks.backend".equals(dbHostname) || "127.0.0.1".equals(dbHostname) || "localhost".equals(dbHostname) || "172.21.0.1".equals(dbHostname)) && dbPortStr != null) {
                         int assignedPort = Integer.parseInt(dbPortStr);
                         String baseName = connName.substring(7, connName.length() - 7);
                         for (ConnectionDetails details : connectionRepository.findAll()) {
