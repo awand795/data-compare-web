@@ -1168,8 +1168,23 @@ public class DataWarehouseService {
             }
             sinkConfig.put("topics", String.join(",", expectedTopics));
             // sinkConfig.put("topics.regex", topicPrefix + ".*");
-            sinkConfig.put("hostname", request.getTargetConnection().getHost() != null && !request.getTargetConnection().getHost().trim().isEmpty() ? request.getTargetConnection().getHost().trim() : "war.darkosuite.com");
-            sinkConfig.put("port", String.valueOf(request.getTargetConnection().getPort()));
+            String sinkHost = request.getTargetConnection().getHost() != null && !request.getTargetConnection().getHost().trim().isEmpty() ? request.getTargetConnection().getHost().trim() : "127.0.0.1";
+            String sinkPort = String.valueOf(request.getTargetConnection().getPort());
+            if (request.getTargetConnection().isUseSsh()) {
+                try {
+                    int tunnelPort = sshTunnelService.getOrOpenTunnel(request.getTargetConnection(), String.valueOf(request.getTargetConnection().getId()));
+                    sshTunnelService.markTunnelAsPermanent(String.valueOf(request.getTargetConnection().getId()));
+                    sinkHost = resolveTunnelHost();
+                    sinkPort = String.valueOf(tunnelPort);
+                    sendLog(emitter, "Target ClickHouse connection uses SSH tunnel. Routing ClickHouse Sink through " + sinkHost + ":" + tunnelPort);
+                } catch (Exception ex) {
+                    logger.error("Failed to establish SSH tunnel for ClickHouse sink connector", ex);
+                    sendLog(emitter, "WARNING: Failed to open SSH tunnel for ClickHouse: " + ex.getMessage());
+                }
+            }
+
+            sinkConfig.put("hostname", sinkHost);
+            sinkConfig.put("port", sinkPort);
             sinkConfig.put("username", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
             sinkConfig.put("password", request.getTargetConnection().getPassword());
             sinkConfig.put("database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
