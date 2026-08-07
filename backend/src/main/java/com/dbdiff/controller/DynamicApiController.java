@@ -15,10 +15,14 @@ import org.springframework.web.servlet.HandlerMapping;
 
 import jakarta.servlet.http.HttpServletRequest;
 import javax.sql.DataSource;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/data")
@@ -111,6 +115,19 @@ public class DynamicApiController {
 
             String sql = endpoint.getSqlQuery();
 
+            // ── Structured JSON Filter Support ──────────────────────────────────────
+            // If the SQL contains {{filters}} placeholder and the request body has a
+            // 'filters' array, build a safe parameterized WHERE clause from it.
+            // Supported operators: =, !=, <>, <, >, <=, >=, LIKE, NOT LIKE, IN, NOT IN, IS NULL, IS NOT NULL
+            // Example POST body:
+            // { "filters": [ {"field":"kode_barang","op":"=","value":"c001"}, ... ] }
+            if (sql.contains("{{filters}}")) {
+                Object filtersObj = allParams.remove("filters");
+                String builtClause = buildFilterClause(filtersObj, allParams);
+                sql = sql.replace("{{filters}}", builtClause);
+            }
+            // ───────────────────────────────────────────────────────────────────────
+
             // Pagination support
             if (endpoint.isEnablePagination()) {
                 int limit = 10;
@@ -182,5 +199,84 @@ public class DynamicApiController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Database execution error: " + e.getMessage()));
         }
+    }
+
+    // ── Allowed SQL operators whitelist (prevents injection via operator field) ──
+    private static final Set<String> ALLOWED_OPS = new HashSet<>(Arrays.asList(
+        "=", "!=", "<>", "<", ">", "<=", ">=",
+        "LIKE", "NOT LIKE", "ILIKE", "NOT ILIKE",
+        "IN", "NOT IN",
+        "IS NULL", "IS NOT NULL"
+    ));
+
+    /**
+     * Safely builds a SQL WHERE clause fragment from a structured filters list.
+     * Each filter item is a Map with keys: field, op, value (value omitted for IS NULL / IS NOT NULL).
+     * Named parameters are injected into sqlParams for safe Prepared Statement binding.
+     *
+     * @param filtersObj  raw value of the 'filters' key from the request body
+     * @param sqlParams   mutable parameter map that will be passed to NamedParameterJdbcTemplate
+     * @return SQL fragment to replace {{filters}}, e.g. "kode_barang = :f_kode_barang_0 AND ..."
+     */
+    @SuppressWarnings("unchecked")
+    private String buildFilterClause(Object filtersObj, Map<String, Object> sqlParams) {
+        if (filtersObj == null) return "1=1";
+        if (!(filtersObj instanceof List)) return "1=1";
+
+        List<?> filters = (List<?>) filtersObj;
+        if (filters.isEmpty()) return "1=1";
+
+        List<String> clauses = new ArrayList<>();
+        int idx = 0;
+
+        for (Object filterObj : filters) {
+            if (!(filterObj instanceof Map)) continue;
+            Map<String, Object> filter = (Map<String, Object>) filterObj;
+
+            String field = filter.get("field") != null ? filter.get("field").toString().trim() : null;
+            String op    = filter.get("op")    != null ? filter.get("op").toString().trim().toUpperCase() : null;
+            Object value = filter.get("value");
+
+            if (field == null || op == null) continue;
+
+            // Whitelist check: field name must be alphanumeric + underscore + optional dot (schema.table)
+            if (!field.matches("[a-zA-Z_][a-zA-Z0-9_.]*")) {
+                throw new IllegalArgumentException("Invalid field name in filters: '" + field + "'");
+            }
+
+            // Whitelist check: operator must be one of the allowed set
+            if (!ALLOWED_OPS.contains(op)) {
+                throw new IllegalArgumentException("Invalid operator in filters: '" + op + "'");
+            }
+
+            if (op.equals("IS NULL") || op.equals("IS NOT NULL")) {
+                clauses.add(field + " " + op);
+            } else if (op.equals("IN") || op.equals("NOT IN")) {
+                // value should be a List or comma-separated string
+                List<Object> inValues = new ArrayList<>();
+                if (value instanceof List) {
+                    inValues.addAll((List<Object>) value);
+                } else if (value != null) {
+                    for (String v : value.toString().split(",")) {
+                        inValues.add(v.trim());
+                    }
+                }
+                if (inValues.isEmpty()) {
+                    // IN () is invalid SQL — use always-false / always-true condition
+                    clauses.add(op.equals("IN") ? "1=0" : "1=1");
+                } else {
+                    String paramName = "f_" + field.replace(".", "_") + "_" + idx;
+                    sqlParams.put(paramName, inValues);
+                    clauses.add(field + " " + op + " (:" + paramName + ")");
+                }
+            } else {
+                String paramName = "f_" + field.replace(".", "_") + "_" + idx;
+                sqlParams.put(paramName, value != null ? value.toString() : null);
+                clauses.add(field + " " + op + " :" + paramName);
+            }
+            idx++;
+        }
+
+        return clauses.isEmpty() ? "1=1" : String.join(" AND ", clauses);
     }
 }
