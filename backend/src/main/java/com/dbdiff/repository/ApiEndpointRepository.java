@@ -30,6 +30,9 @@ public class ApiEndpointRepository {
             api.setParameters(rs.getString("parameters"));
             api.setEnablePagination(rs.getBoolean("enable_pagination"));
             api.setPublic(rs.getBoolean("is_public"));
+            try {
+                api.setAllowRawSql(rs.getBoolean("allow_raw_sql"));
+            } catch (SQLException ignored) {}
             api.setAuthToken(rs.getString("auth_token"));
             
             if (rs.getTimestamp("created_at") != null) {
@@ -60,20 +63,20 @@ public class ApiEndpointRepository {
 
     public int insert(ApiEndpoint api) {
         return jdbcTemplate.update(
-            "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, auth_token, created_at, updated_at) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, auth_token, created_at, updated_at) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
             api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
-            api.isEnablePagination(), api.isPublic(), api.getAuthToken()
+            api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getAuthToken()
         );
     }
 
     public int update(ApiEndpoint api) {
         return jdbcTemplate.update(
-            "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, auth_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, auth_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             api.getName(), api.getMethod(), api.getEndpointPath(),
             api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
-            api.isEnablePagination(), api.isPublic(), api.getAuthToken(), api.getId()
+            api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getAuthToken(), api.getId()
         );
     }
 

@@ -30,6 +30,7 @@ interface ApiEndpoint {
   parameters: string;
   enablePagination: boolean;
   isPublic: boolean;
+  allowRawSql?: boolean;
   authToken: string;
 }
 
@@ -224,6 +225,7 @@ export const ApiBuilderView: React.FC = () => {
       parameters: '[]',
       enablePagination: false,
       isPublic: false,
+      allowRawSql: false,
       authToken: generateToken()
     };
     setCurrentApi(newApi);
@@ -1689,6 +1691,26 @@ export const ApiBuilderView: React.FC = () => {
                       />
                     </div>
                   )}
+
+                  {/* Allow Raw SQL Condition Card */}
+                  <div className={clsx("border rounded-xl p-4 transition-all shadow-sm", currentApi.allowRawSql ? "bg-purple-500/10 border-purple-500/30" : "bg-bg-editor/80 border-border-main")}>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="mt-1 w-4 h-4 rounded border-border-main text-purple-500 focus:ring-purple-500 cursor-pointer"
+                        checked={Boolean(currentApi.allowRawSql)} 
+                        onChange={e => setCurrentApi({...currentApi, allowRawSql: e.target.checked})} 
+                      />
+                      <div>
+                        <span className={clsx("text-xs font-bold block", currentApi.allowRawSql ? "text-purple-400" : "text-text-main")}>
+                          Allow Raw SQL Condition (<code className="font-mono text-purple-300">:where_condition</code>)
+                        </span>
+                        <span className="text-[11px] text-text-muted block mt-0.5 leading-relaxed">
+                          Enable raw SQL string replacement via <code className="font-mono text-purple-400 font-bold">where_condition</code> / <code className="font-mono text-purple-400 font-bold">raw_sql</code> parameter.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
 
                   {/* SQL Pagination Card */}
                   <div className={clsx("border rounded-xl p-4 transition-all shadow-sm", currentApi.enablePagination ? "bg-blue-500/10 border-blue-500/30" : "bg-bg-editor/80 border-border-main")}>

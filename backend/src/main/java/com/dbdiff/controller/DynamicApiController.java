@@ -115,12 +115,42 @@ public class DynamicApiController {
 
             String sql = endpoint.getSqlQuery();
 
-            // ── Structured JSON Filter Support ──────────────────────────────────────
-            // If the SQL contains {{filters}} placeholder and the request body has a
-            // 'filters' array, build a safe parameterized WHERE clause from it.
-            // Supported operators: =, !=, <>, <, >, <=, >=, LIKE, NOT LIKE, IN, NOT IN, IS NULL, IS NOT NULL
-            // Example POST body:
-            // { "filters": [ {"field":"kode_barang","op":"=","value":"c001"}, ... ] }
+            // ── Raw SQL Condition Support (Opsi 1) ──────────────────────────────────
+            if (endpoint.isAllowRawSql()) {
+                String rawCondition = null;
+                for (String key : new String[]{"where_condition", "raw_sql", "condition", "whereCondition"}) {
+                    if (allParams.containsKey(key) && allParams.get(key) != null) {
+                        rawCondition = allParams.remove(key).toString().trim();
+                        break;
+                    }
+                }
+                
+                if (rawCondition != null && !rawCondition.isEmpty()) {
+                    if (sql.contains(":where_condition")) sql = sql.replace(":where_condition", rawCondition);
+                    else if (sql.contains("{{where_condition}}")) sql = sql.replace("{{where_condition}}", rawCondition);
+                    else if (sql.contains(":raw_sql")) sql = sql.replace(":raw_sql", rawCondition);
+                    else if (sql.contains("{{raw_sql}}")) sql = sql.replace("{{raw_sql}}", rawCondition);
+                    else {
+                        // Clean trailing semicolon before appending condition
+                        String trimmed = sql.trim();
+                        if (trimmed.endsWith(";")) trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
+                        if (trimmed.toUpperCase().contains(" WHERE ")) {
+                            sql = trimmed + " AND (" + rawCondition + ")";
+                        } else {
+                            sql = trimmed + " WHERE " + rawCondition;
+                        }
+                    }
+                } else {
+                    // Replace placeholders with 1=1 if no condition supplied
+                    sql = sql.replace(":where_condition", "1=1")
+                             .replace("{{where_condition}}", "1=1")
+                             .replace(":raw_sql", "1=1")
+                             .replace("{{raw_sql}}", "1=1");
+                }
+            }
+            // ───────────────────────────────────────────────────────────────────────
+
+            // ── Structured JSON Filter Support (Opsi 2) ─────────────────────────────
             if (sql.contains("{{filters}}")) {
                 Object filtersObj = allParams.remove("filters");
                 String builtClause = buildFilterClause(filtersObj, allParams);

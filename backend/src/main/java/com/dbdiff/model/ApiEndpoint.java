@@ -18,6 +18,10 @@ public class ApiEndpoint {
     @JsonAlias({"public", "isPublic"})
     private boolean isPublic;
 
+    @JsonProperty("allowRawSql")
+    @JsonAlias({"allowRawSql"})
+    private boolean allowRawSql;
+
     private String authToken;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -51,6 +55,12 @@ public class ApiEndpoint {
 
     @JsonProperty("isPublic")
     public void setPublic(boolean aPublic) { isPublic = aPublic; }
+
+    @JsonProperty("allowRawSql")
+    public boolean isAllowRawSql() { return allowRawSql; }
+
+    @JsonProperty("allowRawSql")
+    public void setAllowRawSql(boolean allowRawSql) { this.allowRawSql = allowRawSql; }
 
     public String getAuthToken() { return authToken; }
     public void setAuthToken(String authToken) { this.authToken = authToken; }
