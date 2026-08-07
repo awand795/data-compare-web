@@ -651,6 +651,24 @@ public class DataWarehouseService {
                 sendLog(emitter, "WARNING: Could not execute CREATE DATABASE IF NOT EXISTS: " + e.getMessage());
             }
             
+            // Drop any existing MVs for this target table to prevent trigger execution during landing table backfills
+            try (Connection conn = targetDs.getConnection();
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT name FROM system.tables WHERE database = '" + chDb + "' AND name LIKE 'mv_" + request.getTargetTable() + "_%'")) {
+                java.util.List<String> mvsToDrop = new java.util.ArrayList<>();
+                while (rs.next()) {
+                    mvsToDrop.add(rs.getString(1));
+                }
+                for (String mv : mvsToDrop) {
+                    try (Statement dropStmt = conn.createStatement()) {
+                        dropStmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mv + "`");
+                        dropStmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + mv + "`");
+                    } catch (Exception ignored) {}
+                }
+            } catch (Exception e) {
+                logger.warn("Could not pre-drop MVs for target table {}: {}", request.getTargetTable(), e.getMessage());
+            }
+            
             // 2a. Pre-create ClickHouse landing tables to avoid MV compilation errors
             sendLog(emitter, "Pre-creating ClickHouse landing tables for CDC...");
             java.util.Map<String, java.util.Set<String>> tableToPKs = new java.util.HashMap<>();
