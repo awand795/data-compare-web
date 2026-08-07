@@ -373,15 +373,22 @@ export const ApiBuilderView: React.FC = () => {
     }
   };
 
-  const detectParams = (sql: string): string[] => {
+  const RAW_SQL_PARAM_KEYS = ['where_condition', 'raw_sql', 'condition', 'whereCondition'];
+
+  const detectParams = (sql: string, excludeRawKeys = false): string[] => {
     const matches = sql.match(/(?<!:):(\w+)/g);
     if (!matches) return [];
-    return Array.from(new Set(matches.map(m => m.substring(1))));
+    let params = Array.from(new Set(matches.map(m => m.substring(1))));
+    if (excludeRawKeys) {
+      params = params.filter(p => !RAW_SQL_PARAM_KEYS.includes(p));
+    }
+    return params;
   };
 
   useEffect(() => {
     if (viewMode === 'edit' && currentApi) {
-      const detected = detectParams(currentApi.sqlQuery);
+      // Exclude raw SQL placeholders from parameter list when allowRawSql is enabled
+      const detected = detectParams(currentApi.sqlQuery, Boolean(currentApi.allowRawSql));
       setParamCount(detected.length);
       setParameterMeta(prev => {
         const next = detected.map(name => {
@@ -399,7 +406,7 @@ export const ApiBuilderView: React.FC = () => {
         return isSame ? prev : next;
       });
     }
-  }, [currentApi?.sqlQuery, viewMode]);
+  }, [currentApi?.sqlQuery, currentApi?.allowRawSql, viewMode]);
 
   const handleTest = useCallback(async () => {
     if (!currentApi) return;
