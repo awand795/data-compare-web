@@ -62,22 +62,41 @@ public class ApiEndpointRepository {
     }
 
     public int insert(ApiEndpoint api) {
-        return jdbcTemplate.update(
-            "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, auth_token, created_at, updated_at) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-            api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
-            api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
-            api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getAuthToken()
-        );
+        try {
+            return jdbcTemplate.update(
+                "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, auth_token, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
+                api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
+                api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getAuthToken()
+            );
+        } catch (Exception e) {
+            return jdbcTemplate.update(
+                "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, auth_token, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
+                api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
+                api.isEnablePagination(), api.isPublic(), api.getAuthToken()
+            );
+        }
     }
 
     public int update(ApiEndpoint api) {
-        return jdbcTemplate.update(
-            "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, auth_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            api.getName(), api.getMethod(), api.getEndpointPath(),
-            api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
-            api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getAuthToken(), api.getId()
-        );
+        try {
+            return jdbcTemplate.update(
+                "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, auth_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                api.getName(), api.getMethod(), api.getEndpointPath(),
+                api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
+                api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getAuthToken(), api.getId()
+            );
+        } catch (Exception e) {
+            return jdbcTemplate.update(
+                "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, auth_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                api.getName(), api.getMethod(), api.getEndpointPath(),
+                api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
+                api.isEnablePagination(), api.isPublic(), api.getAuthToken(), api.getId()
+            );
+        }
     }
 
     public int deleteById(String id) {

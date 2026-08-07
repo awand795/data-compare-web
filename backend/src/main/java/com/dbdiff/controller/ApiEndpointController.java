@@ -172,7 +172,7 @@ public class ApiEndpointController {
             apiEndpointRepository.insert(apiEndpoint);
             return ResponseEntity.ok(apiEndpoint);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to create endpoint"));
         }
     }
 
@@ -187,7 +187,7 @@ public class ApiEndpointController {
             apiEndpointRepository.update(apiEndpoint);
             return ResponseEntity.ok(apiEndpoint);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to update endpoint"));
         }
     }
 
