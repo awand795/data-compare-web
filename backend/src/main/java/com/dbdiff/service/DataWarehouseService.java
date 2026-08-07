@@ -260,11 +260,31 @@ public class DataWarehouseService {
 
             sendLog(emitter, "Starting Multi-DB Data Warehouse deployment for " + conns.size() + " source database(s) to target table `" + request.getTargetTable() + "`...");
 
+            // Clean up old sink connectors for this target table once before starting individual connection deploys
+            String cleanTarget = request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "");
+            try {
+                String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+                if (connectors != null) {
+                    for (String cName : connectors) {
+                        if (cName.startsWith("sink-clickhouse-" + cleanTarget)) {
+                            sendLog(emitter, "Deleting old target sink connector: " + cName);
+                            try {
+                                restTemplate.delete(DEBEZIUM_URL + "/" + cName);
+                            } catch (Exception ex) {
+                                logger.warn("Failed to delete sink connector " + cName, ex);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                logger.warn("Failed to clean up old sink connectors for target " + cleanTarget, ex);
+            }
+
             for (int i = 0; i < conns.size(); i++) {
                 ConnectionDetails conn = conns.get(i);
                 DataWarehouseDeployRequest singleReq = new DataWarehouseDeployRequest();
                 singleReq.setSourceConnection(conn);
-                singleReq.setSourceConnections(java.util.Collections.singletonList(conn));
+                singleReq.setSourceConnections(enrichedConns);
                 singleReq.setTargetConnection(enrichConnection(request.getTargetConnection()));
                 singleReq.setTargetDatabase(request.getTargetDatabase());
                 singleReq.setTargetTable(request.getTargetTable());
@@ -1162,9 +1182,19 @@ public class DataWarehouseService {
             sinkConfig.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
             sinkConfig.put("tasks.max", "1");
             List<String> expectedTopics = new java.util.ArrayList<>();
-            for (String t : formattedTables) {
-                String cleanTable = t.replace(".", "_");
-                expectedTopics.add(topicPrefix + cleanTable);
+            List<ConnectionDetails> allConns = (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) ?
+                    request.getSourceConnections() : java.util.Collections.singletonList(request.getSourceConnection());
+
+            for (ConnectionDetails connItem : allConns) {
+                String itemBaseName = connItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                String itemTopicPrefix = "cdc_" + itemBaseName + "_";
+                for (String t : physicalTables) {
+                    String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
+                    String topicName = itemTopicPrefix + cleanTable;
+                    if (!expectedTopics.contains(topicName)) {
+                        expectedTopics.add(topicName);
+                    }
+                }
             }
             sinkConfig.put("topics", String.join(",", expectedTopics));
             // sinkConfig.put("topics.regex", topicPrefix + ".*");
