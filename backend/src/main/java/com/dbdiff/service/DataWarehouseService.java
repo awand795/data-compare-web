@@ -775,6 +775,7 @@ public class DataWarehouseService {
                      Statement stmt = conn.createStatement()) {
                     String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
                     try { stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
+                    try { stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
                     try { stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + landingTable + "`"); } catch (Exception ignored) {}
                     stmt.execute(landingDdl.toString());
                 } catch (Exception e) {
