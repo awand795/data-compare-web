@@ -1319,7 +1319,7 @@ public class DataWarehouseService {
                 sendLog(emitter, "Populating target table `" + request.getTargetTable() + "` with initial snapshot data...");
                 try (Connection conn = targetDs.getConnection();
                      Statement stmt = conn.createStatement()) {
-                    try { stmt.execute("SET max_memory_usage = 500000000"); } catch (Exception ignored) {}
+                    try { stmt.execute("SET max_memory_usage = 0"); } catch (Exception ignored) {}
                     try { stmt.execute("SET max_threads = 1"); } catch (Exception ignored) {}
                     try { stmt.execute("SET join_algorithm = 'grace_hash,partial_merge,hash'"); } catch (Exception ignored) {}
                     try { stmt.execute("SET max_bytes_before_external_group_by = 100000000"); } catch (Exception ignored) {}
@@ -1330,7 +1330,7 @@ public class DataWarehouseService {
                     String sqlWithMeta = addMetadataColsToSelect(rotatedSql, primaryTable);
                     String rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
 
-                    String settingsClause = " SETTINGS max_threads = 1, max_memory_usage = 500000000, join_algorithm = 'grace_hash,partial_merge,hash', max_bytes_before_external_group_by = 100000000, max_bytes_before_external_sort = 100000000";
+                    String settingsClause = " SETTINGS max_threads = 1, max_memory_usage = 0, join_algorithm = 'grace_hash,partial_merge,hash', max_bytes_before_external_group_by = 100000000, max_bytes_before_external_sort = 100000000";
                     String insertSql = "INSERT INTO `" + chDb + "`.`" + request.getTargetTable() + "` " + rewrittenSql + settingsClause;
                     logger.info("Executing initial snapshot populate SQL:\n{}", insertSql);
                     stmt.execute(insertSql);
@@ -2100,7 +2100,7 @@ public class DataWarehouseService {
                     try (ResultSet rs = srcPs.executeQuery();
                          Connection targetConn = targetDs.getConnection();
                          Statement targetStmt = targetConn.createStatement()) {
-                        try { targetStmt.execute("SET max_memory_usage = 500000000"); } catch (Exception ignored) {}
+                        try { targetStmt.execute("SET max_memory_usage = 0"); } catch (Exception ignored) {}
                         try { targetStmt.execute("SET max_threads = 1"); } catch (Exception ignored) {}
                         
                         StringBuilder valuesBuilder = new StringBuilder();
