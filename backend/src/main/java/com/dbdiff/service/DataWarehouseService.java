@@ -2103,49 +2103,42 @@ public class DataWarehouseService {
                         try { targetStmt.execute("SET max_memory_usage = 0"); } catch (Exception ignored) {}
                         try { targetStmt.execute("SET max_threads = 1"); } catch (Exception ignored) {}
                         
-                        StringBuilder valuesBuilder = new StringBuilder();
-                        String insertHeader = "INSERT INTO `" + chDb + "`.`" + landingTable + "` (`" + 
-                            cols.stream().map(c -> c.name).collect(java.util.stream.Collectors.joining("`, `")) + 
-                            "`, `version`, `is_deleted`) VALUES ";
+                        StringBuilder psSql = new StringBuilder("INSERT INTO `").append(chDb).append("`.`").append(landingTable).append("` (`");
+                        psSql.append(cols.stream().map(c -> c.name).collect(java.util.stream.Collectors.joining("`, `")));
+                        psSql.append("`, `version`, `is_deleted`) VALUES (");
+                        for (int i = 0; i < cols.size() + 2; i++) {
+                            psSql.append(i == 0 ? "?" : ", ?");
+                        }
+                        psSql.append(")");
                         
-                        valuesBuilder.append(insertHeader);
                         int rowCount = 0;
                         int batchRows = 0;
                         
-                        while (rs.next()) {
-                            if (batchRows > 0) valuesBuilder.append(", ");
-                            valuesBuilder.append("(");
-                            for (int i = 1; i <= cols.size(); i++) {
-                                if (i > 1) valuesBuilder.append(", ");
-                                Object val = rs.getObject(i);
-                                if (val == null) {
-                                    valuesBuilder.append("NULL");
-                                } else if (val instanceof Number || val instanceof Boolean) {
-                                    valuesBuilder.append(val);
-                                } else {
-                                    String strVal = val.toString().replace("\\", "\\\\").replace("'", "\\'");
-                                    valuesBuilder.append("'").append(strVal).append("'");
+                        try (PreparedStatement targetPs = targetConn.prepareStatement(psSql.toString())) {
+                            while (rs.next()) {
+                                for (int i = 1; i <= cols.size(); i++) {
+                                    targetPs.setObject(i, rs.getObject(i));
+                                }
+                                targetPs.setLong(cols.size() + 1, 0L);
+                                targetPs.setInt(cols.size() + 2, 0);
+                                targetPs.addBatch();
+                                rowCount++;
+                                batchRows++;
+                                
+                                if (rowCount % 50000 == 0) {
+                                    logger.info("Backfilling landing table `{}`: {} rows processed...", landingTable, rowCount);
+                                    sendLog(emitter, "Backfilled " + rowCount + " rows into landing table `" + landingTable + "`...");
+                                }
+                                
+                                if (batchRows >= 2000) {
+                                    targetPs.executeBatch();
+                                    batchRows = 0;
                                 }
                             }
-                            valuesBuilder.append(", 0, 0)");
-                            rowCount++;
-                            batchRows++;
                             
-                            if (rowCount % 50000 == 0) {
-                                logger.info("Backfilling landing table `{}`: {} rows processed...", landingTable, rowCount);
-                                sendLog(emitter, "Backfilled " + rowCount + " rows into landing table `" + landingTable + "`...");
+                            if (batchRows > 0) {
+                                targetPs.executeBatch();
                             }
-                            
-                            if (batchRows >= 2000) {
-                                targetStmt.execute(valuesBuilder.toString());
-                                valuesBuilder = new StringBuilder();
-                                valuesBuilder.append(insertHeader);
-                                batchRows = 0;
-                            }
-                        }
-                        
-                        if (batchRows > 0) {
-                            targetStmt.execute(valuesBuilder.toString());
                         }
                         
                         logger.info("Successfully backfilled {} rows into landing table {}", rowCount, landingTable);
