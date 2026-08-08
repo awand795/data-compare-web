@@ -452,7 +452,7 @@ public class DataWarehouseService {
             // would invalidate the consumer-group offsets of those other connectors, breaking live CDC.
             try {
                 Properties kProps = new Properties();
-                kProps.put("bootstrap.servers", "kafka:9092");
+                kProps.put("bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS);
                 try (AdminClient adminClient = AdminClient.create(kProps)) {
                     Set<String> existingTopics = adminClient.listTopics().names().get();
 
@@ -2429,7 +2429,7 @@ public class DataWarehouseService {
     private synchronized AdminClient getSharedKafkaAdminClient() {
         if (sharedKafkaAdminClient == null) {
             Properties props = new Properties();
-            props.put("bootstrap.servers", "kafka:9092");
+            props.put("bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS);
             props.put("request.timeout.ms", "2000");
             props.put("default.api.timeout.ms", "2000");
             sharedKafkaAdminClient = AdminClient.create(props);
@@ -3399,7 +3399,7 @@ public class DataWarehouseService {
                     topicName = actualPrefix + firstTable.replace(".", "_");
                 } else {
                     Properties props = new Properties();
-                    props.put("bootstrap.servers", "kafka:9092");
+                    props.put("bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS);
                     try (AdminClient admin = AdminClient.create(props)) {
                         java.util.Set<String> allTopics = admin.listTopics().names().get();
                         for (String t : allTopics) {
@@ -3414,7 +3414,7 @@ public class DataWarehouseService {
                 // Try to find the topic via admin client (default Debezium naming)
                 String prefix = (String) config.get("topic.prefix");
                 Properties props = new Properties();
-                props.put("bootstrap.servers", "kafka:9092");
+                props.put("bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS);
                 try (AdminClient admin = AdminClient.create(props)) {
                     java.util.Set<String> allTopics = admin.listTopics().names().get();
                     for (String t : allTopics) {
@@ -3428,7 +3428,7 @@ public class DataWarehouseService {
                 String regex = (String) config.get("topics.regex");
                 Pattern p = Pattern.compile(regex);
                 Properties props = new Properties();
-                props.put("bootstrap.servers", "kafka:9092");
+                props.put("bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS);
                 try (AdminClient admin = AdminClient.create(props)) {
                     java.util.Set<String> allTopics = admin.listTopics().names().get();
                     for (String t : allTopics) {
@@ -3445,7 +3445,7 @@ public class DataWarehouseService {
             }
 
             Properties props = new Properties();
-            props.put("bootstrap.servers", "kafka:9092");
+            props.put("bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS);
             props.put("group.id", "peek-consumer-" + System.currentTimeMillis());
             props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
             props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
