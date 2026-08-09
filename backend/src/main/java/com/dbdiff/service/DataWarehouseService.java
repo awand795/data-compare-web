@@ -654,7 +654,7 @@ public class DataWarehouseService {
             // Drop any existing MVs for this target table to prevent trigger execution during landing table backfills
             try (Connection conn = targetDs.getConnection();
                  Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT name FROM system.tables WHERE database = '" + chDb + "' AND name LIKE 'mv_" + request.getTargetTable() + "_%'")) {
+                 ResultSet rs = stmt.executeQuery("SELECT name FROM system.tables WHERE database = '" + chDb + "' AND name LIKE 'mv_" + request.getTargetTable() + "_cdc_" + baseName + "_%'")) {
                 java.util.List<String> mvsToDrop = new java.util.ArrayList<>();
                 while (rs.next()) {
                     mvsToDrop.add(rs.getString(1));
