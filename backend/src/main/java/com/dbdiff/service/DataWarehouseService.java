@@ -2103,46 +2103,58 @@ public class DataWarehouseService {
                         try { targetStmt.execute("SET max_memory_usage = 0"); } catch (Exception ignored) {}
                         try { targetStmt.execute("SET max_threads = 1"); } catch (Exception ignored) {}
                         
-                        StringBuilder psSql = new StringBuilder("INSERT INTO `").append(chDb).append("`.`").append(landingTable).append("` (`");
-                        psSql.append(cols.stream().map(c -> c.name).collect(java.util.stream.Collectors.joining("`, `")));
-                        psSql.append("`, `version`, `is_deleted`) VALUES (");
-                        for (int i = 0; i < cols.size() + 2; i++) {
-                            psSql.append(i == 0 ? "?" : ", ?");
+                        // Detach dependent MVs
+                        List<String> mvs = new ArrayList<>();
+                        try (ResultSet rsMv = targetStmt.executeQuery("SELECT name FROM system.tables WHERE engine = 'MaterializedView' AND create_table_query LIKE '%" + landingTable + "%'")) {
+                            while(rsMv.next()) mvs.add(rsMv.getString("name"));
                         }
-                        psSql.append(")");
+                        for (String mv : mvs) { targetStmt.execute("DETACH TABLE `" + chDb + "`.`" + mv + "`"); }
                         
-                        int rowCount = 0;
-                        int batchRows = 0;
-                        
-                        try (PreparedStatement targetPs = targetConn.prepareStatement(psSql.toString())) {
-                            while (rs.next()) {
-                                for (int i = 1; i <= cols.size(); i++) {
-                                    targetPs.setObject(i, rs.getObject(i));
+                        try {
+                            StringBuilder psSql = new StringBuilder("INSERT INTO `").append(chDb).append("`.`").append(landingTable).append("` (`");
+                            psSql.append(cols.stream().map(c -> c.name).collect(java.util.stream.Collectors.joining("`, `")));
+                            psSql.append("`, `version`, `is_deleted`) VALUES (");
+                            for (int i = 0; i < cols.size() + 2; i++) {
+                                psSql.append(i == 0 ? "?" : ", ?");
+                            }
+                            psSql.append(")");
+                            
+                            int rowCount = 0;
+                            int batchRows = 0;
+                            
+                            try (PreparedStatement targetPs = targetConn.prepareStatement(psSql.toString())) {
+                                while (rs.next()) {
+                                    for (int i = 1; i <= cols.size(); i++) {
+                                        targetPs.setObject(i, rs.getObject(i));
+                                    }
+                                    targetPs.setLong(cols.size() + 1, 0L);
+                                    targetPs.setInt(cols.size() + 2, 0);
+                                    targetPs.addBatch();
+                                    rowCount++;
+                                    batchRows++;
+                                    
+                                    if (rowCount % 50000 == 0) {
+                                        logger.info("Backfilling landing table `{}`: {} rows processed...", landingTable, rowCount);
+                                        sendLog(emitter, "Backfilled " + rowCount + " rows into landing table `" + landingTable + "`...");
+                                    }
+                                    
+                                    if (batchRows >= 2000) {
+                                        targetPs.executeBatch();
+                                        batchRows = 0;
+                                    }
                                 }
-                                targetPs.setLong(cols.size() + 1, 0L);
-                                targetPs.setInt(cols.size() + 2, 0);
-                                targetPs.addBatch();
-                                rowCount++;
-                                batchRows++;
                                 
-                                if (rowCount % 50000 == 0) {
-                                    logger.info("Backfilling landing table `{}`: {} rows processed...", landingTable, rowCount);
-                                    sendLog(emitter, "Backfilled " + rowCount + " rows into landing table `" + landingTable + "`...");
-                                }
-                                
-                                if (batchRows >= 2000) {
+                                if (batchRows > 0) {
                                     targetPs.executeBatch();
-                                    batchRows = 0;
                                 }
                             }
                             
-                            if (batchRows > 0) {
-                                targetPs.executeBatch();
-                            }
+                            logger.info("Successfully backfilled {} rows into landing table {}", rowCount, landingTable);
+                            try { sendLog(emitter, "Successfully backfilled " + rowCount + " rows into landing table `" + landingTable + "`."); } catch (Exception ignored) {}
+                        } finally {
+                            // Attach dependent MVs back
+                            for (String mv : mvs) { targetStmt.execute("ATTACH TABLE `" + chDb + "`.`" + mv + "`"); }
                         }
-                        
-                        logger.info("Successfully backfilled {} rows into landing table {}", rowCount, landingTable);
-                        try { sendLog(emitter, "Successfully backfilled " + rowCount + " rows into landing table `" + landingTable + "`."); } catch (Exception ignored) {}
                     }
                 }
             }
