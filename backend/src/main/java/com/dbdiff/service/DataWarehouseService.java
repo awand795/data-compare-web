@@ -979,11 +979,11 @@ public class DataWarehouseService {
             sourceConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
             sourceConfig.put("transforms.unwrap.drop.tombstones", "false");
             sourceConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
-            sourceConfig.put("transforms.unwrap.add.fields", "ts_ms");
+            sourceConfig.put("transforms.unwrap.add.fields", "lsn");
             
             // Rename internal Debezium fields to match our ClickHouse landing tables
             sourceConfig.put("transforms.rename.type", "org.apache.kafka.connect.transforms.ReplaceField$Value");
-            sourceConfig.put("transforms.rename.renames", "__deleted:is_deleted,__ts_ms:version");
+            sourceConfig.put("transforms.rename.renames", "__deleted:is_deleted,__lsn:version");
             
             // Cast is_deleted string to boolean, then to int8 (so it writes to ClickHouse UInt8 correctly)
             sourceConfig.put("transforms.castBool.type", "org.apache.kafka.connect.transforms.Cast$Value");
