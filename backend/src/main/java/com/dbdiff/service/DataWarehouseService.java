@@ -1160,7 +1160,7 @@ public class DataWarehouseService {
                 
                 // ClickHouse does NOT support WITH (CTE) inside Materialized Views.
                 // Inline CTEs BEFORE rewriting table names so JSqlParser gets clean PostgreSQL SQL.
-                String sqlInlined = inlineCTEs(sqlWithMeta);
+                String sqlInlined = inlineCTEs(sqlWithMeta, baseName);
 
                 String rewrittenSql;
                 if (physicalTables.size() > 1) {
@@ -1816,11 +1816,28 @@ public class DataWarehouseService {
      *   SELECT q.val FROM main CROSS JOIN (SELECT val FROM t WHERE col = 'X') AS `alias`
      */
     private String inlineCTEs(String sql) {
+        return inlineCTEs(sql, null);
+    }
+
+    private String inlineCTEs(String sql, String baseName) {
         try {
             net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
             if (!(stmt instanceof Select)) return sql;
             Select select = (Select) stmt;
             if (select.getWithItemsList() == null || select.getWithItemsList().isEmpty()) return sql;
+
+            String compCode = "P001";
+            if (baseName != null) {
+                String bn = baseName.toLowerCase();
+                if (bn.contains("p003") || bn.contains("mkn")) compCode = "P003";
+                else if (bn.contains("p011") || bn.contains("bpi")) compCode = "P011";
+                else {
+                    java.util.regex.Matcher mComp = java.util.regex.Pattern.compile("(p\\d{3})", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(bn);
+                    if (mComp.find()) {
+                        compCode = mComp.group(1).toUpperCase();
+                    }
+                }
+            }
 
             // Build a map: lowercase CTE name -> CTE SELECT SQL string
             java.util.Map<String, String> cteMap = new java.util.LinkedHashMap<>();
@@ -1836,6 +1853,12 @@ public class DataWarehouseService {
                 if (cteBody.startsWith("(") && cteBody.endsWith(")")) {
                     cteBody = cteBody.substring(1, cteBody.length() - 1).trim();
                 }
+
+                // If CTE is fetching company-id from mhd_lookup, replace body with static value to avoid mhd_lookup CROSS JOIN dependency
+                if (cteName.equals("q_perusahaan") || (cteBody.contains("mhd_lookup") && cteBody.contains("COMPANY-ID"))) {
+                    cteBody = "SELECT '" + compCode + "' AS kode_perusahaan";
+                }
+
                 cteMap.put(cteName, cteBody);
             }
 
