@@ -1728,7 +1728,9 @@ public class DataWarehouseService {
                     } else {
                         reorderJoinsByDependency(plain);
                     }
-                    return select.toString();
+                    String res = select.toString();
+                    return res.replaceAll("(?i)\\bWHERE\\s+\\(toYear\\(", "WHERE (is_deleted = 1 OR toYear(")
+                              .replaceAll("(?i)\\bWHERE\\s+toYear\\(", "WHERE is_deleted = 1 OR toYear(");
                 }
             }
         } catch (Exception e) {
@@ -1774,7 +1776,8 @@ public class DataWarehouseService {
                 rewrittenSql = sbShort.toString();
             }
         }
-        return rewrittenSql;
+        return rewrittenSql.replaceAll("(?i)\\bWHERE\\s+\\(toYear\\(", "WHERE (is_deleted = 1 OR toYear(")
+                           .replaceAll("(?i)\\bWHERE\\s+toYear\\(", "WHERE is_deleted = 1 OR toYear(");
     }
 
     private void swapTriggerTableToFrom(PlainSelect plain, String triggerTable, String baseName, ConnectionDetails sourceConn, String chDb) {
