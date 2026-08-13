@@ -858,7 +858,7 @@ public class ApiSchedulerService {
 
     private String inferClickHouseType(JsonNode v) {
         if (v == null || v.isNull()) return "String";
-        if (v.isBoolean()) return "UInt8";
+        if (v.isBoolean()) return "Bool";
         if (v.isIntegralNumber()) return "UInt64";
         if (v.isFloatingPointNumber()) return "Float64";
         return "String";
@@ -929,8 +929,8 @@ public class ApiSchedulerService {
                 String jsonKey = f.getOrDefault("jsonKey", fname);
                 String ftype = f.getOrDefault("type", "String");
 
-                if ("UInt8".equalsIgnoreCase(ftype)) {
-                    mvSql.append("    toUInt8OrZero(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
+                if ("Bool".equalsIgnoreCase(ftype)) {
+                    mvSql.append("    toBool(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
                 } else if ("UInt64".equalsIgnoreCase(ftype) || "Int64".equalsIgnoreCase(ftype)) {
                     mvSql.append("    toUInt64OrZero(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
                 } else if ("Float64".equalsIgnoreCase(ftype)) {
@@ -961,8 +961,8 @@ public class ApiSchedulerService {
                     String jsonKey = f.getOrDefault("jsonKey", fname);
                     String ftype = f.getOrDefault("type", "String");
 
-                    if ("UInt8".equalsIgnoreCase(ftype)) {
-                        insertSql.append("    toUInt8OrZero(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
+                    if ("Bool".equalsIgnoreCase(ftype)) {
+                        insertSql.append("    toBool(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
                     } else if ("UInt64".equalsIgnoreCase(ftype) || "Int64".equalsIgnoreCase(ftype)) {
                         insertSql.append("    toUInt64OrZero(JSONExtractString(item, '").append(jsonKey).append("')) AS ").append(fname).append(",\n");
                     } else if ("Float64".equalsIgnoreCase(ftype)) {

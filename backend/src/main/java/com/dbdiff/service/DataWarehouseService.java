@@ -2447,7 +2447,7 @@ public class DataWarehouseService {
         if (lowerName.contains("serial") || lowerName.contains("int4") || lowerName.contains("integer") || lowerName.contains("int") || jdbcType == java.sql.Types.INTEGER) return "Int32";
         if (lowerName.contains("float") || lowerName.contains("real") || jdbcType == java.sql.Types.FLOAT || jdbcType == java.sql.Types.REAL) return "Float32";
         if (lowerName.contains("double") || lowerName.contains("numeric") || lowerName.contains("decimal") || jdbcType == java.sql.Types.DOUBLE || jdbcType == java.sql.Types.NUMERIC || jdbcType == java.sql.Types.DECIMAL) return "Float64";
-        if (lowerName.contains("bool") || jdbcType == java.sql.Types.BOOLEAN || jdbcType == java.sql.Types.BIT) return "UInt8";
+        if (lowerName.contains("bool") || jdbcType == java.sql.Types.BOOLEAN || jdbcType == java.sql.Types.BIT) return "Bool";
         if (lowerName.contains("date") || jdbcType == java.sql.Types.DATE) return "Date";
         if (lowerName.contains("timestamp") || lowerName.contains("datetime") || lowerName.contains("time") || jdbcType == java.sql.Types.TIMESTAMP || jdbcType == java.sql.Types.TIMESTAMP_WITH_TIMEZONE) {
             return "DateTime64(3, 'Asia/Jakarta')";
