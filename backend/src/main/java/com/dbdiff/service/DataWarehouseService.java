@@ -1047,6 +1047,46 @@ public class DataWarehouseService {
             }
             sourceConfig.put("table.include.list", tableIncludeList);
             
+            // --- OPSI B: Injeksi SMT TimestampConverter untuk kolom Date secara dinamis ---
+            java.util.Set<String> dateFields = new java.util.LinkedHashSet<>();
+            if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
+                try (Connection pgConn = sourceDsForCleanup.getConnection()) {
+                    DatabaseMetaData metaData = pgConn.getMetaData();
+                    for (String tbl : formattedTables) {
+                        if ("public._dbz_heartbeat".equalsIgnoreCase(tbl)) continue;
+                        String[] parts = tbl.split("\\.");
+                        String schemaName = parts.length > 1 ? parts[0] : (request.getSourceConnection().getSchema() != null ? request.getSourceConnection().getSchema() : "public");
+                        String tableName = parts.length > 1 ? parts[1] : parts[0];
+                        try (ResultSet colRs = metaData.getColumns(null, schemaName, tableName, "%")) {
+                            while (colRs.next()) {
+                                int jdbcType = colRs.getInt("DATA_TYPE");
+                                String colName = colRs.getString("COLUMN_NAME");
+                                if (jdbcType == java.sql.Types.DATE) {
+                                    dateFields.add(colName);
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    logger.warn("Failed to retrieve DATE columns for SMT configuration", ex);
+                }
+            }
+            if (!dateFields.isEmpty()) {
+                int dateIdx = 0;
+                for (String dField : dateFields) {
+                    String txName = "formatDate" + dateIdx;
+                    String currentTransforms = (String) sourceConfig.get("transforms");
+                    sourceConfig.put("transforms", currentTransforms + "," + txName);
+                    sourceConfig.put("transforms." + txName + ".type", "org.apache.kafka.connect.transforms.TimestampConverter$Value");
+                    sourceConfig.put("transforms." + txName + ".target.type", "string");
+                    sourceConfig.put("transforms." + txName + ".field", dField);
+                    sourceConfig.put("transforms." + txName + ".format", "yyyy-MM-dd");
+                    dateIdx++;
+                }
+                sendLog(emitter, "Injected SMT TimestampConverter for DATE columns: " + String.join(", ", dateFields));
+            }
+            // ------------------------------------------------------------------------------
+            
             // Serialize Decimals as strings to avoid Base64 encoding which breaks ClickHouse sink
             sourceConfig.put("decimal.handling.mode", "double");
             
