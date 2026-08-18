@@ -977,7 +977,7 @@ public class DataWarehouseService {
             
             // Flatten the Debezium CDC payload
             sourceConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
-            sourceConfig.put("transforms.unwrap.drop.tombstones", "false");
+            sourceConfig.put("transforms.unwrap.drop.tombstones", "true");
             sourceConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
             sourceConfig.put("transforms.unwrap.add.fields", "lsn");
             
@@ -1240,7 +1240,7 @@ public class DataWarehouseService {
             sinkConfig.put("clickhouseSettings", "insert_quorum=1"); // Optional optimization
             sinkConfig.put("transforms", "unwrap");
             sinkConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
-            sinkConfig.put("transforms.unwrap.drop.tombstones", "false");
+            sinkConfig.put("transforms.unwrap.drop.tombstones", "true");
             sinkConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
             sinkConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
             sinkConfig.put("key.converter.schemas.enable", "false");
