@@ -262,11 +262,12 @@ public class DataWarehouseService {
 
             // Clean up old sink connectors for this target table once before starting individual connection deploys
             String cleanTarget = request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "");
+            String sharedDeployId = String.valueOf(System.currentTimeMillis());
             try {
                 String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
                 if (connectors != null) {
                     for (String cName : connectors) {
-                        if (cName.startsWith("sink-clickhouse-" + cleanTarget)) {
+                        if (cName.matches("sink-clickhouse-" + cleanTarget + "-[0-9]+")) {
                             sendLog(emitter, "Deleting old target sink connector: " + cName);
                             try {
                                 restTemplate.delete(DEBEZIUM_URL + "/" + cName);
@@ -290,6 +291,7 @@ public class DataWarehouseService {
                 singleReq.setTargetTable(request.getTargetTable());
                 singleReq.setQuery(request.getQuery());
                 singleReq.setPrimaryKeys(request.getPrimaryKeys());
+                singleReq.setDeployId(sharedDeployId);
 
                 sendLog(emitter, "--------------------------------------------------");
                 sendLog(emitter, "Deploying pipeline " + (i + 1) + "/" + conns.size() + " for source database [" + conn.getName() + "]...");
@@ -340,7 +342,7 @@ public class DataWarehouseService {
 
             // Generate shared source connector name per connection, and target-specific sink connector name
             String baseName = request.getSourceConnection().getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
-            long deployId = System.currentTimeMillis();
+            long deployId = request.getDeployId() != null ? Long.parseLong(request.getDeployId()) : System.currentTimeMillis();
             String cleanTarget = request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "");
             String sourceConnectorName = "source-" + baseName + "-shared";
             String sinkConnectorName = "sink-clickhouse-" + cleanTarget + "-" + deployId;
@@ -359,7 +361,7 @@ public class DataWarehouseService {
                     for (String cName : connectors) {
                         // Check if it belongs to this pipeline target or source
                         if (cName.startsWith("source-" + baseName + "-" + cleanTarget) || 
-                            cName.startsWith("sink-clickhouse-" + cleanTarget)) {
+                            (cName.matches("sink-clickhouse-" + cleanTarget + "-[0-9]+") && !cName.endsWith("-" + deployId))) {
                             sendLog(emitter, "Deleting old connector: " + cName);
                             try {
                                 restTemplate.delete(DEBEZIUM_URL + "/" + cName);

@@ -8,6 +8,7 @@ public class DataWarehouseDeployRequest {
     private String targetTable;
     private String primaryKeys;
     private String targetDatabase;
+    private String deployId;
 
     public java.util.List<ConnectionDetails> getSourceConnections() {
         if (sourceConnections == null || sourceConnections.isEmpty()) {
@@ -29,6 +30,9 @@ public class DataWarehouseDeployRequest {
     public String getTargetDatabase() {
         return targetDatabase;
     }
+
+    public String getDeployId() { return deployId; }
+    public void setDeployId(String deployId) { this.deployId = deployId; }
 
     public void setTargetDatabase(String targetDatabase) {
         this.targetDatabase = targetDatabase;
