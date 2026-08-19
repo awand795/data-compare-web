@@ -2998,8 +2998,9 @@ public class DataWarehouseService {
                     String actualMvName = null;
 
                     // First: find existing MV for this targetTable that references this physical table suffix
+                    String connBaseName = sourceConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
                     String findMvSql = "SELECT name FROM system.tables WHERE database = '" + chDb +
-                        "' AND name LIKE 'mv_" + targetTable + "_%' AND name LIKE '%_" + normalized + "'";
+                        "' AND name LIKE 'mv_" + targetTable + "_cdc_" + connBaseName + "_%' AND name LIKE '%_" + normalized + "'";
                     try (java.sql.ResultSet rs = stmt.executeQuery(findMvSql)) {
                         if (rs.next()) {
                             actualMvName = rs.getString("name");
@@ -3016,8 +3017,9 @@ public class DataWarehouseService {
 
                     // Fallback: search for cdc_* table ending with the normalized name
                     if (actualLandingTable == null) {
+                        String connBaseNameFallback = sourceConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
                         String findCdcSql = "SELECT name FROM system.tables WHERE database = '" + chDb +
-                            "' AND name LIKE 'cdc_%' AND name LIKE '%" + normalized + "'";
+                            "' AND name LIKE 'cdc_" + connBaseNameFallback + "_%' AND name LIKE '%" + normalized + "'";
                         try (java.sql.ResultSet rs2 = stmt.executeQuery(findCdcSql)) {
                             if (rs2.next()) {
                                 actualLandingTable = rs2.getString("name");
@@ -3047,14 +3049,9 @@ public class DataWarehouseService {
                     stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`");
                     sendLog(emitter, "Dropped old MV `" + mvName + "`.");
 
-                    // Extract baseName from the actual landing table name: cdc_{baseName}_{normalized_physical_table}
-                    // landing = cdc_{baseName}_{normalized_schema}_{table}  →  baseName is everything after "cdc_" and before "_{normalized}"
-                    String cdcPrefix = "cdc_";
-                    String resolvedBaseName = targetTable; // fallback
-                    if (actualLandingTable.startsWith(cdcPrefix) && actualLandingTable.endsWith("_" + normalized)) {
-                        resolvedBaseName = actualLandingTable.substring(cdcPrefix.length(), actualLandingTable.length() - ("_" + normalized).length());
-                        sendLog(emitter, "Resolved baseName: `" + resolvedBaseName + "`");
-                    }
+                    // Always use the source connection name for baseName
+                    String resolvedBaseName = sourceConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                    sendLog(emitter, "Resolved baseName from connection: `" + resolvedBaseName + "`");
 
                     // Recreate the MV using the resolved baseName
                     String rotatedSql = rotateQuery(expandedNewQuery, t);
