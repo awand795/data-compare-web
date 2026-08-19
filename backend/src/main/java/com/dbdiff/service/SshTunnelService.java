@@ -64,11 +64,9 @@ public class SshTunnelService implements DisposableBean {
         }
     }
 
-    private int findFreePort() throws Exception {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            socket.setReuseAddress(true);
-            return socket.getLocalPort();
-        }
+    private int getDeterministicPort(String connId) {
+        if (connId == null) return 33000;
+        return 33000 + (Math.abs(connId.hashCode()) % 10000);
     }
 
     private int getOrOpenTunnelInternal(ConnectionDetails details, String connId) throws Exception {
@@ -83,7 +81,7 @@ public class SshTunnelService implements DisposableBean {
             }
         }
 
-        int assignedLocalPort = localPorts.containsKey(connId) ? localPorts.get(connId) : findFreePort();
+        int assignedLocalPort = localPorts.containsKey(connId) ? localPorts.get(connId) : getDeterministicPort(connId);
         int sshPort = (details.getSshPort() != null && details.getSshPort() > 0) ? details.getSshPort() : 22;
 
         List<String> cmd = new ArrayList<>();
