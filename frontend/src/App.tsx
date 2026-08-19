@@ -12,8 +12,9 @@ import { DataWarehouseView } from './components/DataWarehouseView';
 import { ApiBuilderView } from './components/ApiBuilderView';
 import { ApiSchedulerView } from './components/ApiSchedulerView';
 import { ApiShareDocView } from './components/ApiShareDocView';
+import { SystemMonitoringView } from './components/SystemMonitoringView';
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2, Database, Webhook, Globe } from 'lucide-react';
+import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2, Database, Webhook, Globe, Activity } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
 import { AlertModal } from './components/AlertModal';
@@ -109,6 +110,7 @@ function App() {
     { id: 'file_upload' as const, label: 'Upload File', icon: FileSpreadsheet, desc: 'Upload Excel & CSV files to database (sch_excel schema)' },
     { id: 'schedule' as const, label: 'Scheduled Jobs', icon: CalendarClock, desc: 'Automated data comparison tasks' },
     { id: 'dwh' as const, label: 'Data Warehouse', icon: Database, desc: 'Configure ClickHouse replication via Debezium & Kafka' },
+    { id: 'system_monitor' as const, label: 'Sistem Monitoring', icon: Activity, desc: 'Monitor server CPU, RAM, disk usage & set critical alerts' },
     { id: 'api_builder' as const, label: 'API Builder', icon: Webhook, desc: 'Build and deploy dynamic APIs from SQL queries' },
     { id: 'api_scheduler' as const, label: 'API Scheduler', icon: Globe, desc: 'Automate HTTP API requests & ingest JSON into ClickHouse/PostgreSQL' },
   ];
@@ -296,6 +298,9 @@ function App() {
                 </div>
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'dwh' && "hidden")}>
                   <DataWarehouseView />
+                </div>
+                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'system_monitor' && "hidden")}>
+                  <SystemMonitoringView />
                 </div>
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'api_builder' && "hidden")}>
                   <ApiBuilderView />

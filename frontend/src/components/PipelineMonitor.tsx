@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit3, Code, FileEdit, Database } from 'lucide-react';
+import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit, Edit3, Code, FileEdit, Database } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -52,9 +52,154 @@ export const PipelineMonitor: React.FC = () => {
 
   // Replication Slots Management State
   const [slotsModalOpen, setSlotsModalOpen] = useState(false);
+  const [activeSlotsTab, setActiveSlotsTab] = useState<'slots' | 'schedules'>('slots');
   const [replicationSlots, setReplicationSlots] = useState<any[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [isCleaningSlots, setIsCleaningSlots] = useState(false);
+
+  // WAL Alert Schedules State
+  const [walSchedules, setWalSchedules] = useState<any[]>([]);
+  const [isLoadingWalSchedules, setIsLoadingWalSchedules] = useState(false);
+  const [isWalFormOpen, setIsWalFormOpen] = useState(false);
+  const [editingWalSchedule, setEditingWalSchedule] = useState<any | null>(null);
+  const [walFormName, setWalFormName] = useState('');
+  const [walFormConnectionId, setWalFormConnectionId] = useState('');
+  const [walFormThresholdMb, setWalFormThresholdMb] = useState(500);
+  const [walFormCronPreset, setWalFormCronPreset] = useState('*/15 * * * *');
+  const [walFormCustomCron, setWalFormCustomCron] = useState('*/15 * * * *');
+  const [walFormChannels, setWalFormChannels] = useState<string[]>([]);
+  const [isSubmittingWal, setIsSubmittingWal] = useState(false);
+  const [testingWalId, setTestingWalId] = useState<string | null>(null);
+
+  const fetchWalSchedules = async () => {
+    setIsLoadingWalSchedules(true);
+    try {
+      const res = await fetch('/api/wal-alert-schedules');
+      if (res.ok) {
+        const data = await res.json();
+        setWalSchedules(data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch WAL alert schedules:', err);
+    } finally {
+      setIsLoadingWalSchedules(false);
+    }
+  };
+
+  const handleOpenCreateWal = () => {
+    setEditingWalSchedule(null);
+    setWalFormName('PostgreSQL WAL Bloat Alert (500MB)');
+    setWalFormConnectionId('');
+    setWalFormThresholdMb(500);
+    setWalFormCronPreset('*/15 * * * *');
+    setWalFormCustomCron('*/15 * * * *');
+    setWalFormChannels([]);
+    setIsWalFormOpen(true);
+  };
+
+  const handleOpenEditWal = (s: any) => {
+    setEditingWalSchedule(s);
+    setWalFormName(s.name);
+    setWalFormConnectionId(s.connectionId || '');
+    setWalFormThresholdMb(s.thresholdMb || 500);
+    setWalFormCronPreset(s.cronExpression || '*/15 * * * *');
+    setWalFormCustomCron(s.cronExpression || '*/15 * * * *');
+    setWalFormChannels(s.channelIds ? s.channelIds.split(',').map((x: string) => x.trim()).filter(Boolean) : []);
+    setIsWalFormOpen(true);
+  };
+
+  const handleSaveWalSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!walFormName.trim()) {
+      addToast({ type: 'warning', title: 'Validation Error', message: 'Rule name is required.' });
+      return;
+    }
+    if (walFormChannels.length === 0) {
+      addToast({ type: 'warning', title: 'Validation Error', message: 'Please select at least one notification channel.' });
+      return;
+    }
+
+    const finalCron = walFormCronPreset === 'custom' ? walFormCustomCron.trim() : walFormCronPreset;
+    const payload = {
+      name: walFormName.trim(),
+      connectionId: walFormConnectionId || null,
+      thresholdMb: walFormThresholdMb,
+      cronExpression: finalCron,
+      channelIds: walFormChannels.join(','),
+      active: editingWalSchedule ? editingWalSchedule.active : true
+    };
+
+    setIsSubmittingWal(true);
+    try {
+      if (editingWalSchedule) {
+        await fetch(`/api/wal-alert-schedules/${editingWalSchedule.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        addToast({ type: 'success', title: 'Updated', message: `WAL alert rule "${walFormName}" updated.` });
+      } else {
+        await fetch('/api/wal-alert-schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        addToast({ type: 'success', title: 'Created', message: `WAL alert rule "${walFormName}" created & activated.` });
+      }
+      setIsWalFormOpen(false);
+      fetchWalSchedules();
+    } catch (err) {
+      addToast({ type: 'error', title: 'Error', message: 'Failed to save WAL alert schedule.' });
+    } finally {
+      setIsSubmittingWal(false);
+    }
+  };
+
+  const handleToggleWalActive = async (id: string, currentActive: boolean) => {
+    try {
+      await fetch(`/api/wal-alert-schedules/${id}/active`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !currentActive })
+      });
+      setWalSchedules(prev => prev.map(s => s.id === id ? { ...s, active: !currentActive } : s));
+      addToast({ 
+        type: 'info', 
+        title: !currentActive ? 'Activated' : 'Paused', 
+        message: `WAL alert schedule is now ${!currentActive ? 'active' : 'paused'}.` 
+      });
+    } catch (err) {
+      addToast({ type: 'error', title: 'Error', message: 'Failed to toggle status.' });
+    }
+  };
+
+  const handleDeleteWalSchedule = async (id: string, name: string) => {
+    if (!confirm(`Delete WAL alert rule "${name}"?`)) return;
+    try {
+      await fetch(`/api/wal-alert-schedules/${id}`, { method: 'DELETE' });
+      setWalSchedules(prev => prev.filter(s => s.id !== id));
+      addToast({ type: 'success', title: 'Deleted', message: `Rule "${name}" removed.` });
+    } catch (err) {
+      addToast({ type: 'error', title: 'Error', message: 'Failed to delete rule.' });
+    }
+  };
+
+  const handleTestWalAlert = async (id: string, name: string) => {
+    setTestingWalId(id);
+    try {
+      const res = await fetch(`/api/wal-alert-schedules/${id}/test`, { method: 'POST' });
+      const data = await res.json();
+      if (data?.success) {
+        addToast({ type: 'success', title: 'Test Alert Sent', message: `Test message sent to selected channels for "${name}".` });
+      } else {
+        addToast({ type: 'warning', title: 'Test Alert', message: data?.error || 'Failed to send test alert.' });
+      }
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Test Failed', message: 'Failed to trigger test alert.' });
+    } finally {
+      setTestingWalId(null);
+    }
+  };
 
   const fetchReplicationSlots = async () => {
     setIsLoadingSlots(true);
@@ -1007,110 +1152,274 @@ export const PipelineMonitor: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-bg-panel w-full max-w-4xl rounded-xl shadow-2xl flex flex-col border border-border-main max-h-[90vh] overflow-hidden">
             <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-amber-500/10 shrink-0">
-              <h3 className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                <Database className="w-5 h-5" /> PostgreSQL Replication Slots (WAL Cleanup)
-              </h3>
-              <button onClick={() => setSlotsModalOpen(false)} className="text-text-muted hover:text-text-main text-2xl leading-none">&times;</button>
-            </div>
-
-            <div className="p-4 flex flex-col flex-1 min-h-0 overflow-y-auto space-y-4">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs leading-relaxed flex items-start gap-2 shrink-0">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                  <Database className="w-5 h-5" />
+                </div>
                 <div>
-                  <strong className="font-bold text-amber-800 dark:text-amber-300">Replication Slot & WAL Management:</strong>
-                  <p className="mt-1 text-text-main dark:text-slate-300">
-                    Setiap kali Debezium dijalankan pada PostgreSQL, sebuah <em>Replication Slot</em> dibuat. Jika pipeline di-stop atau dihapus tanpa membersihkan slot, PostgreSQL akan <strong>menahan file log WAL (Write-Ahead Log)</strong> di server database, menyebabkan kapasitas disk membesar hingga <strong>puluhan GB (misal 19GB+)</strong>.
+                  <h3 className="font-bold text-amber-600 dark:text-amber-400 text-sm md:text-base">
+                    PostgreSQL Replication Slots & WAL Bloat Monitor
+                  </h3>
+                  <p className="text-[11px] text-text-muted">
+                    Pantau ukuran file WAL dan atur jadwal notifikasi otomatis ke Telegram / Discord.
                   </p>
                 </div>
               </div>
+              <button onClick={() => setSlotsModalOpen(false)} className="text-text-muted hover:text-text-main text-2xl leading-none">&times;</button>
+            </div>
 
-              <div className="flex items-center justify-between shrink-0">
-                <span className="text-xs font-bold text-text-muted uppercase tracking-wider">
-                  Total Slots Detected: {replicationSlots.length}
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={fetchReplicationSlots}
-                    disabled={isLoadingSlots}
-                    className="px-3 py-1.5 rounded text-xs font-bold bg-bg-header hover:bg-bg-main border border-border-main text-text-main flex items-center gap-1"
-                  >
-                    <RotateCcw className={clsx("w-3.5 h-3.5", isLoadingSlots && "animate-spin")} /> Refresh
-                  </button>
-                  <button
-                    onClick={() => handleCleanupSlots(undefined, true)}
-                    disabled={isCleaningSlots || replicationSlots.filter(s => !s.active).length === 0}
-                    className="px-3.5 py-1.5 rounded text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50 flex items-center gap-1.5 transition-colors"
-                  >
-                    {isCleaningSlots ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    Bersihkan Semua Slot Inaktif ({replicationSlots.filter(s => !s.active).length})
-                  </button>
-                </div>
-              </div>
-
-              <div className="border border-border-main rounded-lg overflow-hidden bg-bg-main flex-1 flex flex-col min-h-[200px]">
-                {isLoadingSlots ? (
-                  <div className="p-8 text-center text-text-muted text-xs flex items-center justify-center gap-2 flex-1">
-                    <Activity className="w-4 h-4 animate-spin text-amber-500 dark:text-amber-400" /> Scanning PostgreSQL replication slots...
-                  </div>
-                ) : replicationSlots.length === 0 ? (
-                  <div className="p-8 text-center text-text-muted text-xs italic flex-1">
-                    Tidak ada replication slot yang ditemukan pada koneksi PostgreSQL.
-                  </div>
-                ) : (
-                  <div className="overflow-auto flex-1">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="sticky top-0 z-10 bg-bg-header/90 backdrop-blur-sm">
-                        <tr className="text-text-muted border-b border-border-main font-semibold uppercase text-[10px]">
-                          <th className="py-2.5 px-3">Connection</th>
-                          <th className="py-2.5 px-3">Slot Name</th>
-                          <th className="py-2.5 px-3">Plugin</th>
-                          <th className="py-2.5 px-3">Database</th>
-                          <th className="py-2.5 px-3">Status</th>
-                          <th className="py-2.5 px-3">WAL Retained</th>
-                          <th className="py-2.5 px-3 text-right">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border-main font-mono text-[11px]">
-                        {replicationSlots.map((s, idx) => (
-                          <tr key={idx} className="hover:bg-bg-header/50 transition-colors">
-                            <td className="py-2.5 px-3 font-sans font-medium text-text-main">{s.connection_name}</td>
-                            <td className="py-2.5 px-3 font-bold text-amber-600 dark:text-amber-400 break-all">{s.slot_name}</td>
-                            <td className="py-2.5 px-3 text-text-muted">{s.plugin}</td>
-                            <td className="py-2.5 px-3 text-text-muted">{s.database}</td>
-                            <td className="py-2.5 px-3">
-                              {s.active ? (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 uppercase font-sans">
-                                  ACTIVE (PID: {s.active_pid || 'N/A'})
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 uppercase font-sans">
-                                  INACTIVE (WAL Retained)
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 text-text-main dark:text-slate-300">{s.wal_retained || '-'}</td>
-                            <td className="py-2.5 px-3 text-right">
-                              <button
-                                onClick={() => handleCleanupSlots(s.slot_name, true)}
-                                disabled={isCleaningSlots || s.active}
-                                title={s.active ? "Slot sedang aktif (digunakan CDC pipeline). Matikan pipeline lebih dahulu jika ingin menghapus slot ini." : "Drop slot inaktif ini"}
-                                className={clsx(
-                                  "px-2.5 py-1 rounded transition-colors text-[11px] font-bold font-sans",
-                                  s.active
-                                    ? "bg-slate-500/10 text-slate-400 dark:text-slate-500 border border-slate-500/20 cursor-not-allowed opacity-50"
-                                    : "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20"
-                                )}
-                              >
-                                {s.active ? 'Active' : 'Drop Slot'}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+            {/* Tabs Header */}
+            <div className="flex items-center gap-2 px-5 pt-3 border-b border-border-main bg-bg-panel shrink-0">
+              <button
+                onClick={() => setActiveSlotsTab('slots')}
+                className={clsx(
+                  "px-3.5 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2",
+                  activeSlotsTab === 'slots'
+                    ? "border-amber-500 text-amber-500"
+                    : "border-transparent text-text-muted hover:text-text-main"
                 )}
-              </div>
+              >
+                <Database className="w-3.5 h-3.5" />
+                Daftar Slot Saat Ini ({replicationSlots.length})
+              </button>
+              <button
+                onClick={() => {
+                  setActiveSlotsTab('schedules');
+                  fetchWalSchedules();
+                }}
+                className={clsx(
+                  "px-3.5 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2",
+                  activeSlotsTab === 'schedules'
+                    ? "border-amber-500 text-amber-500"
+                    : "border-transparent text-text-muted hover:text-text-main"
+                )}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                WAL Alert Schedules ({walSchedules.length})
+              </button>
+            </div>
+
+            <div className="p-4 flex flex-col flex-1 min-h-0 overflow-y-auto space-y-4">
+              {activeSlotsTab === 'slots' ? (
+                <>
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs leading-relaxed flex items-start gap-2 shrink-0">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                    <div>
+                      <strong className="font-bold text-amber-800 dark:text-amber-300">Replication Slot & WAL Management:</strong>
+                      <p className="mt-1 text-text-main dark:text-slate-300">
+                        Setiap kali Debezium dijalankan pada PostgreSQL, sebuah <em>Replication Slot</em> dibuat. Jika pipeline di-stop atau dihapus tanpa membersihkan slot, PostgreSQL akan <strong>menahan file log WAL (Write-Ahead Log)</strong> di server database, menyebabkan kapasitas disk membesar hingga <strong>puluhan GB (misal 19GB+)</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between shrink-0">
+                    <span className="text-xs font-bold text-text-muted uppercase tracking-wider">
+                      Total Slots Detected: {replicationSlots.length}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={fetchReplicationSlots}
+                        disabled={isLoadingSlots}
+                        className="px-3 py-1.5 rounded text-xs font-bold bg-bg-header hover:bg-bg-main border border-border-main text-text-main flex items-center gap-1"
+                      >
+                        <RotateCcw className={clsx("w-3.5 h-3.5", isLoadingSlots && "animate-spin")} /> Refresh
+                      </button>
+                      <button
+                        onClick={() => handleCleanupSlots(undefined, true)}
+                        disabled={isCleaningSlots || replicationSlots.filter(s => !s.active).length === 0}
+                        className="px-3.5 py-1.5 rounded text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+                      >
+                        {isCleaningSlots ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        Bersihkan Semua Slot Inaktif ({replicationSlots.filter(s => !s.active).length})
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border border-border-main rounded-lg overflow-hidden bg-bg-main flex-1 flex flex-col min-h-[200px]">
+                    {isLoadingSlots ? (
+                      <div className="p-8 text-center text-text-muted text-xs flex items-center justify-center gap-2 flex-1">
+                        <Activity className="w-4 h-4 animate-spin text-amber-500 dark:text-amber-400" /> Scanning PostgreSQL replication slots...
+                      </div>
+                    ) : replicationSlots.length === 0 ? (
+                      <div className="p-8 text-center text-text-muted text-xs italic flex-1">
+                        Tidak ada replication slot yang ditemukan pada koneksi PostgreSQL.
+                      </div>
+                    ) : (
+                      <div className="overflow-auto flex-1">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="sticky top-0 z-10 bg-bg-header/90 backdrop-blur-sm">
+                            <tr className="text-text-muted border-b border-border-main font-semibold uppercase text-[10px]">
+                              <th className="py-2.5 px-3">Connection</th>
+                              <th className="py-2.5 px-3">Slot Name</th>
+                              <th className="py-2.5 px-3">Plugin</th>
+                              <th className="py-2.5 px-3">Database</th>
+                              <th className="py-2.5 px-3">Status</th>
+                              <th className="py-2.5 px-3">WAL Retained</th>
+                              <th className="py-2.5 px-3 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border-main font-mono text-[11px]">
+                            {replicationSlots.map((s, idx) => (
+                              <tr key={idx} className="hover:bg-bg-header/50 transition-colors">
+                                <td className="py-2.5 px-3 font-sans font-medium text-text-main">{s.connection_name}</td>
+                                <td className="py-2.5 px-3 font-bold text-amber-600 dark:text-amber-400 break-all">{s.slot_name}</td>
+                                <td className="py-2.5 px-3 text-text-muted">{s.plugin}</td>
+                                <td className="py-2.5 px-3 text-text-muted">{s.database}</td>
+                                <td className="py-2.5 px-3">
+                                  {s.active ? (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 uppercase font-sans">
+                                      ACTIVE (PID: {s.active_pid || 'N/A'})
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 uppercase font-sans">
+                                      INACTIVE (WAL Retained)
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-text-main dark:text-slate-300">{s.wal_retained || '-'}</td>
+                                <td className="py-2.5 px-3 text-right">
+                                  <button
+                                    onClick={() => handleCleanupSlots(s.slot_name, true)}
+                                    disabled={isCleaningSlots || s.active}
+                                    title={s.active ? "Slot sedang aktif (digunakan CDC pipeline). Matikan pipeline lebih dahulu jika ingin menghapus slot ini." : "Drop slot inaktif ini"}
+                                    className={clsx(
+                                      "px-2.5 py-1 rounded transition-colors text-[11px] font-bold font-sans",
+                                      s.active
+                                        ? "bg-slate-500/10 text-slate-400 dark:text-slate-500 border border-slate-500/20 cursor-not-allowed opacity-50"
+                                        : "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20"
+                                    )}
+                                  >
+                                    {s.active ? 'Active' : 'Drop Slot'}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                /* WAL Alert Schedules Tab */
+                <div className="space-y-4 flex flex-col flex-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-xs text-text-main">
+                        Jadwal Peringatan Otomatis (WAL Bloat Alert)
+                      </h4>
+                      <p className="text-[11px] text-text-muted">
+                        Kirim notifikasi ke Telegram / Discord jika WAL size $\ge$ 500 MB atau slot inaktif menahan log.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleOpenCreateWal}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
+                    >
+                      + Tambah WAL Rule Baru
+                    </button>
+                  </div>
+
+                  <div className="border border-border-main rounded-lg overflow-hidden bg-bg-main flex-1 flex flex-col min-h-[200px]">
+                    {isLoadingWalSchedules ? (
+                      <div className="p-8 text-center text-xs text-text-muted flex items-center justify-center gap-2 flex-1">
+                        <Activity className="w-4 h-4 animate-spin text-amber-500" /> Loading schedules...
+                      </div>
+                    ) : walSchedules.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-text-muted space-y-3 flex-1 flex flex-col items-center justify-center">
+                        <p className="italic">Belum ada aturan jadwal pemantauan WAL yang dibuat.</p>
+                        <button
+                          onClick={handleOpenCreateWal}
+                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded shadow transition-colors"
+                        >
+                          + Buat WAL Alert Schedule
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="overflow-auto flex-1">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="sticky top-0 z-10 bg-bg-header/90 backdrop-blur-sm">
+                            <tr className="text-text-muted border-b border-border-main font-semibold uppercase text-[10px]">
+                              <th className="py-2.5 px-3">Rule Name</th>
+                              <th className="py-2.5 px-3">Connection</th>
+                              <th className="py-2.5 px-3">Threshold</th>
+                              <th className="py-2.5 px-3">Cron / Interval</th>
+                              <th className="py-2.5 px-3">Last Status</th>
+                              <th className="py-2.5 px-3 text-center">Status</th>
+                              <th className="py-2.5 px-3 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border-main text-[11px]">
+                            {walSchedules.map(ws => (
+                              <tr key={ws.id} className="hover:bg-bg-header/50 transition-colors">
+                                <td className="py-2.5 px-3 font-semibold text-text-main">{ws.name}</td>
+                                <td className="py-2.5 px-3 text-text-muted">
+                                  {ws.connectionId 
+                                    ? connections.find(c => c.id === ws.connectionId)?.name || 'Specific DB' 
+                                    : 'All PostgreSQL DBs'}
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-bold text-amber-500">
+                                  &ge; {ws.thresholdMb} MB
+                                </td>
+                                <td className="py-2.5 px-3 font-mono text-text-muted">{ws.cronExpression}</td>
+                                <td className="py-2.5 px-3">
+                                  <span className={clsx(
+                                    "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase",
+                                    ws.lastStatus === 'OK' && "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+                                    ws.lastStatus === 'ALERT_SENT' && "bg-red-500/10 text-red-400 border border-red-500/20",
+                                    ws.lastStatus?.startsWith('ERROR') && "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                                  )}>
+                                    {ws.lastStatus || '-'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-center">
+                                  <button
+                                    onClick={() => handleToggleWalActive(ws.id, ws.active)}
+                                    className={clsx(
+                                      "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
+                                      ws.active 
+                                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" 
+                                        : "bg-slate-500/15 text-slate-400 border border-slate-500/30"
+                                    )}
+                                  >
+                                    {ws.active ? 'Active' : 'Paused'}
+                                  </button>
+                                </td>
+                                <td className="py-2.5 px-3 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button
+                                      onClick={() => handleTestWalAlert(ws.id, ws.name)}
+                                      disabled={testingWalId === ws.id}
+                                      title="Test Send Alert Now"
+                                      className="p-1 rounded hover:bg-bg-panel border border-border-main text-text-muted hover:text-blue-400"
+                                    >
+                                      <Play className={clsx("w-3 h-3", testingWalId === ws.id && "animate-spin text-blue-500")} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleOpenEditWal(ws)}
+                                      title="Edit Rule"
+                                      className="p-1 rounded hover:bg-bg-panel border border-border-main text-text-muted hover:text-amber-400"
+                                    >
+                                      <Edit className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteWalSchedule(ws.id, ws.name)}
+                                      title="Delete Rule"
+                                      className="p-1 rounded hover:bg-bg-panel border border-border-main text-text-muted hover:text-red-400"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="px-5 py-3 border-t border-border-main flex justify-end bg-bg-header/50 shrink-0">
@@ -1121,6 +1430,144 @@ export const PipelineMonitor: React.FC = () => {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* WAL Alert Schedule Create / Edit Modal */}
+      {isWalFormOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-bg-panel w-full max-w-lg rounded-xl shadow-2xl border border-border-main overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-amber-500/10 shrink-0">
+              <h4 className="font-bold text-amber-500 text-sm flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                {editingWalSchedule ? 'Edit WAL Alert Schedule' : 'Buat WAL Alert Schedule Baru'}
+              </h4>
+              <button onClick={() => setIsWalFormOpen(false)} className="text-text-muted hover:text-text-main text-xl leading-none">&times;</button>
+            </div>
+
+            <form onSubmit={handleSaveWalSchedule} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-text-main mb-1">Nama Rule</label>
+                <input
+                  type="text"
+                  required
+                  value={walFormName}
+                  onChange={e => setWalFormName(e.target.value)}
+                  placeholder="e.g. WAL Bloat Alert (500MB)"
+                  className="w-full bg-bg-main border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-text-main mb-1">Koneksi PostgreSQL</label>
+                  <select
+                    value={walFormConnectionId}
+                    onChange={e => setWalFormConnectionId(e.target.value)}
+                    className="w-full bg-bg-main border border-border-main rounded-lg px-2.5 py-2 text-text-main focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="">Semua PostgreSQL DBs</option>
+                    {connections.filter(c => c.type === 'postgresql').map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-text-main mb-1">
+                    Batas WAL: <strong className="text-amber-500 font-mono">{walFormThresholdMb} MB</strong>
+                  </label>
+                  <input
+                    type="number"
+                    min="50"
+                    max="100000"
+                    step="50"
+                    value={walFormThresholdMb}
+                    onChange={e => setWalFormThresholdMb(Number(e.target.value))}
+                    className="w-full bg-bg-main border border-border-main rounded-lg px-2.5 py-1.5 text-text-main font-mono focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-text-main mb-1">Interval Jadwal (Cron)</label>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {[
+                    { label: 'Tiap 5 Menit', value: '*/5 * * * *' },
+                    { label: 'Tiap 15 Menit', value: '*/15 * * * *' },
+                    { label: 'Tiap 1 Jam', value: '0 * * * *' },
+                  ].map(p => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => setWalFormCronPreset(p.value)}
+                      className={clsx(
+                        "py-1.5 px-2 rounded-lg border text-center font-semibold text-[11px] transition-colors",
+                        walFormCronPreset === p.value
+                          ? "bg-amber-500/15 border-amber-500 text-amber-400"
+                          : "bg-bg-main border-border-main text-text-muted hover:text-text-main"
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-text-main mb-1">
+                  Pilih Target Channel Notifikasi (Telegram / Discord)
+                </label>
+                {useAppStore.getState().notificationChannels.length === 0 ? (
+                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded text-amber-300 text-[11px]">
+                    Belum ada notification profile.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                    {useAppStore.getState().notificationChannels.map(c => {
+                      const isSelected = walFormChannels.includes(c.id);
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => {
+                            setWalFormChannels(prev => 
+                              prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]
+                            );
+                          }}
+                          className={clsx(
+                            "p-2 rounded-lg border cursor-pointer flex items-center justify-between transition-all select-none",
+                            isSelected
+                              ? "bg-amber-500/15 border-amber-500 text-amber-300"
+                              : "bg-bg-main border-border-main text-text-muted hover:border-border-item"
+                          )}
+                        >
+                          <span className="truncate font-semibold">{c.type === 'TELEGRAM' ? '✈️' : '💬'} {c.name}</span>
+                          <input type="checkbox" checked={isSelected} onChange={() => {}} className="pointer-events-none" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-border-main flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsWalFormOpen(false)}
+                  className="px-4 py-2 bg-bg-main hover:bg-bg-hover border border-border-main rounded text-text-muted font-semibold"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingWal}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded shadow transition-colors disabled:opacity-50"
+                >
+                  {isSubmittingWal ? 'Menyimpan...' : 'Simpan Schedule'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

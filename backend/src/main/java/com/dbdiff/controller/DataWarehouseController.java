@@ -104,6 +104,27 @@ public class DataWarehouseController {
         return ResponseEntity.ok(meta);
     }
 
+    @PostMapping(value = "/pipelines/backfill-cdc/{deployId}", produces = "text/event-stream")
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter backfillCdcPipeline(
+            @PathVariable String deployId) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter = new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(1800000L);
+        org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor executor = new org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor();
+        executor.initialize();
+        executor.execute(() -> {
+            try {
+                dataWarehouseService.backfillCdcFromPostgres(deployId, emitter);
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().data("DONE"));
+                emitter.complete();
+            } catch (Exception e) {
+                try {
+                    emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().data("ERROR: " + e.getMessage()));
+                    emitter.completeWithError(e);
+                } catch (Exception ex) {}
+            }
+        });
+        return emitter;
+    }
+
     @PostMapping(value = "/pipelines/update-query/{deployId}", produces = "text/event-stream")
     public org.springframework.web.servlet.mvc.method.annotation.SseEmitter updatePipelineQuery(
             @PathVariable String deployId,

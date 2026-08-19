@@ -2862,6 +2862,95 @@ public class DataWarehouseService {
 
         return null;
     }
+    public void backfillCdcFromPostgres(String deployId, SseEmitter emitter) throws Exception {
+        try {
+            sendLog(emitter, "Mulai sinkronisasi backfill manual bypass Kafka untuk pipeline CDC: " + deployId);
+            java.util.Map<String, Object> meta = pipelineMetadataRepository.getPipelineMetadata(deployId);
+            if (meta == null) throw new RuntimeException("Pipeline metadata not found for deployId: " + deployId);
+
+            String connectionId = (String) meta.get("source_connection_id");
+            String sourceTable = (String) meta.get("source_table");
+            String targetConnectionId = (String) meta.get("target_connection_id");
+
+            com.dbdiff.model.ConnectionDetails sourceConn = connectionRepository.findById(connectionId);
+            if (sourceConn == null) throw new RuntimeException("Source connection not found: " + connectionId);
+
+            com.dbdiff.model.ConnectionDetails targetConn = connectionRepository.findById(targetConnectionId);
+            if (targetConn == null) {
+                targetConn = connectionRepository.findAll().stream()
+                        .filter(c -> "clickhouse".equalsIgnoreCase(c.getType()))
+                        .findFirst().orElseThrow(() -> new RuntimeException("ClickHouse connection not found"));
+            }
+
+            int localPort = sourceConn.getPort();
+            if (sourceConn.isUseSsh()) {
+                localPort = sshTunnelService.getOrOpenTunnel(sourceConn, connectionId);
+            }
+
+            String baseName = sourceConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+            String sourceTableSafe = sourceTable.replaceAll("[^a-zA-Z0-9_]", "_");
+            String cdcTableName = "cdc_" + baseName + "_" + sourceTableSafe;
+
+            javax.sql.DataSource targetDs = connectionManagerService.getDataSource(targetConn);
+
+            java.util.List<String> chCols = new java.util.ArrayList<>();
+            try (java.sql.Connection chConnSql = targetDs.getConnection();
+                 java.sql.Statement stmt = chConnSql.createStatement();
+                 java.sql.ResultSet rs = stmt.executeQuery("DESCRIBE dw_erp." + cdcTableName)) {
+                while (rs.next()) {
+                    chCols.add(rs.getString("name"));
+                }
+            }
+
+            java.util.List<String> pgCols = new java.util.ArrayList<>();
+            for (String col : chCols) {
+                if (!col.equals("sync_dt") && !col.equals("version") && !col.equals("is_deleted")) {
+                    pgCols.add(col);
+                }
+            }
+
+            String colListPg = String.join(", ", pgCols);
+            String colListCh = String.join(", ", pgCols) + ", sync_dt, version, is_deleted";
+
+            String pgHostForClickhouse = "172.17.0.1:" + localPort;
+            String pgSchema = "public";
+            String pgTable = sourceTable;
+            if (sourceTable.contains(".")) {
+                String[] parts = sourceTable.split("\\.");
+                pgSchema = parts[0];
+                pgTable = parts[1];
+            }
+            
+            String dbPass = sourceConn.getPassword();
+            if(dbPass != null && dbPass.length() > 0 && !dbPass.equals("*****")) {
+                try {
+                    dbPass = new String(java.util.Base64.getDecoder().decode(dbPass));
+                } catch(Exception e) {}
+            }
+
+            String insertQuery = "INSERT INTO dw_erp." + cdcTableName + " (" + colListCh + ") " +
+                    "SELECT " + colListPg + ", " +
+                    "now64(3) AS sync_dt, " +
+                    "toUnixTimestamp64Milli(now64(3)) AS version, " +
+                    "0 AS is_deleted " +
+                    "FROM postgresql('" + pgHostForClickhouse + "', '" + sourceConn.getDatabase() + "', '" + pgTable + "', '" + sourceConn.getUsername() + "', '" + dbPass + "', '" + pgSchema + "')";
+
+            sendLog(emitter, "Menjalankan injeksi sinkronisasi data dari Postgres ke ClickHouse. Proses ini mungkin memakan waktu...");
+
+            long start = System.currentTimeMillis();
+            try (java.sql.Connection chConnSql = targetDs.getConnection();
+                 java.sql.Statement stmt = chConnSql.createStatement()) {
+                stmt.execute(insertQuery);
+            }
+            long end = System.currentTimeMillis();
+
+            sendLog(emitter, "Backfill sukses dalam " + (end - start) + " ms! Kolom-kolom yang sebelumnya NULL sekarang sudah terisi data terkini.");
+        } catch (Exception ex) {
+            logger.error("Error during backfillCdcFromPostgres", ex);
+            sendLog(emitter, "ERROR: " + ex.getMessage());
+            throw ex;
+        }
+    }
 
     public void updatePipelineQuery(String deployId, String newQuery, SseEmitter emitter) throws Exception {
         try {

@@ -169,3 +169,35 @@ CREATE TABLE IF NOT EXISTS api_share_tokens (
     used_at TIMESTAMP,
     FOREIGN KEY (api_endpoint_id) REFERENCES api_endpoints(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS wal_alert_schedules (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    connection_id VARCHAR(50),
+    threshold_mb INT DEFAULT 500,
+    cron_expression VARCHAR(100) NOT NULL,
+    channel_ids TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    last_run TIMESTAMP,
+    last_status VARCHAR(50),
+    last_alert_time TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS system_alert_schedules (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    target_disk VARCHAR(100) DEFAULT '/dev/sda2',
+    disk_threshold_percent INT DEFAULT 70,
+    ram_threshold_percent INT DEFAULT 80,
+    check_disk BOOLEAN DEFAULT TRUE,
+    check_ram BOOLEAN DEFAULT TRUE,
+    cron_expression VARCHAR(100) NOT NULL,
+    channel_ids TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    cooldown_minutes INT DEFAULT 30,
+    last_run TIMESTAMP,
+    last_status VARCHAR(50),
+    last_alert_time TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
