@@ -36,7 +36,7 @@ public class DynamicSchedulerService {
     private final NotificationChannelRepository notificationChannelRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private final Map<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
+    private final Map<String, List<ScheduledFuture<?>>> scheduledTasks = new ConcurrentHashMap<>();
     
     // Limit concurrent scheduled compare jobs per-schedule
     private final Map<String, Semaphore> scheduleSemaphores = new ConcurrentHashMap<>();
@@ -91,9 +91,9 @@ public class DynamicSchedulerService {
     }
 
     public void cancelSchedule(String scheduleId) {
-        ScheduledFuture<?> future = scheduledTasks.remove(scheduleId);
-        if (future != null) {
-            future.cancel(false);
+        List<ScheduledFuture<?>> futures = scheduledTasks.remove(scheduleId);
+        if (futures != null) {
+            futures.forEach(f -> { if (f != null) f.cancel(false); });
         }
         // Do not remove from scheduleSemaphores to prevent race conditions
         // if a job is currently executing and releasing the semaphore.
@@ -101,14 +101,31 @@ public class DynamicSchedulerService {
 
     private void scheduleTask(ScheduleConfig schedule) {
         cancelSchedule(schedule.getId());
+        if (schedule.getCronExpression() == null || schedule.getCronExpression().trim().isEmpty()) return;
+
+        String[] crons = schedule.getCronExpression().split("[,;\\n]+");
+        List<ScheduledFuture<?>> futures = new ArrayList<>();
         Runnable task = () -> executeCompareJob(schedule.getId());
-        try {
-            CronTrigger cronTrigger = new CronTrigger(schedule.getCronExpression());
-            ScheduledFuture<?> future = taskScheduler.schedule(task, cronTrigger);
-            scheduledTasks.put(schedule.getId(), future);
-            logger.info("Scheduled job: {} with cron: {}", schedule.getName(), schedule.getCronExpression());
-        } catch (Exception e) {
-            logger.error("Failed to schedule job {}: {}", schedule.getName(), e.getMessage());
+
+        for (String rawCron : crons) {
+            String trimmed = rawCron.trim();
+            if (trimmed.isEmpty()) continue;
+            try {
+                String cron = trimmed;
+                if (cron.split("\\s+").length == 5) {
+                    cron = "0 " + cron;
+                }
+                CronTrigger cronTrigger = new CronTrigger(cron);
+                ScheduledFuture<?> future = taskScheduler.schedule(task, cronTrigger);
+                futures.add(future);
+                logger.info("Scheduled job: {} with cron: {}", schedule.getName(), cron);
+            } catch (Exception e) {
+                logger.error("Failed to schedule job {} with cron '{}': {}", schedule.getName(), trimmed, e.getMessage());
+            }
+        }
+
+        if (!futures.isEmpty()) {
+            scheduledTasks.put(schedule.getId(), futures);
         }
     }
 

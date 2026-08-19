@@ -14,6 +14,8 @@ import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
@@ -38,8 +40,8 @@ public class SystemAlertSchedulerService {
     @Autowired
     private WalAlertService walAlertService;
 
-    private final Map<String, ScheduledFuture<?>> systemScheduledTasks = new ConcurrentHashMap<>();
-    private final Map<String, ScheduledFuture<?>> walScheduledTasks = new ConcurrentHashMap<>();
+    private final Map<String, List<ScheduledFuture<?>>> systemScheduledTasks = new ConcurrentHashMap<>();
+    private final Map<String, List<ScheduledFuture<?>>> walScheduledTasks = new ConcurrentHashMap<>();
 
     @EventListener(ApplicationReadyEvent.class)
     public void initSchedulers() {
@@ -50,8 +52,8 @@ public class SystemAlertSchedulerService {
 
     public synchronized void refreshAllSystemSchedules() {
         // Cancel existing
-        systemScheduledTasks.forEach((id, future) -> {
-            if (future != null) future.cancel(false);
+        systemScheduledTasks.forEach((id, futures) -> {
+            if (futures != null) futures.forEach(f -> { if (f != null) f.cancel(false); });
         });
         systemScheduledTasks.clear();
 
@@ -64,8 +66,8 @@ public class SystemAlertSchedulerService {
 
     public synchronized void refreshAllWalSchedules() {
         // Cancel existing
-        walScheduledTasks.forEach((id, future) -> {
-            if (future != null) future.cancel(false);
+        walScheduledTasks.forEach((id, futures) -> {
+            if (futures != null) futures.forEach(f -> { if (f != null) f.cancel(false); });
         });
         walScheduledTasks.clear();
 
@@ -78,52 +80,88 @@ public class SystemAlertSchedulerService {
 
     public synchronized void scheduleSystemTask(SystemAlertSchedule s) {
         if (s == null || s.getId() == null) return;
-        ScheduledFuture<?> existing = systemScheduledTasks.remove(s.getId());
-        if (existing != null) existing.cancel(false);
+        List<ScheduledFuture<?>> existing = systemScheduledTasks.remove(s.getId());
+        if (existing != null) {
+            existing.forEach(f -> { if (f != null) f.cancel(false); });
+        }
 
         if (!s.isActive()) return;
 
-        try {
-            String cron = normalizeCron(s.getCronExpression());
-            ScheduledFuture<?> future = taskScheduler.schedule(() -> {
-                runSystemAlertCheck(s.getId());
-            }, new CronTrigger(cron));
+        String rawCron = s.getCronExpression();
+        if (rawCron == null || rawCron.trim().isEmpty()) return;
 
-            systemScheduledTasks.put(s.getId(), future);
-            logger.info("Scheduled System Alert job [{}] with cron: {}", s.getName(), cron);
-        } catch (Exception ex) {
-            logger.error("Failed to schedule System Alert job [{}]: {}", s.getName(), ex.getMessage());
+        String[] crons = rawCron.split("[,;\\n]+");
+        List<ScheduledFuture<?>> futures = new java.util.ArrayList<>();
+
+        for (String c : crons) {
+            String trimmed = c.trim();
+            if (trimmed.isEmpty()) continue;
+            try {
+                String cron = normalizeCron(trimmed);
+                ScheduledFuture<?> future = taskScheduler.schedule(() -> {
+                    runSystemAlertCheck(s.getId());
+                }, new CronTrigger(cron));
+
+                futures.add(future);
+                logger.info("Scheduled System Alert trigger for [{}] with cron: {}", s.getName(), cron);
+            } catch (Exception ex) {
+                logger.error("Failed to schedule System Alert trigger [{}] with cron '{}': {}", s.getName(), trimmed, ex.getMessage());
+            }
+        }
+
+        if (!futures.isEmpty()) {
+            systemScheduledTasks.put(s.getId(), futures);
         }
     }
 
     public synchronized void scheduleWalTask(WalAlertSchedule s) {
         if (s == null || s.getId() == null) return;
-        ScheduledFuture<?> existing = walScheduledTasks.remove(s.getId());
-        if (existing != null) existing.cancel(false);
+        List<ScheduledFuture<?>> existing = walScheduledTasks.remove(s.getId());
+        if (existing != null) {
+            existing.forEach(f -> { if (f != null) f.cancel(false); });
+        }
 
         if (!s.isActive()) return;
 
-        try {
-            String cron = normalizeCron(s.getCronExpression());
-            ScheduledFuture<?> future = taskScheduler.schedule(() -> {
-                runWalAlertCheck(s.getId());
-            }, new CronTrigger(cron));
+        String rawCron = s.getCronExpression();
+        if (rawCron == null || rawCron.trim().isEmpty()) return;
 
-            walScheduledTasks.put(s.getId(), future);
-            logger.info("Scheduled WAL Alert job [{}] with cron: {}", s.getName(), cron);
-        } catch (Exception ex) {
-            logger.error("Failed to schedule WAL Alert job [{}]: {}", s.getName(), ex.getMessage());
+        String[] crons = rawCron.split("[,;\\n]+");
+        List<ScheduledFuture<?>> futures = new java.util.ArrayList<>();
+
+        for (String c : crons) {
+            String trimmed = c.trim();
+            if (trimmed.isEmpty()) continue;
+            try {
+                String cron = normalizeCron(trimmed);
+                ScheduledFuture<?> future = taskScheduler.schedule(() -> {
+                    runWalAlertCheck(s.getId());
+                }, new CronTrigger(cron));
+
+                futures.add(future);
+                logger.info("Scheduled WAL Alert trigger for [{}] with cron: {}", s.getName(), cron);
+            } catch (Exception ex) {
+                logger.error("Failed to schedule WAL Alert trigger [{}] with cron '{}': {}", s.getName(), trimmed, ex.getMessage());
+            }
+        }
+
+        if (!futures.isEmpty()) {
+            walScheduledTasks.put(s.getId(), futures);
         }
     }
 
     public synchronized void cancelSystemTask(String id) {
-        ScheduledFuture<?> future = systemScheduledTasks.remove(id);
-        if (future != null) future.cancel(false);
+        List<ScheduledFuture<?>> futures = systemScheduledTasks.remove(id);
+        if (futures != null) {
+            futures.forEach(f -> { if (f != null) f.cancel(false); });
+        }
     }
 
     public synchronized void cancelWalTask(String id) {
-        ScheduledFuture<?> future = walScheduledTasks.remove(id);
-        if (future != null) future.cancel(false);
+        List<ScheduledFuture<?>> futures = walScheduledTasks.remove(id);
+        if (futures != null) {
+            futures.forEach(f -> { if (f != null) f.cancel(false); });
+        }
     }
 
     public void runSystemAlertCheck(String scheduleId) {

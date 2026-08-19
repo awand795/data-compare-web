@@ -83,8 +83,7 @@ export const SystemMonitoringView: React.FC = () => {
   const [formRamThreshold, setFormRamThreshold] = useState(80);
   const [formCheckDisk, setFormCheckDisk] = useState(true);
   const [formCheckRam, setFormCheckRam] = useState(true);
-  const [formCronPreset, setFormCronPreset] = useState('0 */10 * * * *');
-  const [formCustomCron, setFormCustomCron] = useState('0 */10 * * * *');
+  const [formCronTriggers, setFormCronTriggers] = useState<string[]>(['0 */10 * * * *']);
   const [formCooldown, setFormCooldown] = useState(30);
   const [formSelectedChannels, setFormSelectedChannels] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -146,8 +145,7 @@ export const SystemMonitoringView: React.FC = () => {
     setFormRamThreshold(80);
     setFormCheckDisk(true);
     setFormCheckRam(true);
-    setFormCronPreset('0 */10 * * * *');
-    setFormCustomCron('0 */10 * * * *');
+    setFormCronTriggers(['0 */10 * * * *']);
     setFormCooldown(30);
     setFormSelectedChannels(notificationChannels.map(c => c.id));
     setIsFormOpen(true);
@@ -161,8 +159,10 @@ export const SystemMonitoringView: React.FC = () => {
     setFormRamThreshold(s.ramThresholdPercent || 80);
     setFormCheckDisk(s.checkDisk !== false);
     setFormCheckRam(s.checkRam !== false);
-    setFormCronPreset(s.cronExpression || '0 */10 * * * *');
-    setFormCustomCron(s.cronExpression || '0 */10 * * * *');
+    const parsedTriggers = s.cronExpression
+      ? s.cronExpression.split(/[,;\n]+/).map((x: string) => x.trim()).filter(Boolean)
+      : ['0 */10 * * * *'];
+    setFormCronTriggers(parsedTriggers.length > 0 ? parsedTriggers : ['0 */10 * * * *']);
     setFormCooldown(s.cooldownMinutes || 30);
     setFormSelectedChannels(s.channelIds ? s.channelIds.split(',').map(x => x.trim()).filter(Boolean) : []);
     setIsFormOpen(true);
@@ -185,7 +185,12 @@ export const SystemMonitoringView: React.FC = () => {
       return;
     }
 
-    const finalCron = formCronPreset === 'custom' ? formCustomCron.trim() : formCronPreset;
+    const validTriggers = formCronTriggers.map(c => c.trim()).filter(Boolean);
+    if (validTriggers.length === 0) {
+      addToast({ type: 'warning', title: 'Validation Error', message: 'Setidaknya masukkan 1 ekspresi Spring Cron.' });
+      return;
+    }
+    const finalCron = validTriggers.join('; ');
 
     const payload = {
       name: formName.trim(),
@@ -657,11 +662,17 @@ export const SystemMonitoringView: React.FC = () => {
                         </td>
 
                         <td className="py-3 px-4 font-mono text-[11px] text-text-main">
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-text-muted" />
-                            {s.cronExpression}
+                          <div className="flex flex-col gap-1">
+                            {s.cronExpression ? s.cronExpression.split(/[,;\n]+/).map((c, i) => (
+                              <span key={i} className="flex items-center gap-1 text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20 w-fit">
+                                <Clock className="w-3 h-3 text-blue-400" />
+                                {c.trim()}
+                              </span>
+                            )) : (
+                              <span className="text-text-muted italic">-</span>
+                            )}
                           </div>
-                          <span className="text-[10px] text-text-muted font-sans">
+                          <span className="text-[10px] text-text-muted font-sans mt-1 block">
                             Cooldown: {s.cooldownMinutes || 30}m
                           </span>
                         </td>
@@ -873,52 +884,94 @@ export const SystemMonitoringView: React.FC = () => {
                 )}
               </div>
 
-              {/* Schedule Cron / Interval */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block font-semibold text-text-main">Interval Jadwal Pemeriksaan (Spring Cron)</label>
-                  <span className="text-[10px] text-text-muted">6-field Spring Cron Syntax</span>
+              {/* Schedule Cron / Interval (Multiple Spring Cron Triggers Supported) */}
+              <div className="space-y-3 p-3.5 rounded-lg border border-border-main bg-bg-main/40">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block font-bold text-text-main">
+                      Jadwal Pemeriksaan (Spring Cron Expressions)
+                    </label>
+                    <p className="text-[11px] text-text-muted">
+                      User dapat mengisi bebas format Spring Cron 6-field. Bisa menambah lebih dari 1 jadwal pemicu.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormCronTriggers(prev => [...prev, '0 0 23 * * *'])}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 border border-blue-500/30 text-[11px] font-bold transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> + Tambah Cron
+                  </button>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
-                  {[
-                    { label: 'Tiap 5 Menit', value: '0 */5 * * * *' },
-                    { label: 'Tiap 10 Menit', value: '0 */10 * * * *' },
-                    { label: 'Tiap 15 Menit', value: '0 */15 * * * *' },
-                    { label: 'Tiap 30 Menit', value: '0 */30 * * * *' },
-                    { label: 'Tiap 1 Jam', value: '0 0 * * * *' },
-                    { label: 'Custom Cron', value: 'custom' },
-                  ].map(p => (
-                    <button
-                      key={p.value}
-                      type="button"
-                      onClick={() => setFormCronPreset(p.value)}
-                      className={clsx(
-                        "py-1.5 px-2 rounded-lg border text-center font-semibold text-[11px] transition-colors",
-                        formCronPreset === p.value 
-                          ? "bg-blue-500/15 border-blue-500 text-blue-400" 
-                          : "bg-bg-main border-border-main text-text-muted hover:text-text-main"
+
+                <div className="space-y-2">
+                  {formCronTriggers.map((cron, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-text-muted">
+                          <Clock className="w-3.5 h-3.5 text-blue-400" />
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={cron}
+                          onChange={e => {
+                            const copy = [...formCronTriggers];
+                            copy[idx] = e.target.value;
+                            setFormCronTriggers(copy);
+                          }}
+                          placeholder="e.g. 0 */10 * * * * atau 0 0 23 * * *"
+                          className="w-full bg-bg-main border border-border-main rounded-lg pl-8 pr-3 py-1.5 text-xs font-mono font-bold text-blue-400 focus:outline-none focus:border-blue-500 shadow-inner"
+                        />
+                      </div>
+                      {formCronTriggers.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setFormCronTriggers(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-border-main"
+                          title="Hapus Trigger Cron Ini"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       )}
-                    >
-                      {p.label}
-                    </button>
+                    </div>
                   ))}
                 </div>
 
-                {formCronPreset === 'custom' && (
-                  <div className="space-y-1">
-                    <input
-                      type="text"
-                      required
-                      value={formCustomCron}
-                      onChange={e => setFormCustomCron(e.target.value)}
-                      placeholder="e.g. 0 0/10 * * * ?"
-                      className="w-full bg-bg-main border border-border-main rounded-lg px-3 py-1.5 text-text-main font-mono focus:outline-none focus:border-blue-500"
-                    />
-                    <p className="text-[10px] text-text-muted">
-                      Format 6 field: <code>Detik Menit Jam Hari Bulan HariMinggu</code> (contoh: <code>0 0 23 * * *</code> untuk jam 23:00)
-                    </p>
+                {/* Quick Presets Helpers */}
+                <div className="pt-1">
+                  <div className="text-[10px] text-text-muted mb-1.5 font-semibold">
+                    Preset Cepat (Klik untuk menambahkan ekspresi cron):
                   </div>
-                )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: 'Tiap 5 Menit (0 */5 * * * *)', value: '0 */5 * * * *' },
+                      { label: 'Tiap 10 Menit (0 */10 * * * *)', value: '0 */10 * * * *' },
+                      { label: 'Tiap 15 Menit (0 */15 * * * *)', value: '0 */15 * * * *' },
+                      { label: 'Tiap 30 Menit (0 */30 * * * *)', value: '0 */30 * * * *' },
+                      { label: 'Tiap 1 Jam (0 0 * * * *)', value: '0 0 * * * *' },
+                      { label: 'Tiap Hari 23:00 (0 0 23 * * *)', value: '0 0 23 * * *' },
+                    ].map(p => (
+                      <button
+                        key={p.value}
+                        type="button"
+                        onClick={() => {
+                          if (formCronTriggers.length === 1 && !formCronTriggers[0]) {
+                            setFormCronTriggers([p.value]);
+                          } else if (!formCronTriggers.includes(p.value)) {
+                            setFormCronTriggers(prev => [...prev, p.value]);
+                          }
+                        }}
+                        className="py-1 px-2 rounded bg-bg-panel border border-border-main hover:border-blue-500/40 text-[10px] text-text-muted hover:text-blue-400 font-mono transition-colors"
+                      >
+                        + {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                    💡 <b>Format 6 field:</b> <code>Detik Menit Jam Hari Bulan HariMinggu</code>. User dapat mengetik bebas ekspresi cron apa pun (misal: <code>0 30 8-17 * * MON-FRI</code>).
+                  </p>
+                </div>
               </div>
 
               {/* Notification Channels Multi-Select */}

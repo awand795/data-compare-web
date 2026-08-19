@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit, Edit3, Code, FileEdit, Database } from 'lucide-react';
+import axios from 'axios';
+import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit, Edit3, Code, FileEdit, Database, Clock, Plus } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -65,8 +66,7 @@ export const PipelineMonitor: React.FC = () => {
   const [walFormName, setWalFormName] = useState('');
   const [walFormConnectionId, setWalFormConnectionId] = useState('');
   const [walFormThresholdMb, setWalFormThresholdMb] = useState(500);
-  const [walFormCronPreset, setWalFormCronPreset] = useState('*/15 * * * *');
-  const [walFormCustomCron, setWalFormCustomCron] = useState('*/15 * * * *');
+  const [walFormCronTriggers, setWalFormCronTriggers] = useState<string[]>(['0 */15 * * * *']);
   const [walFormChannels, setWalFormChannels] = useState<string[]>([]);
   const [isSubmittingWal, setIsSubmittingWal] = useState(false);
   const [testingWalId, setTestingWalId] = useState<string | null>(null);
@@ -74,9 +74,11 @@ export const PipelineMonitor: React.FC = () => {
   const fetchWalSchedules = async () => {
     setIsLoadingWalSchedules(true);
     try {
-      const res = await fetch('/api/wal-alert-schedules');
-      if (res.ok) {
-        const data = await res.json();
+      const res = await axios.get('/api/wal-alert-schedules');
+      const data = res.data;
+      if (Array.isArray(data)) {
+        setWalSchedules(data);
+      } else {
         setWalSchedules(data || []);
       }
     } catch (err) {
@@ -94,8 +96,7 @@ export const PipelineMonitor: React.FC = () => {
     setWalFormName('PostgreSQL WAL Bloat Alert (500MB)');
     setWalFormConnectionId('');
     setWalFormThresholdMb(500);
-    setWalFormCronPreset('0 */15 * * * *');
-    setWalFormCustomCron('0 */15 * * * *');
+    setWalFormCronTriggers(['0 */15 * * * *']);
     setWalFormChannels(useAppStore.getState().notificationChannels.map(c => c.id));
     setIsWalFormOpen(true);
   };
@@ -108,8 +109,10 @@ export const PipelineMonitor: React.FC = () => {
     setWalFormName(s.name);
     setWalFormConnectionId(s.connectionId || '');
     setWalFormThresholdMb(s.thresholdMb || 500);
-    setWalFormCronPreset(s.cronExpression || '0 */15 * * * *');
-    setWalFormCustomCron(s.cronExpression || '0 */15 * * * *');
+    const parsedTriggers = s.cronExpression
+      ? s.cronExpression.split(/[,;\n]+/).map((x: string) => x.trim()).filter(Boolean)
+      : ['0 */15 * * * *'];
+    setWalFormCronTriggers(parsedTriggers.length > 0 ? parsedTriggers : ['0 */15 * * * *']);
     setWalFormChannels(s.channelIds ? s.channelIds.split(',').map((x: string) => x.trim()).filter(Boolean) : []);
     setIsWalFormOpen(true);
   };
@@ -125,7 +128,13 @@ export const PipelineMonitor: React.FC = () => {
       return;
     }
 
-    const finalCron = walFormCronPreset === 'custom' ? walFormCustomCron.trim() : walFormCronPreset;
+    const validTriggers = walFormCronTriggers.map(c => c.trim()).filter(Boolean);
+    if (validTriggers.length === 0) {
+      addToast({ type: 'warning', title: 'Validation Error', message: 'Setidaknya masukkan 1 ekspresi Spring Cron.' });
+      return;
+    }
+    const finalCron = validTriggers.join('; ');
+
     const payload = {
       name: walFormName.trim(),
       connectionId: walFormConnectionId || null,
@@ -1367,7 +1376,18 @@ export const PipelineMonitor: React.FC = () => {
                                 <td className="py-2.5 px-3 font-mono font-bold text-amber-500">
                                   &ge; {ws.thresholdMb} MB
                                 </td>
-                                <td className="py-2.5 px-3 font-mono text-text-muted">{ws.cronExpression}</td>
+                                <td className="py-2.5 px-3 font-mono text-[11px] text-text-main">
+                                  <div className="flex flex-col gap-1">
+                                    {ws.cronExpression ? ws.cronExpression.split(/[,;\n]+/).map((c: string, i: number) => (
+                                      <span key={i} className="flex items-center gap-1 text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 w-fit">
+                                        <Clock className="w-3 h-3 text-amber-400" />
+                                        {c.trim()}
+                                      </span>
+                                    )) : (
+                                      <span className="text-text-muted italic">-</span>
+                                    )}
+                                  </div>
+                                </td>
                                 <td className="py-2.5 px-3">
                                   <span className={clsx(
                                     "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase",
@@ -1508,51 +1528,94 @@ export const PipelineMonitor: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block font-semibold text-text-main">Interval Jadwal (Spring Cron)</label>
-                  <span className="text-[10px] text-text-muted">6-field Spring Syntax</span>
+              {/* Schedule Cron / Interval (Multiple Spring Cron Triggers Supported) */}
+              <div className="space-y-3 p-3.5 rounded-lg border border-border-main bg-bg-main/40">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block font-bold text-text-main">
+                      Jadwal Pemeriksaan WAL (Spring Cron Expressions)
+                    </label>
+                    <p className="text-[11px] text-text-muted">
+                      User dapat mengisi bebas format Spring Cron 6-field. Bisa menambah lebih dari 1 jadwal pemicu.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setWalFormCronTriggers(prev => [...prev, '0 0 23 * * *'])}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border border-amber-500/30 text-[11px] font-bold transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> + Tambah Cron
+                  </button>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
-                  {[
-                    { label: 'Tiap 5 Menit', value: '0 */5 * * * *' },
-                    { label: 'Tiap 10 Menit', value: '0 */10 * * * *' },
-                    { label: 'Tiap 15 Menit', value: '0 */15 * * * *' },
-                    { label: 'Tiap 30 Menit', value: '0 */30 * * * *' },
-                    { label: 'Tiap 1 Jam', value: '0 0 * * * *' },
-                    { label: 'Custom Cron', value: 'custom' },
-                  ].map(p => (
-                    <button
-                      key={p.value}
-                      type="button"
-                      onClick={() => setWalFormCronPreset(p.value)}
-                      className={clsx(
-                        "py-1.5 px-2 rounded-lg border text-center font-semibold text-[11px] transition-colors",
-                        walFormCronPreset === p.value
-                          ? "bg-amber-500/15 border-amber-500 text-amber-400"
-                          : "bg-bg-main border-border-main text-text-muted hover:text-text-main"
+
+                <div className="space-y-2">
+                  {walFormCronTriggers.map((cron, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-text-muted">
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={cron}
+                          onChange={e => {
+                            const copy = [...walFormCronTriggers];
+                            copy[idx] = e.target.value;
+                            setWalFormCronTriggers(copy);
+                          }}
+                          placeholder="e.g. 0 */15 * * * * atau 0 0 23 * * *"
+                          className="w-full bg-bg-main border border-border-main rounded-lg pl-8 pr-3 py-1.5 text-xs font-mono font-bold text-amber-400 focus:outline-none focus:border-amber-500 shadow-inner"
+                        />
+                      </div>
+                      {walFormCronTriggers.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setWalFormCronTriggers(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-border-main"
+                          title="Hapus Trigger Cron Ini"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       )}
-                    >
-                      {p.label}
-                    </button>
+                    </div>
                   ))}
                 </div>
 
-                {walFormCronPreset === 'custom' && (
-                  <div className="space-y-1">
-                    <input
-                      type="text"
-                      required
-                      value={walFormCustomCron}
-                      onChange={e => setWalFormCustomCron(e.target.value)}
-                      placeholder="e.g. 0 0/15 * * * ?"
-                      className="w-full bg-bg-main border border-border-main rounded-lg px-3 py-1.5 text-text-main font-mono focus:outline-none focus:border-amber-500"
-                    />
-                    <p className="text-[10px] text-text-muted">
-                      Format 6 field: <code>Detik Menit Jam Hari Bulan HariMinggu</code> (contoh: <code>0 0 23 * * *</code> untuk jam 23:00)
-                    </p>
+                {/* Quick Presets Helpers */}
+                <div className="pt-1">
+                  <div className="text-[10px] text-text-muted mb-1.5 font-semibold">
+                    Preset Cepat (Klik untuk menambahkan ekspresi cron):
                   </div>
-                )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: 'Tiap 5 Menit (0 */5 * * * *)', value: '0 */5 * * * *' },
+                      { label: 'Tiap 10 Menit (0 */10 * * * *)', value: '0 */10 * * * *' },
+                      { label: 'Tiap 15 Menit (0 */15 * * * *)', value: '0 */15 * * * *' },
+                      { label: 'Tiap 30 Menit (0 */30 * * * *)', value: '0 */30 * * * *' },
+                      { label: 'Tiap 1 Jam (0 0 * * * *)', value: '0 0 * * * *' },
+                      { label: 'Tiap Hari 23:00 (0 0 23 * * *)', value: '0 0 23 * * *' },
+                    ].map(p => (
+                      <button
+                        key={p.value}
+                        type="button"
+                        onClick={() => {
+                          if (walFormCronTriggers.length === 1 && !walFormCronTriggers[0]) {
+                            setWalFormCronTriggers([p.value]);
+                          } else if (!walFormCronTriggers.includes(p.value)) {
+                            setWalFormCronTriggers(prev => [...prev, p.value]);
+                          }
+                        }}
+                        className="py-1 px-2 rounded bg-bg-panel border border-border-main hover:border-amber-500/40 text-[10px] text-text-muted hover:text-amber-400 font-mono transition-colors"
+                      >
+                        + {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                    💡 <b>Format 6 field:</b> <code>Detik Menit Jam Hari Bulan HariMinggu</code>. User dapat mengetik bebas ekspresi cron apa pun (misal: <code>0 0 8,14,20 * * *</code>).
+                  </p>
+                </div>
               </div>
 
               <div>

@@ -336,9 +336,32 @@ export const ScheduleManagerView: React.FC = () => {
                                     {queryTemplates.length === 0 && <p className="text-[10px] text-amber-500 mt-1">No Query Workspace templates found. Please create one first.</p>}
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Cron Expression</label>
-                                    <input required type="text" value={cronExpression} onChange={e => setCronExpression(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm font-mono text-blue-400 focus:border-blue-500 focus:outline-none" placeholder="0 0 * * * *" />
-                                    <p className="text-[10px] text-text-muted mt-1">Uses Spring Boot 6-field cron syntax (Second, Minute, Hour, Day, Month, Weekday)</p>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-xs font-semibold text-text-muted uppercase tracking-widest">Cron Expression (Spring Cron 6-Field)</label>
+                                        <span className="text-[10px] text-blue-400 font-mono">Bisa multi-trigger dipisah titik koma (;)</span>
+                                    </div>
+                                    <input required type="text" value={cronExpression} onChange={e => setCronExpression(e.target.value)} className="w-full bg-bg-input border border-border-input rounded px-3 py-2 text-sm font-mono text-blue-400 focus:border-blue-500 focus:outline-none" placeholder="0 0 * * * * atau 0 0 8 * * *; 0 0 23 * * *" />
+                                    <div className="flex flex-wrap gap-1 mt-1.5">
+                                        {[
+                                            { label: 'Tiap 5m', value: '0 */5 * * * *' },
+                                            { label: 'Tiap 15m', value: '0 */15 * * * *' },
+                                            { label: 'Tiap 1 Jam', value: '0 0 * * * *' },
+                                            { label: 'Tiap Jam 23:00', value: '0 0 23 * * *' },
+                                        ].map(p => (
+                                            <button
+                                                key={p.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (!cronExpression) setCronExpression(p.value);
+                                                    else if (!cronExpression.includes(p.value)) setCronExpression(`${cronExpression}; ${p.value}`);
+                                                }}
+                                                className="px-1.5 py-0.5 rounded bg-bg-hover text-[10px] text-text-muted hover:text-blue-400 font-mono border border-border-input transition-colors"
+                                            >
+                                                + {p.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className="text-[10px] text-text-muted mt-1">Format: <code>Detik Menit Jam Hari Bulan HariMinggu</code>. User dapat mengisi bebas atau menambahkan beberapa cron dipisah <code>;</code></p>
                                 </div>
                                 <div className="flex items-center gap-2 mt-2">
                                     <label className="relative inline-flex items-center cursor-pointer">
