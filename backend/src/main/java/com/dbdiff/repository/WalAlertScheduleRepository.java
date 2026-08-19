@@ -6,6 +6,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javax.sql.DataSource;
 import java.sql.Timestamp;
 import java.util.List;
@@ -14,11 +17,35 @@ import java.util.UUID;
 @Repository
 public class WalAlertScheduleRepository {
 
+    private static final Logger logger = LoggerFactory.getLogger(WalAlertScheduleRepository.class);
     private final JdbcTemplate jdbcTemplate;
 
     @Autowired
     public WalAlertScheduleRepository(DataSource dataSource) {
         this.jdbcTemplate = new JdbcTemplate(dataSource);
+    }
+
+    @PostConstruct
+    public void initTable() {
+        try {
+            String sql = "CREATE TABLE IF NOT EXISTS wal_alert_schedules (" +
+                    "id VARCHAR(255) PRIMARY KEY, " +
+                    "name VARCHAR(255) NOT NULL, " +
+                    "connection_id VARCHAR(255), " +
+                    "threshold_mb INT NOT NULL DEFAULT 500, " +
+                    "cron_expression VARCHAR(255) NOT NULL DEFAULT '0 */10 * * * *', " +
+                    "channel_ids TEXT, " +
+                    "is_active BOOLEAN NOT NULL DEFAULT TRUE, " +
+                    "last_run TIMESTAMP, " +
+                    "last_status VARCHAR(50), " +
+                    "last_alert_time TIMESTAMP, " +
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                    ")";
+            jdbcTemplate.execute(sql);
+            logger.info("Successfully initialized table wal_alert_schedules");
+        } catch (Exception e) {
+            logger.warn("Initialization of table wal_alert_schedules skipped or failed: " + e.getMessage());
+        }
     }
 
     private final RowMapper<WalAlertSchedule> mapper = (rs, rowNum) -> {

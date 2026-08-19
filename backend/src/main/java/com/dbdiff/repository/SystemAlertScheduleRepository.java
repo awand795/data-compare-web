@@ -6,6 +6,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javax.sql.DataSource;
 import java.sql.Timestamp;
 import java.util.List;
@@ -14,11 +17,39 @@ import java.util.UUID;
 @Repository
 public class SystemAlertScheduleRepository {
 
+    private static final Logger logger = LoggerFactory.getLogger(SystemAlertScheduleRepository.class);
     private final JdbcTemplate jdbcTemplate;
 
     @Autowired
     public SystemAlertScheduleRepository(DataSource dataSource) {
         this.jdbcTemplate = new JdbcTemplate(dataSource);
+    }
+
+    @PostConstruct
+    public void initTable() {
+        try {
+            String sql = "CREATE TABLE IF NOT EXISTS system_alert_schedules (" +
+                    "id VARCHAR(255) PRIMARY KEY, " +
+                    "name VARCHAR(255) NOT NULL, " +
+                    "target_disk VARCHAR(255) DEFAULT '/dev/sda2', " +
+                    "disk_threshold_percent INT DEFAULT 70, " +
+                    "ram_threshold_percent INT DEFAULT 80, " +
+                    "check_disk BOOLEAN DEFAULT TRUE, " +
+                    "check_ram BOOLEAN DEFAULT TRUE, " +
+                    "cron_expression VARCHAR(255) NOT NULL DEFAULT '0 */5 * * * *', " +
+                    "channel_ids TEXT, " +
+                    "is_active BOOLEAN NOT NULL DEFAULT TRUE, " +
+                    "cooldown_minutes INT DEFAULT 30, " +
+                    "last_run TIMESTAMP, " +
+                    "last_status VARCHAR(50), " +
+                    "last_alert_time TIMESTAMP, " +
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                    ")";
+            jdbcTemplate.execute(sql);
+            logger.info("Successfully initialized table system_alert_schedules");
+        } catch (Exception e) {
+            logger.warn("Initialization of table system_alert_schedules skipped or failed: " + e.getMessage());
+        }
     }
 
     private final RowMapper<SystemAlertSchedule> mapper = (rs, rowNum) -> {
