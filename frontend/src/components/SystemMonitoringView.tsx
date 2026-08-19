@@ -4,7 +4,7 @@ import axios from 'axios';
 import { 
   Activity, Server, HardDrive, Cpu, RefreshCw, Plus, Bell, 
   AlertTriangle, CheckCircle, Clock, Trash2, Edit, Play, ShieldAlert,
-  Sliders, MessageCircle, XCircle, Info, Radio
+  Sliders, MessageCircle, XCircle, Info, Radio, Save
 } from 'lucide-react';
 import { useAppStore, type NotificationChannel } from '../store/useAppStore';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
@@ -83,8 +83,8 @@ export const SystemMonitoringView: React.FC = () => {
   const [formRamThreshold, setFormRamThreshold] = useState(80);
   const [formCheckDisk, setFormCheckDisk] = useState(true);
   const [formCheckRam, setFormCheckRam] = useState(true);
-  const [formCronPreset, setFormCronPreset] = useState('*/10 * * * *');
-  const [formCustomCron, setFormCustomCron] = useState('*/10 * * * *');
+  const [formCronPreset, setFormCronPreset] = useState('0 */10 * * * *');
+  const [formCustomCron, setFormCustomCron] = useState('0 */10 * * * *');
   const [formCooldown, setFormCooldown] = useState(30);
   const [formSelectedChannels, setFormSelectedChannels] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -146,8 +146,8 @@ export const SystemMonitoringView: React.FC = () => {
     setFormRamThreshold(80);
     setFormCheckDisk(true);
     setFormCheckRam(true);
-    setFormCronPreset('*/10 * * * *');
-    setFormCustomCron('*/10 * * * *');
+    setFormCronPreset('0 */10 * * * *');
+    setFormCustomCron('0 */10 * * * *');
     setFormCooldown(30);
     setFormSelectedChannels(notificationChannels.map(c => c.id));
     setIsFormOpen(true);
@@ -161,8 +161,8 @@ export const SystemMonitoringView: React.FC = () => {
     setFormRamThreshold(s.ramThresholdPercent || 80);
     setFormCheckDisk(s.checkDisk !== false);
     setFormCheckRam(s.checkRam !== false);
-    setFormCronPreset(s.cronExpression || '*/10 * * * *');
-    setFormCustomCron(s.cronExpression || '*/10 * * * *');
+    setFormCronPreset(s.cronExpression || '0 */10 * * * *');
+    setFormCustomCron(s.cronExpression || '0 */10 * * * *');
     setFormCooldown(s.cooldownMinutes || 30);
     setFormSelectedChannels(s.channelIds ? s.channelIds.split(',').map(x => x.trim()).filter(Boolean) : []);
     setIsFormOpen(true);
@@ -875,14 +875,17 @@ export const SystemMonitoringView: React.FC = () => {
 
               {/* Schedule Cron / Interval */}
               <div>
-                <label className="block font-semibold text-text-main mb-1">Interval Jadwal Pemeriksaan (Cron)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-semibold text-text-main">Interval Jadwal Pemeriksaan (Spring Cron)</label>
+                  <span className="text-[10px] text-text-muted">6-field Spring Cron Syntax</span>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
                   {[
-                    { label: 'Tiap 5 Menit', value: '*/5 * * * *' },
-                    { label: 'Tiap 10 Menit', value: '*/10 * * * *' },
-                    { label: 'Tiap 15 Menit', value: '*/15 * * * *' },
-                    { label: 'Tiap 30 Menit', value: '*/30 * * * *' },
-                    { label: 'Tiap 1 Jam', value: '0 * * * *' },
+                    { label: 'Tiap 5 Menit', value: '0 */5 * * * *' },
+                    { label: 'Tiap 10 Menit', value: '0 */10 * * * *' },
+                    { label: 'Tiap 15 Menit', value: '0 */15 * * * *' },
+                    { label: 'Tiap 30 Menit', value: '0 */30 * * * *' },
+                    { label: 'Tiap 1 Jam', value: '0 0 * * * *' },
                     { label: 'Custom Cron', value: 'custom' },
                   ].map(p => (
                     <button
@@ -902,14 +905,19 @@ export const SystemMonitoringView: React.FC = () => {
                 </div>
 
                 {formCronPreset === 'custom' && (
-                  <input
-                    type="text"
-                    required
-                    value={formCustomCron}
-                    onChange={e => setFormCustomCron(e.target.value)}
-                    placeholder="e.g. 0 0/15 * * * ?"
-                    className="w-full bg-bg-main border border-border-main rounded-lg px-3 py-1.5 text-text-main font-mono focus:outline-none focus:border-blue-500"
-                  />
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      required
+                      value={formCustomCron}
+                      onChange={e => setFormCustomCron(e.target.value)}
+                      placeholder="e.g. 0 0/10 * * * ?"
+                      className="w-full bg-bg-main border border-border-main rounded-lg px-3 py-1.5 text-text-main font-mono focus:outline-none focus:border-blue-500"
+                    />
+                    <p className="text-[10px] text-text-muted">
+                      Format 6 field: <code>Detik Menit Jam Hari Bulan HariMinggu</code> (contoh: <code>0 0 23 * * *</code> untuk jam 23:00)
+                    </p>
+                  </div>
                 )}
               </div>
 

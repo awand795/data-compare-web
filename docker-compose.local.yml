@@ -1,4 +1,3 @@
-
 services:
   # Spring Boot Backend (Connected to Internal Database)
   backend:
@@ -50,10 +49,9 @@ services:
     restart: unless-stopped
     ports:
       - target: 80
-        published: 5173
+        published: 5175
         protocol: tcp
         mode: ingress
-
     networks:
       - darkosync-network
     logging:

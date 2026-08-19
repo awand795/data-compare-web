@@ -87,23 +87,29 @@ export const PipelineMonitor: React.FC = () => {
   };
 
   const handleOpenCreateWal = () => {
+    if (replicationSlots.length === 0) {
+      fetchReplicationSlots();
+    }
     setEditingWalSchedule(null);
     setWalFormName('PostgreSQL WAL Bloat Alert (500MB)');
     setWalFormConnectionId('');
     setWalFormThresholdMb(500);
-    setWalFormCronPreset('*/15 * * * *');
-    setWalFormCustomCron('*/15 * * * *');
-    setWalFormChannels([]);
+    setWalFormCronPreset('0 */15 * * * *');
+    setWalFormCustomCron('0 */15 * * * *');
+    setWalFormChannels(useAppStore.getState().notificationChannels.map(c => c.id));
     setIsWalFormOpen(true);
   };
 
   const handleOpenEditWal = (s: any) => {
+    if (replicationSlots.length === 0) {
+      fetchReplicationSlots();
+    }
     setEditingWalSchedule(s);
     setWalFormName(s.name);
     setWalFormConnectionId(s.connectionId || '');
     setWalFormThresholdMb(s.thresholdMb || 500);
-    setWalFormCronPreset(s.cronExpression || '*/15 * * * *');
-    setWalFormCustomCron(s.cronExpression || '*/15 * * * *');
+    setWalFormCronPreset(s.cronExpression || '0 */15 * * * *');
+    setWalFormCustomCron(s.cronExpression || '0 */15 * * * *');
     setWalFormChannels(s.channelIds ? s.channelIds.split(',').map((x: string) => x.trim()).filter(Boolean) : []);
     setIsWalFormOpen(true);
   };
@@ -1459,24 +1465,36 @@ export const PipelineMonitor: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-text-main mb-1">Koneksi PostgreSQL</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-semibold text-text-main">Pilih Target WAL Slot (Hanya Slot Aktif)</label>
+                    <span className="text-[10px] text-emerald-500 font-bold">
+                      {replicationSlots.filter(s => s.active).length} Aktif
+                    </span>
+                  </div>
                   <select
                     value={walFormConnectionId}
                     onChange={e => setWalFormConnectionId(e.target.value)}
                     className="w-full bg-bg-main border border-border-main rounded-lg px-2.5 py-2 text-text-main focus:outline-none focus:border-amber-500"
                   >
-                    <option value="">Semua PostgreSQL DBs</option>
-                    {connections.filter(c => c.type === 'postgresql').map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                    <option value="">Semua Slot Aktif ({replicationSlots.filter(s => s.active).length} slot)</option>
+                    {replicationSlots.filter(s => s.active).map((s, idx) => (
+                      <option key={`${s.connection_id || s.connection_name}-${s.slot_name}-${idx}`} value={s.connection_id || s.connection_name}>
+                        {s.connection_name} &bull; {s.slot_name} ({s.database || 'db'})
+                      </option>
                     ))}
                   </select>
+                  {replicationSlots.filter(s => s.active).length === 0 && (
+                    <p className="text-[10px] text-amber-500 mt-1 italic">
+                      Saat ini belum ada slot PostgreSQL aktif terdeteksi. Silakan jalankan CDC pipeline terlebih dahulu.
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block font-semibold text-text-main mb-1">
-                    Batas WAL: <strong className="text-amber-500 font-mono">{walFormThresholdMb} MB</strong>
+                    Batas Threshold WAL: <strong className="text-amber-500 font-mono">{walFormThresholdMb} MB</strong>
                   </label>
                   <input
                     type="number"
@@ -1485,18 +1503,24 @@ export const PipelineMonitor: React.FC = () => {
                     step="50"
                     value={walFormThresholdMb}
                     onChange={e => setWalFormThresholdMb(Number(e.target.value))}
-                    className="w-full bg-bg-main border border-border-main rounded-lg px-2.5 py-1.5 text-text-main font-mono focus:outline-none focus:border-amber-500"
+                    className="w-full bg-bg-main border border-border-main rounded-lg px-2.5 py-2 text-text-main font-mono focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-text-main mb-1">Interval Jadwal (Cron)</label>
-                <div className="grid grid-cols-3 gap-2 mb-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-semibold text-text-main">Interval Jadwal (Spring Cron)</label>
+                  <span className="text-[10px] text-text-muted">6-field Spring Syntax</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
                   {[
-                    { label: 'Tiap 5 Menit', value: '*/5 * * * *' },
-                    { label: 'Tiap 15 Menit', value: '*/15 * * * *' },
-                    { label: 'Tiap 1 Jam', value: '0 * * * *' },
+                    { label: 'Tiap 5 Menit', value: '0 */5 * * * *' },
+                    { label: 'Tiap 10 Menit', value: '0 */10 * * * *' },
+                    { label: 'Tiap 15 Menit', value: '0 */15 * * * *' },
+                    { label: 'Tiap 30 Menit', value: '0 */30 * * * *' },
+                    { label: 'Tiap 1 Jam', value: '0 0 * * * *' },
+                    { label: 'Custom Cron', value: 'custom' },
                   ].map(p => (
                     <button
                       key={p.value}
@@ -1513,6 +1537,22 @@ export const PipelineMonitor: React.FC = () => {
                     </button>
                   ))}
                 </div>
+
+                {walFormCronPreset === 'custom' && (
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      required
+                      value={walFormCustomCron}
+                      onChange={e => setWalFormCustomCron(e.target.value)}
+                      placeholder="e.g. 0 0/15 * * * ?"
+                      className="w-full bg-bg-main border border-border-main rounded-lg px-3 py-1.5 text-text-main font-mono focus:outline-none focus:border-amber-500"
+                    />
+                    <p className="text-[10px] text-text-muted">
+                      Format 6 field: <code>Detik Menit Jam Hari Bulan HariMinggu</code> (contoh: <code>0 0 23 * * *</code> untuk jam 23:00)
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>
