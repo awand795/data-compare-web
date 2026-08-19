@@ -1164,8 +1164,8 @@ export const PipelineMonitor: React.FC = () => {
       )}
 
       {slotsModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-bg-panel w-full max-w-4xl rounded-xl shadow-2xl flex flex-col border border-border-main max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 md:p-4">
+          <div className="bg-bg-panel w-full max-w-4xl rounded-xl shadow-2xl flex flex-col border border-border-main max-h-[90vh] h-[85vh] overflow-hidden">
             <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-amber-500/10 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center">
@@ -1214,7 +1214,7 @@ export const PipelineMonitor: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-4 flex flex-col flex-1 min-h-0 overflow-y-auto space-y-4">
+            <div className="p-4 md:p-5 flex flex-col flex-1 min-h-0 overflow-y-auto space-y-4">
               {activeSlotsTab === 'slots' ? (
                 <>
                   <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs leading-relaxed flex items-start gap-2 shrink-0">
@@ -1250,81 +1250,79 @@ export const PipelineMonitor: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="border border-border-main rounded-lg overflow-hidden bg-bg-main flex-1 flex flex-col min-h-[200px]">
+                  <div className="border border-border-main rounded-lg bg-bg-main flex-1 min-h-0 overflow-auto">
                     {isLoadingSlots ? (
-                      <div className="p-8 text-center text-text-muted text-xs flex items-center justify-center gap-2 flex-1">
+                      <div className="p-8 text-center text-text-muted text-xs flex items-center justify-center gap-2 h-full">
                         <Activity className="w-4 h-4 animate-spin text-amber-500 dark:text-amber-400" /> Scanning PostgreSQL replication slots...
                       </div>
                     ) : replicationSlots.length === 0 ? (
-                      <div className="p-8 text-center text-text-muted text-xs italic flex-1">
+                      <div className="p-8 text-center text-text-muted text-xs italic h-full flex items-center justify-center">
                         Tidak ada replication slot yang ditemukan pada koneksi PostgreSQL.
                       </div>
                     ) : (
-                      <div className="overflow-auto flex-1">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead className="sticky top-0 z-10 bg-bg-header/90 backdrop-blur-sm">
-                            <tr className="text-text-muted border-b border-border-main font-semibold uppercase text-[10px]">
-                              <th className="py-2.5 px-3">Connection</th>
-                              <th className="py-2.5 px-3">Slot Name</th>
-                              <th className="py-2.5 px-3">Plugin</th>
-                              <th className="py-2.5 px-3">Database</th>
-                              <th className="py-2.5 px-3">Status</th>
-                              <th className="py-2.5 px-3">WAL Retained</th>
-                              <th className="py-2.5 px-3 text-right">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border-main font-mono text-[11px]">
-                            {replicationSlots.map((s, idx) => (
-                              <tr key={idx} className="hover:bg-bg-header/50 transition-colors">
-                                <td className="py-2.5 px-3 font-sans font-medium text-text-main">{s.connection_name}</td>
-                                <td className="py-2.5 px-3 font-bold text-amber-600 dark:text-amber-400 break-all">{s.slot_name}</td>
-                                <td className="py-2.5 px-3 text-text-muted">{s.plugin}</td>
-                                <td className="py-2.5 px-3 text-text-muted">{s.database}</td>
-                                <td className="py-2.5 px-3">
-                                  {s.active ? (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 uppercase font-sans">
-                                      ACTIVE (PID: {s.active_pid || 'N/A'})
-                                    </span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 uppercase font-sans">
-                                      INACTIVE (WAL Retained)
-                                    </span>
+                      <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                        <thead className="sticky top-0 z-10 bg-bg-header shadow-sm">
+                          <tr className="text-text-muted border-b border-border-main font-semibold uppercase text-[10px]">
+                            <th className="py-2.5 px-3">Connection</th>
+                            <th className="py-2.5 px-3">Slot Name</th>
+                            <th className="py-2.5 px-3">Plugin</th>
+                            <th className="py-2.5 px-3">Database</th>
+                            <th className="py-2.5 px-3">Status</th>
+                            <th className="py-2.5 px-3">WAL Retained</th>
+                            <th className="py-2.5 px-3 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border-main font-mono text-[11px]">
+                          {replicationSlots.map((s, idx) => (
+                            <tr key={idx} className="hover:bg-bg-header/50 transition-colors">
+                              <td className="py-2.5 px-3 font-sans font-medium text-text-main">{s.connection_name}</td>
+                              <td className="py-2.5 px-3 font-bold text-amber-600 dark:text-amber-400 break-all">{s.slot_name}</td>
+                              <td className="py-2.5 px-3 text-text-muted">{s.plugin}</td>
+                              <td className="py-2.5 px-3 text-text-muted">{s.database}</td>
+                              <td className="py-2.5 px-3">
+                                {s.active ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 uppercase font-sans">
+                                    ACTIVE (PID: {s.active_pid || 'N/A'})
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 uppercase font-sans">
+                                    INACTIVE (WAL Retained)
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-text-main dark:text-slate-300">{s.wal_retained || '-'}</td>
+                              <td className="py-2.5 px-3 text-right">
+                                <button
+                                  onClick={() => handleCleanupSlots(s.slot_name, true)}
+                                  disabled={isCleaningSlots || s.active}
+                                  title={s.active ? "Slot sedang aktif (digunakan CDC pipeline). Matikan pipeline lebih dahulu jika ingin menghapus slot ini." : "Drop slot inaktif ini"}
+                                  className={clsx(
+                                    "px-2.5 py-1 rounded transition-colors text-[11px] font-bold font-sans",
+                                    s.active
+                                      ? "bg-slate-500/10 text-slate-400 dark:text-slate-500 border border-slate-500/20 cursor-not-allowed opacity-50"
+                                      : "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20"
                                   )}
-                                </td>
-                                <td className="py-2.5 px-3 text-text-main dark:text-slate-300">{s.wal_retained || '-'}</td>
-                                <td className="py-2.5 px-3 text-right">
-                                  <button
-                                    onClick={() => handleCleanupSlots(s.slot_name, true)}
-                                    disabled={isCleaningSlots || s.active}
-                                    title={s.active ? "Slot sedang aktif (digunakan CDC pipeline). Matikan pipeline lebih dahulu jika ingin menghapus slot ini." : "Drop slot inaktif ini"}
-                                    className={clsx(
-                                      "px-2.5 py-1 rounded transition-colors text-[11px] font-bold font-sans",
-                                      s.active
-                                        ? "bg-slate-500/10 text-slate-400 dark:text-slate-500 border border-slate-500/20 cursor-not-allowed opacity-50"
-                                        : "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20"
-                                    )}
-                                  >
-                                    {s.active ? 'Active' : 'Drop Slot'}
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                                >
+                                  {s.active ? 'Active' : 'Drop Slot'}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     )}
                   </div>
                 </>
               ) : (
                 /* WAL Alert Schedules Tab */
-                <div className="space-y-4 flex flex-col flex-1">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-4 flex flex-col flex-1 min-h-0">
+                  <div className="flex items-center justify-between shrink-0">
                     <div>
                       <h4 className="font-bold text-xs text-text-main">
                         Jadwal Peringatan Otomatis (WAL Bloat Alert)
                       </h4>
                       <p className="text-[11px] text-text-muted">
-                        Kirim notifikasi ke Telegram / Discord jika WAL size $\ge$ 500 MB atau slot inaktif menahan log.
+                        Kirim notifikasi ke Telegram / Discord jika WAL size &ge; 500 MB atau slot inaktif menahan log.
                       </p>
                     </div>
                     <button
@@ -1335,13 +1333,13 @@ export const PipelineMonitor: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="border border-border-main rounded-lg overflow-hidden bg-bg-main flex-1 flex flex-col min-h-[200px]">
+                  <div className="border border-border-main rounded-lg bg-bg-main flex-1 min-h-0 overflow-auto">
                     {isLoadingWalSchedules ? (
-                      <div className="p-8 text-center text-xs text-text-muted flex items-center justify-center gap-2 flex-1">
+                      <div className="p-8 text-center text-xs text-text-muted flex items-center justify-center gap-2 h-full">
                         <Activity className="w-4 h-4 animate-spin text-amber-500" /> Loading schedules...
                       </div>
                     ) : walSchedules.length === 0 ? (
-                      <div className="p-8 text-center text-xs text-text-muted space-y-3 flex-1 flex flex-col items-center justify-center">
+                      <div className="p-8 text-center text-xs text-text-muted space-y-3 h-full flex flex-col items-center justify-center">
                         <p className="italic">Belum ada aturan jadwal pemantauan WAL yang dibuat.</p>
                         <button
                           onClick={handleOpenCreateWal}
@@ -1351,97 +1349,95 @@ export const PipelineMonitor: React.FC = () => {
                         </button>
                       </div>
                     ) : (
-                      <div className="overflow-auto flex-1">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead className="sticky top-0 z-10 bg-bg-header/90 backdrop-blur-sm">
-                            <tr className="text-text-muted border-b border-border-main font-semibold uppercase text-[10px]">
-                              <th className="py-2.5 px-3">Rule Name</th>
-                              <th className="py-2.5 px-3">Connection</th>
-                              <th className="py-2.5 px-3">Threshold</th>
-                              <th className="py-2.5 px-3">Cron / Interval</th>
-                              <th className="py-2.5 px-3">Last Status</th>
-                              <th className="py-2.5 px-3 text-center">Status</th>
-                              <th className="py-2.5 px-3 text-right">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border-main text-[11px]">
-                            {walSchedules.map(ws => (
-                              <tr key={ws.id} className="hover:bg-bg-header/50 transition-colors">
-                                <td className="py-2.5 px-3 font-semibold text-text-main">{ws.name}</td>
-                                <td className="py-2.5 px-3 text-text-muted">
-                                  {ws.connectionId 
-                                    ? connections.find(c => c.id === ws.connectionId)?.name || 'Specific DB' 
-                                    : 'All PostgreSQL DBs'}
-                                </td>
-                                <td className="py-2.5 px-3 font-mono font-bold text-amber-500">
-                                  &ge; {ws.thresholdMb} MB
-                                </td>
-                                <td className="py-2.5 px-3 font-mono text-[11px] text-text-main">
-                                  <div className="flex flex-col gap-1">
-                                    {ws.cronExpression ? ws.cronExpression.split(/[,;\n]+/).map((c: string, i: number) => (
-                                      <span key={i} className="flex items-center gap-1 text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 w-fit">
-                                        <Clock className="w-3 h-3 text-amber-400" />
-                                        {c.trim()}
-                                      </span>
-                                    )) : (
-                                      <span className="text-text-muted italic">-</span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="py-2.5 px-3">
-                                  <span className={clsx(
-                                    "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase",
-                                    ws.lastStatus === 'OK' && "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
-                                    ws.lastStatus === 'ALERT_SENT' && "bg-red-500/10 text-red-400 border border-red-500/20",
-                                    ws.lastStatus?.startsWith('ERROR') && "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                                  )}>
-                                    {ws.lastStatus || '-'}
-                                  </span>
-                                </td>
-                                <td className="py-2.5 px-3 text-center">
+                      <table className="w-full text-left text-xs border-collapse min-w-[750px]">
+                        <thead className="sticky top-0 z-10 bg-bg-header shadow-sm">
+                          <tr className="text-text-muted border-b border-border-main font-semibold uppercase text-[10px]">
+                            <th className="py-2.5 px-3">Rule Name</th>
+                            <th className="py-2.5 px-3">Connection</th>
+                            <th className="py-2.5 px-3">Threshold</th>
+                            <th className="py-2.5 px-3">Cron / Interval</th>
+                            <th className="py-2.5 px-3">Last Status</th>
+                            <th className="py-2.5 px-3 text-center">Status</th>
+                            <th className="py-2.5 px-3 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border-main text-[11px]">
+                          {walSchedules.map(ws => (
+                            <tr key={ws.id} className="hover:bg-bg-header/50 transition-colors">
+                              <td className="py-2.5 px-3 font-semibold text-text-main">{ws.name}</td>
+                              <td className="py-2.5 px-3 text-text-muted">
+                                {ws.connectionId 
+                                  ? connections.find(c => c.id === ws.connectionId)?.name || 'Specific DB' 
+                                  : 'All PostgreSQL DBs'}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold text-amber-500">
+                                &ge; {ws.thresholdMb} MB
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-text-main">
+                                <div className="flex flex-col gap-1">
+                                  {ws.cronExpression ? ws.cronExpression.split(/[,;\n]+/).map((c: string, i: number) => (
+                                    <span key={i} className="flex items-center gap-1 text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 w-fit">
+                                      <Clock className="w-3 h-3 text-amber-400" />
+                                      {c.trim()}
+                                    </span>
+                                  )) : (
+                                    <span className="text-text-muted italic">-</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className={clsx(
+                                  "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase",
+                                  ws.lastStatus === 'OK' && "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+                                  ws.lastStatus === 'ALERT_SENT' && "bg-red-500/10 text-red-400 border border-red-500/20",
+                                  ws.lastStatus?.startsWith('ERROR') && "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                                )}>
+                                  {ws.lastStatus || '-'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                <button
+                                  onClick={() => handleToggleWalActive(ws.id, ws.active)}
+                                  className={clsx(
+                                    "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
+                                    ws.active 
+                                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" 
+                                      : "bg-slate-500/15 text-slate-400 border border-slate-500/30"
+                                  )}
+                                >
+                                  {ws.active ? 'Active' : 'Paused'}
+                                </button>
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                <div className="flex items-center justify-end gap-1">
                                   <button
-                                    onClick={() => handleToggleWalActive(ws.id, ws.active)}
-                                    className={clsx(
-                                      "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
-                                      ws.active 
-                                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" 
-                                        : "bg-slate-500/15 text-slate-400 border border-slate-500/30"
-                                    )}
+                                    onClick={() => handleTestWalAlert(ws.id, ws.name)}
+                                    disabled={testingWalId === ws.id}
+                                    title="Test Send Alert Now"
+                                    className="p-1 rounded hover:bg-bg-panel border border-border-main text-text-muted hover:text-blue-400"
                                   >
-                                    {ws.active ? 'Active' : 'Paused'}
+                                    <Play className={clsx("w-3 h-3", testingWalId === ws.id && "animate-spin text-blue-500")} />
                                   </button>
-                                </td>
-                                <td className="py-2.5 px-3 text-right">
-                                  <div className="flex items-center justify-end gap-1">
-                                    <button
-                                      onClick={() => handleTestWalAlert(ws.id, ws.name)}
-                                      disabled={testingWalId === ws.id}
-                                      title="Test Send Alert Now"
-                                      className="p-1 rounded hover:bg-bg-panel border border-border-main text-text-muted hover:text-blue-400"
-                                    >
-                                      <Play className={clsx("w-3 h-3", testingWalId === ws.id && "animate-spin text-blue-500")} />
-                                    </button>
-                                    <button
-                                      onClick={() => handleOpenEditWal(ws)}
-                                      title="Edit Rule"
-                                      className="p-1 rounded hover:bg-bg-panel border border-border-main text-text-muted hover:text-amber-400"
-                                    >
-                                      <Edit className="w-3 h-3" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteWalSchedule(ws.id, ws.name)}
-                                      title="Delete Rule"
-                                      className="p-1 rounded hover:bg-bg-panel border border-border-main text-text-muted hover:text-red-400"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                                  <button
+                                    onClick={() => handleOpenEditWal(ws)}
+                                    title="Edit Rule"
+                                    className="p-1 rounded hover:bg-bg-panel border border-border-main text-text-muted hover:text-amber-400"
+                                  >
+                                    <Edit className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteWalSchedule(ws.id, ws.name)}
+                                    title="Delete Rule"
+                                    className="p-1 rounded hover:bg-bg-panel border border-border-main text-text-muted hover:text-red-400"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     )}
                   </div>
                 </div>
@@ -1462,8 +1458,8 @@ export const PipelineMonitor: React.FC = () => {
 
       {/* WAL Alert Schedule Create / Edit Modal */}
       {isWalFormOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-bg-panel w-full max-w-lg rounded-xl shadow-2xl border border-border-main overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-3 md:p-4">
+          <div className="bg-bg-panel w-full max-w-lg rounded-xl shadow-2xl border border-border-main overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-amber-500/10 shrink-0">
               <h4 className="font-bold text-amber-500 text-sm flex items-center gap-2">
                 <Activity className="w-4 h-4" />
@@ -1472,7 +1468,7 @@ export const PipelineMonitor: React.FC = () => {
               <button onClick={() => setIsWalFormOpen(false)} className="text-text-muted hover:text-text-main text-xl leading-none">&times;</button>
             </div>
 
-            <form onSubmit={handleSaveWalSchedule} className="p-5 space-y-4 text-xs">
+            <form onSubmit={handleSaveWalSchedule} className="p-5 space-y-4 text-xs overflow-y-auto flex-1 min-h-0">
               <div>
                 <label className="block font-semibold text-text-main mb-1">Nama Rule</label>
                 <input
@@ -1627,7 +1623,7 @@ export const PipelineMonitor: React.FC = () => {
                     Belum ada notification profile.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
                     {useAppStore.getState().notificationChannels.map(c => {
                       const isSelected = walFormChannels.includes(c.id);
                       return (
@@ -1641,7 +1637,7 @@ export const PipelineMonitor: React.FC = () => {
                           className={clsx(
                             "p-2 rounded-lg border cursor-pointer flex items-center justify-between transition-all select-none",
                             isSelected
-                              ? "bg-amber-500/15 border-amber-500 text-amber-300"
+                              ? "bg-amber-500/15 border-amber-500 text-amber-300 font-bold"
                               : "bg-bg-main border-border-main text-text-muted hover:border-border-item"
                           )}
                         >
@@ -1654,7 +1650,7 @@ export const PipelineMonitor: React.FC = () => {
                 )}
               </div>
 
-              <div className="pt-3 border-t border-border-main flex justify-end gap-2">
+              <div className="pt-3 border-t border-border-main flex justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsWalFormOpen(false)}
