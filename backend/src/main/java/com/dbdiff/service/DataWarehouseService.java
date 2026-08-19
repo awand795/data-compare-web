@@ -1966,7 +1966,7 @@ public class DataWarehouseService {
                 // so we don't accidentally join against historical/deleted tombstone CDC records.
                 if (triggerTable != null && !triggerTable.isEmpty() && !matchedPhysicalTable.equalsIgnoreCase(triggerTable) && !isTableMatch(t, triggerTable)) {
                     try {
-                        String subquerySql = "SELECT * FROM (SELECT * FROM `" + chDb + "`.`" + landingTable + "` FINAL WHERE is_deleted = 0) AS a";
+                        String subquerySql = "SELECT * FROM (SELECT * FROM `" + chDb + "`.`" + landingTable + "` WHERE is_deleted = 0) AS a";
                         net.sf.jsqlparser.statement.Statement parsed = CCJSqlParserUtil.parse(subquerySql);
                         net.sf.jsqlparser.statement.select.ParenthesedSelect ps = (net.sf.jsqlparser.statement.select.ParenthesedSelect) ((PlainSelect)((Select)parsed).getSelectBody()).getFromItem();
                         ps.setAlias(aliasToUse);
@@ -3031,6 +3031,15 @@ public class DataWarehouseService {
                     if (actualLandingTable == null) {
                         sendLog(emitter, "ERROR: Could not find CDC landing table for physical table: " + t + ". Skipping MV recreation for this table.");
                         continue;
+                    }
+
+                    // Auto-add any new columns to this CDC landing table to prevent Unknown Identifier errors
+                    for (ColumnInfo ci : newCols) {
+                        if (ci.name.equalsIgnoreCase("sync_dt") || ci.name.equalsIgnoreCase("version") || ci.name.equalsIgnoreCase("is_deleted")) continue;
+                        try {
+                            stmt.execute("ALTER TABLE `" + chDb + "`.`" + actualLandingTable + "` ADD COLUMN IF NOT EXISTS `" + ci.name + "` Nullable(" + ci.clickhouseType + ")");
+                        } catch (Exception ignored) {
+                        }
                     }
 
                     // Drop the existing MV (use actual name found above)
