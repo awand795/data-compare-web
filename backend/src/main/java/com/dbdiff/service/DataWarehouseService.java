@@ -2452,7 +2452,7 @@ public class DataWarehouseService {
         if (lowerName.contains("bool") || jdbcType == java.sql.Types.BOOLEAN || jdbcType == java.sql.Types.BIT) return "Bool";
         if (lowerName.contains("date") || jdbcType == java.sql.Types.DATE) return "Date";
         if (lowerName.contains("timestamp") || lowerName.contains("datetime") || lowerName.contains("time") || jdbcType == java.sql.Types.TIMESTAMP || jdbcType == java.sql.Types.TIMESTAMP_WITH_TIMEZONE) {
-            return "DateTime64(3, 'Asia/Jakarta')";
+            return "DateTime64(3)";
         }
         return "String";
     }
