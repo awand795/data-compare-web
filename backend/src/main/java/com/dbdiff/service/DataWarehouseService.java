@@ -898,315 +898,321 @@ public class DataWarehouseService {
             }
 
 
-            // =========================================================================
-            // STEP 3: Configure Debezium Source Connector
-            // =========================================================================
-            sendLog(emitter, "Configuring Debezium Source Connector (" + sourceConnectorName + ")...");
+            // =========================================================================\s+// STEP 3: Configure Debezium Source Connector\s+// =========================================================================
             
-            // Use a shared slot name per source database to avoid creating multiple slots
-            String safeSlotName = "slot_" + baseName + "_shared";
-            java.util.Map<String, Object> sourceConfig = new java.util.HashMap<>();
-            if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
-                sourceConfig.put("connector.class", "io.debezium.connector.postgresql.PostgresConnector");
-                sourceConfig.put("plugin.name", "pgoutput");
-                sourceConfig.put("slot.name", safeSlotName);
-                sourceConfig.put("publication.name", "pub_" + safeSlotName);
-                sourceConfig.put("publication.autocreate.mode", "filtered");
-                // Emit heartbeats every 10s to keep confirmed_flush_lsn up to date with pg_current_wal_lsn.
-                // heartbeat.action.query performs an actual write on the source DB so a WAL record is
-                // produced and Debezium can advance the slot's confirmed_flush_lsn — even when the
-                // monitored tables are completely idle. Without this, WAL accumulates indefinitely.
-                sourceConfig.put("heartbeat.interval.ms", "10000");
-                sourceConfig.put("heartbeat.action.query",
-                    "INSERT INTO public._dbz_heartbeat(id, ts) VALUES(1, now()) " +
-                    "ON CONFLICT(id) DO UPDATE SET ts = EXCLUDED.ts");
-                // Keep the shared replication slot persistent in PostgreSQL across updates/restarts.
-                sourceConfig.put("slot.drop.on.stop", "false");
-                String sslMode = request.getSourceConnection().getSslMode();
-                if (sslMode != null && !sslMode.trim().isEmpty()) {
-                    sourceConfig.put("database.sslmode", sslMode.trim());
-                } else {
-                    sourceConfig.put("database.sslmode", "disable");
-                }
-                
-                // CRITICAL: Ensure Debezium outputs timestamps in milliseconds (Kafka Connect logical types)
-                // instead of default microseconds, so ClickHouse DateTime64(3) interprets them correctly.
-                sourceConfig.put("time.precision.mode", "connect");
-            } else if ("mysql".equalsIgnoreCase(request.getSourceConnection().getType())) {
-                sourceConfig.put("connector.class", "io.debezium.connector.mysql.MySqlConnector");
-            } else {
-                sourceConfig.put("connector.class", "io.debezium.connector." + request.getSourceConnection().getType().toLowerCase() + "." + request.getSourceConnection().getType() + "Connector");
-            }
             
-            sourceConfig.put("tasks.max", "1");
-            
-            String dbHost = request.getSourceConnection().getHost() != null ? request.getSourceConnection().getHost().trim() : "";
-            String dbPort = String.valueOf(request.getSourceConnection().getPort());
-            if (request.getSourceConnection().isUseSsh()) {
-                try {
-                    int tunnelPort = sshTunnelService.getOrOpenTunnel(request.getSourceConnection(), String.valueOf(request.getSourceConnection().getId()));
-                    sshTunnelService.markTunnelAsPermanent(String.valueOf(request.getSourceConnection().getId()));
-                    dbHost = resolveTunnelHost();
-                    dbPort = String.valueOf(tunnelPort);
-                    sendLog(emitter, "Source connection uses SSH tunnel. Routing Debezium through " + dbHost + ":" + tunnelPort);
-                } catch (Exception ex) {
-                    logger.error("Failed to establish SSH tunnel for Debezium source connector", ex);
-                    sendLog(emitter, "WARNING: Failed to open SSH tunnel for Debezium: " + ex.getMessage());
-                }
-            }
+            java.util.List<com.dbdiff.model.ConnectionDetails> allConns = (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) ? request.getSourceConnections() : java.util.Collections.singletonList(request.getSourceConnection());
+            for (ConnectionDetails currentSourceConn : allConns) {
+                String currentBaseName = currentSourceConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                String currentSourceConnectorName = "source-" + currentBaseName + "-shared";
+                DataSource currentSourceDs = connectionManagerService.getDataSource(currentSourceConn);
 
-            sourceConfig.put("database.hostname", dbHost);
-            sourceConfig.put("database.port", dbPort);
-            sourceConfig.put("database.user", request.getSourceConnection().getUsername() != null ? request.getSourceConnection().getUsername().trim() : "");
-            sourceConfig.put("database.password", request.getSourceConnection().getPassword());
-            sourceConfig.put("database.dbname", request.getSourceConnection().getDatabase() != null ? request.getSourceConnection().getDatabase().trim() : "");
-            // Set snapshot.mode to always so Debezium performs an initial snapshot for all included tables
-            sourceConfig.put("snapshot.mode", "initial");
+                sendLog(emitter, "Configuring Debezium Source Connector (" + currentSourceConnectorName + ")...");
             
-            // Add connection timeout to Debezium PostgreSQL connector
-            sourceConfig.put("database.connect.timeout.ms", "30000");
-            sourceConfig.put("database.server.name", sourceConnectorName);
-            sourceConfig.put("topic.prefix", sourceConnectorName); // Compatibility with Debezium 2.x
-
-            // Route Debezium topics to a unified target format: cdc_[baseName]_[schema]_[table]
-            String topicPrefix = "cdc_" + baseName + "_";
-            // dropHeartbeat filters out _dbz_heartbeat events AFTER they are committed
-            // (so the LSN/offset is advanced) but BEFORE they reach Kafka/ClickHouse.
-            sourceConfig.put("transforms", "route,unwrap,rename,castBool,castInt,dropHeartbeat");
-            sourceConfig.put("transforms.route.type", "org.apache.kafka.connect.transforms.RegexRouter");
-            sourceConfig.put("transforms.route.regex", "([^\\.]+)\\.([^\\.]+)\\.([^\\.]+)");
-            sourceConfig.put("transforms.route.replacement", topicPrefix + "$2_$3");
-            
-            // Flatten the Debezium CDC payload
-            sourceConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
-            sourceConfig.put("transforms.unwrap.drop.tombstones", "true");
-            sourceConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
-            sourceConfig.put("transforms.unwrap.add.fields", "lsn");
-            
-            // Rename internal Debezium fields to match our ClickHouse landing tables
-            sourceConfig.put("transforms.rename.type", "org.apache.kafka.connect.transforms.ReplaceField$Value");
-            sourceConfig.put("transforms.rename.renames", "__deleted:is_deleted,__lsn:version");
-            
-            // Cast is_deleted string to boolean, then to int8 (so it writes to ClickHouse UInt8 correctly)
-            sourceConfig.put("transforms.castBool.type", "org.apache.kafka.connect.transforms.Cast$Value");
-            sourceConfig.put("transforms.castBool.spec", "is_deleted:boolean");
-            sourceConfig.put("transforms.castInt.type", "org.apache.kafka.connect.transforms.Cast$Value");
-            sourceConfig.put("transforms.castInt.spec", "is_deleted:int8");
-
-            // Drop heartbeat events (from public._dbz_heartbeat) so they never reach Kafka/ClickHouse.
-            // The Filter transform drops matching records but still commits their offsets,
-            // which is exactly what allows confirmed_flush_lsn to advance in Postgres.
-            sourceConfig.put("predicates", "isHeartbeat");
-            sourceConfig.put("predicates.isHeartbeat.type",
-                "org.apache.kafka.connect.transforms.predicates.TopicNameMatches");
-            sourceConfig.put("predicates.isHeartbeat.pattern", ".*_dbz_heartbeat");
-            sourceConfig.put("transforms.dropHeartbeat.type",
-                "org.apache.kafka.connect.transforms.Filter");
-            sourceConfig.put("transforms.dropHeartbeat.predicate", "isHeartbeat");
-            
-            List<String> formattedTables = new ArrayList<>();
-            for (String t : physicalTables) {
-                String cleanTable = t.replaceAll("[\"``]", "");
-                if (cleanTable.contains(".")) {
-                    formattedTables.add(cleanTable);
-                } else {
-                    if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
-                        String defaultSchema = request.getSourceConnection().getSchema();
-                        if (defaultSchema == null || defaultSchema.isEmpty()) defaultSchema = "public";
-                        formattedTables.add(defaultSchema + "." + cleanTable);
-                    } else if ("mysql".equalsIgnoreCase(request.getSourceConnection().getType())) {
-                        String db = request.getSourceConnection().getDatabase();
-                        formattedTables.add(db + "." + cleanTable);
+                // Use a shared slot name per source database to avoid creating multiple slots
+                String safeSlotName = "slot_" + currentBaseName + "_shared";
+                java.util.Map<String, Object> sourceConfig = new java.util.HashMap<>();
+                if ("postgresql".equalsIgnoreCase(currentSourceConn.getType())) {
+                    sourceConfig.put("connector.class", "io.debezium.connector.postgresql.PostgresConnector");
+                    sourceConfig.put("plugin.name", "pgoutput");
+                    sourceConfig.put("slot.name", safeSlotName);
+                    sourceConfig.put("publication.name", "pub_" + safeSlotName);
+                    sourceConfig.put("publication.autocreate.mode", "filtered");
+                    // Emit heartbeats every 10s to keep confirmed_flush_lsn up to date with pg_current_wal_lsn.
+                    // heartbeat.action.query performs an actual write on the source DB so a WAL record is
+                    // produced and Debezium can advance the slot's confirmed_flush_lsn — even when the
+                    // monitored tables are completely idle. Without this, WAL accumulates indefinitely.
+                    sourceConfig.put("heartbeat.interval.ms", "10000");
+                    sourceConfig.put("heartbeat.action.query",
+                        "INSERT INTO public._dbz_heartbeat(id, ts) VALUES(1, now()) " +
+                        "ON CONFLICT(id) DO UPDATE SET ts = EXCLUDED.ts");
+                    // Keep the shared replication slot persistent in PostgreSQL across updates/restarts.
+                    sourceConfig.put("slot.drop.on.stop", "false");
+                    String sslMode = currentSourceConn.getSslMode();
+                    if (sslMode != null && !sslMode.trim().isEmpty()) {
+                        sourceConfig.put("database.sslmode", sslMode.trim());
                     } else {
-                        formattedTables.add(cleanTable);
+                        sourceConfig.put("database.sslmode", "disable");
+                    }
+                
+                    // CRITICAL: Ensure Debezium outputs timestamps in milliseconds (Kafka Connect logical types)
+                    // instead of default microseconds, so ClickHouse DateTime64(3) interprets them correctly.
+                    sourceConfig.put("time.precision.mode", "connect");
+                } else if ("mysql".equalsIgnoreCase(currentSourceConn.getType())) {
+                    sourceConfig.put("connector.class", "io.debezium.connector.mysql.MySqlConnector");
+                } else {
+                    sourceConfig.put("connector.class", "io.debezium.connector." + currentSourceConn.getType().toLowerCase() + "." + currentSourceConn.getType() + "Connector");
+                }
+            
+                sourceConfig.put("tasks.max", "1");
+            
+                String dbHost = currentSourceConn.getHost() != null ? currentSourceConn.getHost().trim() : "";
+                String dbPort = String.valueOf(currentSourceConn.getPort());
+                if (currentSourceConn.isUseSsh()) {
+                    try {
+                        int tunnelPort = sshTunnelService.getOrOpenTunnel(currentSourceConn, String.valueOf(currentSourceConn.getId()));
+                        sshTunnelService.markTunnelAsPermanent(String.valueOf(currentSourceConn.getId()));
+                        dbHost = resolveTunnelHost();
+                        dbPort = String.valueOf(tunnelPort);
+                        sendLog(emitter, "Source connection uses SSH tunnel. Routing Debezium through " + dbHost + ":" + tunnelPort);
+                    } catch (Exception ex) {
+                        logger.error("Failed to establish SSH tunnel for Debezium source connector", ex);
+                        sendLog(emitter, "WARNING: Failed to open SSH tunnel for Debezium: " + ex.getMessage());
                     }
                 }
-            }
-            String tableIncludeList = String.join(",", formattedTables);
-            // Include the heartbeat table in the publication so Debezium generates actual CDC
-            // events for each heartbeat write. Without this, _dbz_heartbeat writes are invisible
-            // to the publication, no offset is committed to Kafka, and confirmed_flush_lsn
-            // never advances — causing WAL to accumulate indefinitely on idle databases.
-            if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
-                tableIncludeList += ",public._dbz_heartbeat";
-                // Enable REPLICA IDENTITY FULL on all Postgres source tables so DELETE and UPDATE events log full row state for CDC
-                try (Connection pgConn = sourceDsForCleanup.getConnection();
-                     Statement pgStmt = pgConn.createStatement()) {
-                    try { pgStmt.execute("SET lock_timeout = '3s'"); } catch (Exception ignored) {}
-                    for (String tbl : formattedTables) {
-                        if (!"public._dbz_heartbeat".equalsIgnoreCase(tbl)) {
-                            try {
-                                pgStmt.execute("ALTER TABLE " + tbl + " REPLICA IDENTITY FULL");
-                                sendLog(emitter, "Set REPLICA IDENTITY FULL on PostgreSQL table: " + tbl);
-                            } catch (Exception ex) {
-                                logger.warn("Could not set REPLICA IDENTITY FULL on table " + tbl + ": " + ex.getMessage());
-                            }
+
+                sourceConfig.put("database.hostname", dbHost);
+                sourceConfig.put("database.port", dbPort);
+                sourceConfig.put("database.user", currentSourceConn.getUsername() != null ? currentSourceConn.getUsername().trim() : "");
+                sourceConfig.put("database.password", currentSourceConn.getPassword());
+                sourceConfig.put("database.dbname", currentSourceConn.getDatabase() != null ? currentSourceConn.getDatabase().trim() : "");
+                // Set snapshot.mode to always so Debezium performs an initial snapshot for all included tables
+                sourceConfig.put("snapshot.mode", "initial");
+            
+                // Add connection timeout to Debezium PostgreSQL connector
+                sourceConfig.put("database.connect.timeout.ms", "30000");
+                sourceConfig.put("database.server.name", currentSourceConnectorName);
+                sourceConfig.put("topic.prefix", currentSourceConnectorName); // Compatibility with Debezium 2.x
+
+                // Route Debezium topics to a unified target format: cdc_[currentBaseName]_[schema]_[table]
+                String topicPrefix = "cdc_" + currentBaseName + "_";
+                // dropHeartbeat filters out _dbz_heartbeat events AFTER they are committed
+                // (so the LSN/offset is advanced) but BEFORE they reach Kafka/ClickHouse.
+                sourceConfig.put("transforms", "route,unwrap,rename,castBool,castInt,dropHeartbeat");
+                sourceConfig.put("transforms.route.type", "org.apache.kafka.connect.transforms.RegexRouter");
+                sourceConfig.put("transforms.route.regex", "([^\\.]+)\\.([^\\.]+)\\.([^\\.]+)");
+                sourceConfig.put("transforms.route.replacement", topicPrefix + "$2_$3");
+            
+                // Flatten the Debezium CDC payload
+                sourceConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
+                sourceConfig.put("transforms.unwrap.drop.tombstones", "true");
+                sourceConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
+                sourceConfig.put("transforms.unwrap.add.fields", "lsn");
+            
+                // Rename internal Debezium fields to match our ClickHouse landing tables
+                sourceConfig.put("transforms.rename.type", "org.apache.kafka.connect.transforms.ReplaceField$Value");
+                sourceConfig.put("transforms.rename.renames", "__deleted:is_deleted,__lsn:version");
+            
+                // Cast is_deleted string to boolean, then to int8 (so it writes to ClickHouse UInt8 correctly)
+                sourceConfig.put("transforms.castBool.type", "org.apache.kafka.connect.transforms.Cast$Value");
+                sourceConfig.put("transforms.castBool.spec", "is_deleted:boolean");
+                sourceConfig.put("transforms.castInt.type", "org.apache.kafka.connect.transforms.Cast$Value");
+                sourceConfig.put("transforms.castInt.spec", "is_deleted:int8");
+
+                // Drop heartbeat events (from public._dbz_heartbeat) so they never reach Kafka/ClickHouse.
+                // The Filter transform drops matching records but still commits their offsets,
+                // which is exactly what allows confirmed_flush_lsn to advance in Postgres.
+                sourceConfig.put("predicates", "isHeartbeat");
+                sourceConfig.put("predicates.isHeartbeat.type",
+                    "org.apache.kafka.connect.transforms.predicates.TopicNameMatches");
+                sourceConfig.put("predicates.isHeartbeat.pattern", ".*_dbz_heartbeat");
+                sourceConfig.put("transforms.dropHeartbeat.type",
+                    "org.apache.kafka.connect.transforms.Filter");
+                sourceConfig.put("transforms.dropHeartbeat.predicate", "isHeartbeat");
+            
+                List<String> formattedTables = new ArrayList<>();
+                for (String t : physicalTables) {
+                    String cleanTable = t.replaceAll("[\"``]", "");
+                    if (cleanTable.contains(".")) {
+                        formattedTables.add(cleanTable);
+                    } else {
+                        if ("postgresql".equalsIgnoreCase(currentSourceConn.getType())) {
+                            String defaultSchema = currentSourceConn.getSchema();
+                            if (defaultSchema == null || defaultSchema.isEmpty()) defaultSchema = "public";
+                            formattedTables.add(defaultSchema + "." + cleanTable);
+                        } else if ("mysql".equalsIgnoreCase(currentSourceConn.getType())) {
+                            String db = currentSourceConn.getDatabase();
+                            formattedTables.add(db + "." + cleanTable);
+                        } else {
+                            formattedTables.add(cleanTable);
                         }
                     }
-                } catch (Exception ex) {
-                    logger.warn("Failed to apply REPLICA IDENTITY FULL on Postgres tables", ex);
                 }
-            }
-            sourceConfig.put("table.include.list", tableIncludeList);
-            
-            // Serialize Decimals as strings to avoid Base64 encoding which breaks ClickHouse sink
-            sourceConfig.put("decimal.handling.mode", "double");
-            
-            // Disable schemas in the output Kafka topics to save bandwidth and simplify sink parsing
-            sourceConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
-            sourceConfig.put("key.converter.schemas.enable", "true");
-            sourceConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
-            sourceConfig.put("value.converter.schemas.enable", "true");
-            
-            // Register or Update Shared Source Connector
-            boolean sharedConnectorExists = false;
-            java.util.Map<String, Object> existingConfig = null;
-            try {
-                existingConfig = getConnectorConfig(sourceConnectorName);
-                if (existingConfig != null && !existingConfig.isEmpty() && !existingConfig.containsKey("error_code")) {
-                    sharedConnectorExists = true;
-                }
-            } catch (Exception ignored) {}
-
-            if (sharedConnectorExists && existingConfig != null) {
-                sendLog(emitter, "Shared source connector " + sourceConnectorName + " already exists. Merging table list...");
-                String currentTablesStr = (String) existingConfig.get("table.include.list");
-                Set<String> mergedTables = new LinkedHashSet<>();
-                if (currentTablesStr != null && !currentTablesStr.isEmpty()) {
-                    for (String t : currentTablesStr.split(",")) {
-                        if (!t.trim().isEmpty()) mergedTables.add(t.trim());
+                String tableIncludeList = String.join(",", formattedTables);
+                // Include the heartbeat table in the publication so Debezium generates actual CDC
+                // events for each heartbeat write. Without this, _dbz_heartbeat writes are invisible
+                // to the publication, no offset is committed to Kafka, and confirmed_flush_lsn
+                // never advances — causing WAL to accumulate indefinitely on idle databases.
+                if ("postgresql".equalsIgnoreCase(currentSourceConn.getType())) {
+                    tableIncludeList += ",public._dbz_heartbeat";
+                    // Enable REPLICA IDENTITY FULL on all Postgres source tables so DELETE and UPDATE events log full row state for CDC
+                    try (Connection pgConn = currentSourceDs.getConnection();
+                         Statement pgStmt = pgConn.createStatement()) {
+                        try { pgStmt.execute("SET lock_timeout = '3s'"); } catch (Exception ignored) {}
+                        for (String tbl : formattedTables) {
+                            if (!"public._dbz_heartbeat".equalsIgnoreCase(tbl)) {
+                                try {
+                                    pgStmt.execute("ALTER TABLE " + tbl + " REPLICA IDENTITY FULL");
+                                    sendLog(emitter, "Set REPLICA IDENTITY FULL on PostgreSQL table: " + tbl);
+                                } catch (Exception ex) {
+                                    logger.warn("Could not set REPLICA IDENTITY FULL on table " + tbl + ": " + ex.getMessage());
+                                }
+                            }
+                        }
+                    } catch (Exception ex) {
+                        logger.warn("Failed to apply REPLICA IDENTITY FULL on Postgres tables", ex);
                     }
                 }
-                boolean newTablesAdded = mergedTables.addAll(formattedTables);
-                if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
-                    mergedTables.add("public._dbz_heartbeat");
-                }
-                String updatedTableIncludeList = String.join(",", mergedTables);
+                sourceConfig.put("table.include.list", tableIncludeList);
+            
+                // Serialize Decimals as strings to avoid Base64 encoding which breaks ClickHouse sink
+                sourceConfig.put("decimal.handling.mode", "double");
+            
+                // Disable schemas in the output Kafka topics to save bandwidth and simplify sink parsing
+                sourceConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
+                sourceConfig.put("key.converter.schemas.enable", "true");
+                sourceConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
+                sourceConfig.put("value.converter.schemas.enable", "true");
+            
+                // Register or Update Shared Source Connector
+                boolean sharedConnectorExists = false;
+                java.util.Map<String, Object> existingConfig = null;
+                try {
+                    existingConfig = getConnectorConfig(currentSourceConnectorName);
+                    if (existingConfig != null && !existingConfig.isEmpty() && !existingConfig.containsKey("error_code")) {
+                        sharedConnectorExists = true;
+                    }
+                } catch (Exception ignored) {}
+
+                if (sharedConnectorExists && existingConfig != null) {
+                    sendLog(emitter, "Shared source connector " + currentSourceConnectorName + " already exists. Merging table list...");
+                    String currentTablesStr = (String) existingConfig.get("table.include.list");
+                    Set<String> mergedTables = new LinkedHashSet<>();
+                    if (currentTablesStr != null && !currentTablesStr.isEmpty()) {
+                        for (String t : currentTablesStr.split(",")) {
+                            if (!t.trim().isEmpty()) mergedTables.add(t.trim());
+                        }
+                    }
+                    boolean newTablesAdded = mergedTables.addAll(formattedTables);
+                    if ("postgresql".equalsIgnoreCase(currentSourceConn.getType())) {
+                        mergedTables.add("public._dbz_heartbeat");
+                    }
+                    String updatedTableIncludeList = String.join(",", mergedTables);
                 
-                if (!newTablesAdded) {
-                    sendLog(emitter, "Shared source connector " + sourceConnectorName + " is already active with all required tables.");
-                } else {
-                    try {
-                        sendLog(emitter, "Updating shared source connector table list to include new tables and triggering full snapshot...");
-                        deleteConnectorWithWait(sourceConnectorName);
-                        Thread.sleep(2000);
+                    if (!newTablesAdded) {
+                        sendLog(emitter, "Shared source connector " + currentSourceConnectorName + " is already active with all required tables.");
+                    } else {
+                        try {
+                            sendLog(emitter, "Updating shared source connector table list to include new tables and triggering full snapshot...");
+                            deleteConnectorWithWait(currentSourceConnectorName);
+                            Thread.sleep(2000);
                         
-                        if ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType())) {
-                            try (Connection pgConn = sourceDsForCleanup.getConnection();
-                                 Statement pgStmt = pgConn.createStatement()) {
-                                String findSlotsSql = "SELECT active_pid FROM pg_replication_slots WHERE slot_name = '" + safeSlotName + "'";
-                                try (ResultSet rs = pgStmt.executeQuery(findSlotsSql)) {
-                                    while (rs.next()) {
-                                        Number activePid = (Number) rs.getObject("active_pid");
-                                        if (activePid != null) {
-                                            try { pgStmt.execute("SELECT pg_terminate_backend(" + activePid.intValue() + ")"); } catch (Exception ignored) {}
-                                            Thread.sleep(1000);
+                            if ("postgresql".equalsIgnoreCase(currentSourceConn.getType())) {
+                                try (Connection pgConn = currentSourceDs.getConnection();
+                                     Statement pgStmt = pgConn.createStatement()) {
+                                    String findSlotsSql = "SELECT active_pid FROM pg_replication_slots WHERE slot_name = '" + safeSlotName + "'";
+                                    try (ResultSet rs = pgStmt.executeQuery(findSlotsSql)) {
+                                        while (rs.next()) {
+                                            Number activePid = (Number) rs.getObject("active_pid");
+                                            if (activePid != null) {
+                                                try { pgStmt.execute("SELECT pg_terminate_backend(" + activePid.intValue() + ")"); } catch (Exception ignored) {}
+                                                Thread.sleep(1000);
+                                            }
                                         }
                                     }
+                                    try { pgStmt.execute("SELECT pg_drop_replication_slot('" + safeSlotName + "')"); } catch (Exception ignored) {}
+                                    sendLog(emitter, "Dropped Postgres replication slot `" + safeSlotName + "` to trigger fresh snapshot.");
+                                } catch (Exception ex) {
+                                    logger.warn("Could not drop shared replication slot " + safeSlotName + ": " + ex.getMessage());
                                 }
-                                try { pgStmt.execute("SELECT pg_drop_replication_slot('" + safeSlotName + "')"); } catch (Exception ignored) {}
-                                sendLog(emitter, "Dropped Postgres replication slot `" + safeSlotName + "` to trigger fresh snapshot.");
-                            } catch (Exception ex) {
-                                logger.warn("Could not drop shared replication slot " + safeSlotName + ": " + ex.getMessage());
                             }
+                        
+                            sourceConfig.put("table.include.list", updatedTableIncludeList);
+                            sourceConfig.put("snapshot.mode", "initial");
+                            sourceConfig.put("slot.name", safeSlotName);
+                            sourceConfig.put("publication.name", "pub_" + safeSlotName);
+                        
+                            java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
+                            sourcePayload.put("name", currentSourceConnectorName);
+                            sourcePayload.put("config", sourceConfig);
+                        
+                            org.springframework.http.HttpEntity<java.util.Map<String, Object>> sourceEntity = new org.springframework.http.HttpEntity<>(sourcePayload, headers);
+                            org.springframework.http.ResponseEntity<String> sourceResponse = registerConnectorWithRetry(emitter, currentSourceConnectorName, sourceEntity, 3);
+                            sendLog(emitter, "Re-created shared source connector successfully: " + sourceResponse.getStatusCode());
+                        } catch (Exception e) {
+                            sendLog(emitter, "ERROR: Could not update shared source connector in Debezium: " + e.getMessage());
+                            throw e;
                         }
-                        
-                        sourceConfig.put("table.include.list", updatedTableIncludeList);
-                        sourceConfig.put("snapshot.mode", "initial");
-                        sourceConfig.put("slot.name", safeSlotName);
-                        sourceConfig.put("publication.name", "pub_" + safeSlotName);
-                        
-                        java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
-                        sourcePayload.put("name", sourceConnectorName);
-                        sourcePayload.put("config", sourceConfig);
-                        
+                    }
+                } else {
+                    sourceConfig.put("slot.name", "slot_" + currentBaseName + "_shared");
+                    sourceConfig.put("publication.name", "pub_slot_" + currentBaseName + "_shared");
+                    java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
+                    sourcePayload.put("name", currentSourceConnectorName);
+                    sourcePayload.put("config", sourceConfig);
+                
+                    try {
                         org.springframework.http.HttpEntity<java.util.Map<String, Object>> sourceEntity = new org.springframework.http.HttpEntity<>(sourcePayload, headers);
-                        org.springframework.http.ResponseEntity<String> sourceResponse = registerConnectorWithRetry(emitter, sourceConnectorName, sourceEntity, 3);
-                        sendLog(emitter, "Re-created shared source connector successfully: " + sourceResponse.getStatusCode());
+                        org.springframework.http.ResponseEntity<String> sourceResponse = registerConnectorWithRetry(emitter, currentSourceConnectorName, sourceEntity, 3);
+                        sendLog(emitter, "Shared source connector registered successfully: " + sourceResponse.getStatusCode());
                     } catch (Exception e) {
-                        sendLog(emitter, "ERROR: Could not update shared source connector in Debezium: " + e.getMessage());
+                        sendLog(emitter, "ERROR: Could not register shared source connector in Debezium: " + e.getMessage());
                         throw e;
                     }
                 }
-            } else {
-                sourceConfig.put("slot.name", "slot_" + baseName + "_shared");
-                sourceConfig.put("publication.name", "pub_slot_" + baseName + "_shared");
-                java.util.Map<String, Object> sourcePayload = new java.util.HashMap<>();
-                sourcePayload.put("name", sourceConnectorName);
-                sourcePayload.put("config", sourceConfig);
+
+                // STEP 3.5: Wait for Kafka topics to initialize
+                sendLog(emitter, "Waiting for Kafka topics to initialize...");
+                Thread.sleep(3000);
+
+                // =========================================================================
+                // STEP 4: Create Materialized Views for All Source Tables
+                // =========================================================================
+                sendLog(emitter, "Generating Materialized Views for automatic updates...");
+                for (String t : physicalTables) {
+                    String landingTable = getClickHouseLandingTable(t, currentBaseName, currentSourceConn);
+                    String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
                 
-                try {
-                    org.springframework.http.HttpEntity<java.util.Map<String, Object>> sourceEntity = new org.springframework.http.HttpEntity<>(sourcePayload, headers);
-                    org.springframework.http.ResponseEntity<String> sourceResponse = registerConnectorWithRetry(emitter, sourceConnectorName, sourceEntity, 3);
-                    sendLog(emitter, "Shared source connector registered successfully: " + sourceResponse.getStatusCode());
-                } catch (Exception e) {
-                    sendLog(emitter, "ERROR: Could not register shared source connector in Debezium: " + e.getMessage());
-                    throw e;
+                    String rotatedSql = rotateQuery(originalQuery, t);
+                    String sqlWithMeta = addMetadataColsToSelect(rotatedSql, t);
+                
+                    // ClickHouse does NOT support WITH (CTE) inside Materialized Views.
+                    // Inline CTEs BEFORE rewriting table names so JSqlParser gets clean PostgreSQL SQL.
+                    String sqlInlined = inlineCTEs(sqlWithMeta, currentBaseName);
+
+                    String rewrittenSql;
+                    if (physicalTables.size() > 1) {
+                        // For JOIN queries, add PK filters to the WHERE clause (avoiding subqueries/FINAL which are disallowed in MVs)
+                        String sqlWithFilters = addPKFiltersToWhere(sqlInlined, physicalTables, tableToPKs);
+                        rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, currentBaseName, currentSourceConn, chDb, t);
+                        // Preserve join types (LEFT/INNER/etc.) as specified in user query
+
+                    } else {
+                        rewrittenSql = rewriteQueryForClickHouse(sqlInlined, physicalTables, currentBaseName, currentSourceConn, chDb, t);
+                    }
+                
+                    StringBuilder mvDdl = new StringBuilder();
+                    mvDdl.append("CREATE MATERIALIZED VIEW IF NOT EXISTS `").append(chDb).append("`.`").append(mvName).append("`\n");
+                    mvDdl.append("TO `").append(chDb).append("`.`").append(request.getTargetTable()).append("`\n");
+                    mvDdl.append("AS ").append(rewrittenSql);
+                
+                    sendLog(emitter, "Creating MV `" + mvName + "` triggered on landing table `" + landingTable + "`...");
+                    logger.info("Executing MV DDL:\n{}", mvDdl.toString());
+                
+                    try (Connection conn = targetDs.getConnection();
+                         Statement stmt = conn.createStatement()) {
+                        try { stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
+                        stmt.execute(mvDdl.toString());
+                        sendLog(emitter, "Materialized View `" + mvName + "` registered successfully.");
+                    } catch (Exception e) {
+                        sendLog(emitter, "ERROR: Failed to create Materialized View `" + mvName + "`: " + e.getMessage());
+                        throw e;
+                    }
                 }
+
+            
             }
-
-            // STEP 3.5: Wait for Kafka topics to initialize
-            sendLog(emitter, "Waiting for Kafka topics to initialize...");
-            Thread.sleep(3000);
-
-            // =========================================================================
-            // STEP 4: Create Materialized Views for All Source Tables
-            // =========================================================================
-            sendLog(emitter, "Generating Materialized Views for automatic updates...");
-            for (String t : physicalTables) {
-                String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
-                String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
-                
-                String rotatedSql = rotateQuery(originalQuery, t);
-                String sqlWithMeta = addMetadataColsToSelect(rotatedSql, t);
-                
-                // ClickHouse does NOT support WITH (CTE) inside Materialized Views.
-                // Inline CTEs BEFORE rewriting table names so JSqlParser gets clean PostgreSQL SQL.
-                String sqlInlined = inlineCTEs(sqlWithMeta, baseName);
-
-                String rewrittenSql;
-                if (physicalTables.size() > 1) {
-                    // For JOIN queries, add PK filters to the WHERE clause (avoiding subqueries/FINAL which are disallowed in MVs)
-                    String sqlWithFilters = addPKFiltersToWhere(sqlInlined, physicalTables, tableToPKs);
-                    rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, baseName, request.getSourceConnection(), chDb, t);
-                    // Preserve join types (LEFT/INNER/etc.) as specified in user query
-
-                } else {
-                    rewrittenSql = rewriteQueryForClickHouse(sqlInlined, physicalTables, baseName, request.getSourceConnection(), chDb, t);
-                }
-                
-                StringBuilder mvDdl = new StringBuilder();
-                mvDdl.append("CREATE MATERIALIZED VIEW IF NOT EXISTS `").append(chDb).append("`.`").append(mvName).append("`\n");
-                mvDdl.append("TO `").append(chDb).append("`.`").append(request.getTargetTable()).append("`\n");
-                mvDdl.append("AS ").append(rewrittenSql);
-                
-                sendLog(emitter, "Creating MV `" + mvName + "` triggered on landing table `" + landingTable + "`...");
-                logger.info("Executing MV DDL:\n{}", mvDdl.toString());
-                
-                try (Connection conn = targetDs.getConnection();
-                     Statement stmt = conn.createStatement()) {
-                    try { stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
-                    stmt.execute(mvDdl.toString());
-                    sendLog(emitter, "Materialized View `" + mvName + "` registered successfully.");
-                } catch (Exception e) {
-                    sendLog(emitter, "ERROR: Failed to create Materialized View `" + mvName + "`: " + e.getMessage());
-                    throw e;
-                }
-            }
-
-            // =========================================================================
-            // STEP 5: Configure ClickHouse Sink Connector
-            // =========================================================================
+// =========================================================================\s+// STEP 5: Configure ClickHouse Sink Connector\s+// =========================================================================
             sendLog(emitter, "Configuring ClickHouse Sink Connector (" + sinkConnectorName + ")...");
             
             java.util.Map<String, Object> sinkConfig = new java.util.HashMap<>();
             sinkConfig.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
             sinkConfig.put("tasks.max", "1");
             List<String> expectedTopics = new java.util.ArrayList<>();
-            List<ConnectionDetails> allConns = (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) ?
-                    request.getSourceConnections() : java.util.Collections.singletonList(request.getSourceConnection());
+            
 
-            for (ConnectionDetails connItem : allConns) {
+            java.util.List<com.dbdiff.model.ConnectionDetails> allConns2 = (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) ? request.getSourceConnections() : java.util.Collections.singletonList(request.getSourceConnection());
+            for (com.dbdiff.model.ConnectionDetails connItem : allConns2) {
                 String itemBaseName = connItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
                 String itemTopicPrefix = "cdc_" + itemBaseName + "_";
                 for (String t : physicalTables) {
