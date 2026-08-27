@@ -8,6 +8,7 @@ public class DataWarehouseDeployRequest {
     private String targetTable;
     private String primaryKeys;
     private String targetDatabase;
+    private String targetSchema;
     private String deployId;
 
     public java.util.List<ConnectionDetails> getSourceConnections() {
@@ -29,6 +30,14 @@ public class DataWarehouseDeployRequest {
 
     public String getTargetDatabase() {
         return targetDatabase;
+    }
+
+    public String getTargetSchema() {
+        return targetSchema;
+    }
+
+    public void setTargetSchema(String targetSchema) {
+        this.targetSchema = targetSchema;
     }
 
     public String getDeployId() { return deployId; }

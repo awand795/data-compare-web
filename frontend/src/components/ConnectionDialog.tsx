@@ -314,22 +314,42 @@ export const ConnectionDialog: React.FC<Props> = ({ isOpen, onClose, editingConn
                   </div>
 
                   {formData.type !== 'clickhouse' && (
-                    <div className="flex flex-col gap-1 mt-2 border-t border-border-item pt-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          name="enableDataWarehouse"
-                          checked={formData.enableDataWarehouse || false}
-                          onChange={handleChange}
-                          className="w-4 h-4 rounded border-border-input bg-bg-input text-indigo-500 focus:ring-indigo-500"
-                        />
-                        <span className="text-sm font-semibold text-text-main flex items-center gap-1.5">
-                          Link to Data Warehouse (ClickHouse) <Database className="w-3.5 h-3.5 text-indigo-400" />
-                        </span>
-                      </label>
-                      <p className="text-[11px] text-text-muted ml-6">
-                        Check this if you want to use this connection as a source in the Data Warehouse pipeline.
-                      </p>
+                    <div className="flex flex-col gap-3 mt-2 border-t border-border-item pt-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            name="enableDataWarehouse"
+                            checked={formData.enableDataWarehouse || false}
+                            onChange={handleChange}
+                            className="w-4 h-4 rounded border-border-input bg-bg-input text-indigo-500 focus:ring-indigo-500 cursor-pointer"
+                          />
+                          <span className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                            Link to Data Warehouse (Source) <Database className="w-3.5 h-3.5 text-indigo-400" />
+                          </span>
+                        </label>
+                        <p className="text-[11px] text-text-muted ml-6">
+                          Check this if you want to use this connection as a source in the Data Warehouse pipeline.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col gap-1 border-t border-border-item/60 pt-2.5">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            name="enableDataWarehouseTarget"
+                            checked={formData.enableDataWarehouseTarget || false}
+                            onChange={handleChange}
+                            className="w-4 h-4 rounded border-border-input bg-bg-input text-amber-500 focus:ring-amber-500 cursor-pointer"
+                          />
+                          <span className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                            Target Data Warehouse <Database className="w-3.5 h-3.5 text-amber-400" />
+                          </span>
+                        </label>
+                        <p className="text-[11px] text-text-muted ml-6">
+                          Check this if you want to use this connection as a target database in the Data Warehouse pipeline.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>

@@ -837,6 +837,9 @@ public class ApiController {
         if (map.containsKey("enableDataWarehouse") && map.get("enableDataWarehouse") != null) {
             details.setEnableDataWarehouse(Boolean.TRUE.equals(map.get("enableDataWarehouse")));
         }
+        if (map.containsKey("enableDataWarehouseTarget") && map.get("enableDataWarehouseTarget") != null) {
+            details.setEnableDataWarehouseTarget(Boolean.TRUE.equals(map.get("enableDataWarehouseTarget")));
+        }
 
         return details;
     }

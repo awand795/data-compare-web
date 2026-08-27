@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS connections (
     fetch_size INT,
     read_only BOOLEAN DEFAULT FALSE,
     extra_props VARCHAR(1000),
-    enable_data_warehouse BOOLEAN DEFAULT FALSE
+    enable_data_warehouse BOOLEAN DEFAULT FALSE,
+    enable_data_warehouse_target BOOLEAN DEFAULT FALSE
 );
 
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS schema_name VARCHAR(100);
@@ -50,6 +51,7 @@ ALTER TABLE connections ADD COLUMN IF NOT EXISTS fetch_size INT;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS read_only BOOLEAN DEFAULT FALSE;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS extra_props VARCHAR(1000);
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS enable_data_warehouse BOOLEAN DEFAULT FALSE;
+ALTER TABLE connections ADD COLUMN IF NOT EXISTS enable_data_warehouse_target BOOLEAN DEFAULT FALSE;
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS ssh_strict_host_key_checking BOOLEAN DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS schedules (

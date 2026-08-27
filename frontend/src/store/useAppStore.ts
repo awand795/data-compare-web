@@ -40,6 +40,7 @@ export type Connection = {
   readOnly?: boolean;
   extraProps?: string;
   enableDataWarehouse?: boolean;
+  enableDataWarehouseTarget?: boolean;
 };
 
 export type DiffCell = {

@@ -18,6 +18,13 @@ public class ConnectionRepository {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE connections ADD COLUMN IF NOT EXISTS enable_data_warehouse_target BOOLEAN DEFAULT FALSE");
+        } catch (Exception ignored) {}
+    }
+
     private final RowMapper<ConnectionDetails> rowMapper = new RowMapper<ConnectionDetails>() {
         @Override
         public ConnectionDetails mapRow(ResultSet rs, int rowNum) throws SQLException {
@@ -51,6 +58,11 @@ public class ConnectionRepository {
             c.setReadOnly(rs.getBoolean("read_only"));
             c.setExtraProps(rs.getString("extra_props"));
             c.setEnableDataWarehouse(rs.getBoolean("enable_data_warehouse"));
+            try {
+                c.setEnableDataWarehouseTarget(rs.getBoolean("enable_data_warehouse_target"));
+            } catch (Exception e) {
+                c.setEnableDataWarehouseTarget(false);
+            }
             return c;
         }
     };
@@ -65,8 +77,8 @@ public class ConnectionRepository {
     }
 
     public void save(ConnectionDetails c) {
-        String sql = "INSERT INTO connections (id, name, type, host, port, database_name, username, password, schema_name, ssl_mode, ssl_ca_file, ssl_cert_file, ssl_key_file, use_ssh, ssh_host, ssh_port, ssh_username, ssh_auth_mode, ssh_password, ssh_key_file, ssh_passphrase, ssh_strict_host_key_checking, connection_timeout, socket_timeout, fetch_size, read_only, extra_props, enable_data_warehouse) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+        String sql = "INSERT INTO connections (id, name, type, host, port, database_name, username, password, schema_name, ssl_mode, ssl_ca_file, ssl_cert_file, ssl_key_file, use_ssh, ssh_host, ssh_port, ssh_username, ssh_auth_mode, ssh_password, ssh_key_file, ssh_passphrase, ssh_strict_host_key_checking, connection_timeout, socket_timeout, fetch_size, read_only, extra_props, enable_data_warehouse, enable_data_warehouse_target) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                      "ON CONFLICT (id) DO UPDATE SET " +
                      "name = EXCLUDED.name, type = EXCLUDED.type, host = EXCLUDED.host, " +
                      "port = EXCLUDED.port, database_name = EXCLUDED.database_name, " +
@@ -79,7 +91,7 @@ public class ConnectionRepository {
                      "ssh_password = EXCLUDED.ssh_password, ssh_key_file = EXCLUDED.ssh_key_file, " +
                      "ssh_passphrase = EXCLUDED.ssh_passphrase, ssh_strict_host_key_checking = EXCLUDED.ssh_strict_host_key_checking, connection_timeout = EXCLUDED.connection_timeout, " +
                      "socket_timeout = EXCLUDED.socket_timeout, fetch_size = EXCLUDED.fetch_size, " +
-                     "read_only = EXCLUDED.read_only, extra_props = EXCLUDED.extra_props, enable_data_warehouse = EXCLUDED.enable_data_warehouse";
+                     "read_only = EXCLUDED.read_only, extra_props = EXCLUDED.extra_props, enable_data_warehouse = EXCLUDED.enable_data_warehouse, enable_data_warehouse_target = EXCLUDED.enable_data_warehouse_target";
                      
         String encodedPassword = c.getPassword() != null ? Base64.getEncoder().encodeToString(c.getPassword().getBytes(StandardCharsets.UTF_8)) : null;
         String encodedSshPassword = c.getSshPassword() != null ? Base64.getEncoder().encodeToString(c.getSshPassword().getBytes(StandardCharsets.UTF_8)) : null;
@@ -89,7 +101,7 @@ public class ConnectionRepository {
         jdbcTemplate.update(sql, c.getId(), c.getName(), c.getType(), c.getHost(), c.getPort(), c.getDatabase(), c.getUsername(), encodedPassword,
                 c.getSchema(), c.getSslMode(), c.getSslCaFile(), c.getSslCertFile(), c.getSslKeyFile(),
                 c.isUseSsh(), c.getSshHost(), c.getSshPort(), c.getSshUsername(), c.getSshAuthMode(), encodedSshPassword, encodedSshKeyFile, encodedSshPassphrase, c.isSshStrictHostKeyChecking(),
-                c.getConnectionTimeout(), c.getSocketTimeout(), c.getFetchSize(), c.isReadOnly(), c.getExtraProps(), c.isEnableDataWarehouse());
+                c.getConnectionTimeout(), c.getSocketTimeout(), c.getFetchSize(), c.isReadOnly(), c.getExtraProps(), c.isEnableDataWarehouse(), c.isEnableDataWarehouseTarget());
     }
 
     public void deleteById(String id) {

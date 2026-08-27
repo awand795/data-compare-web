@@ -18,9 +18,11 @@ export const DataWarehouseView: React.FC = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [targetConnId, setTargetConnId] = useState('');
+  const targetConn = connections.find(c => c.id === targetConnId);
   const [query, setQuery] = useState('-- Define the data to sync via Debezium\nSELECT * FROM source_schema.source_table');
   const [targetTable, setTargetTable] = useState('');
   const [targetDatabase, setTargetDatabase] = useState('');
+  const [targetSchema, setTargetSchema] = useState('public');
   const [primaryKeys, setPrimaryKeys] = useState('');
   const [activeTab, setActiveTab] = useState<'console' | 'monitor'>('monitor');
 
@@ -45,6 +47,15 @@ export const DataWarehouseView: React.FC = () => {
       setSourceConnId(next[0] || '');
       return next;
     });
+  };
+
+  const handleTargetConnChange = (id: string) => {
+    setTargetConnId(id);
+    const conn = connections.find(c => c.id === id);
+    if (conn) {
+      if (conn.database) setTargetDatabase(conn.database.trim());
+      if (conn.schema) setTargetSchema(conn.schema.trim() || 'public');
+    }
   };
 
   const handleDeploy = async () => {
@@ -73,7 +84,8 @@ export const DataWarehouseView: React.FC = () => {
           query: query,
           targetTable: targetTable,
           primaryKeys: primaryKeys,
-          targetDatabase: targetDatabase
+          targetDatabase: targetDatabase,
+          targetSchema: targetSchema
         })
       });
 
@@ -201,15 +213,22 @@ export const DataWarehouseView: React.FC = () => {
                   <select
                     className="px-3.5 py-2.5 bg-bg-panel border border-border-input hover:border-indigo-500/50 rounded-lg text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all shadow-sm cursor-pointer"
                     value={targetConnId}
-                    onChange={e => setTargetConnId(e.target.value)}
+                    onChange={e => handleTargetConnChange(e.target.value)}
                   >
-                    <option value="">Select ClickHouse connection...</option>
-                    {connections.filter(c => c.type === 'clickhouse').map(c => <option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
+                    <option value="">Select target data warehouse...</option>
+                    {connections.filter(c => c.type === 'clickhouse' || c.enableDataWarehouseTarget).map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.type.toUpperCase()})
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+              <div className={clsx(
+                "grid gap-5 mb-6",
+                targetConn?.type === 'postgresql' ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 lg:grid-cols-2"
+              )}>
                 <div className="flex flex-col gap-2">
                   <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
                     <Database className="w-3.5 h-3.5 text-blue-500" /> Target Database (Optional)
@@ -222,6 +241,20 @@ export const DataWarehouseView: React.FC = () => {
                     onChange={e => setTargetDatabase(e.target.value)}
                   />
                 </div>
+                {targetConn?.type === 'postgresql' && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                      <Database className="w-3.5 h-3.5 text-indigo-500" /> Target Schema
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. public, sch_sync"
+                      className="px-3.5 py-2.5 bg-bg-panel border border-border-input hover:border-indigo-500/50 rounded-lg text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all shadow-sm"
+                      value={targetSchema}
+                      onChange={e => setTargetSchema(e.target.value)}
+                    />
+                  </div>
+                )}
                 <div className="flex flex-col gap-2">
                   <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
                     <TableIcon className="w-3.5 h-3.5 text-emerald-500" /> Target Table Name
@@ -236,15 +269,23 @@ export const DataWarehouseView: React.FC = () => {
                 </div>
               </div>
               <div className="flex flex-col gap-2 mb-6">
-                <p className="text-[10px] text-text-muted mt-0.5 ml-1">Table will be automatically created in ClickHouse with composite sorting keys for JOIN queries.</p>
+                <p className="text-[10px] text-text-muted mt-0.5 ml-1">
+                  {targetConn?.type === 'postgresql' 
+                    ? "Target table will be automatically created in PostgreSQL with primary keys and CDC upsert support."
+                    : "Table will be automatically created in ClickHouse with composite sorting keys for JOIN queries."}
+                </p>
                 <div className="mt-2.5 p-3 rounded-lg bg-indigo-500/5 border border-indigo-500/10 flex items-start gap-2.5">
                   <div className="mt-0.5 p-1 rounded-md bg-indigo-500/10 text-indigo-500">
                     <Sparkles className="w-3.5 h-3.5 animate-pulse" />
                   </div>
                   <div>
-                    <h4 className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">Multi-Table JOIN Auto-Pipeline</h4>
+                    <h4 className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">
+                      {targetConn?.type === 'postgresql' ? "PostgreSQL CDC Pipeline & Multi-Source Consolidation" : "Multi-Table JOIN Auto-Pipeline"}
+                    </h4>
                     <p className="text-[10.5px] text-text-muted mt-0.5 leading-normal">
-                      Write queries with 2 or more joined tables. The system will automatically detect the source tables, deploy Debezium CDC, pre-create ClickHouse landing tables, and generate dual-join Materialized Views for real-time accurate synchronization.
+                      {targetConn?.type === 'postgresql'
+                        ? "Support multi-database source replication directly into PostgreSQL target. Debezium CDC captures changes in real-time, writes to target schemas/landing tables, and consolidates branches seamlessly."
+                        : "Write queries with 2 or more joined tables. The system will automatically detect the source tables, deploy Debezium CDC, pre-create ClickHouse landing tables, and generate dual-join Materialized Views for real-time accurate synchronization."}
                     </p>
                   </div>
                 </div>

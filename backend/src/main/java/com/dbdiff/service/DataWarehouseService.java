@@ -71,6 +71,7 @@ public class DataWarehouseService {
     private static class ColumnInfo {
         String name;
         String clickhouseType;
+        String postgresType;
     }
 
     private void sendLog(SseEmitter emitter, String message) {
@@ -545,6 +546,12 @@ public class DataWarehouseService {
                         meta.getScale(i),
                         meta.getColumnTypeName(i)
                     );
+                    col.postgresType = mapJdbcTypeToPostgres(
+                        meta.getColumnType(i),
+                        meta.getPrecision(i),
+                        meta.getScale(i),
+                        meta.getColumnTypeName(i)
+                    );
                     targetColumns.add(col);
                 }
             } catch (Exception e) {
@@ -634,140 +641,322 @@ public class DataWarehouseService {
             sendLog(emitter, "Target composite sorting key: " + String.join(", ", compositePKs));
 
             // =========================================================================
-            // STEP 2: Create ClickHouse Target Table & Staging Landing Tables
+            // STEP 2: Create Target Table & Staging Landing Tables
             // =========================================================================
-            String chDb = request.getTargetDatabase();
-            if (chDb == null || chDb.trim().isEmpty()) {
-                chDb = request.getTargetConnection().getDatabase();
-            }
-            if (chDb == null || chDb.trim().isEmpty()) {
-                chDb = "default";
-            }
-            chDb = chDb.trim();
-            
-            sendLog(emitter, "Ensuring target database `" + chDb + "` exists...");
-            try (Connection conn = targetDs.getConnection();
-                 Statement stmt = conn.createStatement()) {
-                stmt.execute("CREATE DATABASE IF NOT EXISTS `" + chDb + "`");
-            } catch (Exception e) {
-                sendLog(emitter, "WARNING: Could not execute CREATE DATABASE IF NOT EXISTS: " + e.getMessage());
-            }
-            
-            // Drop any existing MVs for this target table to prevent trigger execution during landing table backfills
-            try (Connection conn = targetDs.getConnection();
-                 Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT name FROM system.tables WHERE database = '" + chDb + "' AND name LIKE 'mv_" + request.getTargetTable() + "_cdc_" + baseName + "_%'")) {
-                java.util.List<String> mvsToDrop = new java.util.ArrayList<>();
-                while (rs.next()) {
-                    mvsToDrop.add(rs.getString(1));
-                }
-                for (String mv : mvsToDrop) {
-                    try (Statement dropStmt = conn.createStatement()) {
-                        dropStmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mv + "`");
-                        dropStmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + mv + "`");
-                    } catch (Exception ignored) {}
-                }
-            } catch (Exception e) {
-                logger.warn("Could not pre-drop MVs for target table {}: {}", request.getTargetTable(), e.getMessage());
-            }
-            
-            // 2a. Pre-create ClickHouse landing tables to avoid MV compilation errors
-            sendLog(emitter, "Pre-creating ClickHouse landing tables for CDC...");
+            boolean isPostgresTarget = "postgresql".equalsIgnoreCase(request.getTargetConnection().getType());
+            String targetSchema = request.getTargetSchema() != null && !request.getTargetSchema().trim().isEmpty() 
+                ? request.getTargetSchema().trim() 
+                : (request.getTargetConnection().getSchema() != null && !request.getTargetConnection().getSchema().trim().isEmpty() ? request.getTargetConnection().getSchema().trim() : "public");
+            String targetDatabase = request.getTargetDatabase() != null && !request.getTargetDatabase().trim().isEmpty() 
+                ? request.getTargetDatabase().trim() 
+                : (request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "postgres");
+
+            java.util.List<com.dbdiff.model.ConnectionDetails> allConns = (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) ? request.getSourceConnections() : java.util.Collections.singletonList(request.getSourceConnection());
             java.util.Map<String, java.util.Set<String>> tableToPKs = new java.util.HashMap<>();
-            for (String t : physicalTables) {
-                String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
-                
-                List<ColumnInfo> landingCols = new ArrayList<>();
-                try (Connection conn = sourceDs.getConnection()) {
-                    DatabaseMetaData metaData = conn.getMetaData();
-                    String schemaName = null;
-                    String tableName = t;
-                    if (t.contains(".")) {
-                        int dotIdx = t.indexOf('.');
-                        schemaName = t.substring(0, dotIdx);
-                        tableName = t.substring(dotIdx + 1);
-                    } else {
-                        schemaName = request.getSourceConnection().getSchema();
+
+            if (isPostgresTarget) {
+                sendLog(emitter, "Target is PostgreSQL. Ensuring schema `" + targetSchema + "` exists...");
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    stmt.execute("CREATE SCHEMA IF NOT EXISTS " + targetSchema);
+                    sendLog(emitter, "PostgreSQL schema `" + targetSchema + "` verified.");
+                } catch (Exception e) {
+                    sendLog(emitter, "WARNING: Could not execute CREATE SCHEMA IF NOT EXISTS: " + e.getMessage());
+                }
+
+                if (allConns.size() > 1) {
+                    List<String> unionSelects = new ArrayList<>();
+                    for (ConnectionDetails cItem : allConns) {
+                        String cBaseName = cItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                        for (String t : physicalTables) {
+                            String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
+                            String landingTbl = "landing_" + cBaseName + "_" + cleanTable;
+                            
+                            StringBuilder pgLandingDdl = new StringBuilder();
+                            pgLandingDdl.append("CREATE TABLE IF NOT EXISTS ").append(targetSchema).append(".").append(landingTbl).append(" (\n");
+                            for (ColumnInfo col : targetColumns) {
+                                pgLandingDdl.append("    \"").append(col.name).append("\" ").append(col.postgresType != null ? col.postgresType : "TEXT").append(",\n");
+                            }
+                            pgLandingDdl.append("    \"is_deleted\" BOOLEAN DEFAULT FALSE,\n");
+                            
+                            StringBuilder pkBld = new StringBuilder();
+                            for (String pk : compositePKs) {
+                                if (pkBld.length() > 0) pkBld.append(", ");
+                                pkBld.append("\"").append(pk).append("\"");
+                            }
+                            if (pkBld.length() > 0) {
+                                pgLandingDdl.append("    PRIMARY KEY (").append(pkBld.toString()).append(")\n");
+                            } else if (!targetColumns.isEmpty()) {
+                                pgLandingDdl.append("    PRIMARY KEY (\"").append(targetColumns.get(0).name).append("\")\n");
+                            }
+                            pgLandingDdl.append(")");
+
+                            sendLog(emitter, "Creating PostgreSQL landing table `" + targetSchema + "." + landingTbl + "`...");
+                            try (Connection conn = targetDs.getConnection();
+                                 Statement stmt = conn.createStatement()) {
+                                stmt.execute(pgLandingDdl.toString());
+                                sendLog(emitter, "PostgreSQL landing table `" + targetSchema + "." + landingTbl + "` created/verified.");
+                            } catch (Exception e) {
+                                sendLog(emitter, "WARNING: Landing table creation: " + e.getMessage());
+                            }
+
+                            unionSelects.add("SELECT '" + cItem.getName() + "' AS source_db, * FROM " + targetSchema + "." + landingTbl + " WHERE (is_deleted IS NULL OR is_deleted = false)");
+                        }
                     }
-                    tableName = tableName.replaceAll("[\"``]", "");
-                    if (schemaName != null) {
-                        schemaName = schemaName.replaceAll("[\"``]", "");
+
+                    // Create Consolidated View
+                    String consolidatedViewSql = "CREATE OR REPLACE VIEW " + targetSchema + "." + request.getTargetTable() + " AS\n" +
+                                                 String.join("\nUNION ALL\n", unionSelects);
+                    sendLog(emitter, "Creating Consolidated PostgreSQL View `" + targetSchema + "." + request.getTargetTable() + "`...");
+                    try (Connection conn = targetDs.getConnection();
+                         Statement stmt = conn.createStatement()) {
+                        stmt.execute(consolidatedViewSql);
+                        sendLog(emitter, "Consolidated View `" + targetSchema + "." + request.getTargetTable() + "` created successfully.");
+                    } catch (Exception e) {
+                        sendLog(emitter, "WARNING: Consolidated View creation: " + e.getMessage());
                     }
+                } else {
+                    // Single source direct table creation in PostgreSQL
+                    StringBuilder pgTargetDdl = new StringBuilder();
+                    pgTargetDdl.append("CREATE TABLE IF NOT EXISTS ").append(targetSchema).append(".").append(request.getTargetTable()).append(" (\n");
+                    for (ColumnInfo col : targetColumns) {
+                        pgTargetDdl.append("    \"").append(col.name).append("\" ").append(col.postgresType != null ? col.postgresType : "TEXT").append(",\n");
+                    }
+                    pgTargetDdl.append("    \"is_deleted\" BOOLEAN DEFAULT FALSE,\n");
                     
-                    try (ResultSet colRs = metaData.getColumns(null, schemaName, tableName, "%")) {
-                        while (colRs.next()) {
-                            ColumnInfo col = new ColumnInfo();
-                            col.name = colRs.getString("COLUMN_NAME");
-                            col.clickhouseType = mapJdbcTypeToClickHouse(
-                                colRs.getInt("DATA_TYPE"),
-                                colRs.getInt("COLUMN_SIZE"),
-                                colRs.getInt("DECIMAL_DIGITS"),
-                                colRs.getString("TYPE_NAME")
-                            );
-                            landingCols.add(col);
-                        }
+                    StringBuilder pkBld = new StringBuilder();
+                    for (String pk : compositePKs) {
+                        if (pkBld.length() > 0) pkBld.append(", ");
+                        pkBld.append("\"").append(pk).append("\"");
+                    }
+                    if (pkBld.length() > 0) {
+                        pgTargetDdl.append("    PRIMARY KEY (").append(pkBld.toString()).append(")\n");
+                    } else if (!targetColumns.isEmpty()) {
+                        pgTargetDdl.append("    PRIMARY KEY (\"").append(targetColumns.get(0).name).append("\")\n");
+                    }
+                    pgTargetDdl.append(")");
+
+                    sendLog(emitter, "Creating PostgreSQL target table `" + targetSchema + "." + request.getTargetTable() + "`...");
+                    try (Connection conn = targetDs.getConnection();
+                         Statement stmt = conn.createStatement()) {
+                        stmt.execute(pgTargetDdl.toString());
+                        sendLog(emitter, "PostgreSQL target table `" + targetSchema + "." + request.getTargetTable() + "` created/verified.");
+                    } catch (Exception e) {
+                        sendLog(emitter, "WARNING: Target table creation: " + e.getMessage());
                     }
                 }
+
+                // Save metadata
+                try {
+                    pipelineMetadataRepository.savePipelineMetadata(
+                        String.valueOf(deployId),
+                        request.getQuery(),
+                        request.getSourceConnection().getId(),
+                        request.getTargetTable(),
+                        request.getTargetConnection().getId(),
+                        targetDatabase
+                    );
+                } catch (Exception e) {
+                    logger.warn("Could not save original query to metadata repository", e);
+                }
+            } else {
+                String chDb = request.getTargetDatabase();
+                if (chDb == null || chDb.trim().isEmpty()) {
+                    chDb = request.getTargetConnection().getDatabase();
+                }
+                if (chDb == null || chDb.trim().isEmpty()) {
+                    chDb = "default";
+                }
+                chDb = chDb.trim();
                 
-                if (landingCols.isEmpty()) {
-                    String schemaPrefix = t.contains(".") ? "" : 
-                        ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType()) ? 
-                            (request.getSourceConnection().getSchema() != null ? request.getSourceConnection().getSchema() + "." : "public.") : "");
-                    String tableDdlSql = "SELECT * FROM " + schemaPrefix + t + " LIMIT 0";
-                    try (Connection conn = sourceDs.getConnection();
-                         PreparedStatement ps = conn.prepareStatement(tableDdlSql);
-                         ResultSet rs = ps.executeQuery()) {
-                        ResultSetMetaData meta = rs.getMetaData();
-                        for (int i = 1; i <= meta.getColumnCount(); i++) {
-                            ColumnInfo col = new ColumnInfo();
-                            col.name = meta.getColumnLabel(i);
-                            col.clickhouseType = mapJdbcTypeToClickHouse(
-                                meta.getColumnType(i),
-                                meta.getPrecision(i),
-                                meta.getScale(i),
-                                meta.getColumnTypeName(i)
-                            );
-                            landingCols.add(col);
-                        }
-                    }
+                sendLog(emitter, "Ensuring target database `" + chDb + "` exists...");
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    stmt.execute("CREATE DATABASE IF NOT EXISTS `" + chDb + "`");
+                } catch (Exception e) {
+                    sendLog(emitter, "WARNING: Could not execute CREATE DATABASE IF NOT EXISTS: " + e.getMessage());
                 }
                 
-                Set<String> tablePKs = new LinkedHashSet<>();
-                try (Connection conn = sourceDs.getConnection()) {
-                    DatabaseMetaData metaData = conn.getMetaData();
-                    String schemaName = null;
-                    String tableName = t;
-                    if (t.contains(".")) {
-                        int dotIdx = t.indexOf('.');
-                        schemaName = t.substring(0, dotIdx);
-                        tableName = t.substring(dotIdx + 1);
-                    } else {
-                        schemaName = request.getSourceConnection().getSchema();
+                // Drop any existing MVs for this target table to prevent trigger execution during landing table backfills
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("SELECT name FROM system.tables WHERE database = '" + chDb + "' AND name LIKE 'mv_" + request.getTargetTable() + "_cdc_" + baseName + "_%'")) {
+                    java.util.List<String> mvsToDrop = new java.util.ArrayList<>();
+                    while (rs.next()) {
+                        mvsToDrop.add(rs.getString(1));
                     }
-                    tableName = tableName.replaceAll("[\"``]", "");
-                    if (schemaName != null) {
-                        schemaName = schemaName.replaceAll("[\"``]", "");
+                    for (String mv : mvsToDrop) {
+                        try (Statement dropStmt = conn.createStatement()) {
+                            dropStmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mv + "`");
+                            dropStmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + mv + "`");
+                        } catch (Exception ignored) {}
                     }
-                    try (ResultSet pkRs = metaData.getPrimaryKeys(null, schemaName, tableName)) {
-                        while (pkRs.next()) {
-                            String pkCol = pkRs.getString("COLUMN_NAME");
-                            if (pkCol != null) {
-                                tablePKs.add(pkCol);
+                } catch (Exception e) {
+                    logger.warn("Could not pre-drop MVs for target table {}: {}", request.getTargetTable(), e.getMessage());
+                }
+                
+                // 2a. Pre-create ClickHouse landing tables to avoid MV compilation errors
+                sendLog(emitter, "Pre-creating ClickHouse landing tables for CDC...");
+                for (String t : physicalTables) {
+                    String landingTable = getClickHouseLandingTable(t, baseName, request.getSourceConnection());
+                    
+                    List<ColumnInfo> landingCols = new ArrayList<>();
+                    try (Connection conn = sourceDs.getConnection()) {
+                        DatabaseMetaData metaData = conn.getMetaData();
+                        String schemaName = null;
+                        String tableName = t;
+                        if (t.contains(".")) {
+                            int dotIdx = t.indexOf('.');
+                            schemaName = t.substring(0, dotIdx);
+                            tableName = t.substring(dotIdx + 1);
+                        } else {
+                            schemaName = request.getSourceConnection().getSchema();
+                        }
+                        tableName = tableName.replaceAll("[\"``]", "");
+                        if (schemaName != null) {
+                            schemaName = schemaName.replaceAll("[\"``]", "");
+                        }
+                        
+                        try (ResultSet colRs = metaData.getColumns(null, schemaName, tableName, "%")) {
+                            while (colRs.next()) {
+                                ColumnInfo col = new ColumnInfo();
+                                col.name = colRs.getString("COLUMN_NAME");
+                                col.clickhouseType = mapJdbcTypeToClickHouse(
+                                    colRs.getInt("DATA_TYPE"),
+                                    colRs.getInt("COLUMN_SIZE"),
+                                    colRs.getInt("DECIMAL_DIGITS"),
+                                    colRs.getString("TYPE_NAME")
+                                );
+                                col.postgresType = mapJdbcTypeToPostgres(
+                                    colRs.getInt("DATA_TYPE"),
+                                    colRs.getInt("COLUMN_SIZE"),
+                                    colRs.getInt("DECIMAL_DIGITS"),
+                                    colRs.getString("TYPE_NAME")
+                                );
+                                landingCols.add(col);
                             }
                         }
                     }
-                } catch (Exception e) {}
-                
-                if (tablePKs.isEmpty() && !landingCols.isEmpty()) {
-                    tablePKs.add(landingCols.get(0).name);
-                }
-                tableToPKs.put(t, tablePKs);
-                
-                StringBuilder landingDdl = new StringBuilder();
-                landingDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(landingTable).append("` (\n");
-                for (ColumnInfo col : landingCols) {
-                    boolean isPk = false;
+                    
+                    if (landingCols.isEmpty()) {
+                        String schemaPrefix = t.contains(".") ? "" : 
+                            ("postgresql".equalsIgnoreCase(request.getSourceConnection().getType()) ? 
+                                (request.getSourceConnection().getSchema() != null ? request.getSourceConnection().getSchema() + "." : "public.") : "");
+                        String tableDdlSql = "SELECT * FROM " + schemaPrefix + t + " LIMIT 0";
+                        try (Connection conn = sourceDs.getConnection();
+                             PreparedStatement ps = conn.prepareStatement(tableDdlSql);
+                             ResultSet rs = ps.executeQuery()) {
+                            ResultSetMetaData meta = rs.getMetaData();
+                            for (int i = 1; i <= meta.getColumnCount(); i++) {
+                                ColumnInfo col = new ColumnInfo();
+                                col.name = meta.getColumnLabel(i);
+                                col.clickhouseType = mapJdbcTypeToClickHouse(
+                                    meta.getColumnType(i),
+                                    meta.getPrecision(i),
+                                    meta.getScale(i),
+                                    meta.getColumnTypeName(i)
+                                );
+                                col.postgresType = mapJdbcTypeToPostgres(
+                                    meta.getColumnType(i),
+                                    meta.getPrecision(i),
+                                    meta.getScale(i),
+                                    meta.getColumnTypeName(i)
+                                );
+                                landingCols.add(col);
+                            }
+                        }
+                    }
+                    
+                    Set<String> tablePKs = new LinkedHashSet<>();
+                    try (Connection conn = sourceDs.getConnection()) {
+                        DatabaseMetaData metaData = conn.getMetaData();
+                        String schemaName = null;
+                        String tableName = t;
+                        if (t.contains(".")) {
+                            int dotIdx = t.indexOf('.');
+                            schemaName = t.substring(0, dotIdx);
+                            tableName = t.substring(dotIdx + 1);
+                        } else {
+                            schemaName = request.getSourceConnection().getSchema();
+                        }
+                        tableName = tableName.replaceAll("[\"``]", "");
+                        if (schemaName != null) {
+                            schemaName = schemaName.replaceAll("[\"``]", "");
+                        }
+                        try (ResultSet pkRs = metaData.getPrimaryKeys(null, schemaName, tableName)) {
+                            while (pkRs.next()) {
+                                String pkCol = pkRs.getString("COLUMN_NAME");
+                                if (pkCol != null) {
+                                    tablePKs.add(pkCol);
+                                }
+                            }
+                        }
+                    } catch (Exception e) {}
+                    
+                    if (tablePKs.isEmpty() && !landingCols.isEmpty()) {
+                        tablePKs.add(landingCols.get(0).name);
+                    }
+                    tableToPKs.put(t, tablePKs);
+                    
+                    StringBuilder landingDdl = new StringBuilder();
+                    landingDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(landingTable).append("` (\n");
+                    for (ColumnInfo col : landingCols) {
+                        boolean isPk = false;
+                        for (String pk : tablePKs) {
+                            if (pk.equalsIgnoreCase(col.name)) {
+                                isPk = true;
+                                break;
+                            }
+                        }
+                        String colType = col.clickhouseType;
+                        if (!isPk && !colType.startsWith("Nullable")) {
+                            colType = "Nullable(" + colType + ")";
+                        }
+                        landingDdl.append("    `").append(col.name).append("` ").append(colType).append(",\n");
+                    }
+                    landingDdl.append("    `version` UInt64 DEFAULT 0,\n");
+                    landingDdl.append("    `is_deleted` UInt8 DEFAULT 0\n");
+                    landingDdl.append(") ENGINE = ReplacingMergeTree(version)\n");
+                    
+                    StringBuilder lpkBuilder = new StringBuilder();
                     for (String pk : tablePKs) {
+                        if (lpkBuilder.length() > 0) lpkBuilder.append(", ");
+                        lpkBuilder.append("`").append(pk).append("`");
+                    }
+                    landingDdl.append("ORDER BY (").append(lpkBuilder.toString()).append(")");
+                    
+                    sendLog(emitter, "Executing ClickHouse DDL for landing table `" + landingTable + "`...");
+                    try (Connection conn = targetDs.getConnection();
+                         Statement stmt = conn.createStatement()) {
+                        String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
+                        try { stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
+                        try { stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
+                        try { stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + landingTable + "`"); } catch (Exception ignored) {}
+                        stmt.execute(landingDdl.toString());
+                    } catch (Exception e) {
+                        sendLog(emitter, "WARNING: Could not pre-create landing table `" + landingTable + "`: " + e.getMessage());
+                    }
+                    
+                    // Truncate existing landing table to ensure snapshot counts start fresh
+                    try (Connection conn = targetDs.getConnection();
+                         Statement stmt = conn.createStatement()) {
+                        stmt.execute("TRUNCATE TABLE `" + chDb + "`.`" + landingTable + "`");
+                        sendLog(emitter, "Truncated existing landing table `" + landingTable + "`.");
+                    } catch (Exception e) {
+                        // Ignore
+                    }
+                    
+                    // Backfill landing table directly from source DB for complete initial snapshot
+                    sendLog(emitter, "Populating initial snapshot for landing table `" + landingTable + "` directly from source DB...");
+                    backfillLandingTableFromSource(sourceDs, targetDs, t, landingTable, chDb, request.getSourceConnection(), emitter);
+                }
+
+                // 2b. Create Physical Target ReplacingMergeTree Table
+                StringBuilder targetDdl = new StringBuilder();
+                targetDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(request.getTargetTable()).append("` (\n");
+                for (ColumnInfo col : targetColumns) {
+                    boolean isPk = false;
+                    for (String pk : compositePKs) {
                         if (pk.equalsIgnoreCase(col.name)) {
                             isPk = true;
                             break;
@@ -777,131 +966,74 @@ public class DataWarehouseService {
                     if (!isPk && !colType.startsWith("Nullable")) {
                         colType = "Nullable(" + colType + ")";
                     }
-                    landingDdl.append("    `").append(col.name).append("` ").append(colType).append(",\n");
+                    targetDdl.append("    `").append(col.name).append("` ").append(colType).append(",\n");
                 }
-                landingDdl.append("    `version` UInt64 DEFAULT 0,\n");
-                landingDdl.append("    `is_deleted` UInt8 DEFAULT 0\n");
-                landingDdl.append(") ENGINE = ReplacingMergeTree(version)\n");
-                
-                StringBuilder lpkBuilder = new StringBuilder();
-                for (String pk : tablePKs) {
-                    if (lpkBuilder.length() > 0) lpkBuilder.append(", ");
-                    lpkBuilder.append("`").append(pk).append("`");
+                boolean hasSyncDt = targetColumns.stream().anyMatch(c -> "sync_dt".equalsIgnoreCase(c.name));
+                if (!hasSyncDt) {
+                    targetDdl.append("    `sync_dt` DateTime64(3, 'Asia/Jakarta') DEFAULT now64(3, 'Asia/Jakarta'),\n");
                 }
-                landingDdl.append("ORDER BY (").append(lpkBuilder.toString()).append(")");
+                targetDdl.append("    `version` UInt64 DEFAULT 0,\n");
+                targetDdl.append("    `is_deleted` UInt8 DEFAULT 0\n");
+                targetDdl.append(") ENGINE = ReplacingMergeTree(version)\n");
                 
-                sendLog(emitter, "Executing ClickHouse DDL for landing table `" + landingTable + "`...");
-                try (Connection conn = targetDs.getConnection();
-                     Statement stmt = conn.createStatement()) {
-                    String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
-                    try { stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
-                    try { stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
-                    try { stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + landingTable + "`"); } catch (Exception ignored) {}
-                    stmt.execute(landingDdl.toString());
-                } catch (Exception e) {
-                    sendLog(emitter, "WARNING: Could not pre-create landing table `" + landingTable + "`: " + e.getMessage());
-                }
-                
-                // Truncate existing landing table to ensure snapshot counts start fresh
-                try (Connection conn = targetDs.getConnection();
-                     Statement stmt = conn.createStatement()) {
-                    stmt.execute("TRUNCATE TABLE `" + chDb + "`.`" + landingTable + "`");
-                    sendLog(emitter, "Truncated existing landing table `" + landingTable + "`.");
-                } catch (Exception e) {
-                    // Ignore
-                }
-                
-                // Backfill landing table directly from source DB for complete initial snapshot
-                sendLog(emitter, "Populating initial snapshot for landing table `" + landingTable + "` directly from source DB...");
-                backfillLandingTableFromSource(sourceDs, targetDs, t, landingTable, chDb, request.getSourceConnection(), emitter);
-            }
-
-            // 2b. Create Physical Target ReplacingMergeTree Table
-            StringBuilder targetDdl = new StringBuilder();
-            targetDdl.append("CREATE TABLE IF NOT EXISTS `").append(chDb).append("`.`").append(request.getTargetTable()).append("` (\n");
-            for (ColumnInfo col : targetColumns) {
-                boolean isPk = false;
+                StringBuilder pkBuilder = new StringBuilder();
                 for (String pk : compositePKs) {
-                    if (pk.equalsIgnoreCase(col.name)) {
-                        isPk = true;
-                        break;
+                    if (pkBuilder.length() > 0) pkBuilder.append(", ");
+                    pkBuilder.append("`").append(pk).append("`");
+                }
+                targetDdl.append("ORDER BY (").append(pkBuilder.toString()).append(")");
+                
+                // Save the original query + connection metadata to repository
+                try {
+                    pipelineMetadataRepository.savePipelineMetadata(
+                        String.valueOf(deployId),
+                        request.getQuery(),
+                        request.getSourceConnection().getId(),
+                        request.getTargetTable(),
+                        request.getTargetConnection().getId(),
+                        chDb
+                    );
+                } catch (Exception e) {
+                    logger.warn("Could not save original query to metadata repository", e);
+                }
+                
+                sendLog(emitter, "Creating target table `" + request.getTargetTable() + "` in ClickHouse...");
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    // Do not drop as view, it is a regular table.
+                    stmt.execute(targetDdl.toString());
+                    if (request.getPrimaryKeys() != null && !request.getPrimaryKeys().trim().isEmpty()) {
+                        try {
+                            stmt.execute("ALTER TABLE `" + chDb + "`.`" + request.getTargetTable() + "` MODIFY ORDER BY (" + pkBuilder.toString() + ")");
+                            sendLog(emitter, "Updated target table ORDER BY to user-provided primary keys: (" + pkBuilder.toString() + ")");
+                        } catch (Exception alterEx) {
+                            logger.warn("Could not modify ORDER BY on existing target table: " + alterEx.getMessage());
+                        }
                     }
+                    sendLog(emitter, "Target table `" + request.getTargetTable() + "` verified/created.");
+                } catch (Exception e) {
+                    sendLog(emitter, "ERROR: Target table creation failed: " + e.getMessage());
+                    throw e;
                 }
-                String colType = col.clickhouseType;
-                if (!isPk && !colType.startsWith("Nullable")) {
-                    colType = "Nullable(" + colType + ")";
+
+                // Create a convenience VIEW that automatically applies FINAL and filters deleted rows
+                String viewName = "v_" + request.getTargetTable();
+                String viewDdl = "CREATE OR REPLACE VIEW `" + chDb + "`.`" + viewName + "` AS " +
+                                 "SELECT * FROM `" + chDb + "`.`" + request.getTargetTable() + "` FINAL WHERE is_deleted = 0";
+                sendLog(emitter, "Creating convenience target VIEW `" + viewName + "` in ClickHouse...");
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    stmt.execute(viewDdl);
+                    sendLog(emitter, "Convenience VIEW `" + viewName + "` created successfully.");
+                } catch (Exception e) {
+                    sendLog(emitter, "WARNING: Convenience VIEW creation failed: " + e.getMessage());
                 }
-                targetDdl.append("    `").append(col.name).append("` ").append(colType).append(",\n");
-            }
-            boolean hasSyncDt = targetColumns.stream().anyMatch(c -> "sync_dt".equalsIgnoreCase(c.name));
-            if (!hasSyncDt) {
-                targetDdl.append("    `sync_dt` DateTime64(3, 'Asia/Jakarta') DEFAULT now64(3, 'Asia/Jakarta'),\n");
-            }
-            targetDdl.append("    `version` UInt64 DEFAULT 0,\n");
-            targetDdl.append("    `is_deleted` UInt8 DEFAULT 0\n");
-            targetDdl.append(") ENGINE = ReplacingMergeTree(version)\n");
-            
-            StringBuilder pkBuilder = new StringBuilder();
-            for (String pk : compositePKs) {
-                if (pkBuilder.length() > 0) pkBuilder.append(", ");
-                pkBuilder.append("`").append(pk).append("`");
-            }
-            targetDdl.append("ORDER BY (").append(pkBuilder.toString()).append(")");
-            
-            // Save the original query + connection metadata to repository
-            try {
-                pipelineMetadataRepository.savePipelineMetadata(
-                    String.valueOf(deployId),
-                    request.getQuery(),
-                    request.getSourceConnection().getId(),
-                    request.getTargetTable(),
-                    request.getTargetConnection().getId(),
-                    chDb
-                );
-            } catch (Exception e) {
-                logger.warn("Could not save original query to metadata repository", e);
-            }
-            
-            sendLog(emitter, "Creating target table `" + request.getTargetTable() + "` in ClickHouse...");
-            try (Connection conn = targetDs.getConnection();
-                 Statement stmt = conn.createStatement()) {
-                // Do not drop as view, it is a regular table.
-                stmt.execute(targetDdl.toString());
-                if (request.getPrimaryKeys() != null && !request.getPrimaryKeys().trim().isEmpty()) {
-                    try {
-                        stmt.execute("ALTER TABLE `" + chDb + "`.`" + request.getTargetTable() + "` MODIFY ORDER BY (" + pkBuilder.toString() + ")");
-                        sendLog(emitter, "Updated target table ORDER BY to user-provided primary keys: (" + pkBuilder.toString() + ")");
-                    } catch (Exception alterEx) {
-                        logger.warn("Could not modify ORDER BY on existing target table: " + alterEx.getMessage());
-                    }
-                }
-                sendLog(emitter, "Target table `" + request.getTargetTable() + "` verified/created.");
-            } catch (Exception e) {
-                sendLog(emitter, "ERROR: Target table creation failed: " + e.getMessage());
-                throw e;
-            }
-
-            // Do not truncate target table so data from multiple pipelines/PTs can accumulate safely.
-            // Landing tables are already truncated per source table to ensure clean snapshots.
-
-            // Create a convenience VIEW that automatically applies FINAL and filters deleted rows
-            String viewName = "v_" + request.getTargetTable();
-            String viewDdl = "CREATE OR REPLACE VIEW `" + chDb + "`.`" + viewName + "` AS " +
-                             "SELECT * FROM `" + chDb + "`.`" + request.getTargetTable() + "` FINAL WHERE is_deleted = 0";
-            sendLog(emitter, "Creating convenience target VIEW `" + viewName + "` in ClickHouse...");
-            try (Connection conn = targetDs.getConnection();
-                 Statement stmt = conn.createStatement()) {
-                stmt.execute(viewDdl);
-                sendLog(emitter, "Convenience VIEW `" + viewName + "` created successfully.");
-            } catch (Exception e) {
-                sendLog(emitter, "WARNING: Convenience VIEW creation failed: " + e.getMessage());
             }
 
 
-            // =========================================================================\s+// STEP 3: Configure Debezium Source Connector\s+// =========================================================================
-            
-            
-            java.util.List<com.dbdiff.model.ConnectionDetails> allConns = (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) ? request.getSourceConnections() : java.util.Collections.singletonList(request.getSourceConnection());
+            // =========================================================================
+            // STEP 3: Configure Debezium Source Connector
+            // =========================================================================
             for (ConnectionDetails currentSourceConn : allConns) {
                 String currentBaseName = currentSourceConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
                 String currentSourceConnectorName = "source-" + currentBaseName + "-shared";
@@ -1156,123 +1288,217 @@ public class DataWarehouseService {
                 Thread.sleep(3000);
 
                 // =========================================================================
-                // STEP 4: Create Materialized Views for All Source Tables
+                // STEP 4: Create Materialized Views for All Source Tables (ClickHouse only)
                 // =========================================================================
-                sendLog(emitter, "Generating Materialized Views for automatic updates...");
-                for (String t : physicalTables) {
-                    String landingTable = getClickHouseLandingTable(t, currentBaseName, currentSourceConn);
-                    String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
-                
-                    String rotatedSql = rotateQuery(originalQuery, t);
-                    String sqlWithMeta = addMetadataColsToSelect(rotatedSql, t);
-                
-                    // ClickHouse does NOT support WITH (CTE) inside Materialized Views.
-                    // Inline CTEs BEFORE rewriting table names so JSqlParser gets clean PostgreSQL SQL.
-                    String sqlInlined = inlineCTEs(sqlWithMeta, currentBaseName);
+                if (!isPostgresTarget) {
+                    sendLog(emitter, "Generating Materialized Views for automatic updates...");
+                    for (String t : physicalTables) {
+                        String landingTable = getClickHouseLandingTable(t, currentBaseName, currentSourceConn);
+                        String mvName = "mv_" + request.getTargetTable() + "_" + landingTable;
+                    
+                        String rotatedSql = rotateQuery(originalQuery, t);
+                        String sqlWithMeta = addMetadataColsToSelect(rotatedSql, t);
+                    
+                        // ClickHouse does NOT support WITH (CTE) inside Materialized Views.
+                        // Inline CTEs BEFORE rewriting table names so JSqlParser gets clean PostgreSQL SQL.
+                        String sqlInlined = inlineCTEs(sqlWithMeta, currentBaseName);
 
-                    String rewrittenSql;
-                    if (physicalTables.size() > 1) {
-                        // For JOIN queries, add PK filters to the WHERE clause (avoiding subqueries/FINAL which are disallowed in MVs)
-                        String sqlWithFilters = addPKFiltersToWhere(sqlInlined, physicalTables, tableToPKs);
-                        rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, currentBaseName, currentSourceConn, chDb, t);
-                        // Preserve join types (LEFT/INNER/etc.) as specified in user query
-
-                    } else {
-                        rewrittenSql = rewriteQueryForClickHouse(sqlInlined, physicalTables, currentBaseName, currentSourceConn, chDb, t);
-                    }
-                
-                    StringBuilder mvDdl = new StringBuilder();
-                    mvDdl.append("CREATE MATERIALIZED VIEW IF NOT EXISTS `").append(chDb).append("`.`").append(mvName).append("`\n");
-                    mvDdl.append("TO `").append(chDb).append("`.`").append(request.getTargetTable()).append("`\n");
-                    mvDdl.append("AS ").append(rewrittenSql);
-                
-                    sendLog(emitter, "Creating MV `" + mvName + "` triggered on landing table `" + landingTable + "`...");
-                    logger.info("Executing MV DDL:\n{}", mvDdl.toString());
-                
-                    try (Connection conn = targetDs.getConnection();
-                         Statement stmt = conn.createStatement()) {
-                        try { stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
-                        stmt.execute(mvDdl.toString());
-                        sendLog(emitter, "Materialized View `" + mvName + "` registered successfully.");
-                    } catch (Exception e) {
-                        sendLog(emitter, "ERROR: Failed to create Materialized View `" + mvName + "`: " + e.getMessage());
-                        throw e;
+                        String rewrittenSql;
+                        if (physicalTables.size() > 1) {
+                            // For JOIN queries, add PK filters to the WHERE clause (avoiding subqueries/FINAL which are disallowed in MVs)
+                            String sqlWithFilters = addPKFiltersToWhere(sqlInlined, physicalTables, tableToPKs);
+                            rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, currentBaseName, currentSourceConn, chDb, t);
+                        } else {
+                            rewrittenSql = rewriteQueryForClickHouse(sqlInlined, physicalTables, currentBaseName, currentSourceConn, chDb, t);
+                        }
+                    
+                        StringBuilder mvDdl = new StringBuilder();
+                        mvDdl.append("CREATE MATERIALIZED VIEW IF NOT EXISTS `").append(chDb).append("`.`").append(mvName).append("`\n");
+                        mvDdl.append("TO `").append(chDb).append("`.`").append(request.getTargetTable()).append("`\n");
+                        mvDdl.append("AS ").append(rewrittenSql);
+                    
+                        sendLog(emitter, "Creating MV `" + mvName + "` triggered on landing table `" + landingTable + "`...");
+                        logger.info("Executing MV DDL:\n{}", mvDdl.toString());
+                    
+                        try (Connection conn = targetDs.getConnection();
+                             Statement stmt = conn.createStatement()) {
+                            try { stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mvName + "`"); } catch (Exception ignored) {}
+                            stmt.execute(mvDdl.toString());
+                            sendLog(emitter, "Materialized View `" + mvName + "` registered successfully.");
+                        } catch (Exception e) {
+                            sendLog(emitter, "ERROR: Failed to create Materialized View `" + mvName + "`: " + e.getMessage());
+                            throw e;
+                        }
                     }
                 }
 
             
             }
-// =========================================================================\s+// STEP 5: Configure ClickHouse Sink Connector\s+// =========================================================================
-            sendLog(emitter, "Configuring ClickHouse Sink Connector (" + sinkConnectorName + ")...");
-            
-            java.util.Map<String, Object> sinkConfig = new java.util.HashMap<>();
-            sinkConfig.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
-            sinkConfig.put("tasks.max", "1");
-            List<String> expectedTopics = new java.util.ArrayList<>();
-            
 
-            java.util.List<com.dbdiff.model.ConnectionDetails> allConns2 = (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) ? request.getSourceConnections() : java.util.Collections.singletonList(request.getSourceConnection());
-            for (com.dbdiff.model.ConnectionDetails connItem : allConns2) {
-                String itemBaseName = connItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
-                String itemTopicPrefix = "cdc_" + itemBaseName + "_";
-                for (String t : physicalTables) {
-                    String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
-                    String topicName = itemTopicPrefix + cleanTable;
-                    if (!expectedTopics.contains(topicName)) {
-                        expectedTopics.add(topicName);
+            // =========================================================================
+            // STEP 5: Configure Sink Connector
+            // =========================================================================
+            if (isPostgresTarget) {
+                sendLog(emitter, "Configuring PostgreSQL JDBC Sink Connector (" + sinkConnectorName + ")...");
+                
+                java.util.Map<String, Object> sinkConfig = new java.util.HashMap<>();
+                sinkConfig.put("connector.class", "io.debezium.connector.jdbc.JdbcSinkConnector");
+                sinkConfig.put("tasks.max", "1");
+                List<String> expectedTopics = new java.util.ArrayList<>();
+                
+                java.util.List<com.dbdiff.model.ConnectionDetails> allConns2 = (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) ? request.getSourceConnections() : java.util.Collections.singletonList(request.getSourceConnection());
+                for (com.dbdiff.model.ConnectionDetails connItem : allConns2) {
+                    String itemBaseName = connItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                    String itemTopicPrefix = "cdc_" + itemBaseName + "_";
+                    for (String t : physicalTables) {
+                        String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
+                        String topicName = itemTopicPrefix + cleanTable;
+                        if (!expectedTopics.contains(topicName)) {
+                            expectedTopics.add(topicName);
+                        }
                     }
                 }
-            }
-            sinkConfig.put("topics", String.join(",", expectedTopics));
-            // sinkConfig.put("topics.regex", topicPrefix + ".*");
-            String sinkHost = request.getTargetConnection().getHost() != null && !request.getTargetConnection().getHost().trim().isEmpty() ? request.getTargetConnection().getHost().trim() : "127.0.0.1";
-            String sinkPort = String.valueOf(request.getTargetConnection().getPort());
-            if (request.getTargetConnection().isUseSsh()) {
+                sinkConfig.put("topics", String.join(",", expectedTopics));
+                
+                String sinkHost = request.getTargetConnection().getHost() != null && !request.getTargetConnection().getHost().trim().isEmpty() ? request.getTargetConnection().getHost().trim() : "127.0.0.1";
+                String sinkPort = String.valueOf(request.getTargetConnection().getPort());
+                if (request.getTargetConnection().isUseSsh()) {
+                    try {
+                        int tunnelPort = sshTunnelService.getOrOpenTunnel(request.getTargetConnection(), String.valueOf(request.getTargetConnection().getId()));
+                        sshTunnelService.markTunnelAsPermanent(String.valueOf(request.getTargetConnection().getId()));
+                        sinkHost = resolveTunnelHost();
+                        sinkPort = String.valueOf(tunnelPort);
+                        sendLog(emitter, "Target PostgreSQL connection uses SSH tunnel. Routing JDBC Sink through " + sinkHost + ":" + tunnelPort);
+                    } catch (Exception ex) {
+                        logger.error("Failed to establish SSH tunnel for PostgreSQL JDBC sink connector", ex);
+                        sendLog(emitter, "WARNING: Failed to open SSH tunnel for PostgreSQL: " + ex.getMessage());
+                    }
+                }
+
+                String sinkJdbcUrl = "jdbc:postgresql://" + sinkHost + ":" + sinkPort + "/" + targetDatabase + "?currentSchema=" + targetSchema;
+                sinkConfig.put("connection.url", sinkJdbcUrl);
+                sinkConfig.put("connection.username", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
+                sinkConfig.put("connection.password", request.getTargetConnection().getPassword());
+                sinkConfig.put("insert.mode", "upsert");
+                sinkConfig.put("delete.enabled", "true");
+                sinkConfig.put("primary.key.mode", "record_key");
+                sinkConfig.put("schema.evolution", "basic");
+                
+                if (allConns2.size() > 1) {
+                    sinkConfig.put("transforms", "unwrap,routeTable");
+                    sinkConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
+                    sinkConfig.put("transforms.unwrap.drop.tombstones", "true");
+                    sinkConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
+                    
+                    sinkConfig.put("transforms.routeTable.type", "org.apache.kafka.connect.transforms.RegexRouter");
+                    sinkConfig.put("transforms.routeTable.regex", "cdc_([^_]+(?:_[^_]+)*)_([^_]+)_([^_]+)");
+                    sinkConfig.put("transforms.routeTable.replacement", targetSchema + ".landing_$1_$3");
+                } else {
+                    sinkConfig.put("transforms", "unwrap,routeTable");
+                    sinkConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
+                    sinkConfig.put("transforms.unwrap.drop.tombstones", "true");
+                    sinkConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
+                    
+                    sinkConfig.put("transforms.routeTable.type", "org.apache.kafka.connect.transforms.RegexRouter");
+                    sinkConfig.put("transforms.routeTable.regex", ".*");
+                    sinkConfig.put("transforms.routeTable.replacement", targetSchema + "." + request.getTargetTable());
+                }
+                
+                sinkConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
+                sinkConfig.put("key.converter.schemas.enable", "true");
+                sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
+                sinkConfig.put("value.converter.schemas.enable", "true");
+                sinkConfig.put("errors.tolerance", "all");
+                sinkConfig.put("errors.log.enable", "true");
+                sinkConfig.put("errors.log.include.messages", "true");
+                
+                sinkConfig.put("consumer.override.auto.offset.reset", "earliest");
+                sinkConfig.put("consumer.override.enable.auto.commit", "true");
+                sinkConfig.put("consumer.override.auto.commit.interval.ms", "1000");
+                
+                java.util.Map<String, Object> sinkPayload = new java.util.HashMap<>();
+                sinkPayload.put("name", sinkConnectorName);
+                sinkPayload.put("config", sinkConfig);
+                
                 try {
-                    int tunnelPort = sshTunnelService.getOrOpenTunnel(request.getTargetConnection(), String.valueOf(request.getTargetConnection().getId()));
-                    sshTunnelService.markTunnelAsPermanent(String.valueOf(request.getTargetConnection().getId()));
-                    sinkHost = resolveTunnelHost();
-                    sinkPort = String.valueOf(tunnelPort);
-                    sendLog(emitter, "Target ClickHouse connection uses SSH tunnel. Routing ClickHouse Sink through " + sinkHost + ":" + tunnelPort);
-                } catch (Exception ex) {
-                    logger.error("Failed to establish SSH tunnel for ClickHouse sink connector", ex);
-                    sendLog(emitter, "WARNING: Failed to open SSH tunnel for ClickHouse: " + ex.getMessage());
+                    org.springframework.http.HttpEntity<java.util.Map<String, Object>> sinkEntity = new org.springframework.http.HttpEntity<>(sinkPayload, headers);
+                    org.springframework.http.ResponseEntity<String> sinkResponse = registerConnectorWithRetry(emitter, sinkConnectorName, sinkEntity, 3);
+                    sendLog(emitter, "PostgreSQL JDBC Sink connector registered successfully: " + sinkResponse.getStatusCode());
+                } catch (Exception e) {
+                    sendLog(emitter, "WARNING: Could not register PostgreSQL JDBC Sink Connector: " + e.getMessage());
                 }
-            }
+            } else {
+                sendLog(emitter, "Configuring ClickHouse Sink Connector (" + sinkConnectorName + ")...");
+                
+                java.util.Map<String, Object> sinkConfig = new java.util.HashMap<>();
+                sinkConfig.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
+                sinkConfig.put("tasks.max", "1");
+                List<String> expectedTopics = new java.util.ArrayList<>();
+                
 
-            sinkConfig.put("hostname", sinkHost);
-            sinkConfig.put("port", sinkPort);
-            sinkConfig.put("username", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
-            sinkConfig.put("password", request.getTargetConnection().getPassword());
-            sinkConfig.put("database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
-            sinkConfig.put("clickhouseSettings", "insert_quorum=1"); // Optional optimization
-            sinkConfig.put("transforms", "unwrap");
-            sinkConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
-            sinkConfig.put("transforms.unwrap.drop.tombstones", "true");
-            sinkConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
-            sinkConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
-            sinkConfig.put("key.converter.schemas.enable", "false");
-            sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
-            sinkConfig.put("value.converter.schemas.enable", "true");
-            sinkConfig.put("errors.tolerance", "all");
-            sinkConfig.put("errors.log.enable", "true");
-            sinkConfig.put("errors.log.include.messages", "true");
-            
-            // Force immediate consumer offset commits to prevent re-reading snapshot batch upon Debezium partition rebalance
-            sinkConfig.put("consumer.override.auto.offset.reset", "earliest");
-            sinkConfig.put("consumer.override.enable.auto.commit", "true");
-            sinkConfig.put("consumer.override.auto.commit.interval.ms", "1000");
-            
-            java.util.Map<String, Object> sinkPayload = new java.util.HashMap<>();
-            sinkPayload.put("name", sinkConnectorName);
-            sinkPayload.put("config", sinkConfig);
-            
-            try {
-                org.springframework.http.HttpEntity<java.util.Map<String, Object>> sinkEntity = new org.springframework.http.HttpEntity<>(sinkPayload, headers);
-                org.springframework.http.ResponseEntity<String> sinkResponse = registerConnectorWithRetry(emitter, sinkConnectorName, sinkEntity, 3);
-                sendLog(emitter, "Sink connector registered successfully: " + sinkResponse.getStatusCode());
-            } catch (Exception e) {
-                sendLog(emitter, "WARNING: Could not register ClickHouse Sink Connector: " + e.getMessage());
+                java.util.List<com.dbdiff.model.ConnectionDetails> allConns2 = (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) ? request.getSourceConnections() : java.util.Collections.singletonList(request.getSourceConnection());
+                for (com.dbdiff.model.ConnectionDetails connItem : allConns2) {
+                    String itemBaseName = connItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                    String itemTopicPrefix = "cdc_" + itemBaseName + "_";
+                    for (String t : physicalTables) {
+                        String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
+                        String topicName = itemTopicPrefix + cleanTable;
+                        if (!expectedTopics.contains(topicName)) {
+                            expectedTopics.add(topicName);
+                        }
+                    }
+                }
+                sinkConfig.put("topics", String.join(",", expectedTopics));
+                // sinkConfig.put("topics.regex", topicPrefix + ".*");
+                String sinkHost = request.getTargetConnection().getHost() != null && !request.getTargetConnection().getHost().trim().isEmpty() ? request.getTargetConnection().getHost().trim() : "127.0.0.1";
+                String sinkPort = String.valueOf(request.getTargetConnection().getPort());
+                if (request.getTargetConnection().isUseSsh()) {
+                    try {
+                        int tunnelPort = sshTunnelService.getOrOpenTunnel(request.getTargetConnection(), String.valueOf(request.getTargetConnection().getId()));
+                        sshTunnelService.markTunnelAsPermanent(String.valueOf(request.getTargetConnection().getId()));
+                        sinkHost = resolveTunnelHost();
+                        sinkPort = String.valueOf(tunnelPort);
+                        sendLog(emitter, "Target ClickHouse connection uses SSH tunnel. Routing ClickHouse Sink through " + sinkHost + ":" + tunnelPort);
+                    } catch (Exception ex) {
+                        logger.error("Failed to establish SSH tunnel for ClickHouse sink connector", ex);
+                        sendLog(emitter, "WARNING: Failed to open SSH tunnel for ClickHouse: " + ex.getMessage());
+                    }
+                }
+
+                sinkConfig.put("hostname", sinkHost);
+                sinkConfig.put("port", sinkPort);
+                sinkConfig.put("username", request.getTargetConnection().getUsername() != null ? request.getTargetConnection().getUsername().trim() : "");
+                sinkConfig.put("password", request.getTargetConnection().getPassword());
+                sinkConfig.put("database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
+                sinkConfig.put("clickhouseSettings", "insert_quorum=1"); // Optional optimization
+                sinkConfig.put("transforms", "unwrap");
+                sinkConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
+                sinkConfig.put("transforms.unwrap.drop.tombstones", "true");
+                sinkConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
+                sinkConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
+                sinkConfig.put("key.converter.schemas.enable", "false");
+                sinkConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
+                sinkConfig.put("value.converter.schemas.enable", "true");
+                sinkConfig.put("errors.tolerance", "all");
+                sinkConfig.put("errors.log.enable", "true");
+                sinkConfig.put("errors.log.include.messages", "true");
+                
+                // Force immediate consumer offset commits to prevent re-reading snapshot batch upon Debezium partition rebalance
+                sinkConfig.put("consumer.override.auto.offset.reset", "earliest");
+                sinkConfig.put("consumer.override.enable.auto.commit", "true");
+                sinkConfig.put("consumer.override.auto.commit.interval.ms", "1000");
+                
+                java.util.Map<String, Object> sinkPayload = new java.util.HashMap<>();
+                sinkPayload.put("name", sinkConnectorName);
+                sinkPayload.put("config", sinkConfig);
+                
+                try {
+                    org.springframework.http.HttpEntity<java.util.Map<String, Object>> sinkEntity = new org.springframework.http.HttpEntity<>(sinkPayload, headers);
+                    org.springframework.http.ResponseEntity<String> sinkResponse = registerConnectorWithRetry(emitter, sinkConnectorName, sinkEntity, 3);
+                    sendLog(emitter, "Sink connector registered successfully: " + sinkResponse.getStatusCode());
+                } catch (Exception e) {
+                    sendLog(emitter, "WARNING: Could not register ClickHouse Sink Connector: " + e.getMessage());
+                }
             }
 
             // Give connectors time to initialize and start consuming before polling
@@ -1282,7 +1508,20 @@ public class DataWarehouseService {
             // =========================================================================
             // STEP 6: Wait for Snapshot to Complete
             // =========================================================================
-            {
+            if (isPostgresTarget) {
+                sendLog(emitter, "Waiting for initial PostgreSQL snapshot to populate target table/views...");
+                Thread.sleep(5000);
+                sendLog(emitter, "PostgreSQL CDC Pipeline deployment completed successfully.");
+            } else {
+                String chDb = request.getTargetDatabase();
+                if (chDb == null || chDb.trim().isEmpty()) {
+                    chDb = request.getTargetConnection().getDatabase();
+                }
+                if (chDb == null || chDb.trim().isEmpty()) {
+                    chDb = "default";
+                }
+                chDb = chDb.trim();
+
                 sendLog(emitter, "Waiting for initial snapshot to complete and populate the target table...");
                 
                 // Poll landing table row counts until they stabilize (unchanged for 3 consecutive checks)
@@ -1372,7 +1611,7 @@ public class DataWarehouseService {
                 } catch (Exception e) {
                     logger.warn("Could not optimize table after snapshot: " + e.getMessage());
                 }
-
+                
                 sendLog(emitter, "Target table populated successfully with initial snapshot data.");
             }
 
@@ -2461,6 +2700,35 @@ public class DataWarehouseService {
             return "DateTime64(3)";
         }
         return "String";
+    }
+
+    private String mapJdbcTypeToPostgres(int jdbcType, int precision, int scale, String typeName) {
+        String lowerName = typeName != null ? typeName.toLowerCase() : "";
+        if (lowerName.contains("uuid")) return "UUID";
+        if (lowerName.contains("jsonb")) return "JSONB";
+        if (lowerName.contains("json")) return "JSON";
+        if (lowerName.contains("text")) return "TEXT";
+        if (lowerName.contains("bytea") || jdbcType == java.sql.Types.BINARY || jdbcType == java.sql.Types.VARBINARY || jdbcType == java.sql.Types.BLOB) return "BYTEA";
+        if (lowerName.contains("bool") || jdbcType == java.sql.Types.BOOLEAN || jdbcType == java.sql.Types.BIT) return "BOOLEAN";
+        if (lowerName.contains("timestamptz") || lowerName.contains("timestamp with time zone") || jdbcType == java.sql.Types.TIMESTAMP_WITH_TIMEZONE) return "TIMESTAMPTZ";
+        if (lowerName.contains("timestamp") || jdbcType == java.sql.Types.TIMESTAMP) return "TIMESTAMP";
+        if (lowerName.contains("date") || jdbcType == java.sql.Types.DATE) return "DATE";
+        if (lowerName.contains("time") || jdbcType == java.sql.Types.TIME) return "TIME";
+        if (lowerName.contains("bigserial") || lowerName.contains("serial8") || lowerName.contains("int8") || lowerName.contains("bigint") || jdbcType == java.sql.Types.BIGINT) return "BIGINT";
+        if (lowerName.contains("smallserial") || lowerName.contains("serial2") || lowerName.contains("int2") || lowerName.contains("smallint") || jdbcType == java.sql.Types.SMALLINT || jdbcType == java.sql.Types.TINYINT) return "SMALLINT";
+        if (lowerName.contains("serial") || lowerName.contains("int4") || lowerName.contains("integer") || lowerName.contains("int") || jdbcType == java.sql.Types.INTEGER) return "INTEGER";
+        if (lowerName.contains("numeric") || lowerName.contains("decimal") || jdbcType == java.sql.Types.NUMERIC || jdbcType == java.sql.Types.DECIMAL) {
+            if (precision > 0 && scale >= 0) return "NUMERIC(" + precision + "," + scale + ")";
+            return "NUMERIC";
+        }
+        if (lowerName.contains("float8") || lowerName.contains("double") || jdbcType == java.sql.Types.DOUBLE) return "DOUBLE PRECISION";
+        if (lowerName.contains("float4") || lowerName.contains("real") || lowerName.contains("float") || jdbcType == java.sql.Types.FLOAT || jdbcType == java.sql.Types.REAL) return "REAL";
+        if (lowerName.contains("varchar") || jdbcType == java.sql.Types.VARCHAR || jdbcType == java.sql.Types.NVARCHAR) {
+            if (precision > 0 && precision < 10485760) return "VARCHAR(" + precision + ")";
+            return "VARCHAR(255)";
+        }
+        if (lowerName.contains("char") || jdbcType == java.sql.Types.CHAR) return "CHAR(" + (precision > 0 ? precision : 1) + ")";
+        return "TEXT";
     }
 
     private volatile AdminClient sharedKafkaAdminClient = null;

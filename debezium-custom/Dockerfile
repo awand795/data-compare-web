@@ -1,6 +1,7 @@
 FROM quay.io/debezium/connect:2.4.2.Final
 USER root
-RUN curl -L -O https://github.com/ClickHouse/clickhouse-kafka-connect/releases/download/v1.3.10/clickhouse-kafka-connect-v1.3.10.zip && unzip clickhouse-kafka-connect-v1.3.10.zip -d /kafka/connect/clickhouse/ && rm clickhouse-kafka-connect-v1.3.10.zip
+RUN curl -L -O https://github.com/ClickHouse/clickhouse-kafka-connect/releases/download/v1.3.10/clickhouse-kafka-connect-v1.3.10.zip && unzip clickhouse-kafka-connect-v1.3.10.zip -d /kafka/connect/clickhouse/ && rm clickhouse-kafka-connect-v1.3.10.zip \
+    && curl -L -O https://repo1.maven.org/maven2/io/debezium/debezium-connector-jdbc/2.4.2.Final/debezium-connector-jdbc-2.4.2.Final-plugin.tar.gz && tar -xzf debezium-connector-jdbc-2.4.2.Final-plugin.tar.gz -C /kafka/connect/ && rm debezium-connector-jdbc-2.4.2.Final-plugin.tar.gz
 
 # Fix missing connect-log4j.properties (causes Kafka Connect to exit silently when missing)
 COPY connect-log4j.properties /kafka/config/connect-log4j.properties
