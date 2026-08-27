@@ -87,7 +87,7 @@ export const ApiSchedulerView: React.FC = () => {
   const [quickGroupTarget, setQuickGroupTarget] = useState<ApiSchedulerConfig | null>(null);
   const [quickGroupValue, setQuickGroupValue] = useState('');
   const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
   const [assignGroupTarget, setAssignGroupTarget] = useState<string | null>(null);
   const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
@@ -832,21 +832,21 @@ export const ApiSchedulerView: React.FC = () => {
     });
   }, [allGroups, filteredSchedulers, selectedGroup, searchQuery, schedulers]);
 
-  const toggleGroupCollapse = (grp: string) => {
-    setCollapsedGroups(prev => ({
+  const toggleGroupExpand = (grp: string) => {
+    setExpandedGroups(prev => ({
       ...prev,
       [grp]: !prev[grp]
     }));
   };
 
   const expandAllGroups = () => {
-    setCollapsedGroups({});
+    const all: Record<string, boolean> = {};
+    allGroups.forEach(g => { all[g] = true; });
+    setExpandedGroups(all);
   };
 
   const collapseAllGroups = () => {
-    const all: Record<string, boolean> = {};
-    allGroups.forEach(g => { all[g] = true; });
-    setCollapsedGroups(all);
+    setExpandedGroups({});
   };
 
   // Candidate schedules to be added to target group (excludes schedules already in that group)
@@ -1783,10 +1783,10 @@ export const ApiSchedulerView: React.FC = () => {
 
           <button
             onClick={() => setIsManageGroupsModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-indigo-400 border border-border-main transition-all text-xs font-semibold shadow-sm cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-indigo-400 border border-border-main transition-all text-xs font-bold shadow-sm cursor-pointer"
             title="Manage Scheduler Groups"
           >
-            <FolderTree className="w-4 h-4 text-indigo-400" />
+            <FolderTree className="w-3.5 h-3.5 text-indigo-400" />
             <span className="hidden sm:inline">Manage Groups</span>
             <span className="px-1.5 py-0.2 text-[10px] bg-indigo-500/20 text-indigo-300 rounded-full font-mono font-bold">
               {allGroups.length}
@@ -1795,9 +1795,9 @@ export const ApiSchedulerView: React.FC = () => {
 
           <button
             onClick={() => openNewEditor()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all text-xs"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold shadow-md shadow-blue-500/20 hover:shadow-blue-500/30 transition-all text-xs cursor-pointer"
           >
-            <Plus className="w-4.5 h-4.5" />
+            <Plus className="w-3.5 h-3.5" />
             <span>New API Schedule</span>
           </button>
         </div>
@@ -1991,7 +1991,7 @@ export const ApiSchedulerView: React.FC = () => {
       ) : (
         <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-4 pb-6">
           {displayedGroups.map(group => {
-            const isGroupCollapsed = searchQuery.trim() ? false : Boolean(collapsedGroups[group.groupName]);
+            const isGroupExpanded = searchQuery.trim() ? true : Boolean(expandedGroups[group.groupName]);
 
             return (
               <div 
@@ -2000,21 +2000,21 @@ export const ApiSchedulerView: React.FC = () => {
               >
                 {/* Folder Group Header */}
                 <div
-                  onClick={() => toggleGroupCollapse(group.groupName)}
+                  onClick={() => toggleGroupExpand(group.groupName)}
                   className="flex items-center justify-between p-3.5 bg-bg-panel hover:bg-bg-hover/70 border-b border-border-main/60 cursor-pointer select-none transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <div className={clsx(
                       "w-7 h-7 rounded-lg flex items-center justify-center transition-all",
-                      isGroupCollapsed ? "bg-bg-editor text-text-muted" : "bg-indigo-500/10 text-indigo-400"
+                      isGroupExpanded ? "bg-indigo-500/10 text-indigo-400" : "bg-bg-editor text-text-muted"
                     )}>
-                      {isGroupCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      {isGroupExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </div>
                     <div className="flex items-center gap-2">
-                      {isGroupCollapsed ? (
-                        <Folder className="w-4.5 h-4.5 text-indigo-400" />
-                      ) : (
+                      {isGroupExpanded ? (
                         <FolderOpen className="w-4.5 h-4.5 text-indigo-400" />
+                      ) : (
+                        <Folder className="w-4.5 h-4.5 text-indigo-400" />
                       )}
                       <h4 className="text-sm font-extrabold text-text-main">
                         {group.groupName}
@@ -2047,7 +2047,7 @@ export const ApiSchedulerView: React.FC = () => {
                 </div>
 
                 {/* Folder Group Content */}
-                {!isGroupCollapsed && (
+                {isGroupExpanded && (
                   <div className="p-4 bg-bg-main/30 animate-in fade-in duration-150">
                     {group.items.length === 0 ? (
                       <div className="p-6 text-center text-text-muted border border-dashed border-border-main rounded-xl">

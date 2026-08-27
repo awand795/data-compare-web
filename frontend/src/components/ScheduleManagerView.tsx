@@ -32,7 +32,7 @@ export const ScheduleManagerView: React.FC = () => {
     const [quickGroupTarget, setQuickGroupTarget] = useState<ScheduleConfig | null>(null);
     const [quickGroupValue, setQuickGroupValue] = useState('');
     const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
-    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
     const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
     const [assignGroupTarget, setAssignGroupTarget] = useState<string | null>(null);
     const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
@@ -119,21 +119,21 @@ export const ScheduleManagerView: React.FC = () => {
         });
     }, [allGroups, filteredSchedules, selectedGroup, searchQuery, schedules]);
 
-    const toggleGroupCollapse = (grp: string) => {
-        setCollapsedGroups(prev => ({
+    const toggleGroupExpand = (grp: string) => {
+        setExpandedGroups(prev => ({
             ...prev,
             [grp]: !prev[grp]
         }));
     };
 
     const expandAllGroups = () => {
-        setCollapsedGroups({});
+        const all: Record<string, boolean> = {};
+        allGroups.forEach(g => { all[g] = true; });
+        setExpandedGroups(all);
     };
 
     const collapseAllGroups = () => {
-        const all: Record<string, boolean> = {};
-        allGroups.forEach(g => { all[g] = true; });
-        setCollapsedGroups(all);
+        setExpandedGroups({});
     };
 
     // Candidate compare jobs to be added to target group (excludes jobs already in that group)
@@ -575,7 +575,7 @@ export const ScheduleManagerView: React.FC = () => {
                 ) : (
                     <div className="flex flex-col gap-4 pb-6">
                         {displayedGroups.map(group => {
-                            const isGroupCollapsed = searchQuery.trim() ? false : Boolean(collapsedGroups[group.groupName]);
+                            const isGroupExpanded = searchQuery.trim() ? true : Boolean(expandedGroups[group.groupName]);
 
                             return (
                                 <div 
@@ -584,21 +584,21 @@ export const ScheduleManagerView: React.FC = () => {
                                 >
                                     {/* Folder Group Header */}
                                     <div
-                                        onClick={() => toggleGroupCollapse(group.groupName)}
+                                        onClick={() => toggleGroupExpand(group.groupName)}
                                         className="flex items-center justify-between p-3.5 bg-bg-panel hover:bg-bg-hover/70 border-b border-border-main/60 cursor-pointer select-none transition-colors"
                                     >
                                         <div className="flex items-center gap-3">
                                             <div className={clsx(
                                                 "w-7 h-7 rounded-lg flex items-center justify-center transition-all",
-                                                isGroupCollapsed ? "bg-bg-main text-text-muted" : "bg-purple-500/10 text-purple-400"
+                                                isGroupExpanded ? "bg-purple-500/10 text-purple-400" : "bg-bg-main text-text-muted"
                                             )}>
-                                                {isGroupCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                                {isGroupExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                {isGroupCollapsed ? (
-                                                    <Folder className="w-4.5 h-4.5 text-purple-400" />
-                                                ) : (
+                                                {isGroupExpanded ? (
                                                     <FolderOpen className="w-4.5 h-4.5 text-purple-400" />
+                                                ) : (
+                                                    <Folder className="w-4.5 h-4.5 text-purple-400" />
                                                 )}
                                                 <h4 className="text-sm font-extrabold text-text-main">
                                                     {group.groupName}
@@ -631,7 +631,7 @@ export const ScheduleManagerView: React.FC = () => {
                                     </div>
 
                                     {/* Folder Group Content */}
-                                    {!isGroupCollapsed && (
+                                    {isGroupExpanded && (
                                         <div className="p-3.5 bg-bg-main/30 animate-in fade-in duration-150">
                                             {group.items.length === 0 ? (
                                                 <div className="p-6 text-center text-text-muted border border-dashed border-border-main rounded-xl">

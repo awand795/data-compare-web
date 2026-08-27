@@ -474,7 +474,7 @@ export const SystemMonitoringView: React.FC = () => {
               <span>Multi-Schedule</span>
             </div>
             <p className="text-xs text-text-muted mt-1">
-              Aturan notifikasi otomatis ke Telegram & Discord saat Disk $\ge$ 70% atau RAM $\ge$ 80%.
+              Aturan notifikasi otomatis ke Telegram & Discord saat Disk ≥ 70% atau RAM ≥ 80%.
             </p>
           </div>
 
@@ -571,7 +571,7 @@ export const SystemMonitoringView: React.FC = () => {
               Daftar Multi-Schedule System Alert (Disk & RAM)
             </h2>
             <p className="text-xs text-text-muted mt-0.5">
-              Kelola jadwal otomatis untuk mengirimkan notifikasi darurat saat /dev/sda2 $\ge$ 70% atau RAM $\ge$ 80%.
+              Kelola jadwal otomatis untuk mengirimkan notifikasi darurat saat /dev/sda2 ≥ 70% atau RAM ≥ 80%.
             </p>
           </div>
 
@@ -812,7 +812,7 @@ export const SystemMonitoringView: React.FC = () => {
                     />
                     Pantau Kapasitas Disk
                   </label>
-                  <span className="text-[10px] text-text-muted">Notifikasi jika $\ge$ {formDiskThreshold}%</span>
+                  <span className="text-[10px] text-text-muted">Notifikasi jika ≥ {formDiskThreshold}%</span>
                 </div>
 
                 {formCheckDisk && (
@@ -863,7 +863,7 @@ export const SystemMonitoringView: React.FC = () => {
                     />
                     Pantau Kapasitas RAM
                   </label>
-                  <span className="text-[10px] text-text-muted">Notifikasi jika $\ge$ {formRamThreshold}%</span>
+                  <span className="text-[10px] text-text-muted">Notifikasi jika ≥ {formRamThreshold}%</span>
                 </div>
 
                 {formCheckRam && (

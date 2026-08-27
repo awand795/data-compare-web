@@ -112,7 +112,7 @@ export const ApiBuilderView: React.FC = () => {
   const [quickGroupTarget, setQuickGroupTarget] = useState<ApiEndpoint | null>(null);
   const [quickGroupValue, setQuickGroupValue] = useState('');
   const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
   const [assignGroupTarget, setAssignGroupTarget] = useState<string | null>(null);
   const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
@@ -714,21 +714,21 @@ export const ApiBuilderView: React.FC = () => {
     });
   }, [allGroups, filteredEndpoints, selectedGroup, searchQuery, endpoints]);
 
-  const toggleGroupCollapse = (grp: string) => {
-    setCollapsedGroups(prev => ({
+  const toggleGroupExpand = (grp: string) => {
+    setExpandedGroups(prev => ({
       ...prev,
       [grp]: !prev[grp]
     }));
   };
 
   const expandAllGroups = () => {
-    setCollapsedGroups({});
+    const all: Record<string, boolean> = {};
+    allGroups.forEach(g => { all[g] = true; });
+    setExpandedGroups(all);
   };
 
   const collapseAllGroups = () => {
-    const all: Record<string, boolean> = {};
-    allGroups.forEach(g => { all[g] = true; });
-    setCollapsedGroups(all);
+    setExpandedGroups({});
   };
 
   // Candidate endpoints to be added to target group (excludes endpoints already in that group)
@@ -785,25 +785,26 @@ export const ApiBuilderView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button 
               onClick={() => setIsManageGroupsModalOpen(true)}
-              className="px-4 py-3 bg-bg-panel hover:bg-bg-hover text-text-main border border-border-main rounded-xl flex items-center gap-2 font-bold transition-all shadow-sm cursor-pointer"
+              className="px-3 py-1.5 bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-indigo-400 border border-border-main rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all shadow-sm cursor-pointer"
               title="Manage API Groups"
             >
-              <FolderTree className="w-4 h-4 text-indigo-400" />
-              <span className="hidden sm:inline text-xs">Manage Groups</span>
-              <span className="px-2 py-0.5 text-[10px] bg-indigo-500/20 text-indigo-300 rounded-full font-mono font-bold">
+              <FolderTree className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Manage Groups</span>
+              <span className="px-1.5 py-0.2 text-[10px] bg-indigo-500/20 text-indigo-300 rounded-full font-mono font-bold">
                 {allGroups.length}
               </span>
             </button>
 
             <button 
               onClick={() => handleCreateNew()}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl flex items-center gap-2.5 font-bold transition-all shadow-xl shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98]"
+              className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all shadow-md shadow-blue-500/20 hover:shadow-blue-500/30 cursor-pointer"
               aria-label="Create new API endpoint"
             >
-              <Plus className="w-5 h-5 stroke-[2.5]" /> Create New Endpoint
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Create New Endpoint</span>
             </button>
           </div>
         </div>
@@ -1038,7 +1039,7 @@ export const ApiBuilderView: React.FC = () => {
         ) : (
           <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-4 pb-6">
             {displayedGroups.map(group => {
-              const isGroupCollapsed = searchQuery.trim() ? false : Boolean(collapsedGroups[group.groupName]);
+              const isGroupExpanded = searchQuery.trim() ? true : Boolean(expandedGroups[group.groupName]);
 
               return (
                 <div 
@@ -1047,21 +1048,21 @@ export const ApiBuilderView: React.FC = () => {
                 >
                   {/* Folder Group Header */}
                   <div
-                    onClick={() => toggleGroupCollapse(group.groupName)}
+                    onClick={() => toggleGroupExpand(group.groupName)}
                     className="flex items-center justify-between p-3.5 bg-bg-panel hover:bg-bg-hover/70 border-b border-border-main/60 cursor-pointer select-none transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       <div className={clsx(
                         "w-7 h-7 rounded-lg flex items-center justify-center transition-all",
-                        isGroupCollapsed ? "bg-bg-editor text-text-muted" : "bg-indigo-500/10 text-indigo-400"
+                        isGroupExpanded ? "bg-indigo-500/10 text-indigo-400" : "bg-bg-editor text-text-muted"
                       )}>
-                        {isGroupCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        {isGroupExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </div>
                       <div className="flex items-center gap-2">
-                        {isGroupCollapsed ? (
-                          <Folder className="w-4.5 h-4.5 text-indigo-400" />
-                        ) : (
+                        {isGroupExpanded ? (
                           <FolderOpen className="w-4.5 h-4.5 text-indigo-400" />
+                        ) : (
+                          <Folder className="w-4.5 h-4.5 text-indigo-400" />
                         )}
                         <h4 className="text-sm font-extrabold text-text-main">
                           {group.groupName}
@@ -1094,7 +1095,7 @@ export const ApiBuilderView: React.FC = () => {
                   </div>
 
                   {/* Folder Group Items */}
-                  {!isGroupCollapsed && (
+                  {isGroupExpanded && (
                     <div className="p-4 bg-bg-main/30 animate-in fade-in duration-150">
                       {group.items.length === 0 ? (
                         <div className="p-6 text-center text-text-muted border border-dashed border-border-main rounded-xl">
@@ -1201,10 +1202,10 @@ export const ApiBuilderView: React.FC = () => {
                                   </button>
                                   <button
                                     onClick={() => handleViewSpec(api)}
-                                    className="px-2.5 py-1 bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer border border-border-main"
+                                    className="px-2.5 py-1 bg-purple-500/10 hover:bg-purple-600 text-purple-400 hover:text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer border border-purple-500/20"
                                     title="View API Spec, cURL & SDK code"
                                   >
-                                    <FileJson className="w-3 h-3" /> Spec
+                                    <FileJson className="w-3.5 h-3.5" /> View Spec
                                   </button>
                                   <button
                                     onClick={() => handleOpenQuickIp(api)}
@@ -1344,9 +1345,10 @@ export const ApiBuilderView: React.FC = () => {
                                       </button>
                                       <button
                                         onClick={() => handleViewSpec(api)}
-                                        className="px-2.5 py-1 bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-border-main"
+                                        className="px-2.5 py-1 bg-purple-500/10 hover:bg-purple-600 text-purple-400 hover:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-purple-500/20"
+                                        title="View API Spec, cURL & SDK code"
                                       >
-                                        <FileJson className="w-3 h-3" /> Spec
+                                        <FileJson className="w-3.5 h-3.5" /> View Spec
                                       </button>
                                     </div>
                                   </td>
@@ -2340,11 +2342,23 @@ export const ApiBuilderView: React.FC = () => {
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {currentApi.id && (
+              <button 
+                type="button"
+                onClick={() => handleViewSpec(currentApi)}
+                className="px-3.5 py-2 bg-purple-500/10 hover:bg-purple-600 text-purple-400 hover:text-white rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all border border-purple-500/20 shadow-sm cursor-pointer"
+                title="View API Specification, cURL & SDK Docs"
+              >
+                <FileJson className="w-4 h-4" />
+                <span>View Spec</span>
+              </button>
+            )}
+
             <button 
               onClick={handleSave}
               disabled={isSaving}
-              className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center gap-2 text-sm font-bold transition-all shadow-lg shadow-blue-500/25 active:scale-[0.97]"
+              className="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center gap-2 text-xs font-bold transition-all shadow-md shadow-blue-500/20 active:scale-[0.97] cursor-pointer"
             >
               {isSaving ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -2352,7 +2366,7 @@ export const ApiBuilderView: React.FC = () => {
                 <Save className="w-4 h-4" />
               )}
               {isSaving ? 'Saving...' : 'Save API'}
-              <kbd className="hidden lg:inline-flex ml-1.5 px-1.5 py-0.5 bg-blue-800/40 rounded text-[10px] font-mono border border-blue-400/30">⌘S</kbd>
+              <kbd className="hidden lg:inline-flex ml-1 px-1.5 py-0.5 bg-blue-800/40 rounded text-[10px] font-mono border border-blue-400/30">⌘S</kbd>
             </button>
           </div>
         </div>
