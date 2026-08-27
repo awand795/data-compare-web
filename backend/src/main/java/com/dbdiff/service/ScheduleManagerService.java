@@ -32,6 +32,7 @@ public class ScheduleManagerService {
     public void initTable() {
         try {
             jdbcTemplate.execute("ALTER TABLE schedules ADD COLUMN IF NOT EXISTS group_name VARCHAR(100) DEFAULT 'General'");
+            jdbcTemplate.update("UPDATE schedules SET group_name = 'General' WHERE group_name IS NULL OR TRIM(group_name) = '' OR TRIM(group_name) = '[object Object]' OR TRIM(group_name) = 'undefined'");
         } catch (Exception e) {
             // Ignore if column already exists
         }
@@ -63,11 +64,13 @@ public class ScheduleManagerService {
         s.setActive(rs.getBoolean("is_active"));
         
         try {
-            s.setGroupName(rs.getString("group_name"));
+            String grp = rs.getString("group_name");
+            if (grp == null || grp.trim().isEmpty() || grp.trim().equals("[object Object]") || grp.trim().equals("undefined")) {
+                s.setGroupName("General");
+            } else {
+                s.setGroupName(grp.trim());
+            }
         } catch (Exception e) {
-            s.setGroupName("General");
-        }
-        if (s.getGroupName() == null || s.getGroupName().trim().isEmpty()) {
             s.setGroupName("General");
         }
         

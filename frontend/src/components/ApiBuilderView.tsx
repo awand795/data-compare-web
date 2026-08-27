@@ -660,12 +660,32 @@ export const ApiBuilderView: React.FC = () => {
     return conn ? `${conn.name} (${conn.type})` : connectionId;
   };
 
+  const getApiGroupName = (raw: any): string => {
+    if (!raw) return 'General';
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      return (trimmed && trimmed !== '[object Object]' && trimmed !== 'undefined') ? trimmed : 'General';
+    }
+    if (typeof raw === 'object' && raw !== null) {
+      if (raw.name && typeof raw.name === 'string') {
+        const tr = raw.name.trim();
+        if (tr && tr !== '[object Object]' && tr !== 'undefined') return tr;
+      }
+      if (raw.groupName && typeof raw.groupName === 'string') {
+        const tr = raw.groupName.trim();
+        if (tr && tr !== '[object Object]' && tr !== 'undefined') return tr;
+      }
+      return 'General';
+    }
+    return 'General';
+  };
+
   // All Groups extraction
   const allGroups = useMemo(() => {
     const set = new Set<string>();
     set.add('General');
     endpoints.forEach(e => {
-      const g = (e.groupName || 'General').trim();
+      const g = getApiGroupName(e.groupName);
       if (g) set.add(g);
     });
     return Array.from(set).sort((a, b) => a === 'General' ? -1 : b === 'General' ? 1 : a.localeCompare(b));

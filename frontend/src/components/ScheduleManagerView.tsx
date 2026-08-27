@@ -11,6 +11,26 @@ import { NotificationChannelsModal } from './NotificationChannelsModal';
 import { ScheduleResultsModal } from './ScheduleResultsModal';
 import clsx from 'clsx';
 
+const getJobGroupName = (raw: any): string => {
+    if (!raw) return 'General';
+    if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        return (trimmed && trimmed !== '[object Object]' && trimmed !== 'undefined') ? trimmed : 'General';
+    }
+    if (typeof raw === 'object' && raw !== null) {
+        if (raw.name && typeof raw.name === 'string') {
+            const tr = raw.name.trim();
+            if (tr && tr !== '[object Object]' && tr !== 'undefined') return tr;
+        }
+        if (raw.groupName && typeof raw.groupName === 'string') {
+            const tr = raw.groupName.trim();
+            if (tr && tr !== '[object Object]' && tr !== 'undefined') return tr;
+        }
+        return 'General';
+    }
+    return 'General';
+};
+
 export const ScheduleManagerView: React.FC = () => {
     const { connections, schedules, updateScheduleStatus, runScheduleNow, notificationChannels, addToast, showAlert, templates, setTemplates, setSchedules, setNotificationChannels } = useAppStore();
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -50,7 +70,13 @@ export const ScheduleManagerView: React.FC = () => {
 
     const loadSchedules = () => {
         axios.get('/api/schedules')
-            .then(res => setSchedules(res.data || []))
+            .then(res => {
+                const data = Array.isArray(res.data) ? res.data.map((s: any) => ({
+                    ...s,
+                    groupName: getJobGroupName(s.groupName)
+                })) : [];
+                setSchedules(data);
+            })
             .catch(err => console.error("Failed to fetch schedules", err));
     };
 
@@ -68,18 +94,18 @@ export const ScheduleManagerView: React.FC = () => {
     // Compute all unique groups
     const allGroups = useMemo(() => {
         const set = new Set<string>();
+        set.add('General');
         schedules.forEach(s => {
-            if (s.groupName && s.groupName.trim()) set.add(s.groupName.trim());
-            else set.add('General');
+            const g = getJobGroupName(s.groupName);
+            if (g) set.add(g);
         });
-        if (set.size === 0) set.add('General');
-        return Array.from(set).sort();
+        return Array.from(set).sort((a, b) => a === 'General' ? -1 : b === 'General' ? 1 : a.localeCompare(b));
     }, [schedules]);
 
     // Realtime search and group filtering
     const filteredSchedules = useMemo(() => {
         return schedules.filter(job => {
-            const grp = job.groupName?.trim() || 'General';
+            const grp = getJobGroupName(job.groupName);
             if (selectedGroup !== 'ALL' && grp !== selectedGroup) return false;
             if (searchQuery.trim()) {
                 const q = searchQuery.toLowerCase();
@@ -103,12 +129,12 @@ export const ScheduleManagerView: React.FC = () => {
     const displayedGroups = useMemo(() => {
         const groupsToConsider = selectedGroup === 'ALL' ? allGroups : [selectedGroup];
         return groupsToConsider.map(grp => {
-            const items = filteredSchedules.filter(s => (s.groupName?.trim() || 'General') === grp);
+            const items = filteredSchedules.filter(s => getJobGroupName(s.groupName) === grp);
             return {
                 groupName: grp,
                 items,
                 count: items.length,
-                totalInGroup: schedules.filter(s => (s.groupName?.trim() || 'General') === grp).length
+                totalInGroup: schedules.filter(s => getJobGroupName(s.groupName) === grp).length
             };
         }).filter(g => {
             if (searchQuery.trim()) {
@@ -140,7 +166,7 @@ export const ScheduleManagerView: React.FC = () => {
     const assignCandidateJobs = useMemo(() => {
         if (!assignGroupTarget) return [];
         return schedules.filter(s => {
-            const currentGrp = s.groupName?.trim() || 'General';
+            const currentGrp = getJobGroupName(s.groupName);
             if (currentGrp === assignGroupTarget) return false;
             if (assignSearchQuery.trim()) {
                 const q = assignSearchQuery.toLowerCase().trim();
@@ -191,7 +217,7 @@ export const ScheduleManagerView: React.FC = () => {
 
     const handleOpenQuickGroup = (job: ScheduleConfig) => {
         setQuickGroupTarget(job);
-        setQuickGroupValue(job.groupName || 'General');
+        setQuickGroupValue(getJobGroupName(job.groupName));
         setIsQuickGroupModalOpen(true);
     };
 
@@ -199,7 +225,7 @@ export const ScheduleManagerView: React.FC = () => {
         if (!quickGroupTarget) return;
         setIsSavingQuickGroup(true);
         try {
-            const grp = quickGroupValue.trim() || 'General';
+            const grp = getJobGroupName(quickGroupValue);
             await axios.patch(`/api/schedules/${quickGroupTarget.id}/group`, { groupName: grp });
             addToast({ type: 'success', title: 'Group Updated', message: `Job "${quickGroupTarget.name}" moved to group "${grp}"` });
             setIsQuickGroupModalOpen(false);
@@ -324,7 +350,7 @@ export const ScheduleManagerView: React.FC = () => {
         try {
             const payload: Partial<ScheduleConfig> = {
                 name: jobPrefix,
-                groupName: jobGroupName.trim() || 'General',
+                groupName: getJobGroupName(jobGroupName),
                 sourceConnectionId: template.sourceConnectionId,
                 targetConnectionId: template.targetConnectionId,
                 sourceTable: 'multiple',
@@ -365,7 +391,7 @@ export const ScheduleManagerView: React.FC = () => {
     const handleEditSchedule = (job: ScheduleConfig) => {
         setEditingScheduleId(job.id);
         setJobPrefix(job.name);
-        setJobGroupName(job.groupName || 'General');
+        setJobGroupName(getJobGroupName(job.groupName));
         setCronExpression(job.cronExpression);
         setTelegramChannelId(job.telegramChannelId || '');
         setDiscordChannelId(job.discordChannelId || '');
@@ -386,7 +412,7 @@ export const ScheduleManagerView: React.FC = () => {
     const openNewForm = (presetGroup?: string) => {
         setEditingScheduleId(null);
         setJobPrefix('');
-        setJobGroupName(presetGroup || (selectedGroup !== 'ALL' ? selectedGroup : 'General'));
+        setJobGroupName(presetGroup ? getJobGroupName(presetGroup) : (selectedGroup !== 'ALL' ? getJobGroupName(selectedGroup) : 'General'));
         setSelectedTemplateId('');
         setCronExpression('0 0 * * * *');
         setTelegramChannelId('');
@@ -511,7 +537,7 @@ export const ScheduleManagerView: React.FC = () => {
                     </button>
 
                     {allGroups.map(grp => {
-                        const count = schedules.filter(s => (s.groupName || 'General') === grp).length;
+                        const count = schedules.filter(s => getJobGroupName(s.groupName) === grp).length;
                         return (
                             <button
                                 key={grp}
@@ -699,7 +725,7 @@ export const ScheduleManagerView: React.FC = () => {
                                                                                         title="Click to change group"
                                                                                     >
                                                                                         <Folder className="w-3 h-3" />
-                                                                                        <span>{job.groupName || 'General'}</span>
+                                                                                        <span>{getJobGroupName(job.groupName)}</span>
                                                                                     </button>
                                                                                 </div>
                                                                                 <div className="text-[10px] text-text-muted mt-0.5">Created: {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : '-'}</div>
@@ -987,7 +1013,7 @@ export const ScheduleManagerView: React.FC = () => {
                                 </label>
                                 <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                                     {allGroups.map(grp => {
-                                        const count = schedules.filter(s => (s.groupName || 'General') === grp).length;
+                                        const count = schedules.filter(s => getJobGroupName(s.groupName) === grp).length;
                                         const isEditing = editingGroupName === grp;
                                         const isDeleting = deletingGroupName === grp;
 
@@ -1356,7 +1382,7 @@ export const ScheduleManagerView: React.FC = () => {
 
                                             <div className="shrink-0 flex items-center gap-1.5">
                                                 <span className="text-[10px] text-text-muted px-2 py-0.5 rounded-md bg-bg-main border border-border-main font-mono">
-                                                    from: <b className="text-text-main font-semibold">{job.groupName || 'General'}</b>
+                                                    from: <b className="text-text-main font-semibold">{getJobGroupName(job.groupName)}</b>
                                                 </span>
                                             </div>
                                         </div>
