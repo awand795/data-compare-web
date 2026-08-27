@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
 import javax.sql.DataSource;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -27,6 +28,15 @@ public class ScheduleManagerService {
         this.jdbcTemplate = new JdbcTemplate(dataSource);
     }
 
+    @PostConstruct
+    public void initTable() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE schedules ADD COLUMN IF NOT EXISTS group_name VARCHAR(100) DEFAULT 'General'");
+        } catch (Exception e) {
+            // Ignore if column already exists
+        }
+    }
+
     private final RowMapper<ScheduleConfig> scheduleMapper = (rs, rowNum) -> {
         ScheduleConfig s = new ScheduleConfig();
         s.setId(rs.getString("id"));
@@ -35,7 +45,7 @@ public class ScheduleManagerService {
         s.setTargetConnectionId(rs.getString("target_connection_id"));
         s.setSourceTable(rs.getString("source_table"));
         s.setTargetTable(rs.getString("target_table"));
-                s.setCronExpression(rs.getString("cron_expression"));
+        s.setCronExpression(rs.getString("cron_expression"));
         s.setTelegramBotToken(rs.getString("telegram_bot_token"));
         s.setTelegramChatId(rs.getString("telegram_chat_id"));
         s.setDiscordWebhookUrl(rs.getString("discord_webhook_url"));
@@ -51,6 +61,15 @@ public class ScheduleManagerService {
         s.setNotifyOnlyOnDiff(rs.getBoolean("notify_only_on_diff"));
         s.setDisableOnError(rs.getBoolean("disable_on_error"));
         s.setActive(rs.getBoolean("is_active"));
+        
+        try {
+            s.setGroupName(rs.getString("group_name"));
+        } catch (Exception e) {
+            s.setGroupName("General");
+        }
+        if (s.getGroupName() == null || s.getGroupName().trim().isEmpty()) {
+            s.setGroupName("General");
+        }
         
         Timestamp created = rs.getTimestamp("created_at");
         if (created != null) s.setCreatedAt(created.toLocalDateTime());
@@ -73,34 +92,58 @@ public class ScheduleManagerService {
         if (config.getId() == null || config.getId().isEmpty()) {
             config.setId(UUID.randomUUID().toString());
         }
+        if (config.getGroupName() == null || config.getGroupName().trim().isEmpty()) {
+            config.setGroupName("General");
+        }
         
-                String sql = "INSERT INTO schedules (id, name, source_connection_id, target_connection_id, source_table, target_table, " +
+        String sql = "INSERT INTO schedules (id, name, source_connection_id, target_connection_id, source_table, target_table, " +
                 "cron_expression, telegram_bot_token, telegram_chat_id, discord_webhook_url, telegram_channel_id, discord_channel_id, " +
-                "custom_query_source, custom_query_target, primary_keys, exclude_columns, sort_columns, mappings, save_full_data, notify_only_on_diff, disable_on_error, is_active) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "custom_query_source, custom_query_target, primary_keys, exclude_columns, sort_columns, mappings, save_full_data, notify_only_on_diff, disable_on_error, is_active, group_name) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 
         jdbcTemplate.update(sql, config.getId(), config.getName(), config.getSourceConnectionId(), config.getTargetConnectionId(),
                 config.getSourceTable(), config.getTargetTable(), config.getCronExpression(), config.getTelegramBotToken(),
                 config.getTelegramChatId(), config.getDiscordWebhookUrl(), config.getTelegramChannelId(), config.getDiscordChannelId(),
                 config.getCustomQuerySource(), config.getCustomQueryTarget(), config.getPrimaryKeys(), config.getExcludeColumns(), config.getSortColumns(),
-                config.getMappings(), config.isSaveFullData(), config.isNotifyOnlyOnDiff(), config.isDisableOnError(), config.isActive());
+                config.getMappings(), config.isSaveFullData(), config.isNotifyOnlyOnDiff(), config.isDisableOnError(), config.isActive(), config.getGroupName());
                 
         return getSchedule(config.getId());
     }
 
     public ScheduleConfig updateSchedule(String id, ScheduleConfig config) {
-                String sql = "UPDATE schedules SET name=?, source_connection_id=?, target_connection_id=?, source_table=?, target_table=?, " +
+        if (config.getGroupName() == null || config.getGroupName().trim().isEmpty()) {
+            config.setGroupName("General");
+        }
+        String sql = "UPDATE schedules SET name=?, source_connection_id=?, target_connection_id=?, source_table=?, target_table=?, " +
                 "cron_expression=?, telegram_bot_token=?, telegram_chat_id=?, discord_webhook_url=?, telegram_channel_id=?, discord_channel_id=?, " +
-                "custom_query_source=?, custom_query_target=?, primary_keys=?, exclude_columns=?, sort_columns=?, mappings=?, save_full_data=?, notify_only_on_diff=?, disable_on_error=?, is_active=? " +
+                "custom_query_source=?, custom_query_target=?, primary_keys=?, exclude_columns=?, sort_columns=?, mappings=?, save_full_data=?, notify_only_on_diff=?, disable_on_error=?, is_active=?, group_name=? " +
                 "WHERE id=?";
                 
         jdbcTemplate.update(sql, config.getName(), config.getSourceConnectionId(), config.getTargetConnectionId(),
                 config.getSourceTable(), config.getTargetTable(), config.getCronExpression(), config.getTelegramBotToken(),
                 config.getTelegramChatId(), config.getDiscordWebhookUrl(), config.getTelegramChannelId(), config.getDiscordChannelId(),
                 config.getCustomQuerySource(), config.getCustomQueryTarget(), config.getPrimaryKeys(), config.getExcludeColumns(), config.getSortColumns(),
-                config.getMappings(), config.isSaveFullData(), config.isNotifyOnlyOnDiff(), config.isDisableOnError(), config.isActive(), id);
+                config.getMappings(), config.isSaveFullData(), config.isNotifyOnlyOnDiff(), config.isDisableOnError(), config.isActive(), config.getGroupName(), id);
                 
         return getSchedule(id);
+    }
+
+    public void updateGroupName(String id, String groupName) {
+        if (groupName == null || groupName.trim().isEmpty()) {
+            groupName = "General";
+        }
+        jdbcTemplate.update("UPDATE schedules SET group_name = ? WHERE id = ?", groupName.trim(), id);
+    }
+
+    public int renameGroup(String oldName, String newName) {
+        String from = (oldName != null && !oldName.trim().isEmpty()) ? oldName.trim() : "General";
+        String to = (newName != null && !newName.trim().isEmpty()) ? newName.trim() : "General";
+        return jdbcTemplate.update("UPDATE schedules SET group_name = ? WHERE group_name = ?", to, from);
+    }
+
+    public int deleteGroup(String groupName) {
+        String target = (groupName != null && !groupName.trim().isEmpty()) ? groupName.trim() : "General";
+        return jdbcTemplate.update("UPDATE schedules SET group_name = 'General' WHERE group_name = ?", target);
     }
 
     public void deleteSchedule(String id) {

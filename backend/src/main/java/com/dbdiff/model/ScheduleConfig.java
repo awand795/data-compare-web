@@ -37,6 +37,7 @@ public class ScheduleConfig {
     private boolean active;
 
     private String mappings; // JSON array of TableMapping objects
+    private String groupName;
     private LocalDateTime createdAt;
     private LocalDateTime lastRun;
 
@@ -177,6 +178,12 @@ public class ScheduleConfig {
     }
     public void setMappings(String mappings) {
         this.mappings = mappings;
+    }
+    public String getGroupName() {
+        return this.groupName;
+    }
+    public void setGroupName(String groupName) {
+        this.groupName = groupName;
     }
     public LocalDateTime getCreatedAt() {
         return this.createdAt;

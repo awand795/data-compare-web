@@ -146,9 +146,10 @@ export type ScheduleConfig = {
   saveFullData: boolean;
   isActive: boolean;
   mappings?: any[]; // For grouped jobs
+  groupName?: string;
   createdAt?: string;
   lastRun?: string;
-  };
+};
 
 export type NotificationChannel = {
   id: string;

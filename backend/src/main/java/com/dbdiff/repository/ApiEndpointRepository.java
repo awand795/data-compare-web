@@ -184,6 +184,17 @@ public class ApiEndpointRepository {
         }
     }
 
+    public int renameGroup(String oldName, String newName) {
+        String from = (oldName != null && !oldName.trim().isEmpty()) ? oldName.trim() : "General";
+        String to = (newName != null && !newName.trim().isEmpty()) ? newName.trim() : "General";
+        return jdbcTemplate.update("UPDATE api_endpoints SET group_name = ?, updated_at = CURRENT_TIMESTAMP WHERE group_name = ?", to, from);
+    }
+
+    public int deleteGroup(String groupName) {
+        String target = (groupName != null && !groupName.trim().isEmpty()) ? groupName.trim() : "General";
+        return jdbcTemplate.update("UPDATE api_endpoints SET group_name = 'General', updated_at = CURRENT_TIMESTAMP WHERE group_name = ?", target);
+    }
+
     public int deleteById(String id) {
         return jdbcTemplate.update("DELETE FROM api_endpoints WHERE id = ?", id);
     }

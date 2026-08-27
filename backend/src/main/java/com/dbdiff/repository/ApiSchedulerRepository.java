@@ -197,6 +197,17 @@ public class ApiSchedulerRepository {
         }
     }
 
+    public int renameGroup(String oldName, String newName) {
+        String from = (oldName != null && !oldName.trim().isEmpty()) ? oldName.trim() : "General";
+        String to = (newName != null && !newName.trim().isEmpty()) ? newName.trim() : "General";
+        return jdbcTemplate.update("UPDATE api_scheduler_configs SET group_name = ?, updated_at = CURRENT_TIMESTAMP WHERE group_name = ?", to, from);
+    }
+
+    public int deleteGroup(String groupName) {
+        String target = (groupName != null && !groupName.trim().isEmpty()) ? groupName.trim() : "General";
+        return jdbcTemplate.update("UPDATE api_scheduler_configs SET group_name = 'General', updated_at = CURRENT_TIMESTAMP WHERE group_name = ?", target);
+    }
+
     public int updateLastRun(String id, String status, String message) {
         String sql = "UPDATE api_scheduler_configs SET last_run_at = CURRENT_TIMESTAMP, last_run_status = ?, last_run_message = ? WHERE id = ?";
         return jdbcTemplate.update(sql, status, message, id);

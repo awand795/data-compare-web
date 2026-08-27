@@ -8,7 +8,7 @@ import {
   Search, Eraser, Code2, 
   ListRestart, Bug, SquareTerminal, CopyPlus, FileCode,
   LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal,
-  Folder, FolderPlus, FolderTree, Shield, Globe
+  Folder, FolderPlus, FolderTree, Shield, AlertTriangle
 } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -99,6 +99,10 @@ export const ApiBuilderView: React.FC = () => {
   // Group Management & Quick IP Modals
   const [isManageGroupsModalOpen, setIsManageGroupsModalOpen] = useState(false);
   const [newGroupInputName, setNewGroupInputName] = useState('');
+  const [editingGroupName, setEditingGroupName] = useState<string | null>(null);
+  const [editingGroupNewName, setEditingGroupNewName] = useState('');
+  const [deletingGroupName, setDeletingGroupName] = useState<string | null>(null);
+  const [isProcessingGroupAction, setIsProcessingGroupAction] = useState(false);
   const [isQuickIpModalOpen, setIsQuickIpModalOpen] = useState(false);
   const [quickIpTarget, setQuickIpTarget] = useState<ApiEndpoint | null>(null);
   const [quickIpValue, setQuickIpValue] = useState('');
@@ -306,6 +310,59 @@ export const ApiBuilderView: React.FC = () => {
     setIsManageGroupsModalOpen(false);
     setNewGroupInputName('');
     addToast({ type: 'info', title: 'Group Selected', message: `Switched to group "${clean}".` });
+  };
+
+  const handleRenameGroup = async (oldName: string, newName: string) => {
+    if (!newName.trim() || newName.trim() === oldName) {
+      setEditingGroupName(null);
+      return;
+    }
+    setIsProcessingGroupAction(true);
+    try {
+      await axios.put('/api/api-builder/groups/rename', {
+        oldName: oldName.trim(),
+        newName: newName.trim()
+      });
+      addToast({
+        type: 'success',
+        title: 'Group Renamed',
+        message: `Group "${oldName}" was renamed to "${newName.trim()}".`
+      });
+      setEditingGroupName(null);
+      if (selectedGroup === oldName) setSelectedGroup(newName.trim());
+      fetchEndpoints();
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Rename Failed',
+        message: err?.response?.data?.error || 'Failed to rename group'
+      });
+    } finally {
+      setIsProcessingGroupAction(false);
+    }
+  };
+
+  const handleDeleteGroup = async (groupName: string) => {
+    setIsProcessingGroupAction(true);
+    try {
+      await axios.delete(`/api/api-builder/groups/${encodeURIComponent(groupName)}`);
+      addToast({
+        type: 'info',
+        title: 'Group Deleted',
+        message: `Group "${groupName}" was deleted. All endpoints moved to "General".`
+      });
+      setDeletingGroupName(null);
+      if (selectedGroup === groupName) setSelectedGroup('ALL');
+      fetchEndpoints();
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Delete Failed',
+        message: err?.response?.data?.error || 'Failed to delete group'
+      });
+    } finally {
+      setIsProcessingGroupAction(false);
+    }
   };
 
   const generateToken = () => {
@@ -740,14 +797,9 @@ export const ApiBuilderView: React.FC = () => {
           </div>
 
           <button
-            onClick={() => {
-              const name = prompt('Enter new Group name:');
-              if (name && name.trim()) {
-                handleCreateGroup(name.trim());
-              }
-            }}
+            onClick={() => setIsManageGroupsModalOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-bg-panel hover:bg-bg-hover border border-dashed border-border-main hover:border-indigo-500/50 text-text-muted hover:text-indigo-400 text-xs font-bold transition-all shrink-0 cursor-pointer"
-            title="Create New Group"
+            title="Manage / Create Groups"
           >
             <FolderPlus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">+ Add Group</span>
@@ -798,12 +850,12 @@ export const ApiBuilderView: React.FC = () => {
           <div className="flex items-center justify-between md:justify-end gap-3 border-t md:border-t-0 pt-3 md:pt-0 border-border-main">
             {/* Security Selector */}
             <select
-              className="bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-xs font-bold text-text-main outline-none focus:border-blue-500 shadow-inner"
               value={securityFilter}
               onChange={e => setSecurityFilter(e.target.value)}
+              className="bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-xs font-bold text-text-main outline-none focus:border-blue-500 cursor-pointer shadow-inner"
             >
               <option value="ALL">All Security Types</option>
-              <option value="PUBLIC">Public Access Only</option>
+              <option value="PUBLIC">Public Only</option>
               <option value="PROTECTED">Protected Only</option>
               <option value="IP_RESTRICTED">IP Restricted Only</option>
             </select>
@@ -928,51 +980,57 @@ export const ApiBuilderView: React.FC = () => {
                       /api/data{api.endpointPath}
                     </code>
 
-                    {/* SQL Preview Snippet */}
-                    <div className="mt-4 bg-[#0d1117] p-3 rounded-xl border border-border-main/50 font-mono text-[11px] text-slate-300 max-h-24 overflow-hidden relative group/code">
-                      <p className="line-clamp-3 text-slate-400 leading-relaxed whitespace-pre-wrap">{api.sqlQuery}</p>
-                      <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[#0d1117] to-transparent"></div>
+                    {/* Info Pills */}
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
+                      <span className="inline-flex items-center gap-1 text-[11px] text-text-muted bg-bg-editor px-2.5 py-1 rounded-lg border border-border-main">
+                        <Database className="w-3 h-3 text-blue-400" />
+                        <span className="truncate max-w-[130px]">{getConnectionName(api.connectionId)}</span>
+                      </span>
+
+                      {api.parameters && JSON.parse(api.parameters || '[]').length > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20 font-mono">
+                          {JSON.parse(api.parameters || '[]').length} params
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  {/* Card Footer Actions */}
-                  <div className="mt-5 pt-4 border-t border-border-main/60 flex items-center justify-between">
-                    <span className="text-[11px] text-text-muted font-medium truncate max-w-[140px]" title={getConnectionName(api.connectionId)}>
-                      <Database className="w-3.5 h-3.5 inline mr-1 text-purple-400" />
-                      {getConnectionName(api.connectionId).split(' ')[0]}
-                    </span>
-
-                    <div className="flex items-center gap-1">
+                  {/* Card Bottom Controls */}
+                  <div className="mt-5 pt-3.5 border-t border-border-main flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleEdit(api)}
+                        className="px-3 py-1.5 bg-emerald-600/10 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-emerald-500/20"
+                        title="Interactive API Console & Editor"
+                      >
+                        <Play className="w-3.5 h-3.5" /> Test API
+                      </button>
                       <button
                         onClick={() => handleViewSpec(api)}
-                        className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-all cursor-pointer"
-                        title="View Documentation & Spec"
+                        className="px-2.5 py-1.5 bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-text-main rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border border-border-main"
+                        title="View API Spec, cURL & SDK code"
                       >
-                        <FileJson className="w-4 h-4" />
+                        <FileJson className="w-3.5 h-3.5" /> Spec
                       </button>
                       <button
                         onClick={() => handleOpenQuickIp(api)}
                         className={clsx(
-                          "p-2 rounded-lg transition-all relative cursor-pointer",
+                          "px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border",
                           api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
-                            ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30"
-                            : "text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10"
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                            : "bg-bg-editor text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
                         )}
-                        title={
-                          api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
-                            ? `IP Allowlist Active: ${api.ipAllowlist}`
-                            : "Configure IP Allowlist (Open to all IPs)"
-                        }
+                        title="Quick Manage IP Allowlist"
                       >
-                        <Shield className="w-4 h-4" />
-                        {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' && (
-                          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        )}
+                        <Shield className="w-3.5 h-3.5" /> IP Rules
                       </button>
+                    </div>
+
+                    <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleClone(api)}
-                        className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-all cursor-pointer"
-                        title="Duplicate Endpoint"
+                        className="p-2 text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all cursor-pointer"
+                        title="Clone / Duplicate API"
                       >
                         <CopyPlus className="w-4 h-4" />
                       </button>
@@ -1030,46 +1088,30 @@ export const ApiBuilderView: React.FC = () => {
                         </div>
                       </td>
                       <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <span className={clsx("px-2.5 py-1 rounded-md text-[10px] font-black tracking-widest uppercase", getMethodBadgeClass(api.method))}>
+                        <div className="flex items-center gap-2 font-mono text-xs">
+                          <span className={clsx("px-2 py-0.5 rounded text-[10px] font-bold", getMethodBadgeClass(api.method))}>
                             {api.method}
                           </span>
-                          <code className="font-mono text-xs text-text-muted group-hover:text-blue-400 transition-colors">
-                            /api/data{api.endpointPath}
-                          </code>
+                          <span className="text-text-muted">/api/data{api.endpointPath}</span>
                         </div>
                       </td>
-                      <td className="p-4 text-text-muted text-xs font-medium">
-                        <Database className="w-3.5 h-3.5 inline mr-1.5 text-purple-400" />
-                        {getConnectionName(api.connectionId)}
+                      <td className="p-4 text-xs font-medium text-text-muted">
+                        <div className="flex items-center gap-1.5">
+                          <Database className="w-3.5 h-3.5 text-blue-400" />
+                          <span>{getConnectionName(api.connectionId)}</span>
+                        </div>
                       </td>
                       <td className="p-4">
-                        <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
                           {api.isPublic ? (
-                            <span className="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full w-fit">
-                              <ShieldCheck className="w-3.5 h-3.5" /> Public
+                            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                              Public
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 text-amber-400 text-xs font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full w-fit">
-                              <ShieldAlert className="w-3.5 h-3.5" /> Protected
+                            <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+                              Protected
                             </span>
                           )}
-                          {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded w-fit" title={`Allowed IPs: ${api.ipAllowlist}`}>
-                              <Shield className="w-3 h-3" /> IP Restricted
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-text-muted">
-                              <Globe className="w-3 h-3" /> All IPs
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => handleViewSpec(api)} className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors cursor-pointer" title="View Spec">
-                            <FileJson className="w-4 h-4" />
-                          </button>
                           <button
                             onClick={() => handleOpenQuickIp(api)}
                             className={clsx(
@@ -1274,30 +1316,132 @@ export const ApiBuilderView: React.FC = () => {
                   <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider block">
                     Existing Groups ({allGroups.length})
                   </label>
-                  <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                  <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                     {allGroups.map(grp => {
                       const count = endpoints.filter(e => (e.groupName || 'General') === grp).length;
+                      const isEditing = editingGroupName === grp;
+                      const isDeleting = deletingGroupName === grp;
+
+                      if (isDeleting) {
+                        return (
+                          <div key={grp} className="p-3 rounded-xl border border-rose-500/40 bg-rose-500/10 space-y-2.5 animate-in fade-in">
+                            <div className="flex items-center gap-2 text-rose-400 text-xs font-bold">
+                              <AlertTriangle className="w-4 h-4 shrink-0" />
+                              <span>Delete group "{grp}"?</span>
+                            </div>
+                            <p className="text-[11px] text-text-muted leading-relaxed">
+                              All <b className="text-text-main font-semibold">{count}</b> endpoints in this group will be moved to <b className="text-text-main font-semibold">"General"</b>.
+                            </p>
+                            <div className="flex items-center justify-end gap-2 pt-1">
+                              <button
+                                type="button"
+                                disabled={isProcessingGroupAction}
+                                onClick={() => setDeletingGroupName(null)}
+                                className="px-3 py-1 rounded-lg text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isProcessingGroupAction}
+                                onClick={() => handleDeleteGroup(grp)}
+                                className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-rose-600/30"
+                              >
+                                {isProcessingGroupAction ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (isEditing) {
+                        return (
+                          <div key={grp} className="p-2.5 rounded-xl border border-indigo-500/50 bg-indigo-500/10 flex items-center gap-2 animate-in fade-in">
+                            <input
+                              type="text"
+                              autoFocus
+                              className="flex-1 bg-bg-editor border border-indigo-500/50 rounded-lg px-2.5 py-1.5 text-xs text-text-main font-bold outline-none shadow-inner"
+                              value={editingGroupNewName}
+                              onChange={e => setEditingGroupNewName(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleRenameGroup(grp, editingGroupNewName);
+                                if (e.key === 'Escape') setEditingGroupName(null);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              disabled={isProcessingGroupAction || !editingGroupNewName.trim()}
+                              onClick={() => handleRenameGroup(grp, editingGroupNewName)}
+                              className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 transition-colors"
+                              title="Save Rename"
+                            >
+                              {isProcessingGroupAction ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isProcessingGroupAction}
+                              onClick={() => setEditingGroupName(null)}
+                              className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                              title="Cancel"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      }
+
                       return (
                         <div
                           key={grp}
-                          onClick={() => {
-                            setSelectedGroup(grp);
-                            setIsManageGroupsModalOpen(false);
-                          }}
                           className={clsx(
-                            "flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer",
+                            "flex items-center justify-between p-2.5 rounded-xl border transition-all group",
                             selectedGroup === grp
                               ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300"
                               : "bg-bg-editor/60 border-border-main hover:bg-bg-hover hover:border-indigo-500/30 text-text-main"
                           )}
                         >
-                          <div className="flex items-center gap-2.5">
-                            <Folder className="w-4 h-4 text-indigo-400" />
-                            <span className="text-xs font-bold">{grp}</span>
+                          <div
+                            onClick={() => {
+                              setSelectedGroup(grp);
+                              setIsManageGroupsModalOpen(false);
+                            }}
+                            className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
+                          >
+                            <Folder className="w-4 h-4 text-indigo-400 shrink-0" />
+                            <span className="text-xs font-bold truncate">{grp}</span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 bg-bg-panel rounded-md border border-border-main text-text-muted font-bold shrink-0">
+                              {count} {count === 1 ? 'API' : 'APIs'}
+                            </span>
                           </div>
-                          <span className="text-[11px] font-mono px-2 py-0.5 bg-bg-panel rounded-md border border-border-main text-text-muted font-bold">
-                            {count} {count === 1 ? 'API' : 'APIs'}
-                          </span>
+
+                          <div className="flex items-center gap-1 shrink-0 ml-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingGroupName(grp);
+                                setEditingGroupNewName(grp);
+                              }}
+                              className="p-1.5 rounded-lg text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                              title={`Rename group "${grp}"`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            {grp !== 'General' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeletingGroupName(grp);
+                                }}
+                                className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                title={`Delete group "${grp}"`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })}

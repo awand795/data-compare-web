@@ -6,7 +6,7 @@ import {
   Search, Clock, Database, Loader2, ArrowLeft,
   RefreshCw, FileText, Code2, ShieldCheck,
   Zap, CheckCircle2, AlertCircle, Bell, MessageCircle, Send, Settings, X,
-  Folder, FolderPlus, FolderTree, Layers
+  Folder, FolderPlus, FolderTree, Layers, AlertTriangle
 } from 'lucide-react';
 import clsx from 'clsx';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
@@ -78,6 +78,10 @@ export const ApiSchedulerView: React.FC = () => {
   // Group Management & Quick Group Modals
   const [isManageGroupsModalOpen, setIsManageGroupsModalOpen] = useState(false);
   const [newGroupInputName, setNewGroupInputName] = useState('');
+  const [editingGroupName, setEditingGroupName] = useState<string | null>(null);
+  const [editingGroupNewName, setEditingGroupNewName] = useState('');
+  const [deletingGroupName, setDeletingGroupName] = useState<string | null>(null);
+  const [isProcessingGroupAction, setIsProcessingGroupAction] = useState(false);
   const [isQuickGroupModalOpen, setIsQuickGroupModalOpen] = useState(false);
   const [quickGroupTarget, setQuickGroupTarget] = useState<ApiSchedulerConfig | null>(null);
   const [quickGroupValue, setQuickGroupValue] = useState('');
@@ -630,6 +634,59 @@ export const ApiSchedulerView: React.FC = () => {
     setIsManageGroupsModalOpen(false);
     setNewGroupInputName('');
     addToast({ type: 'info', title: 'Group Selected', message: `Switched to schedule group "${clean}".` });
+  };
+
+  const handleRenameGroup = async (oldName: string, newName: string) => {
+    if (!newName.trim() || newName.trim() === oldName) {
+      setEditingGroupName(null);
+      return;
+    }
+    setIsProcessingGroupAction(true);
+    try {
+      await axios.put('/api/api-schedulers/groups/rename', {
+        oldName: oldName.trim(),
+        newName: newName.trim()
+      });
+      addToast({
+        type: 'success',
+        title: 'Group Renamed',
+        message: `Group "${oldName}" was renamed to "${newName.trim()}".`
+      });
+      setEditingGroupName(null);
+      if (selectedGroup === oldName) setSelectedGroup(newName.trim());
+      fetchSchedulers();
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Rename Failed',
+        message: err?.response?.data?.error || 'Failed to rename group'
+      });
+    } finally {
+      setIsProcessingGroupAction(false);
+    }
+  };
+
+  const handleDeleteGroup = async (groupName: string) => {
+    setIsProcessingGroupAction(true);
+    try {
+      await axios.delete(`/api/api-schedulers/groups/${encodeURIComponent(groupName)}`);
+      addToast({
+        type: 'info',
+        title: 'Group Deleted',
+        message: `Group "${groupName}" was deleted. All schedules moved to "General".`
+      });
+      setDeletingGroupName(null);
+      if (selectedGroup === groupName) setSelectedGroup('ALL');
+      fetchSchedulers();
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Delete Failed',
+        message: err?.response?.data?.error || 'Failed to delete group'
+      });
+    } finally {
+      setIsProcessingGroupAction(false);
+    }
   };
 
   const handleRunNow = async (cfg: ApiSchedulerConfig) => {
@@ -1725,14 +1782,9 @@ export const ApiSchedulerView: React.FC = () => {
             </div>
 
             <button
-              onClick={() => {
-                const name = prompt('Enter new Group name for Scheduler:');
-                if (name && name.trim()) {
-                  handleCreateGroup(name.trim());
-                }
-              }}
+              onClick={() => setIsManageGroupsModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-bg-panel hover:bg-bg-hover border border-dashed border-border-main hover:border-indigo-500/50 text-text-muted hover:text-indigo-400 text-xs font-bold transition-all shrink-0 cursor-pointer"
-              title="Create New Group"
+              title="Manage / Create Groups"
             >
               <FolderPlus className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">+ Add Group</span>
@@ -2493,54 +2545,160 @@ export const ApiSchedulerView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Existing Groups List */}
-              <div className="space-y-2 pt-2">
-                <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider block">
-                  Existing Groups ({allGroups.length})
-                </label>
-                <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
-                  {allGroups.map(grp => {
-                    const count = schedulers.filter(s => (s.groupName || 'General') === grp).length;
-                    return (
-                      <div
-                        key={grp}
-                        onClick={() => {
-                          setSelectedGroup(grp);
-                          setIsManageGroupsModalOpen(false);
-                        }}
-                        className={clsx(
-                          "flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer",
-                          selectedGroup === grp
-                            ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300"
-                            : "bg-bg-main/60 border-border-main hover:bg-bg-hover hover:border-indigo-500/30 text-text-main"
-                        )}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Folder className="w-4 h-4 text-indigo-400" />
-                          <span className="text-xs font-bold">{grp}</span>
+                {/* Existing Groups List */}
+                <div className="space-y-2 pt-2">
+                  <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider block">
+                    Existing Groups ({allGroups.length})
+                  </label>
+                  <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                    {allGroups.map(grp => {
+                      const count = schedulers.filter(s => (s.groupName || 'General') === grp).length;
+                      const isEditing = editingGroupName === grp;
+                      const isDeleting = deletingGroupName === grp;
+
+                      if (isDeleting) {
+                        return (
+                          <div key={grp} className="p-3 rounded-xl border border-rose-500/40 bg-rose-500/10 space-y-2.5 animate-in fade-in">
+                            <div className="flex items-center gap-2 text-rose-400 text-xs font-bold">
+                              <AlertTriangle className="w-4 h-4 shrink-0" />
+                              <span>Delete group "{grp}"?</span>
+                            </div>
+                            <p className="text-[11px] text-text-muted leading-relaxed">
+                              All <b className="text-text-main font-semibold">{count}</b> schedules in this group will be moved to <b className="text-text-main font-semibold">"General"</b>.
+                            </p>
+                            <div className="flex items-center justify-end gap-2 pt-1">
+                              <button
+                                type="button"
+                                disabled={isProcessingGroupAction}
+                                onClick={() => setDeletingGroupName(null)}
+                                className="px-3 py-1 rounded-lg text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isProcessingGroupAction}
+                                onClick={() => handleDeleteGroup(grp)}
+                                className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-rose-600/30"
+                              >
+                                {isProcessingGroupAction ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (isEditing) {
+                        return (
+                          <div key={grp} className="p-2.5 rounded-xl border border-indigo-500/50 bg-indigo-500/10 flex items-center gap-2 animate-in fade-in">
+                            <input
+                              type="text"
+                              autoFocus
+                              className="flex-1 bg-bg-main border border-indigo-500/50 rounded-lg px-2.5 py-1.5 text-xs text-text-main font-bold outline-none shadow-inner"
+                              value={editingGroupNewName}
+                              onChange={e => setEditingGroupNewName(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleRenameGroup(grp, editingGroupNewName);
+                                if (e.key === 'Escape') setEditingGroupName(null);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              disabled={isProcessingGroupAction || !editingGroupNewName.trim()}
+                              onClick={() => handleRenameGroup(grp, editingGroupNewName)}
+                              className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 transition-colors"
+                              title="Save Rename"
+                            >
+                              {isProcessingGroupAction ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isProcessingGroupAction}
+                              onClick={() => setEditingGroupName(null)}
+                              className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                              title="Cancel"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={grp}
+                          className={clsx(
+                            "flex items-center justify-between p-2.5 rounded-xl border transition-all group",
+                            selectedGroup === grp
+                              ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300"
+                              : "bg-bg-main/60 border-border-main hover:bg-bg-hover hover:border-indigo-500/30 text-text-main"
+                          )}
+                        >
+                          <div
+                            onClick={() => {
+                              setSelectedGroup(grp);
+                              setIsManageGroupsModalOpen(false);
+                            }}
+                            className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
+                          >
+                            <Folder className="w-4 h-4 text-indigo-400 shrink-0" />
+                            <span className="text-xs font-bold truncate">{grp}</span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 bg-bg-panel rounded-md border border-border-main text-text-muted font-bold shrink-0">
+                              {count} {count === 1 ? 'Job' : 'Jobs'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0 ml-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingGroupName(grp);
+                                setEditingGroupNewName(grp);
+                              }}
+                              className="p-1.5 rounded-lg text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                              title={`Rename group "${grp}"`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            {grp !== 'General' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeletingGroupName(grp);
+                                }}
+                                className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                title={`Delete group "${grp}"`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <span className="text-[11px] font-mono px-2 py-0.5 bg-bg-panel rounded-md border border-border-main text-text-muted font-bold">
-                          {count} {count === 1 ? 'Job' : 'Jobs'}
-                        </span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="p-4 border-t border-border-main flex items-center justify-end bg-bg-main/40">
-              <button
-                type="button"
-                onClick={() => setIsManageGroupsModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
-              >
-                Close
-              </button>
+              <div className="p-4 border-t border-border-main flex items-center justify-end bg-bg-main/40">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsManageGroupsModalOpen(false);
+                    setEditingGroupName(null);
+                    setDeletingGroupName(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* ── QUICK CHANGE SCHEDULER GROUP MODAL ───────────────────────── */}
       {isQuickGroupModalOpen && quickGroupTarget && (
