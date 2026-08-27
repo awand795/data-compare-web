@@ -6,7 +6,7 @@ import {
   Search, Clock, Database, Loader2, ArrowLeft,
   RefreshCw, FileText, Code2, ShieldCheck,
   Zap, CheckCircle2, AlertCircle, Bell, MessageCircle, Send, Settings, X,
-  Folder, FolderPlus, FolderTree, Layers, AlertTriangle
+  Folder, FolderOpen, FolderPlus, FolderTree, Layers, AlertTriangle, ChevronDown, ChevronRight
 } from 'lucide-react';
 import clsx from 'clsx';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
@@ -86,6 +86,7 @@ export const ApiSchedulerView: React.FC = () => {
   const [quickGroupTarget, setQuickGroupTarget] = useState<ApiSchedulerConfig | null>(null);
   const [quickGroupValue, setQuickGroupValue] = useState('');
   const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   // Full Screen View Mode: 'list' | 'editor'
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');
@@ -371,12 +372,12 @@ export const ApiSchedulerView: React.FC = () => {
     fetchMvPipelines();
   }, []);
 
-  const openNewEditor = () => {
+  const openNewEditor = (presetGroup?: string) => {
     setCurrentConfig({
       method: 'GET',
       url: '',
       name: '',
-      groupName: selectedGroup !== 'ALL' ? selectedGroup : 'General',
+      groupName: presetGroup || (selectedGroup !== 'ALL' ? selectedGroup : 'General'),
       authType: 'none',
       bodyType: 'json',
       targetConnectionId: connections.length > 0 ? connections[0].id : '',
@@ -768,6 +769,43 @@ export const ApiSchedulerView: React.FC = () => {
       return matchesSearch && matchesMethod && matchesStatus && matchesGroup;
     });
   }, [schedulers, searchQuery, methodFilter, statusFilter, selectedGroup]);
+
+  // Grouped Schedulers for Folder Accordion View
+  const displayedGroups = useMemo(() => {
+    const groupsToConsider = selectedGroup === 'ALL' ? allGroups : [selectedGroup];
+    return groupsToConsider.map(grp => {
+      const items = filteredSchedulers.filter(s => (s.groupName || 'General') === grp);
+      return {
+        groupName: grp,
+        items,
+        count: items.length,
+        totalInGroup: schedulers.filter(s => (s.groupName || 'General') === grp).length
+      };
+    }).filter(g => {
+      if (searchQuery.trim()) {
+        return g.items.length > 0;
+      }
+      if (selectedGroup !== 'ALL') return true;
+      return g.items.length > 0 || g.groupName === 'General';
+    });
+  }, [allGroups, filteredSchedulers, selectedGroup, searchQuery, schedulers]);
+
+  const toggleGroupCollapse = (grp: string) => {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [grp]: !prev[grp]
+    }));
+  };
+
+  const expandAllGroups = () => {
+    setCollapsedGroups({});
+  };
+
+  const collapseAllGroups = () => {
+    const all: Record<string, boolean> = {};
+    allGroups.forEach(g => { all[g] = true; });
+    setCollapsedGroups(all);
+  };
 
   const getPrettyJson = (raw: string | undefined) => {
     if (!raw) return '';
@@ -1698,7 +1736,7 @@ export const ApiSchedulerView: React.FC = () => {
           </button>
 
           <button
-            onClick={openNewEditor}
+            onClick={() => openNewEditor()}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all text-xs"
           >
             <Plus className="w-4.5 h-4.5" />
@@ -1815,6 +1853,26 @@ export const ApiSchedulerView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+              {/* Expand / Collapse All Folders */}
+              <div className="flex items-center gap-1 bg-bg-main border border-border-main p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={expandAllGroups}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                  title="Expand all group folders"
+                >
+                  Expand All
+                </button>
+                <button
+                  type="button"
+                  onClick={collapseAllGroups}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                  title="Collapse all group folders"
+                >
+                  Collapse All
+                </button>
+              </div>
+
               <div className="flex items-center gap-1 bg-bg-main border border-border-main p-1 rounded-xl">
                 {['ALL', 'GET', 'POST', 'PUT', 'DELETE'].map(method => (
                   <button
@@ -1847,243 +1905,311 @@ export const ApiSchedulerView: React.FC = () => {
             </div>
           </div>
 
-      {/* Main Table View */}
-      <div className="flex-1 bg-bg-panel border border-border-main rounded-2xl overflow-hidden shadow-sm flex flex-col min-h-0">
-        {loading ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-text-muted">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-3" />
-            <p className="text-xs">Loading API Schedulers...</p>
+      {/* Main Folder Accordion View */}
+      {loading ? (
+        <div className="flex-1 bg-bg-panel border border-border-main rounded-2xl p-8 flex flex-col items-center justify-center text-text-muted shadow-sm">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-3" />
+          <p className="text-xs">Loading API Schedulers...</p>
+        </div>
+      ) : filteredSchedulers.length === 0 ? (
+        <div className="flex-1 bg-bg-panel border border-border-main rounded-2xl p-8 flex flex-col items-center justify-center text-center text-text-muted shadow-sm">
+          <div className="w-14 h-14 rounded-2xl bg-bg-hover flex items-center justify-center mb-3 text-text-muted border border-border-main">
+            <Globe className="w-7 h-7" />
           </div>
-        ) : filteredSchedulers.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-text-muted">
-            <div className="w-14 h-14 rounded-2xl bg-bg-hover flex items-center justify-center mb-3 text-text-muted border border-border-main">
-              <Globe className="w-7 h-7" />
-            </div>
-            <h3 className="text-base font-semibold text-text-main mb-1">No API Schedulers Found</h3>
-            <p className="text-xs max-w-sm mb-4">
-              {searchQuery || methodFilter !== 'ALL' || statusFilter !== 'ALL' 
-                ? "No schedules match your active search filters." 
-                : "Create your first API Scheduler to start ingesting automated HTTP endpoints into ClickHouse or PostgreSQL."}
-            </p>
-            <button
-              onClick={openNewEditor}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-colors shadow-md shadow-blue-500/20"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create New API Schedule</span>
-            </button>
-          </div>
-        ) : (
-          <div className="flex-1 overflow-auto">
-            <table className="w-full text-left border-collapse min-w-[900px]">
-              <thead className="sticky top-0 bg-bg-main/90 backdrop-blur-md border-b border-border-main text-[11px] font-bold text-text-muted uppercase tracking-wider z-10">
-                <tr>
-                  <th className="py-3.5 px-4 w-16 text-center">Status</th>
-                  <th className="py-3.5 px-4">Schedule & Endpoint</th>
-                  <th className="py-3.5 px-4">Target Storage</th>
-                  <th className="py-3.5 px-4">Spring Cron</th>
-                  <th className="py-3.5 px-4">Notification Profiles</th>
-                  <th className="py-3.5 px-4">Last Run Status</th>
-                  <th className="py-3.5 px-4 text-right pr-6">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-main text-xs">
-                {filteredSchedulers.map((cfg) => {
-                  const conn = connections.find(c => String(c.id) === String(cfg.targetConnectionId));
-                  return (
-                    <tr key={cfg.id} className="hover:bg-bg-hover/60 transition-colors group relative hover:z-30">
-                      {/* Active Status Switch */}
-                      <td className="py-3.5 px-4 text-center">
+          <h3 className="text-base font-semibold text-text-main mb-1">No API Schedulers Found</h3>
+          <p className="text-xs max-w-sm mb-4">
+            {searchQuery || methodFilter !== 'ALL' || statusFilter !== 'ALL' 
+              ? "No schedules match your active search filters." 
+              : "Create your first API Scheduler to start ingesting automated HTTP endpoints into ClickHouse or PostgreSQL."}
+          </p>
+          <button
+            onClick={() => openNewEditor()}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-colors shadow-md shadow-blue-500/20"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create New API Schedule</span>
+          </button>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-4 pb-6">
+          {displayedGroups.map(group => {
+            const isGroupCollapsed = searchQuery.trim() ? false : Boolean(collapsedGroups[group.groupName]);
+
+            return (
+              <div 
+                key={group.groupName}
+                className="border border-border-main rounded-2xl bg-bg-panel/60 overflow-hidden shadow-sm transition-all"
+              >
+                {/* Folder Group Header */}
+                <div
+                  onClick={() => toggleGroupCollapse(group.groupName)}
+                  className="flex items-center justify-between p-3.5 bg-bg-panel hover:bg-bg-hover/70 border-b border-border-main/60 cursor-pointer select-none transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={clsx(
+                      "w-7 h-7 rounded-lg flex items-center justify-center transition-all",
+                      isGroupCollapsed ? "bg-bg-editor text-text-muted" : "bg-indigo-500/10 text-indigo-400"
+                    )}>
+                      {isGroupCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isGroupCollapsed ? (
+                        <Folder className="w-4.5 h-4.5 text-indigo-400" />
+                      ) : (
+                        <FolderOpen className="w-4.5 h-4.5 text-indigo-400" />
+                      )}
+                      <h4 className="text-sm font-extrabold text-text-main">
+                        {group.groupName}
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-bg-editor border border-border-main text-text-muted">
+                        {group.count} {group.count === 1 ? 'Schedule' : 'Schedules'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => openNewEditor(group.groupName)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 text-xs font-bold transition-all cursor-pointer"
+                      title={`Create new schedule in group "${group.groupName}"`}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">+ Add to Group</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Folder Group Content */}
+                {!isGroupCollapsed && (
+                  <div className="p-4 bg-bg-main/30 animate-in fade-in duration-150">
+                    {group.items.length === 0 ? (
+                      <div className="p-6 text-center text-text-muted border border-dashed border-border-main rounded-xl">
+                        <p className="text-xs">No schedules found in group "{group.groupName}".</p>
                         <button
-                          onClick={() => handleToggleActive(cfg)}
-                          className={clsx(
-                            "w-9 h-5 rounded-full p-0.5 transition-colors relative inline-block",
-                            cfg.active ? "bg-emerald-500" : "bg-slate-400 dark:bg-slate-700"
-                          )}
-                          title={cfg.active ? "Click to Pause" : "Click to Activate"}
+                          onClick={() => openNewEditor(group.groupName)}
+                          className="mt-2 text-xs font-bold text-indigo-400 hover:text-indigo-300"
                         >
-                          <div className={clsx(
-                            "w-4 h-4 rounded-full bg-white transition-transform shadow-md",
-                            cfg.active ? "translate-x-4" : "translate-x-0"
-                          )} />
+                          + Add schedule to this group
                         </button>
-                      </td>
+                      </div>
+                    ) : (
+                      <div className="border border-border-main rounded-xl overflow-hidden shadow-inner bg-bg-panel">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse min-w-[900px]">
+                            <thead className="bg-bg-editor text-[11px] font-bold text-text-muted uppercase tracking-wider border-b border-border-main">
+                              <tr>
+                                <th className="py-3 px-4 w-16 text-center">Status</th>
+                                <th className="py-3 px-4">Schedule &amp; Endpoint</th>
+                                <th className="py-3 px-4">Target Storage</th>
+                                <th className="py-3 px-4">Spring Cron</th>
+                                <th className="py-3 px-4">Notification Profiles</th>
+                                <th className="py-3 px-4">Last Run Status</th>
+                                <th className="py-3 px-4 text-right pr-6">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border-main/60 text-xs">
+                              {group.items.map((cfg) => {
+                                const conn = connections.find(c => String(c.id) === String(cfg.targetConnectionId));
+                                return (
+                                  <tr key={cfg.id} className="hover:bg-bg-hover/60 transition-colors group relative hover:z-30">
+                                    {/* Active Status Switch */}
+                                    <td className="py-3 px-4 text-center">
+                                      <button
+                                        onClick={() => handleToggleActive(cfg)}
+                                        className={clsx(
+                                          "w-9 h-5 rounded-full p-0.5 transition-colors relative inline-block cursor-pointer",
+                                          cfg.active ? "bg-emerald-500" : "bg-slate-400 dark:bg-slate-700"
+                                        )}
+                                        title={cfg.active ? "Click to Pause" : "Click to Activate"}
+                                      >
+                                        <div className={clsx(
+                                          "w-4 h-4 rounded-full bg-white transition-transform shadow-md",
+                                          cfg.active ? "translate-x-4" : "translate-x-0"
+                                        )} />
+                                      </button>
+                                    </td>
 
-                      {/* Name & Endpoint */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={clsx("px-2 py-0.5 rounded text-[10px] font-bold tracking-wide", getMethodBadgeClass(cfg.method))}>
-                              {cfg.method}
-                            </span>
-                            <span className="font-bold text-text-main group-hover:text-blue-500 transition-colors text-xs">
-                              {cfg.name}
-                            </span>
-                            <button
-                              onClick={() => handleOpenQuickGroup(cfg)}
-                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all cursor-pointer"
-                              title="Click to change group"
-                            >
-                              <Folder className="w-3 h-3" />
-                              <span>{cfg.groupName || 'General'}</span>
-                            </button>
-                          </div>
-                          <span className="text-[11px] font-mono text-text-muted truncate max-w-md" title={cfg.url}>
-                            {cfg.url}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Target Storage */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5 text-xs text-text-main font-medium">
-                            <Database className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-                            <span>{conn ? conn.name : 'Target DB'}</span>
-                            <span className="text-text-muted font-mono">({cfg.targetTable || 'sch_sync.tb_api_data'})</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20">
-                              kode_data: {cfg.kodeData || 'API_KODE'}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Spring Cron */}
-                      <td className="py-3.5 px-4 relative">
-                        {(() => {
-                          const crons = (cfg.cronExpression || '0 */5 * * * *')
-                            .split(/[;,\n]+/)
-                            .map(c => c.trim())
-                            .filter(Boolean);
-                          const count = crons.length;
-                          if (count === 0) {
-                            return <span className="text-text-muted text-[11px] font-mono">No Cron</span>;
-                          }
-                          const firstCron = crons[0];
-                          const extraCount = count - 1;
-
-                          return (
-                            <div className="relative group/cron inline-block">
-                              <div 
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 max-w-[220px] sm:max-w-[260px] cursor-pointer shadow-sm hover:bg-amber-500/20 transition-colors"
-                              >
-                                <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                                <span className="truncate">{firstCron}</span>
-                                {extraCount > 0 && (
-                                  <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 dark:bg-amber-500/30 text-amber-900 dark:text-amber-200 text-[10px] font-extrabold shrink-0">
-                                    +{extraCount} more
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Hover Popover Tooltip for Multiple Crons (Drops Downward with High Z-Index) */}
-                              {extraCount > 0 && (
-                                <div className="absolute left-0 top-full mt-1.5 hidden group-hover/cron:flex flex-col z-50 min-w-[230px] p-2.5 bg-slate-900/95 dark:bg-slate-950/95 text-white rounded-xl shadow-2xl border border-amber-500/30 backdrop-blur-md pointer-events-none">
-                                  <div className="text-[10px] font-bold text-amber-400 mb-1.5 border-b border-amber-500/20 pb-1 flex items-center justify-between">
-                                    <span className="flex items-center gap-1">
-                                      <Clock className="w-3 h-3 text-amber-400" />
-                                      Active Cron Triggers
-                                    </span>
-                                    <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-extrabold">{count} Total</span>
-                                  </div>
-                                  <div className="space-y-1 font-mono text-[11px]">
-                                    {crons.map((cron, idx) => (
-                                      <div key={idx} className="flex items-center gap-1.5 text-amber-100 bg-amber-500/10 px-2 py-1 rounded-md border border-amber-500/10">
-                                        <span className="text-[9px] text-amber-400 font-bold shrink-0">#{idx + 1}</span>
-                                        <span className="truncate">{cron}</span>
+                                    {/* Name & Endpoint */}
+                                    <td className="py-3 px-4">
+                                      <div className="flex flex-col gap-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className={clsx("px-2 py-0.5 rounded text-[10px] font-bold tracking-wide", getMethodBadgeClass(cfg.method))}>
+                                            {cfg.method}
+                                          </span>
+                                          <span className="font-bold text-text-main group-hover:text-blue-500 transition-colors text-xs">
+                                            {cfg.name}
+                                          </span>
+                                          <button
+                                            onClick={() => handleOpenQuickGroup(cfg)}
+                                            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all cursor-pointer"
+                                            title="Click to change group"
+                                          >
+                                            <Folder className="w-3 h-3" />
+                                            <span>{cfg.groupName || 'General'}</span>
+                                          </button>
+                                        </div>
+                                        <span className="text-[11px] font-mono text-text-muted truncate max-w-md" title={cfg.url}>
+                                          {cfg.url}
+                                        </span>
                                       </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </td>
+                                    </td>
 
-                      {/* Notification Profiles */}
-                      <td className="py-3.5 px-4">
-                        {cfg.notificationChannelId ? (
-                          <div className="flex flex-col gap-1 text-xs font-medium">
-                            {cfg.notificationChannelId.split(/[;,\n]+/).map((id, i) => {
-                              const chan = channels.find(c => String(c.id) === String(id.trim()));
-                              if (!chan) return null;
-                              return (
-                                <div key={i} className="flex items-center gap-1.5 text-purple-700 dark:text-purple-300">
-                                  {chan.type === 'DISCORD' ? <Send className="w-3.5 h-3.5 text-indigo-500" /> : <MessageCircle className="w-3.5 h-3.5 text-blue-500" />}
-                                  <span>{chan.name}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <span className="text-text-muted text-[11px] font-mono">Disabled</span>
-                        )}
-                      </td>
+                                    {/* Target Storage */}
+                                    <td className="py-3 px-4">
+                                      <div className="flex flex-col gap-1">
+                                        <div className="flex items-center gap-1.5 text-xs text-text-main font-medium">
+                                          <Database className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                                          <span>{conn ? conn.name : 'Target DB'}</span>
+                                          <span className="text-text-muted font-mono">({cfg.targetTable || 'sch_sync.tb_api_data'})</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20">
+                                            kode_data: {cfg.kodeData || 'API_KODE'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </td>
 
-                      {/* Last Run Status */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex flex-col gap-1">
-                          {cfg.lastRunStatus === 'SUCCESS' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 w-fit">
-                              <CheckCircle2 className="w-3 h-3" />
-                              SUCCESS
-                            </span>
-                          ) : cfg.lastRunStatus === 'FAILED' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 w-fit" title={cfg.lastRunMessage}>
-                              <AlertCircle className="w-3 h-3" />
-                              FAILED
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/30 w-fit">
-                              PENDING
-                            </span>
-                          )}
-                          <span className="text-[11px] text-text-muted">
-                            {cfg.lastRunAt ? new Date(cfg.lastRunAt).toLocaleString() : 'Never executed'}
-                          </span>
+                                    {/* Spring Cron */}
+                                    <td className="py-3 px-4 relative">
+                                      {(() => {
+                                        const crons = (cfg.cronExpression || '0 */5 * * * *')
+                                          .split(/[;,\n]+/)
+                                          .map(c => c.trim())
+                                          .filter(Boolean);
+                                        const count = crons.length;
+                                        if (count === 0) {
+                                          return <span className="text-text-muted text-[11px] font-mono">No Cron</span>;
+                                        }
+                                        const firstCron = crons[0];
+                                        const extraCount = count - 1;
+
+                                        return (
+                                          <div className="relative group/cron inline-block">
+                                            <div 
+                                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 max-w-[220px] sm:max-w-[260px] cursor-pointer shadow-sm hover:bg-amber-500/20 transition-colors"
+                                            >
+                                              <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                              <span className="truncate">{firstCron}</span>
+                                              {extraCount > 0 && (
+                                                <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 dark:bg-amber-500/30 text-amber-900 dark:text-amber-200 text-[10px] font-extrabold shrink-0">
+                                                  +{extraCount} more
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            {extraCount > 0 && (
+                                              <div className="absolute left-0 top-full mt-1.5 hidden group-hover/cron:flex flex-col z-50 min-w-[230px] p-2.5 bg-slate-900/95 dark:bg-slate-950/95 text-white rounded-xl shadow-2xl border border-amber-500/30 backdrop-blur-md pointer-events-none">
+                                                <div className="text-[10px] font-bold text-amber-400 mb-1.5 border-b border-amber-500/20 pb-1 flex items-center justify-between">
+                                                  <span className="flex items-center gap-1">
+                                                    <Clock className="w-3 h-3 text-amber-400" />
+                                                    Active Cron Triggers
+                                                  </span>
+                                                  <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-extrabold">{count} Total</span>
+                                                </div>
+                                                <div className="space-y-1 font-mono text-[11px]">
+                                                  {crons.map((cron, idx) => (
+                                                    <div key={idx} className="flex items-center gap-1.5 text-amber-100 bg-amber-500/10 px-2 py-1 rounded-md border border-amber-500/10">
+                                                      <span className="text-[9px] text-amber-400 font-bold shrink-0">#{idx + 1}</span>
+                                                      <span className="truncate">{cron}</span>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
+                                    </td>
+
+                                    {/* Notification Profiles */}
+                                    <td className="py-3 px-4">
+                                      {cfg.notificationChannelId ? (
+                                        <div className="flex flex-col gap-1 text-xs font-medium">
+                                          {cfg.notificationChannelId.split(/[;,\n]+/).map((id, i) => {
+                                            const chan = channels.find(c => String(c.id) === String(id.trim()));
+                                            if (!chan) return null;
+                                            return (
+                                              <div key={i} className="flex items-center gap-1.5 text-purple-700 dark:text-purple-300">
+                                                {chan.type === 'DISCORD' ? <Send className="w-3.5 h-3.5 text-indigo-500" /> : <MessageCircle className="w-3.5 h-3.5 text-blue-500" />}
+                                                <span>{chan.name}</span>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <span className="text-text-muted text-[11px] font-mono">Disabled</span>
+                                      )}
+                                    </td>
+
+                                    {/* Last Run Status */}
+                                    <td className="py-3 px-4">
+                                      <div className="flex flex-col gap-1">
+                                        {cfg.lastRunStatus === 'SUCCESS' ? (
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 w-fit">
+                                            <CheckCircle2 className="w-3 h-3" />
+                                            SUCCESS
+                                          </span>
+                                        ) : cfg.lastRunStatus === 'FAILED' ? (
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 w-fit" title={cfg.lastRunMessage}>
+                                            <AlertCircle className="w-3 h-3" />
+                                            FAILED
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/30 w-fit">
+                                            PENDING
+                                          </span>
+                                        )}
+                                        <span className="text-[11px] text-text-muted">
+                                          {cfg.lastRunAt ? new Date(cfg.lastRunAt).toLocaleString() : 'Never executed'}
+                                        </span>
+                                      </div>
+                                    </td>
+
+                                    {/* Actions */}
+                                    <td className="py-3 px-4 text-right pr-6">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <button
+                                          onClick={() => handleRunNow(cfg)}
+                                          disabled={runningId === cfg.id}
+                                          className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 transition-all cursor-pointer"
+                                          title="Run Immediately & Ingest Data"
+                                        >
+                                          {runningId === cfg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-emerald-500/20" />}
+                                        </button>
+
+                                        <button
+                                          onClick={() => openEditEditor(cfg)}
+                                          className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 transition-all cursor-pointer"
+                                          title="Edit HTTP Client & Schedule"
+                                        >
+                                          <Pencil className="w-4 h-4" />
+                                        </button>
+
+                                        <button
+                                          onClick={() => handleDelete(cfg.id!, cfg.name)}
+                                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 transition-all cursor-pointer"
+                                          title="Delete Schedule"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-right pr-6">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleRunNow(cfg)}
-                            disabled={runningId === cfg.id}
-                            className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 transition-all"
-                            title="Run Immediately & Ingest Data"
-                          >
-                            {runningId === cfg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-emerald-500/20" />}
-                          </button>
-
-                          <button
-                            onClick={() => openEditEditor(cfg)}
-                            className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 transition-all"
-                            title="Edit HTTP Client & Schedule"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-
-                          <button
-                            onClick={() => handleDelete(cfg.id!, cfg.name)}
-                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 transition-all"
-                            title="Delete Schedule"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   ) : (
         /* Tab 2: Auto-MV Extractor Pipelines Panel (Option A) */

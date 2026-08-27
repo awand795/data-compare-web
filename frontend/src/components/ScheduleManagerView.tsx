@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { 
   Play, Plus, Clock, RefreshCw, XCircle, MessageCircle, Trash2, Eye, Edit, Save, 
-  Search, Eraser, Folder, FolderPlus, FolderTree, X, Loader2, AlertTriangle, Check, Pencil 
+  Search, Eraser, Folder, FolderOpen, FolderPlus, FolderTree, X, Loader2, AlertTriangle, Check, Pencil,
+  ChevronDown, ChevronRight
 } from 'lucide-react';
 import { useAppStore, type ScheduleConfig, type Template } from '../store/useAppStore';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
@@ -31,6 +32,7 @@ export const ScheduleManagerView: React.FC = () => {
     const [quickGroupTarget, setQuickGroupTarget] = useState<ScheduleConfig | null>(null);
     const [quickGroupValue, setQuickGroupValue] = useState('');
     const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
+    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
     // Form state
     const [jobPrefix, setJobPrefix] = useState('');
@@ -91,6 +93,43 @@ export const ScheduleManagerView: React.FC = () => {
             return true;
         });
     }, [schedules, selectedGroup, searchQuery]);
+
+    // Grouped Schedules for Folder Accordion View
+    const displayedGroups = useMemo(() => {
+        const groupsToConsider = selectedGroup === 'ALL' ? allGroups : [selectedGroup];
+        return groupsToConsider.map(grp => {
+            const items = filteredSchedules.filter(s => (s.groupName?.trim() || 'General') === grp);
+            return {
+                groupName: grp,
+                items,
+                count: items.length,
+                totalInGroup: schedules.filter(s => (s.groupName?.trim() || 'General') === grp).length
+            };
+        }).filter(g => {
+            if (searchQuery.trim()) {
+                return g.items.length > 0;
+            }
+            if (selectedGroup !== 'ALL') return true;
+            return g.items.length > 0 || g.groupName === 'General';
+        });
+    }, [allGroups, filteredSchedules, selectedGroup, searchQuery, schedules]);
+
+    const toggleGroupCollapse = (grp: string) => {
+        setCollapsedGroups(prev => ({
+            ...prev,
+            [grp]: !prev[grp]
+        }));
+    };
+
+    const expandAllGroups = () => {
+        setCollapsedGroups({});
+    };
+
+    const collapseAllGroups = () => {
+        const all: Record<string, boolean> = {};
+        allGroups.forEach(g => { all[g] = true; });
+        setCollapsedGroups(all);
+    };
 
     const handleOpenQuickGroup = (job: ScheduleConfig) => {
         setQuickGroupTarget(job);
@@ -286,10 +325,10 @@ export const ScheduleManagerView: React.FC = () => {
         setIsFormOpen(true);
     };
 
-    const openNewForm = () => {
+    const openNewForm = (presetGroup?: string) => {
         setEditingScheduleId(null);
         setJobPrefix('');
-        setJobGroupName(selectedGroup !== 'ALL' ? selectedGroup : 'General');
+        setJobGroupName(presetGroup || (selectedGroup !== 'ALL' ? selectedGroup : 'General'));
         setSelectedTemplateId('');
         setCronExpression('0 0 * * * *');
         setTelegramChannelId('');
@@ -371,6 +410,26 @@ export const ScheduleManagerView: React.FC = () => {
                             <span>Reset</span>
                         </button>
                     )}
+
+                    {/* Expand / Collapse All Folders */}
+                    <div className="flex items-center gap-1 bg-bg-main border border-border-main p-0.5 rounded-xl shrink-0">
+                        <button
+                            type="button"
+                            onClick={expandAllGroups}
+                            className="px-2.5 py-1 rounded-lg text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                            title="Expand all group folders"
+                        >
+                            Expand All
+                        </button>
+                        <button
+                            type="button"
+                            onClick={collapseAllGroups}
+                            className="px-2.5 py-1 rounded-lg text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                            title="Collapse all group folders"
+                        >
+                            Collapse All
+                        </button>
+                    </div>
                 </div>
 
                 {/* Group Filter Tabs */}
@@ -429,13 +488,13 @@ export const ScheduleManagerView: React.FC = () => {
                 </div>
             </div>
 
-            {/* ── MAIN CONTENT (TABLE) ───────────────────────────────────────── */}
+            {/* ── MAIN CONTENT (FOLDER ACCORDION) ─────────────────────────────── */}
             <div className="flex-1 overflow-auto p-4 flex flex-col gap-4">
                 {schedules.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-text-muted gap-4">
                         <Clock className="w-16 h-16 opacity-20" />
                         <p>No scheduled jobs configured</p>
-                        <button onClick={openNewForm} className="text-sm font-semibold text-purple-400 hover:text-purple-300">
+                        <button onClick={() => openNewForm()} className="text-sm font-semibold text-purple-400 hover:text-purple-300">
                             + Create your first job
                         </button>
                     </div>
@@ -456,137 +515,206 @@ export const ScheduleManagerView: React.FC = () => {
                         </button>
                     </div>
                 ) : (
-                    <div className="bg-bg-panel border border-border-main rounded-xl overflow-x-auto shadow-sm">
-                        <table className="w-full text-left text-xs border-collapse">
-                            <thead className="bg-bg-header text-[10px] text-text-muted uppercase tracking-wider border-b border-border-main sticky top-0 z-10">
-                                <tr>
-                                    <th className="py-3 px-4 font-bold w-8"></th>
-                                    <th className="py-3 px-4 font-bold">Job Name & Group</th>
-                                    <th className="py-3 px-4 font-bold">Schedule (Cron)</th>
-                                    <th className="py-3 px-4 font-bold">Tables</th>
-                                    <th className="py-3 px-4 font-bold text-center">Status</th>
-                                    <th className="py-3 px-4 font-bold text-center">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border-item">
-                                {filteredSchedules.map(job => {
-                                    const isExpanded = expandedJobIds.includes(job.id);
-                                    let jobMappings: any[] = [];
-                                    try {
-                                        jobMappings = typeof job.mappings === 'string' ? JSON.parse(job.mappings) : (job.mappings || []);
-                                    } catch (e) {}
+                    <div className="flex flex-col gap-4 pb-6">
+                        {displayedGroups.map(group => {
+                            const isGroupCollapsed = searchQuery.trim() ? false : Boolean(collapsedGroups[group.groupName]);
 
-                                    if (jobMappings.length === 0 && job.sourceTable && job.sourceTable !== 'multiple') {
-                                        jobMappings = [{
-                                            sourceTable: job.sourceTable,
-                                            targetTable: job.targetTable,
-                                            primaryKeys: job.primaryKeys
-                                        }];
-                                    }
+                            return (
+                                <div 
+                                    key={group.groupName}
+                                    className="border border-border-main rounded-2xl bg-bg-panel/60 overflow-hidden shadow-sm transition-all"
+                                >
+                                    {/* Folder Group Header */}
+                                    <div
+                                        onClick={() => toggleGroupCollapse(group.groupName)}
+                                        className="flex items-center justify-between p-3.5 bg-bg-panel hover:bg-bg-hover/70 border-b border-border-main/60 cursor-pointer select-none transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={clsx(
+                                                "w-7 h-7 rounded-lg flex items-center justify-center transition-all",
+                                                isGroupCollapsed ? "bg-bg-main text-text-muted" : "bg-purple-500/10 text-purple-400"
+                                            )}>
+                                                {isGroupCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {isGroupCollapsed ? (
+                                                    <Folder className="w-4.5 h-4.5 text-purple-400" />
+                                                ) : (
+                                                    <FolderOpen className="w-4.5 h-4.5 text-purple-400" />
+                                                )}
+                                                <h4 className="text-sm font-extrabold text-text-main">
+                                                    {group.groupName}
+                                                </h4>
+                                                <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-bg-main border border-border-main text-text-muted">
+                                                    {group.count} {group.count === 1 ? 'Job' : 'Jobs'}
+                                                </span>
+                                            </div>
+                                        </div>
 
-                                    return (
-                                        <React.Fragment key={job.id}>
-                                            <tr className="hover:bg-bg-hover transition-colors group">
-                                                <td className="py-3 px-4">
-                                                    <button onClick={() => toggleJobExpand(job.id)} className="p-1 hover:bg-bg-hover rounded text-text-muted">
-                                                        <Plus className={clsx("w-3 h-3 transition-transform", isExpanded && "rotate-45")} />
+                                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                            <button
+                                                onClick={() => openNewForm(group.groupName)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 text-xs font-bold transition-all cursor-pointer"
+                                                title={`Create new compare job in group "${group.groupName}"`}
+                                            >
+                                                <Plus className="w-3.5 h-3.5" />
+                                                <span className="hidden sm:inline">+ Add to Group</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Folder Group Content */}
+                                    {!isGroupCollapsed && (
+                                        <div className="p-3.5 bg-bg-main/30 animate-in fade-in duration-150">
+                                            {group.items.length === 0 ? (
+                                                <div className="p-6 text-center text-text-muted border border-dashed border-border-main rounded-xl">
+                                                    <p className="text-xs">No jobs found in group "{group.groupName}".</p>
+                                                    <button
+                                                        onClick={() => openNewForm(group.groupName)}
+                                                        className="mt-2 text-xs font-bold text-purple-400 hover:text-purple-300"
+                                                    >
+                                                        + Add job to this group
                                                     </button>
-                                                </td>
-                                                <td className="py-3 px-4">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className="font-bold text-text-main">{job.name}</span>
-                                                        <button
-                                                            onClick={() => handleOpenQuickGroup(job)}
-                                                            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-all cursor-pointer"
-                                                            title="Click to change group"
-                                                        >
-                                                            <Folder className="w-3 h-3" />
-                                                            <span>{job.groupName || 'General'}</span>
-                                                        </button>
-                                                    </div>
-                                                    <div className="text-[10px] text-text-muted mt-0.5">Created: {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : '-'}</div>
-                                                </td>
-                                                <td className="py-3 px-4">
-                                                    <div className="flex items-center gap-1.5 text-blue-400 font-mono text-[10px]">
-                                                        <RefreshCw className="w-3 h-3" />
-                                                        {job.cronExpression}
-                                                    </div>
-                                                </td>
-                                                <td className="py-3 px-4">
-                                                    <span className="px-2 py-0.5 bg-bg-hover border border-border-item rounded-full font-bold text-[11px]">
-                                                        {jobMappings.length} tables
-                                                    </span>
-                                                </td>
-                                                <td className="py-3 px-4 text-center">
-                                                    <label className="relative inline-flex items-center cursor-pointer">
-                                                        <input type="checkbox" checked={job.isActive} onChange={() => updateScheduleStatus(job.id, !job.isActive)} className="sr-only peer" />
-                                                        <div className="w-8 h-4 bg-bg-hover peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-text-muted peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-500"></div>
-                                                    </label>
-                                                </td>
-                                                <td className="py-3 px-4 text-center">
-                                                    <div className="flex items-center justify-center gap-1">
-                                                        <button 
-                                                            onClick={() => handleEditSchedule(job)}
-                                                            className="p-1.5 text-text-muted hover:text-purple-400 hover:bg-purple-400/10 rounded transition-colors" 
-                                                            title="Edit Job"
-                                                        >
-                                                            <Edit className="w-4 h-4" />
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => setViewingResultsJob({id: job.id, name: job.name})}
-                                                            className="p-1.5 text-text-muted hover:text-blue-400 hover:bg-blue-400/10 rounded transition-colors" 
-                                                            title="View Execution History"
-                                                        >
-                                                            <Eye className="w-4 h-4" />
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => runScheduleNow(job.id)} 
-                                                            className="p-1.5 text-text-muted hover:text-emerald-400 hover:bg-emerald-400/10 rounded transition-colors" 
-                                                            title="Run Now"
-                                                        >
-                                                            <Play className="w-4 h-4" />
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => handleDeleteJob(job)}
-                                                            className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded transition-colors cursor-pointer" 
-                                                            title="Delete Job"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                            {isExpanded && (
-                                                <tr className="bg-bg-subtle/30 border-b border-border-item">
-                                                    <td colSpan={6} className="p-0">
-                                                        <div className="px-12 py-3 border-l-2 border-purple-500/30">
-                                                            <table className="w-full text-[10px]">
-                                                                <thead>
-                                                                    <tr className="text-text-muted border-b border-border-item">
-                                                                        <th className="pb-1.5 font-bold text-left">Source Table</th>
-                                                                        <th className="pb-1.5 font-bold text-left">Target Table</th>
-                                                                        <th className="pb-1.5 font-bold text-left">Primary Keys</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody className="divide-y divide-border-item/50">
-                                                                    {jobMappings.map((m: any, idx: number) => (
-                                                                        <tr key={idx}>
-                                                                            <td className="py-1.5 font-mono">{m.sourceTable || '-'}</td>
-                                                                            <td className="py-1.5 font-mono">{m.targetTable || '-'}</td>
-                                                                            <td className="py-1.5 text-text-muted italic">{Array.isArray(m.primaryKeys) ? m.primaryKeys.join(', ') : (m.primaryKeys || 'auto')}</td>
+                                                </div>
+                                            ) : (
+                                                <div className="bg-bg-panel border border-border-main rounded-xl overflow-x-auto shadow-sm">
+                                                    <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                                                        <thead className="bg-bg-header text-[10px] text-text-muted uppercase tracking-wider border-b border-border-main sticky top-0 z-10">
+                                                            <tr>
+                                                                <th className="py-3 px-4 font-bold w-8"></th>
+                                                                <th className="py-3 px-4 font-bold">Job Name &amp; Group</th>
+                                                                <th className="py-3 px-4 font-bold">Schedule (Cron)</th>
+                                                                <th className="py-3 px-4 font-bold">Tables</th>
+                                                                <th className="py-3 px-4 font-bold text-center">Status</th>
+                                                                <th className="py-3 px-4 font-bold text-center">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-border-item">
+                                                            {group.items.map(job => {
+                                                                const isExpanded = expandedJobIds.includes(job.id);
+                                                                let jobMappings: any[] = [];
+                                                                try {
+                                                                    jobMappings = typeof job.mappings === 'string' ? JSON.parse(job.mappings) : (job.mappings || []);
+                                                                } catch (e) {}
+
+                                                                if (jobMappings.length === 0 && job.sourceTable && job.sourceTable !== 'multiple') {
+                                                                    jobMappings = [{
+                                                                        sourceTable: job.sourceTable,
+                                                                        targetTable: job.targetTable,
+                                                                        primaryKeys: job.primaryKeys
+                                                                    }];
+                                                                }
+
+                                                                return (
+                                                                    <React.Fragment key={job.id}>
+                                                                        <tr className="hover:bg-bg-hover transition-colors group">
+                                                                            <td className="py-3 px-4">
+                                                                                <button onClick={() => toggleJobExpand(job.id)} className="p-1 hover:bg-bg-hover rounded text-text-muted cursor-pointer">
+                                                                                    <Plus className={clsx("w-3 h-3 transition-transform", isExpanded && "rotate-45")} />
+                                                                                </button>
+                                                                            </td>
+                                                                            <td className="py-3 px-4">
+                                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                                    <span className="font-bold text-text-main">{job.name}</span>
+                                                                                    <button
+                                                                                        onClick={() => handleOpenQuickGroup(job)}
+                                                                                        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-all cursor-pointer"
+                                                                                        title="Click to change group"
+                                                                                    >
+                                                                                        <Folder className="w-3 h-3" />
+                                                                                        <span>{job.groupName || 'General'}</span>
+                                                                                    </button>
+                                                                                </div>
+                                                                                <div className="text-[10px] text-text-muted mt-0.5">Created: {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : '-'}</div>
+                                                                            </td>
+                                                                            <td className="py-3 px-4">
+                                                                                <div className="flex items-center gap-1.5 text-blue-400 font-mono text-[10px]">
+                                                                                    <RefreshCw className="w-3 h-3" />
+                                                                                    {job.cronExpression}
+                                                                                </div>
+                                                                            </td>
+                                                                            <td className="py-3 px-4">
+                                                                                <span className="px-2 py-0.5 bg-bg-hover border border-border-item rounded-full font-bold text-[11px]">
+                                                                                    {jobMappings.length} tables
+                                                                                </span>
+                                                                            </td>
+                                                                            <td className="py-3 px-4 text-center">
+                                                                                <label className="relative inline-flex items-center cursor-pointer">
+                                                                                    <input type="checkbox" checked={job.isActive} onChange={() => updateScheduleStatus(job.id, !job.isActive)} className="sr-only peer" />
+                                                                                    <div className="w-8 h-4 bg-bg-hover peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-text-muted peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-500"></div>
+                                                                                </label>
+                                                                            </td>
+                                                                            <td className="py-3 px-4 text-center">
+                                                                                <div className="flex items-center justify-center gap-1">
+                                                                                    <button 
+                                                                                        onClick={() => handleEditSchedule(job)}
+                                                                                        className="p-1.5 text-text-muted hover:text-purple-400 hover:bg-purple-400/10 rounded transition-colors cursor-pointer" 
+                                                                                        title="Edit Job"
+                                                                                    >
+                                                                                        <Edit className="w-4 h-4" />
+                                                                                    </button>
+                                                                                    <button 
+                                                                                        onClick={() => setViewingResultsJob({id: job.id, name: job.name})}
+                                                                                        className="p-1.5 text-text-muted hover:text-blue-400 hover:bg-blue-400/10 rounded transition-colors cursor-pointer" 
+                                                                                        title="View Execution History"
+                                                                                    >
+                                                                                        <Eye className="w-4 h-4" />
+                                                                                    </button>
+                                                                                    <button 
+                                                                                        onClick={() => runScheduleNow(job.id)} 
+                                                                                        className="p-1.5 text-text-muted hover:text-emerald-400 hover:bg-emerald-400/10 rounded transition-colors cursor-pointer" 
+                                                                                        title="Run Now"
+                                                                                    >
+                                                                                        <Play className="w-4 h-4" />
+                                                                                    </button>
+                                                                                    <button 
+                                                                                        onClick={() => handleDeleteJob(job)}
+                                                                                        className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded transition-colors cursor-pointer" 
+                                                                                        title="Delete Job"
+                                                                                    >
+                                                                                        <Trash2 className="w-4 h-4" />
+                                                                                    </button>
+                                                                                </div>
+                                                                            </td>
                                                                         </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    </td>
-                                                </tr>
+                                                                        {isExpanded && (
+                                                                            <tr className="bg-bg-subtle/30 border-b border-border-item">
+                                                                                <td colSpan={6} className="p-0">
+                                                                                    <div className="px-12 py-3 border-l-2 border-purple-500/30">
+                                                                                        <table className="w-full text-[10px]">
+                                                                                            <thead>
+                                                                                                <tr className="text-text-muted border-b border-border-item">
+                                                                                                    <th className="pb-1.5 font-bold text-left">Source Table</th>
+                                                                                                    <th className="pb-1.5 font-bold text-left">Target Table</th>
+                                                                                                    <th className="pb-1.5 font-bold text-left">Primary Keys</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody className="divide-y divide-border-item/50">
+                                                                                                {jobMappings.map((m: any, idx: number) => (
+                                                                                                    <tr key={idx}>
+                                                                                                        <td className="py-1.5 font-mono">{m.sourceTable || '-'}</td>
+                                                                                                        <td className="py-1.5 font-mono">{m.targetTable || '-'}</td>
+                                                                                                        <td className="py-1.5 text-text-muted italic">{Array.isArray(m.primaryKeys) ? m.primaryKeys.join(', ') : (m.primaryKeys || 'auto')}</td>
+                                                                                                    </tr>
+                                                                                                ))}
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        )}
+                                                                    </React.Fragment>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
                                             )}
-                                        </React.Fragment>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>

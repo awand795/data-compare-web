@@ -8,7 +8,7 @@ import {
   Search, Eraser, Code2, 
   ListRestart, Bug, SquareTerminal, CopyPlus, FileCode,
   LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal,
-  Folder, FolderPlus, FolderTree, Shield, AlertTriangle
+  Folder, FolderOpen, FolderPlus, FolderTree, Shield, AlertTriangle, ChevronRight
 } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -111,6 +111,7 @@ export const ApiBuilderView: React.FC = () => {
   const [quickGroupTarget, setQuickGroupTarget] = useState<ApiEndpoint | null>(null);
   const [quickGroupValue, setQuickGroupValue] = useState('');
   const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   
   // Testing States
   const [testResult, setTestResult] = useState<any>(null);
@@ -235,7 +236,7 @@ export const ApiBuilderView: React.FC = () => {
     return errors;
   };
 
-  const handleCreateNew = () => {
+  const handleCreateNew = (presetGroup?: string) => {
     const newApi: ApiEndpoint = {
       name: '',
       method: 'GET',
@@ -247,7 +248,7 @@ export const ApiBuilderView: React.FC = () => {
       isPublic: false,
       allowRawSql: false,
       ipAllowlist: '',
-      groupName: selectedGroup !== 'ALL' ? selectedGroup : 'General',
+      groupName: presetGroup || (selectedGroup !== 'ALL' ? selectedGroup : 'General'),
       authToken: generateToken()
     };
     setCurrentApi(newApi);
@@ -653,6 +654,43 @@ export const ApiBuilderView: React.FC = () => {
     });
   }, [endpoints, searchQuery, methodFilter, securityFilter, selectedGroup]);
 
+  // Grouped Endpoints for Folder Accordion View
+  const displayedGroups = useMemo(() => {
+    const groupsToConsider = selectedGroup === 'ALL' ? allGroups : [selectedGroup];
+    return groupsToConsider.map(grp => {
+      const items = filteredEndpoints.filter(e => (e.groupName || 'General') === grp);
+      return {
+        groupName: grp,
+        items,
+        count: items.length,
+        totalInGroup: endpoints.filter(e => (e.groupName || 'General') === grp).length
+      };
+    }).filter(g => {
+      if (searchQuery.trim()) {
+        return g.items.length > 0;
+      }
+      if (selectedGroup !== 'ALL') return true;
+      return g.items.length > 0 || g.groupName === 'General';
+    });
+  }, [allGroups, filteredEndpoints, selectedGroup, searchQuery, endpoints]);
+
+  const toggleGroupCollapse = (grp: string) => {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [grp]: !prev[grp]
+    }));
+  };
+
+  const expandAllGroups = () => {
+    setCollapsedGroups({});
+  };
+
+  const collapseAllGroups = () => {
+    const all: Record<string, boolean> = {};
+    allGroups.forEach(g => { all[g] = true; });
+    setCollapsedGroups(all);
+  };
+
   // Method Counts
   const methodStats = useMemo(() => {
     const stats: Record<string, number> = { GET: 0, POST: 0, PUT: 0, PATCH: 0, DELETE: 0, PUBLIC: 0, PROTECTED: 0 };
@@ -705,7 +743,7 @@ export const ApiBuilderView: React.FC = () => {
             </button>
 
             <button 
-              onClick={handleCreateNew}
+              onClick={() => handleCreateNew()}
               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl flex items-center gap-2.5 font-bold transition-all shadow-xl shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98]"
               aria-label="Create new API endpoint"
             >
@@ -860,6 +898,26 @@ export const ApiBuilderView: React.FC = () => {
               <option value="IP_RESTRICTED">IP Restricted Only</option>
             </select>
 
+            {/* Expand / Collapse All Folders */}
+            <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-xl border border-border-main">
+              <button
+                type="button"
+                onClick={expandAllGroups}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                title="Expand all group folders"
+              >
+                Expand All
+              </button>
+              <button
+                type="button"
+                onClick={collapseAllGroups}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                title="Collapse all group folders"
+              >
+                Collapse All
+              </button>
+            </div>
+
             {/* View Mode Toggle */}
             <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-xl border border-border-main">
               <button 
@@ -880,7 +938,7 @@ export const ApiBuilderView: React.FC = () => {
           </div>
         </div>
 
-        {/* CONTENT DISPLAY AREA */}
+        {/* CONTENT DISPLAY AREA (FOLDER ACCORDION) */}
         {isLoadingList ? (
           <div className="p-20 text-center text-text-muted bg-bg-panel border border-border-main rounded-2xl shadow-xl flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center justify-center gap-4">
@@ -913,7 +971,7 @@ export const ApiBuilderView: React.FC = () => {
                 </button>
               ) : (
                 <button 
-                  onClick={handleCreateNew}
+                  onClick={() => handleCreateNew()}
                   className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 transition-all hover:scale-105"
                 >
                   <Plus className="w-4 h-4 inline mr-1.5" /> Create First API
@@ -921,232 +979,313 @@ export const ApiBuilderView: React.FC = () => {
               )}
             </div>
           </div>
-        ) : displayMode === 'grid' ? (
-          /* GRID VIEW */
-          <div className="flex-1 overflow-y-auto min-h-0 pr-1">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pb-4">
-              {filteredEndpoints.map(api => (
-                <div 
-                  key={api.id}
-                  className="bg-bg-panel border border-border-main hover:border-blue-500/40 rounded-2xl p-5 shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between group relative overflow-hidden"
-                >
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  
-                  <div>
-                    {/* Card Top Header */}
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={clsx("px-2.5 py-1 rounded-lg text-[10px] font-black tracking-widest uppercase shadow-sm", getMethodBadgeClass(api.method))}>
-                          {api.method}
-                        </span>
-                        {api.enablePagination && (
-                          <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full font-mono border border-blue-500/20" title="Auto-pagination enabled">
-                            Paginated
-                          </span>
-                        )}
-                        <button
-                          onClick={() => handleOpenQuickGroup(api)}
-                          className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all cursor-pointer"
-                          title="Click to change group"
-                        >
-                          <Folder className="w-3 h-3" />
-                          <span>{api.groupName || 'General'}</span>
-                        </button>
-                      </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-4 pb-6">
+            {displayedGroups.map(group => {
+              const isGroupCollapsed = searchQuery.trim() ? false : Boolean(collapsedGroups[group.groupName]);
 
-                      <div className="flex items-center gap-1.5 flex-col items-end">
-                        {api.isPublic ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
-                            <ShieldCheck className="w-3.5 h-3.5" /> Public
-                          </span>
+              return (
+                <div 
+                  key={group.groupName} 
+                  className="border border-border-main rounded-2xl bg-bg-panel/60 overflow-hidden shadow-sm transition-all"
+                >
+                  {/* Folder Group Header */}
+                  <div
+                    onClick={() => toggleGroupCollapse(group.groupName)}
+                    className="flex items-center justify-between p-3.5 bg-bg-panel hover:bg-bg-hover/70 border-b border-border-main/60 cursor-pointer select-none transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={clsx(
+                        "w-7 h-7 rounded-lg flex items-center justify-center transition-all",
+                        isGroupCollapsed ? "bg-bg-editor text-text-muted" : "bg-indigo-500/10 text-indigo-400"
+                      )}>
+                        {isGroupCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isGroupCollapsed ? (
+                          <Folder className="w-4.5 h-4.5 text-indigo-400" />
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full">
-                            <ShieldAlert className="w-3.5 h-3.5" /> Protected
-                          </span>
+                          <FolderOpen className="w-4.5 h-4.5 text-indigo-400" />
                         )}
-                        {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' ? (
-                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded" title={`Allowed: ${api.ipAllowlist}`}>
-                            <Shield className="w-2.5 h-2.5" /> IP Locked
-                          </span>
-                        ) : null}
+                        <h4 className="text-sm font-extrabold text-text-main">
+                          {group.groupName}
+                        </h4>
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-bg-editor border border-border-main text-text-muted">
+                          {group.count} {group.count === 1 ? 'API' : 'APIs'}
+                        </span>
                       </div>
                     </div>
 
-                    {/* API Title & Route */}
-                    <h3 className="text-lg font-bold text-text-main group-hover:text-blue-400 transition-colors truncate">
-                      {api.name}
-                    </h3>
-                    <code className="text-xs font-mono text-text-muted mt-1 block truncate bg-bg-editor px-2.5 py-1 rounded-lg border border-border-main shadow-inner">
-                      /api/data{api.endpointPath}
-                    </code>
+                    <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={() => handleCreateNew(group.groupName)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 text-xs font-bold transition-all cursor-pointer"
+                        title={`Create new API in group "${group.groupName}"`}
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">+ Add to Group</span>
+                      </button>
+                    </div>
+                  </div>
 
-                    {/* Info Pills */}
-                    <div className="flex items-center gap-2 mt-3 flex-wrap">
-                      <span className="inline-flex items-center gap-1 text-[11px] text-text-muted bg-bg-editor px-2.5 py-1 rounded-lg border border-border-main">
-                        <Database className="w-3 h-3 text-blue-400" />
-                        <span className="truncate max-w-[130px]">{getConnectionName(api.connectionId)}</span>
-                      </span>
+                  {/* Folder Group Items */}
+                  {!isGroupCollapsed && (
+                    <div className="p-4 bg-bg-main/30 animate-in fade-in duration-150">
+                      {group.items.length === 0 ? (
+                        <div className="p-6 text-center text-text-muted border border-dashed border-border-main rounded-xl">
+                          <p className="text-xs">No APIs found in group "{group.groupName}".</p>
+                          <button
+                            onClick={() => handleCreateNew(group.groupName)}
+                            className="mt-2 text-xs font-bold text-indigo-400 hover:text-indigo-300"
+                          >
+                            + Add API to this group
+                          </button>
+                        </div>
+                      ) : displayMode === 'grid' ? (
+                        /* GRID CARDS */
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {group.items.map(api => (
+                            <div 
+                              key={api.id}
+                              className="bg-bg-panel border border-border-main hover:border-blue-500/40 rounded-2xl p-4 shadow-md hover:shadow-xl transition-all duration-200 flex flex-col justify-between group relative overflow-hidden"
+                            >
+                              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                              
+                              <div>
+                                {/* Card Top Header */}
+                                <div className="flex items-start justify-between gap-3 mb-2.5">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={clsx("px-2 py-0.5 rounded-lg text-[10px] font-black tracking-widest uppercase shadow-sm", getMethodBadgeClass(api.method))}>
+                                      {api.method}
+                                    </span>
+                                    {api.enablePagination && (
+                                      <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full font-mono border border-blue-500/20" title="Auto-pagination enabled">
+                                        Paginated
+                                      </span>
+                                    )}
+                                    <button
+                                      onClick={() => handleOpenQuickGroup(api)}
+                                      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all cursor-pointer"
+                                      title="Click to change group"
+                                    >
+                                      <Folder className="w-3 h-3" />
+                                      <span>{api.groupName || 'General'}</span>
+                                    </button>
+                                  </div>
 
-                      {api.parameters && JSON.parse(api.parameters || '[]').length > 0 && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20 font-mono">
-                          {JSON.parse(api.parameters || '[]').length} params
-                        </span>
+                                  <div className="flex items-center gap-1.5 flex-col items-end">
+                                    {api.isPublic ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                        <ShieldCheck className="w-3 h-3" /> Public
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                                        <ShieldAlert className="w-3 h-3" /> Protected
+                                      </span>
+                                    )}
+                                    {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' ? (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded" title={`Allowed: ${api.ipAllowlist}`}>
+                                        <Shield className="w-2.5 h-2.5" /> IP Locked
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+
+                                {/* API Title & Route */}
+                                <h3 className="text-base font-bold text-text-main group-hover:text-blue-400 transition-colors truncate">
+                                  {api.name}
+                                </h3>
+                                <code className="text-xs font-mono text-text-muted mt-1 block truncate bg-bg-editor px-2.5 py-1 rounded-lg border border-border-main shadow-inner">
+                                  /api/data{api.endpointPath}
+                                </code>
+
+                                {/* Info Pills */}
+                                <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                                  <span className="inline-flex items-center gap-1 text-[11px] text-text-muted bg-bg-editor px-2 py-0.5 rounded-lg border border-border-main">
+                                    <Database className="w-3 h-3 text-blue-400" />
+                                    <span className="truncate max-w-[120px]">{getConnectionName(api.connectionId)}</span>
+                                  </span>
+
+                                  {api.parameters && JSON.parse(api.parameters || '[]').length > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-[11px] text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20 font-mono">
+                                      {JSON.parse(api.parameters || '[]').length} params
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Card Bottom Controls */}
+                              <div className="mt-4 pt-3 border-t border-border-main flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleEdit(api)}
+                                    className="px-2.5 py-1 bg-emerald-600/10 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer border border-emerald-500/20"
+                                    title="Interactive API Console & Editor"
+                                  >
+                                    <Play className="w-3 h-3" /> Test
+                                  </button>
+                                  <button
+                                    onClick={() => handleViewSpec(api)}
+                                    className="px-2.5 py-1 bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer border border-border-main"
+                                    title="View API Spec, cURL & SDK code"
+                                  >
+                                    <FileJson className="w-3 h-3" /> Spec
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenQuickIp(api)}
+                                    className={clsx(
+                                      "px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer border",
+                                      api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
+                                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                                        : "bg-bg-editor text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
+                                    )}
+                                    title="Quick Manage IP Allowlist"
+                                  >
+                                    <Shield className="w-3 h-3" /> IP
+                                  </button>
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleClone(api)}
+                                    className="p-1.5 text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all cursor-pointer"
+                                    title="Clone / Duplicate API"
+                                  >
+                                    <CopyPlus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleEdit(api)}
+                                    className="p-1.5 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all cursor-pointer"
+                                    title="Edit Endpoint"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteClick(api)}
+                                    className="p-1.5 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all cursor-pointer"
+                                    title="Delete Endpoint"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        /* TABLE VIEW */
+                        <div className="border border-border-main rounded-xl overflow-hidden shadow-inner bg-bg-panel">
+                          <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
+                            <thead className="bg-bg-editor text-text-muted font-bold border-b border-border-main text-xs">
+                              <tr>
+                                <th className="p-3 uppercase tracking-wider text-[11px]">Name &amp; Group</th>
+                                <th className="p-3 uppercase tracking-wider text-[11px]">Method &amp; Path</th>
+                                <th className="p-3 uppercase tracking-wider text-[11px]">Database Connection</th>
+                                <th className="p-3 uppercase tracking-wider text-[11px]">Security &amp; IP</th>
+                                <th className="p-3 text-right uppercase tracking-wider text-[11px]">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border-main/50">
+                              {group.items.map(api => (
+                                <tr key={api.id} className="hover:bg-bg-hover/40 transition-colors group">
+                                  <td className="p-3">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-text-main group-hover:text-blue-400 transition-colors">{api.name}</span>
+                                      {api.enablePagination && (
+                                        <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded font-mono border border-blue-500/20">Pg</span>
+                                      )}
+                                      <button
+                                        onClick={() => handleOpenQuickGroup(api)}
+                                        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all cursor-pointer ml-1"
+                                        title="Click to change group"
+                                      >
+                                        <Folder className="w-3 h-3" />
+                                        <span>{api.groupName || 'General'}</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="flex items-center gap-2 font-mono text-xs">
+                                      <span className={clsx("px-2 py-0.5 rounded text-[10px] font-bold", getMethodBadgeClass(api.method))}>
+                                        {api.method}
+                                      </span>
+                                      <span className="text-text-muted">/api/data{api.endpointPath}</span>
+                                    </div>
+                                  </td>
+                                  <td className="p-3 text-xs font-medium text-text-muted">
+                                    <div className="flex items-center gap-1.5">
+                                      <Database className="w-3.5 h-3.5 text-blue-400" />
+                                      <span>{getConnectionName(api.connectionId)}</span>
+                                    </div>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="flex items-center gap-2">
+                                      {api.isPublic ? (
+                                        <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                          Public
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                                          Protected
+                                        </span>
+                                      )}
+                                      <button
+                                        onClick={() => handleOpenQuickIp(api)}
+                                        className={clsx(
+                                          "p-1.5 rounded-lg transition-all relative cursor-pointer",
+                                          api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
+                                            ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30"
+                                            : "text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10"
+                                        )}
+                                        title={
+                                          api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
+                                            ? `IP Allowlist: ${api.ipAllowlist}`
+                                            : "Configure IP Allowlist (Open to all IPs)"
+                                        }
+                                      >
+                                        <Shield className="w-3.5 h-3.5" />
+                                        {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' && (
+                                          <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                        )}
+                                      </button>
+                                      <button onClick={() => handleClone(api)} className="p-1.5 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer" title="Clone API">
+                                        <CopyPlus className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button onClick={() => handleEdit(api)} className="p-1.5 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer" title="Edit API">
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button onClick={() => handleDeleteClick(api)} className="p-1.5 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer" title="Delete API">
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <button
+                                        onClick={() => handleEdit(api)}
+                                        className="px-2.5 py-1 bg-emerald-600/10 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                                      >
+                                        <Play className="w-3 h-3" /> Test
+                                      </button>
+                                      <button
+                                        onClick={() => handleViewSpec(api)}
+                                        className="px-2.5 py-1 bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-border-main"
+                                      >
+                                        <FileJson className="w-3 h-3" /> Spec
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       )}
                     </div>
-                  </div>
-
-                  {/* Card Bottom Controls */}
-                  <div className="mt-5 pt-3.5 border-t border-border-main flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => handleEdit(api)}
-                        className="px-3 py-1.5 bg-emerald-600/10 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-emerald-500/20"
-                        title="Interactive API Console & Editor"
-                      >
-                        <Play className="w-3.5 h-3.5" /> Test API
-                      </button>
-                      <button
-                        onClick={() => handleViewSpec(api)}
-                        className="px-2.5 py-1.5 bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-text-main rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border border-border-main"
-                        title="View API Spec, cURL & SDK code"
-                      >
-                        <FileJson className="w-3.5 h-3.5" /> Spec
-                      </button>
-                      <button
-                        onClick={() => handleOpenQuickIp(api)}
-                        className={clsx(
-                          "px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border",
-                          api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
-                            : "bg-bg-editor text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
-                        )}
-                        title="Quick Manage IP Allowlist"
-                      >
-                        <Shield className="w-3.5 h-3.5" /> IP Rules
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleClone(api)}
-                        className="p-2 text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all cursor-pointer"
-                        title="Clone / Duplicate API"
-                      >
-                        <CopyPlus className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleEdit(api)}
-                        className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all cursor-pointer"
-                        title="Edit Endpoint"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClick(api)}
-                        className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all cursor-pointer"
-                        title="Delete Endpoint"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          /* TABLE VIEW */
-          <div className="bg-bg-panel border border-border-main rounded-2xl shadow-xl overflow-hidden flex-1 min-h-0 flex flex-col">
-            <div className="overflow-auto w-full flex-1 min-h-0">
-              <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
-                <thead className="bg-bg-editor text-text-muted font-bold border-b border-border-main sticky top-0 z-10 shadow-sm">
-                  <tr>
-                    <th className="p-4 uppercase tracking-wider text-xs">Name &amp; Group</th>
-                    <th className="p-4 uppercase tracking-wider text-xs">Method &amp; Path</th>
-                    <th className="p-4 uppercase tracking-wider text-xs">Database Connection</th>
-                    <th className="p-4 uppercase tracking-wider text-xs">Security &amp; IP</th>
-                    <th className="p-4 text-right uppercase tracking-wider text-xs">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredEndpoints.map(api => (
-                    <tr key={api.id} className="border-b border-border-main hover:bg-bg-hover/40 transition-colors group">
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-text-main group-hover:text-blue-400 transition-colors">{api.name}</span>
-                          {api.enablePagination && (
-                            <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded font-mono border border-blue-500/20">Pg</span>
-                          )}
-                          <button
-                            onClick={() => handleOpenQuickGroup(api)}
-                            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all cursor-pointer ml-1"
-                            title="Click to change group"
-                          >
-                            <Folder className="w-3 h-3" />
-                            <span>{api.groupName || 'General'}</span>
-                          </button>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2 font-mono text-xs">
-                          <span className={clsx("px-2 py-0.5 rounded text-[10px] font-bold", getMethodBadgeClass(api.method))}>
-                            {api.method}
-                          </span>
-                          <span className="text-text-muted">/api/data{api.endpointPath}</span>
-                        </div>
-                      </td>
-                      <td className="p-4 text-xs font-medium text-text-muted">
-                        <div className="flex items-center gap-1.5">
-                          <Database className="w-3.5 h-3.5 text-blue-400" />
-                          <span>{getConnectionName(api.connectionId)}</span>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          {api.isPublic ? (
-                            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                              Public
-                            </span>
-                          ) : (
-                            <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
-                              Protected
-                            </span>
-                          )}
-                          <button
-                            onClick={() => handleOpenQuickIp(api)}
-                            className={clsx(
-                              "p-2 rounded-lg transition-all relative cursor-pointer",
-                              api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
-                                ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30"
-                                : "text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10"
-                            )}
-                            title={
-                              api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
-                                ? `IP Allowlist: ${api.ipAllowlist}`
-                                : "Configure IP Allowlist (Open to all IPs)"
-                            }
-                          >
-                            <Shield className="w-4 h-4" />
-                            {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' && (
-                              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                            )}
-                          </button>
-                          <button onClick={() => handleClone(api)} className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer" title="Clone API">
-                            <CopyPlus className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleEdit(api)} className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer" title="Edit API">
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDeleteClick(api)} className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer" title="Delete API">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              );
+            })}
           </div>
         )}
 
