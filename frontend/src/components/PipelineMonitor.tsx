@@ -1540,7 +1540,7 @@ export const PipelineMonitor: React.FC = () => {
                     onClick={() => setWalFormCronTriggers(prev => [...prev, '0 0 23 * * *'])}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border border-amber-500/30 text-[11px] font-bold transition-colors"
                   >
-                    <Plus className="w-3.5 h-3.5" /> + Tambah Cron
+                    <Plus className="w-3.5 h-3.5" /> Tambah Cron
                   </button>
                 </div>
 

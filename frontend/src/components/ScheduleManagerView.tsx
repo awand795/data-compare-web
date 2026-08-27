@@ -4,7 +4,7 @@ import axios from 'axios';
 import { 
   Play, Plus, Clock, RefreshCw, XCircle, MessageCircle, Trash2, Eye, Edit, Save, 
   Search, Eraser, Folder, FolderOpen, FolderPlus, FolderTree, X, Loader2, AlertTriangle, Check, Pencil,
-  ChevronDown, ChevronRight
+  ChevronDown, ChevronRight, CheckSquare, Square
 } from 'lucide-react';
 import { useAppStore, type ScheduleConfig, type Template } from '../store/useAppStore';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
@@ -33,6 +33,11 @@ export const ScheduleManagerView: React.FC = () => {
     const [quickGroupValue, setQuickGroupValue] = useState('');
     const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+    const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
+    const [assignGroupTarget, setAssignGroupTarget] = useState<string | null>(null);
+    const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
+    const [assignSearchQuery, setAssignSearchQuery] = useState('');
+    const [isSavingAssignGroup, setIsSavingAssignGroup] = useState(false);
 
     // Form state
     const [jobPrefix, setJobPrefix] = useState('');
@@ -129,6 +134,59 @@ export const ScheduleManagerView: React.FC = () => {
         const all: Record<string, boolean> = {};
         allGroups.forEach(g => { all[g] = true; });
         setCollapsedGroups(all);
+    };
+
+    // Candidate compare jobs to be added to target group (excludes jobs already in that group)
+    const assignCandidateJobs = useMemo(() => {
+        if (!assignGroupTarget) return [];
+        return schedules.filter(s => {
+            const currentGrp = s.groupName?.trim() || 'General';
+            if (currentGrp === assignGroupTarget) return false;
+            if (assignSearchQuery.trim()) {
+                const q = assignSearchQuery.toLowerCase().trim();
+                return (s.name || '').toLowerCase().includes(q) ||
+                       (s.sourceTable || '').toLowerCase().includes(q) ||
+                       (s.targetTable || '').toLowerCase().includes(q) ||
+                       currentGrp.toLowerCase().includes(q);
+            }
+            return true;
+        });
+    }, [schedules, assignGroupTarget, assignSearchQuery]);
+
+    const handleOpenAssignGroup = (groupName: string) => {
+        setAssignGroupTarget(groupName);
+        setAssignSelectedIds([]);
+        setAssignSearchQuery('');
+        setIsAssignGroupModalOpen(true);
+    };
+
+    const handleSaveAssignGroup = async () => {
+        if (!assignGroupTarget || assignSelectedIds.length === 0) return;
+        setIsSavingAssignGroup(true);
+        try {
+            await Promise.all(
+                assignSelectedIds.map(id => 
+                    axios.patch(`/api/schedules/${id}/group`, { groupName: assignGroupTarget })
+                )
+            );
+            addToast({
+                type: 'success',
+                title: 'Jobs Added to Group',
+                message: `Successfully moved ${assignSelectedIds.length} ${assignSelectedIds.length === 1 ? 'job' : 'jobs'} to group "${assignGroupTarget}".`
+            });
+            setIsAssignGroupModalOpen(false);
+            setAssignGroupTarget(null);
+            setAssignSelectedIds([]);
+            loadSchedules();
+        } catch (err: any) {
+            addToast({
+                type: 'error',
+                title: 'Failed to Move Jobs',
+                message: err.response?.data?.error || err.message
+            });
+        } finally {
+            setIsSavingAssignGroup(false);
+        }
     };
 
     const handleOpenQuickGroup = (job: ScheduleConfig) => {
@@ -483,7 +541,7 @@ export const ScheduleManagerView: React.FC = () => {
                         title="Manage / Create Groups"
                     >
                         <FolderPlus className="w-3.5 h-3.5" />
-                        <span>+ Add Group</span>
+                        <span>Add Group</span>
                     </button>
                 </div>
             </div>
@@ -495,7 +553,7 @@ export const ScheduleManagerView: React.FC = () => {
                         <Clock className="w-16 h-16 opacity-20" />
                         <p>No scheduled jobs configured</p>
                         <button onClick={() => openNewForm()} className="text-sm font-semibold text-purple-400 hover:text-purple-300">
-                            + Create your first job
+                            Create your first job
                         </button>
                     </div>
                 ) : filteredSchedules.length === 0 ? (
@@ -553,12 +611,21 @@ export const ScheduleManagerView: React.FC = () => {
 
                                         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                                             <button
+                                                onClick={() => handleOpenAssignGroup(group.groupName)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 text-xs font-bold transition-all cursor-pointer"
+                                                title={`Add existing jobs from other groups to "${group.groupName}"`}
+                                            >
+                                                <FolderPlus className="w-3.5 h-3.5" />
+                                                <span className="hidden sm:inline">Add Jobs</span>
+                                            </button>
+
+                                            <button
                                                 onClick={() => openNewForm(group.groupName)}
                                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 text-xs font-bold transition-all cursor-pointer"
                                                 title={`Create new compare job in group "${group.groupName}"`}
                                             >
                                                 <Plus className="w-3.5 h-3.5" />
-                                                <span className="hidden sm:inline">+ Add to Group</span>
+                                                <span className="hidden sm:inline">New Job</span>
                                             </button>
                                         </div>
                                     </div>
@@ -569,12 +636,22 @@ export const ScheduleManagerView: React.FC = () => {
                                             {group.items.length === 0 ? (
                                                 <div className="p-6 text-center text-text-muted border border-dashed border-border-main rounded-xl">
                                                     <p className="text-xs">No jobs found in group "{group.groupName}".</p>
-                                                    <button
-                                                        onClick={() => openNewForm(group.groupName)}
-                                                        className="mt-2 text-xs font-bold text-purple-400 hover:text-purple-300"
-                                                    >
-                                                        + Add job to this group
-                                                    </button>
+                                                    <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
+                                                        <button
+                                                            onClick={() => handleOpenAssignGroup(group.groupName)}
+                                                            className="px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                                                        >
+                                                            <FolderPlus className="w-3.5 h-3.5" />
+                                                            <span>Add Existing Jobs</span>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => openNewForm(group.groupName)}
+                                                            className="px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                                                        >
+                                                            <Plus className="w-3.5 h-3.5" />
+                                                            <span>Create New Job</span>
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <div className="bg-bg-panel border border-border-main rounded-xl overflow-x-auto shadow-sm">
@@ -896,9 +973,9 @@ export const ScheduleManagerView: React.FC = () => {
                                         type="button"
                                         disabled={!newGroupInputName.trim()}
                                         onClick={() => handleCreateGroup(newGroupInputName.trim())}
-                                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shrink-0"
+                                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer"
                                     >
-                                        + Add
+                                        Add
                                     </button>
                                 </div>
                             </div>
@@ -1008,6 +1085,18 @@ export const ScheduleManagerView: React.FC = () => {
                                                 </div>
 
                                                 <div className="flex items-center gap-1 shrink-0 ml-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setIsManageGroupsModalOpen(false);
+                                                            handleOpenAssignGroup(grp);
+                                                        }}
+                                                        className="p-1.5 rounded-lg text-text-muted hover:text-purple-400 hover:bg-purple-500/10 transition-colors cursor-pointer"
+                                                        title={`Add existing jobs to group "${grp}"`}
+                                                    >
+                                                        <FolderPlus className="w-3.5 h-3.5" />
+                                                    </button>
                                                     <button
                                                         type="button"
                                                         onClick={(e) => {
@@ -1128,6 +1217,181 @@ export const ScheduleManagerView: React.FC = () => {
                             >
                                 {isSavingQuickGroup ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                                 <span>Save Group</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── ASSIGN EXISTING ITEMS TO GROUP MODAL ───────────────────────── */}
+            {isAssignGroupModalOpen && assignGroupTarget && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="bg-bg-panel border border-border-main rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden flex flex-col max-h-[85vh]">
+                        {/* Header */}
+                        <div className="p-5 border-b border-border-main flex items-center justify-between bg-bg-header shrink-0">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                                    <FolderPlus className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-text-main">
+                                        Add Jobs to Group: <span className="text-purple-400 font-black font-mono">"{assignGroupTarget}"</span>
+                                    </h3>
+                                    <p className="text-[11px] text-text-muted">Select existing compare jobs from other groups to move into this group</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setIsAssignGroupModalOpen(false)}
+                                className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors cursor-pointer"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {/* Search & Bulk Select Controls */}
+                        <div className="p-4 bg-bg-panel border-b border-border-main/60 space-y-3 shrink-0">
+                            <div className="relative">
+                                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                                <input
+                                    type="text"
+                                    className="w-full bg-bg-main border border-border-main focus:border-purple-500 focus:ring-1 focus:ring-purple-500 rounded-xl pl-9 pr-8 py-2 text-xs text-text-main placeholder:text-text-muted outline-none shadow-inner transition-colors"
+                                    placeholder="Search candidate jobs by name, tables, or current group..."
+                                    value={assignSearchQuery}
+                                    onChange={e => setAssignSearchQuery(e.target.value)}
+                                />
+                                {assignSearchQuery && (
+                                    <button
+                                        onClick={() => setAssignSearchQuery('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main cursor-pointer"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between text-xs">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (assignSelectedIds.length === assignCandidateJobs.length) {
+                                            setAssignSelectedIds([]);
+                                        } else {
+                                            setAssignSelectedIds(assignCandidateJobs.map(j => j.id).filter(Boolean));
+                                        }
+                                    }}
+                                    className="text-purple-400 hover:text-purple-300 font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                                >
+                                    {assignSelectedIds.length === assignCandidateJobs.length && assignCandidateJobs.length > 0 ? (
+                                        <>
+                                            <CheckSquare className="w-3.5 h-3.5" /> <span>Deselect All</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Square className="w-3.5 h-3.5" /> <span>Select All ({assignCandidateJobs.length})</span>
+                                        </>
+                                    )}
+                                </button>
+
+                                <span className="text-text-muted text-[11px] font-mono">
+                                    <b className="text-purple-400">{assignSelectedIds.length}</b> of {assignCandidateJobs.length} selected
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Candidate Items List */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0 bg-bg-main/30">
+                            {assignCandidateJobs.length === 0 ? (
+                                <div className="p-10 text-center text-text-muted border border-dashed border-border-main rounded-xl">
+                                    <Check className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-80" />
+                                    <p className="text-xs font-bold text-text-main">
+                                        {schedules.length === 0 
+                                            ? 'No compare jobs available.' 
+                                            : assignSearchQuery 
+                                                ? 'No candidate jobs match your search.' 
+                                                : `All existing jobs are already inside group "${assignGroupTarget}".`}
+                                    </p>
+                                    <p className="text-[11px] text-text-muted mt-1">
+                                        Data already in this group is automatically excluded.
+                                    </p>
+                                </div>
+                            ) : (
+                                assignCandidateJobs.map(job => {
+                                    const isSelected = assignSelectedIds.includes(job.id);
+                                    let jobMappings: any[] = [];
+                                    try {
+                                        jobMappings = typeof job.mappings === 'string' ? JSON.parse(job.mappings) : (job.mappings || []);
+                                    } catch (e) {}
+
+                                    return (
+                                        <div
+                                            key={job.id}
+                                            onClick={() => {
+                                                setAssignSelectedIds(prev => 
+                                                    isSelected ? prev.filter(x => x !== job.id) : [...prev, job.id]
+                                                );
+                                            }}
+                                            className={clsx(
+                                                "p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none",
+                                                isSelected
+                                                    ? "bg-purple-500/10 border-purple-500/50 shadow-sm"
+                                                    : "bg-bg-panel hover:bg-bg-hover border-border-main"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => {}}
+                                                    className="w-4 h-4 text-purple-600 rounded border-border-main focus:ring-purple-500 pointer-events-none shrink-0"
+                                                />
+                                                <div className="min-w-0">
+                                                    <span className="font-bold text-xs text-text-main truncate block">{job.name}</span>
+                                                    <div className="flex items-center gap-2 text-[11px] text-text-muted mt-0.5">
+                                                        <span className="font-mono text-blue-400">{job.cronExpression}</span>
+                                                        <span>•</span>
+                                                        <span>{jobMappings.length || 1} tables</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="shrink-0 flex items-center gap-1.5">
+                                                <span className="text-[10px] text-text-muted px-2 py-0.5 rounded-md bg-bg-main border border-border-main font-mono">
+                                                    from: <b className="text-text-main font-semibold">{job.groupName || 'General'}</b>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-border-main bg-bg-header flex items-center justify-between gap-3 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsAssignGroupModalOpen(false)}
+                                className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                disabled={isSavingAssignGroup || assignSelectedIds.length === 0}
+                                onClick={handleSaveAssignGroup}
+                                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-purple-600/20 flex items-center gap-2 cursor-pointer"
+                            >
+                                {isSavingAssignGroup ? (
+                                    <>
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        <span>Moving Jobs...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <FolderPlus className="w-3.5 h-3.5" />
+                                        <span>Add {assignSelectedIds.length} Jobs to "{assignGroupTarget}"</span>
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>

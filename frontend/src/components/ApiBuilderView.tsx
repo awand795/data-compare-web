@@ -8,7 +8,8 @@ import {
   Search, Eraser, Code2, 
   ListRestart, Bug, SquareTerminal, CopyPlus, FileCode,
   LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal,
-  Folder, FolderOpen, FolderPlus, FolderTree, Shield, AlertTriangle, ChevronRight
+  Folder, FolderOpen, FolderPlus, FolderTree, Shield, AlertTriangle, ChevronRight,
+  CheckSquare, Square
 } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -112,6 +113,11 @@ export const ApiBuilderView: React.FC = () => {
   const [quickGroupValue, setQuickGroupValue] = useState('');
   const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
+  const [assignGroupTarget, setAssignGroupTarget] = useState<string | null>(null);
+  const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
+  const [assignSearchQuery, setAssignSearchQuery] = useState('');
+  const [isSavingAssignGroup, setIsSavingAssignGroup] = useState(false);
   
   // Testing States
   const [testResult, setTestResult] = useState<any>(null);
@@ -301,6 +307,40 @@ export const ApiBuilderView: React.FC = () => {
       addToast({ type: 'error', title: 'Update Failed', message: err.response?.data?.error || err.message });
     } finally {
       setIsSavingQuickGroup(false);
+    }
+  };
+
+  const handleOpenAssignGroup = (groupName: string) => {
+    setAssignGroupTarget(groupName);
+    setAssignSelectedIds([]);
+    setAssignSearchQuery('');
+    setIsAssignGroupModalOpen(true);
+  };
+
+  const handleSaveAssignGroup = async () => {
+    if (!assignGroupTarget || assignSelectedIds.length === 0) return;
+    setIsSavingAssignGroup(true);
+    try {
+      await Promise.all(
+        assignSelectedIds.map(id => axios.patch(`/api/api-builder/${id}/group`, { groupName: assignGroupTarget }))
+      );
+      addToast({
+        type: 'success',
+        title: 'APIs Added to Group',
+        message: `Successfully moved ${assignSelectedIds.length} ${assignSelectedIds.length === 1 ? 'API' : 'APIs'} to group "${assignGroupTarget}".`
+      });
+      setIsAssignGroupModalOpen(false);
+      setAssignGroupTarget(null);
+      setAssignSelectedIds([]);
+      fetchEndpoints();
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Failed to Move APIs',
+        message: err.response?.data?.error || err.message
+      });
+    } finally {
+      setIsSavingAssignGroup(false);
     }
   };
 
@@ -691,6 +731,22 @@ export const ApiBuilderView: React.FC = () => {
     setCollapsedGroups(all);
   };
 
+  // Candidate endpoints to be added to target group (excludes endpoints already in that group)
+  const assignCandidateEndpoints = useMemo(() => {
+    if (!assignGroupTarget) return [];
+    return endpoints.filter(e => {
+      const currentGrp = e.groupName || 'General';
+      if (currentGrp === assignGroupTarget) return false;
+      if (assignSearchQuery.trim()) {
+        const q = assignSearchQuery.toLowerCase().trim();
+        return e.name.toLowerCase().includes(q) || 
+               e.endpointPath.toLowerCase().includes(q) || 
+               currentGrp.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [endpoints, assignGroupTarget, assignSearchQuery]);
+
   // Method Counts
   const methodStats = useMemo(() => {
     const stats: Record<string, number> = { GET: 0, POST: 0, PUT: 0, PATCH: 0, DELETE: 0, PUBLIC: 0, PROTECTED: 0 };
@@ -840,7 +896,7 @@ export const ApiBuilderView: React.FC = () => {
             title="Manage / Create Groups"
           >
             <FolderPlus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">+ Add Group</span>
+            <span className="hidden sm:inline">Add Group</span>
           </button>
         </div>
 
@@ -1018,12 +1074,21 @@ export const ApiBuilderView: React.FC = () => {
 
                     <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                       <button
+                        onClick={() => handleOpenAssignGroup(group.groupName)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 text-xs font-bold transition-all cursor-pointer"
+                        title={`Add existing APIs from other groups to "${group.groupName}"`}
+                      >
+                        <FolderPlus className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Add APIs</span>
+                      </button>
+
+                      <button
                         onClick={() => handleCreateNew(group.groupName)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 text-xs font-bold transition-all cursor-pointer"
-                        title={`Create new API in group "${group.groupName}"`}
+                        title={`Create new API endpoint in group "${group.groupName}"`}
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">+ Add to Group</span>
+                        <span className="hidden sm:inline">New API</span>
                       </button>
                     </div>
                   </div>
@@ -1034,12 +1099,22 @@ export const ApiBuilderView: React.FC = () => {
                       {group.items.length === 0 ? (
                         <div className="p-6 text-center text-text-muted border border-dashed border-border-main rounded-xl">
                           <p className="text-xs">No APIs found in group "{group.groupName}".</p>
-                          <button
-                            onClick={() => handleCreateNew(group.groupName)}
-                            className="mt-2 text-xs font-bold text-indigo-400 hover:text-indigo-300"
-                          >
-                            + Add API to this group
-                          </button>
+                          <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
+                            <button
+                              onClick={() => handleOpenAssignGroup(group.groupName)}
+                              className="px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                            >
+                              <FolderPlus className="w-3.5 h-3.5" />
+                              <span>Add Existing APIs</span>
+                            </button>
+                            <button
+                              onClick={() => handleCreateNew(group.groupName)}
+                              className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Create New API</span>
+                            </button>
+                          </div>
                         </div>
                       ) : displayMode === 'grid' ? (
                         /* GRID CARDS */
@@ -1443,9 +1518,9 @@ export const ApiBuilderView: React.FC = () => {
                       type="button"
                       disabled={!newGroupInputName.trim()}
                       onClick={() => handleCreateGroup(newGroupInputName.trim())}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shrink-0"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer"
                     >
-                      + Add
+                      Add
                     </button>
                   </div>
                 </div>
@@ -1476,7 +1551,7 @@ export const ApiBuilderView: React.FC = () => {
                                 type="button"
                                 disabled={isProcessingGroupAction}
                                 onClick={() => setDeletingGroupName(null)}
-                                className="px-3 py-1 rounded-lg text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                                className="px-3 py-1 rounded-lg text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors cursor-pointer"
                               >
                                 Cancel
                               </button>
@@ -1484,7 +1559,7 @@ export const ApiBuilderView: React.FC = () => {
                                 type="button"
                                 disabled={isProcessingGroupAction}
                                 onClick={() => handleDeleteGroup(grp)}
-                                className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-rose-600/30"
+                                className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-rose-600/30 cursor-pointer"
                               >
                                 {isProcessingGroupAction ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                                 <span>Delete</span>
@@ -1512,7 +1587,7 @@ export const ApiBuilderView: React.FC = () => {
                               type="button"
                               disabled={isProcessingGroupAction || !editingGroupNewName.trim()}
                               onClick={() => handleRenameGroup(grp, editingGroupNewName)}
-                              className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 transition-colors"
+                              className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 transition-colors cursor-pointer"
                               title="Save Rename"
                             >
                               {isProcessingGroupAction ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
@@ -1521,7 +1596,7 @@ export const ApiBuilderView: React.FC = () => {
                               type="button"
                               disabled={isProcessingGroupAction}
                               onClick={() => setEditingGroupName(null)}
-                              className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                              className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors cursor-pointer"
                               title="Cancel"
                             >
                               <X className="w-3.5 h-3.5" />
@@ -1559,10 +1634,22 @@ export const ApiBuilderView: React.FC = () => {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
+                                setIsManageGroupsModalOpen(false);
+                                handleOpenAssignGroup(grp);
+                              }}
+                              className="p-1.5 rounded-lg text-text-muted hover:text-purple-400 hover:bg-purple-500/10 transition-colors cursor-pointer"
+                              title={`Add existing APIs to group "${grp}"`}
+                            >
+                              <FolderPlus className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setEditingGroupName(grp);
                                 setEditingGroupNewName(grp);
                               }}
-                              className="p-1.5 rounded-lg text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                              className="p-1.5 rounded-lg text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors cursor-pointer"
                               title={`Rename group "${grp}"`}
                             >
                               <Pencil className="w-3.5 h-3.5" />
@@ -1574,7 +1661,7 @@ export const ApiBuilderView: React.FC = () => {
                                   e.stopPropagation();
                                   setDeletingGroupName(grp);
                                 }}
-                                className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                                 title={`Delete group "${grp}"`}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1592,7 +1679,7 @@ export const ApiBuilderView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsManageGroupsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors cursor-pointer"
                 >
                   Close
                 </button>
@@ -1655,22 +1742,196 @@ export const ApiBuilderView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-4 border-t border-border-main flex items-center justify-end gap-2 bg-bg-editor/40">
+              <div className="p-4 border-t border-border-main bg-bg-editor/40 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsQuickGroupModalOpen(false)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={handleSaveQuickGroup}
                   disabled={isSavingQuickGroup}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-indigo-500/20 flex items-center gap-1.5"
+                  onClick={handleSaveQuickGroup}
+                  className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md shadow-indigo-600/25 flex items-center gap-1.5"
                 >
-                  {isSavingQuickGroup ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  <span>Save Group</span>
+                  {isSavingQuickGroup ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  <span>Save</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── ASSIGN EXISTING ITEMS TO GROUP MODAL ───────────────────────── */}
+        {isAssignGroupModalOpen && assignGroupTarget && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-bg-panel border border-border-main rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden flex flex-col max-h-[85vh]">
+              {/* Header */}
+              <div className="p-5 border-b border-border-main flex items-center justify-between bg-bg-editor/50 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                    <FolderPlus className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-text-main">
+                      Add APIs to Group: <span className="text-purple-400 font-black font-mono">"{assignGroupTarget}"</span>
+                    </h3>
+                    <p className="text-[11px] text-text-muted">Select existing APIs from other groups to move into this group</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsAssignGroupModalOpen(false)}
+                  className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Search & Bulk Select Controls */}
+              <div className="p-4 bg-bg-panel border-b border-border-main/60 space-y-3 shrink-0">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                  <input
+                    type="text"
+                    className="w-full bg-bg-editor border border-border-main focus:border-purple-500 focus:ring-1 focus:ring-purple-500 rounded-xl pl-9 pr-8 py-2 text-xs text-text-main placeholder:text-text-muted outline-none shadow-inner transition-colors"
+                    placeholder="Search candidate APIs by name, route, or current group..."
+                    value={assignSearchQuery}
+                    onChange={e => setAssignSearchQuery(e.target.value)}
+                  />
+                  {assignSearchQuery && (
+                    <button
+                      onClick={() => setAssignSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (assignSelectedIds.length === assignCandidateEndpoints.length) {
+                        setAssignSelectedIds([]);
+                      } else {
+                        setAssignSelectedIds(assignCandidateEndpoints.map(e => e.id!).filter(Boolean));
+                      }
+                    }}
+                    className="text-purple-400 hover:text-purple-300 font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    {assignSelectedIds.length === assignCandidateEndpoints.length && assignCandidateEndpoints.length > 0 ? (
+                      <>
+                        <CheckSquare className="w-3.5 h-3.5" /> <span>Deselect All</span>
+                      </>
+                    ) : (
+                      <>
+                        <Square className="w-3.5 h-3.5" /> <span>Select All ({assignCandidateEndpoints.length})</span>
+                      </>
+                    )}
+                  </button>
+
+                  <span className="text-text-muted text-[11px] font-mono">
+                    <b className="text-purple-400">{assignSelectedIds.length}</b> of {assignCandidateEndpoints.length} selected
+                  </span>
+                </div>
+              </div>
+
+              {/* Candidate Items List */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0 bg-bg-main/30">
+                {assignCandidateEndpoints.length === 0 ? (
+                  <div className="p-10 text-center text-text-muted border border-dashed border-border-main rounded-xl">
+                    <Check className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-80" />
+                    <p className="text-xs font-bold text-text-main">
+                      {endpoints.length === 0 
+                        ? 'No APIs available.' 
+                        : assignSearchQuery 
+                          ? 'No candidate APIs match your search.' 
+                          : `All existing APIs are already inside group "${assignGroupTarget}".`}
+                    </p>
+                    <p className="text-[11px] text-text-muted mt-1">
+                      Data already in this group is automatically excluded.
+                    </p>
+                  </div>
+                ) : (
+                  assignCandidateEndpoints.map(api => {
+                    const isSelected = api.id ? assignSelectedIds.includes(api.id) : false;
+                    return (
+                      <div
+                        key={api.id}
+                        onClick={() => {
+                          if (!api.id) return;
+                          setAssignSelectedIds(prev => 
+                            isSelected ? prev.filter(x => x !== api.id) : [...prev, api.id!]
+                          );
+                        }}
+                        className={clsx(
+                          "p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none",
+                          isSelected
+                            ? "bg-purple-500/10 border-purple-500/50 shadow-sm"
+                            : "bg-bg-panel hover:bg-bg-hover border-border-main"
+                        )}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}}
+                            className="w-4 h-4 text-purple-600 rounded border-border-main focus:ring-purple-500 pointer-events-none shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={clsx("px-2 py-0.5 rounded text-[9px] font-black uppercase", getMethodBadgeClass(api.method))}>
+                                {api.method}
+                              </span>
+                              <span className="font-bold text-xs text-text-main truncate">{api.name}</span>
+                            </div>
+                            <code className="text-[11px] font-mono text-text-muted truncate block mt-0.5">
+                              /api/data{api.endpointPath}
+                            </code>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          <span className="text-[10px] text-text-muted px-2 py-0.5 rounded-md bg-bg-editor border border-border-main font-mono">
+                            from: <b className="text-text-main font-semibold">{api.groupName || 'General'}</b>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-border-main bg-bg-editor/50 flex items-center justify-between gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsAssignGroupModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isSavingAssignGroup || assignSelectedIds.length === 0}
+                  onClick={handleSaveAssignGroup}
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-purple-600/20 flex items-center gap-2 cursor-pointer"
+                >
+                  {isSavingAssignGroup ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Moving APIs...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FolderPlus className="w-3.5 h-3.5" />
+                      <span>Add {assignSelectedIds.length} APIs to "{assignGroupTarget}"</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
