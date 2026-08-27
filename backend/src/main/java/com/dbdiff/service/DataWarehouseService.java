@@ -1513,15 +1513,6 @@ public class DataWarehouseService {
                 Thread.sleep(5000);
                 sendLog(emitter, "PostgreSQL CDC Pipeline deployment completed successfully.");
             } else {
-                String chDb = request.getTargetDatabase();
-                if (chDb == null || chDb.trim().isEmpty()) {
-                    chDb = request.getTargetConnection().getDatabase();
-                }
-                if (chDb == null || chDb.trim().isEmpty()) {
-                    chDb = "default";
-                }
-                chDb = chDb.trim();
-
                 sendLog(emitter, "Waiting for initial snapshot to complete and populate the target table...");
                 
                 // Poll landing table row counts until they stabilize (unchanged for 3 consecutive checks)
