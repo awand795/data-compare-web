@@ -651,6 +651,15 @@ public class DataWarehouseService {
                 ? request.getTargetDatabase().trim() 
                 : (request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "postgres");
 
+            String chDb = request.getTargetDatabase();
+            if (chDb == null || chDb.trim().isEmpty()) {
+                chDb = request.getTargetConnection().getDatabase();
+            }
+            if (chDb == null || chDb.trim().isEmpty()) {
+                chDb = "default";
+            }
+            chDb = chDb.trim();
+
             java.util.List<com.dbdiff.model.ConnectionDetails> allConns = (request.getSourceConnections() != null && !request.getSourceConnections().isEmpty()) ? request.getSourceConnections() : java.util.Collections.singletonList(request.getSourceConnection());
             java.util.Map<String, java.util.Set<String>> tableToPKs = new java.util.HashMap<>();
 
@@ -760,15 +769,6 @@ public class DataWarehouseService {
                     logger.warn("Could not save original query to metadata repository", e);
                 }
             } else {
-                String chDb = request.getTargetDatabase();
-                if (chDb == null || chDb.trim().isEmpty()) {
-                    chDb = request.getTargetConnection().getDatabase();
-                }
-                if (chDb == null || chDb.trim().isEmpty()) {
-                    chDb = "default";
-                }
-                chDb = chDb.trim();
-                
                 sendLog(emitter, "Ensuring target database `" + chDb + "` exists...");
                 try (Connection conn = targetDs.getConnection();
                      Statement stmt = conn.createStatement()) {
