@@ -74,6 +74,18 @@ public class ApiSchedulerController {
         }
     }
 
+    @PatchMapping("/{id}/group")
+    public ResponseEntity<?> updateGroupName(@PathVariable String id, @RequestBody Map<String, String> body) {
+        String groupName = body.get("groupName");
+        try {
+            repository.updateGroupName(id, groupName);
+            Optional<ApiSchedulerConfig> updated = repository.findById(id);
+            return ResponseEntity.ok(updated.orElse(null));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+        }
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteScheduler(@PathVariable String id) {
         try {

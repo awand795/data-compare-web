@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
 import { 
   Globe, Plus, Save, Play, Pencil, Trash2, Check, Copy, 
   Search, Clock, Database, Loader2, ArrowLeft,
   RefreshCw, FileText, Code2, ShieldCheck,
-  Zap, CheckCircle2, AlertCircle, Bell, MessageCircle, Send, Settings, X
+  Zap, CheckCircle2, AlertCircle, Bell, MessageCircle, Send, Settings, X,
+  Folder, FolderPlus, FolderTree, Layers
 } from 'lucide-react';
 import clsx from 'clsx';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
@@ -15,6 +16,7 @@ interface ApiSchedulerConfig {
   name: string;
   method: string;
   url: string;
+  groupName?: string;
   queryParams?: string;
   headers?: string;
   authType?: string;
@@ -70,7 +72,16 @@ export const ApiSchedulerView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [methodFilter, setMethodFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [selectedGroup, setSelectedGroup] = useState('ALL');
   const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
+
+  // Group Management & Quick Group Modals
+  const [isManageGroupsModalOpen, setIsManageGroupsModalOpen] = useState(false);
+  const [newGroupInputName, setNewGroupInputName] = useState('');
+  const [isQuickGroupModalOpen, setIsQuickGroupModalOpen] = useState(false);
+  const [quickGroupTarget, setQuickGroupTarget] = useState<ApiSchedulerConfig | null>(null);
+  const [quickGroupValue, setQuickGroupValue] = useState('');
+  const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
 
   // Full Screen View Mode: 'list' | 'editor'
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');
@@ -80,6 +91,7 @@ export const ApiSchedulerView: React.FC = () => {
     method: 'GET',
     url: '',
     name: '',
+    groupName: 'General',
     authType: 'none',
     bodyType: 'json',
     targetTable: 'sch_sync.tb_api_data',
@@ -360,6 +372,7 @@ export const ApiSchedulerView: React.FC = () => {
       method: 'GET',
       url: '',
       name: '',
+      groupName: selectedGroup !== 'ALL' ? selectedGroup : 'General',
       authType: 'none',
       bodyType: 'json',
       targetConnectionId: connections.length > 0 ? connections[0].id : '',
@@ -564,6 +577,7 @@ export const ApiSchedulerView: React.FC = () => {
       ...currentConfig,
       name: currentConfig.name.trim(),
       url: currentConfig.url.trim(),
+      groupName: (currentConfig.groupName || 'General').trim(),
       queryParams: compileListToJson(queryParamsList),
       headers: compileListToJson(headersList),
       cronExpression: cronTriggers.filter(c => c && c.trim()).join('; '),
@@ -585,6 +599,37 @@ export const ApiSchedulerView: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleOpenQuickGroup = (cfg: ApiSchedulerConfig) => {
+    setQuickGroupTarget(cfg);
+    setQuickGroupValue(cfg.groupName || 'General');
+    setIsQuickGroupModalOpen(true);
+  };
+
+  const handleSaveQuickGroup = async () => {
+    if (!quickGroupTarget || !quickGroupTarget.id) return;
+    setIsSavingQuickGroup(true);
+    try {
+      const grp = quickGroupValue.trim() || 'General';
+      await axios.patch(`/api/api-schedulers/${quickGroupTarget.id}/group`, { groupName: grp });
+      addToast({ type: 'success', title: 'Group Updated', message: `Moved schedule "${quickGroupTarget.name}" to group "${grp}".` });
+      setIsQuickGroupModalOpen(false);
+      fetchSchedulers();
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Update Failed', message: err.response?.data?.error || err.message });
+    } finally {
+      setIsSavingQuickGroup(false);
+    }
+  };
+
+  const handleCreateGroup = (groupName: string) => {
+    const clean = groupName.trim();
+    if (!clean) return;
+    setSelectedGroup(clean);
+    setIsManageGroupsModalOpen(false);
+    setNewGroupInputName('');
+    addToast({ type: 'info', title: 'Group Selected', message: `Switched to schedule group "${clean}".` });
   };
 
   const handleRunNow = async (cfg: ApiSchedulerConfig) => {
@@ -635,21 +680,37 @@ export const ApiSchedulerView: React.FC = () => {
     }
   };
 
-  // Filtered schedulers for Table View
-  const filteredSchedulers = schedulers.filter(s => {
-    const matchesSearch = searchQuery === '' || 
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      s.url.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      (s.kodeData && s.kodeData.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (s.targetTable && s.targetTable.toLowerCase().includes(searchQuery.toLowerCase()));
+  // All Groups extraction
+  const allGroups = useMemo(() => {
+    const set = new Set<string>();
+    set.add('General');
+    schedulers.forEach(s => {
+      const g = (s.groupName || 'General').trim();
+      if (g) set.add(g);
+    });
+    return Array.from(set).sort((a, b) => a === 'General' ? -1 : b === 'General' ? 1 : a.localeCompare(b));
+  }, [schedulers]);
 
-    const matchesMethod = methodFilter === 'ALL' || s.method.toUpperCase() === methodFilter;
-    const matchesStatus = statusFilter === 'ALL' || 
-      (statusFilter === 'Active' && s.active) || 
-      (statusFilter === 'Paused' && !s.active);
+  // Filtered schedulers for Table View (Filters inside groups & across groups)
+  const filteredSchedulers = useMemo(() => {
+    return schedulers.filter(s => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q || 
+        s.name.toLowerCase().includes(q) || 
+        s.url.toLowerCase().includes(q) || 
+        ((s.groupName || 'General').toLowerCase().includes(q)) ||
+        (s.kodeData && s.kodeData.toLowerCase().includes(q)) ||
+        (s.targetTable && s.targetTable.toLowerCase().includes(q));
 
-    return matchesSearch && matchesMethod && matchesStatus;
-  });
+      const matchesMethod = methodFilter === 'ALL' || s.method.toUpperCase() === methodFilter;
+      const matchesStatus = statusFilter === 'ALL' || 
+        (statusFilter === 'Active' && s.active) || 
+        (statusFilter === 'Paused' && !s.active);
+      const matchesGroup = selectedGroup === 'ALL' || (s.groupName || 'General') === selectedGroup;
+
+      return matchesSearch && matchesMethod && matchesStatus && matchesGroup;
+    });
+  }, [schedulers, searchQuery, methodFilter, statusFilter, selectedGroup]);
 
   const getPrettyJson = (raw: string | undefined) => {
     if (!raw) return '';
@@ -725,9 +786,9 @@ export const ApiSchedulerView: React.FC = () => {
             {/* Top Ambient Glow Line */}
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-indigo-500" />
 
-            {/* Row 1: Schedule Name Input & Live Badges */}
+            {/* Row 1: Schedule Name Input, Group Selector & Live Badges */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 flex-1 max-w-xl">
+              <div className="flex items-center gap-2 flex-1 max-w-2xl">
                 <div className="p-1.5 rounded-lg bg-blue-500/15 text-blue-500 border border-blue-500/30 shrink-0">
                   <Pencil className="w-3.5 h-3.5" />
                 </div>
@@ -736,8 +797,25 @@ export const ApiSchedulerView: React.FC = () => {
                   placeholder="Schedule Identifier Name (e.g. Daily Weather Ingestion API)"
                   value={currentConfig.name || ''}
                   onChange={(e) => setCurrentConfig({ ...currentConfig, name: e.target.value })}
-                  className="w-full bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs font-bold text-text-main placeholder:text-text-muted focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all shadow-inner"
+                  className="flex-1 bg-bg-main border border-border-main rounded-xl px-3.5 py-2 text-xs font-bold text-text-main placeholder:text-text-muted focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all shadow-inner"
                 />
+
+                {/* Group Selector */}
+                <div className="relative w-44 shrink-0">
+                  <input
+                    list="scheduler-group-list"
+                    type="text"
+                    placeholder="Group (e.g. General)"
+                    value={currentConfig.groupName || 'General'}
+                    onChange={(e) => setCurrentConfig({ ...currentConfig, groupName: e.target.value })}
+                    className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-xs font-bold text-indigo-400 placeholder:text-text-muted focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner"
+                  />
+                  <datalist id="scheduler-group-list">
+                    {allGroups.map(g => (
+                      <option key={g} value={g} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -1551,6 +1629,18 @@ export const ApiSchedulerView: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setIsManageGroupsModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-indigo-400 border border-border-main transition-all text-xs font-semibold shadow-sm cursor-pointer"
+            title="Manage Scheduler Groups"
+          >
+            <FolderTree className="w-4 h-4 text-indigo-400" />
+            <span className="hidden sm:inline">Manage Groups</span>
+            <span className="px-1.5 py-0.2 text-[10px] bg-indigo-500/20 text-indigo-300 rounded-full font-mono font-bold">
+              {allGroups.length}
+            </span>
+          </button>
+
+          <button
             onClick={openNewEditor}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all text-xs"
           >
@@ -1591,53 +1681,119 @@ export const ApiSchedulerView: React.FC = () => {
 
       {activeMainTab === 'schedules' ? (
         <>
+          {/* GROUP FILTER TABS */}
+          <div className="flex items-center justify-between gap-3 mb-4 shrink-0 overflow-x-auto pb-1">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedGroup('ALL')}
+                className={clsx(
+                  "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap cursor-pointer",
+                  selectedGroup === 'ALL'
+                    ? "bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-500/25"
+                    : "bg-bg-panel text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
+                )}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>All Schedules</span>
+                <span className={clsx("px-1.5 py-0.2 text-[10px] font-mono rounded-full font-bold", selectedGroup === 'ALL' ? "bg-white/20 text-white" : "bg-bg-main text-text-muted")}>
+                  {schedulers.length}
+                </span>
+              </button>
+
+              {allGroups.map(grp => {
+                const count = schedulers.filter(s => (s.groupName || 'General') === grp).length;
+                const isSelected = selectedGroup === grp;
+                return (
+                  <button
+                    key={grp}
+                    onClick={() => setSelectedGroup(grp)}
+                    className={clsx(
+                      "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap cursor-pointer",
+                      isSelected
+                        ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/25"
+                        : "bg-bg-panel text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
+                    )}
+                  >
+                    <Folder className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>{grp}</span>
+                    <span className={clsx("px-1.5 py-0.2 text-[10px] font-mono rounded-full font-bold", isSelected ? "bg-white/20 text-white" : "bg-bg-main text-text-muted")}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => {
+                const name = prompt('Enter new Group name for Scheduler:');
+                if (name && name.trim()) {
+                  handleCreateGroup(name.trim());
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-bg-panel hover:bg-bg-hover border border-dashed border-border-main hover:border-indigo-500/50 text-text-muted hover:text-indigo-400 text-xs font-bold transition-all shrink-0 cursor-pointer"
+              title="Create New Group"
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">+ Add Group</span>
+            </button>
+          </div>
+
           {/* Filter Bar */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-bg-panel border border-border-main p-3 rounded-2xl mb-4 shadow-sm shrink-0">
-        <div className="flex items-center gap-3 w-full sm:w-auto flex-1 max-w-md">
-          <div className="relative w-full">
-            <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search by name, URL, kode_data, or target table..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-bg-main border border-border-main rounded-xl pl-9 pr-4 py-2 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-          <div className="flex items-center gap-1 bg-bg-main border border-border-main p-1 rounded-xl">
-            {['ALL', 'GET', 'POST', 'PUT', 'DELETE'].map(method => (
-              <button
-                key={method}
-                onClick={() => setMethodFilter(method)}
-                className={clsx(
-                  "px-3 py-1 rounded-lg text-[11px] font-bold transition-all",
-                  methodFilter === method ? "bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30" : "text-text-muted hover:text-text-main"
+            <div className="flex items-center gap-3 w-full sm:w-auto flex-1 max-w-md">
+              <div className="relative w-full">
+                <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder={selectedGroup === 'ALL' ? "Search schedules across all groups..." : `Search in group "${selectedGroup}"...`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-bg-main border border-border-main rounded-xl pl-9 pr-8 py-2 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 )}
-              >
-                {method}
-              </button>
-            ))}
-          </div>
+              </div>
+            </div>
 
-          <div className="flex items-center gap-1 bg-bg-main border border-border-main p-1 rounded-xl">
-            {['ALL', 'Active', 'Paused'].map(status => (
-              <button
-                key={status}
-                onClick={() => setStatusFilter(status)}
-                className={clsx(
-                  "px-3 py-1 rounded-lg text-[11px] font-bold transition-all",
-                  statusFilter === status ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30" : "text-text-muted hover:text-text-main"
-                )}
-              >
-                {status}
-              </button>
-            ))}
+            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+              <div className="flex items-center gap-1 bg-bg-main border border-border-main p-1 rounded-xl">
+                {['ALL', 'GET', 'POST', 'PUT', 'DELETE'].map(method => (
+                  <button
+                    key={method}
+                    onClick={() => setMethodFilter(method)}
+                    className={clsx(
+                      "px-3 py-1 rounded-lg text-[11px] font-bold transition-all",
+                      methodFilter === method ? "bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30" : "text-text-muted hover:text-text-main"
+                    )}
+                  >
+                    {method}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1 bg-bg-main border border-border-main p-1 rounded-xl">
+                {['ALL', 'Active', 'Paused'].map(status => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={clsx(
+                      "px-3 py-1 rounded-lg text-[11px] font-bold transition-all",
+                      statusFilter === status ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30" : "text-text-muted hover:text-text-main"
+                    )}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
       {/* Main Table View */}
       <div className="flex-1 bg-bg-panel border border-border-main rounded-2xl overflow-hidden shadow-sm flex flex-col min-h-0">
@@ -1704,13 +1860,21 @@ export const ApiSchedulerView: React.FC = () => {
                       {/* Name & Endpoint */}
                       <td className="py-3.5 px-4">
                         <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className={clsx("px-2 py-0.5 rounded text-[10px] font-bold tracking-wide", getMethodBadgeClass(cfg.method))}>
                               {cfg.method}
                             </span>
                             <span className="font-bold text-text-main group-hover:text-blue-500 transition-colors text-xs">
                               {cfg.name}
                             </span>
+                            <button
+                              onClick={() => handleOpenQuickGroup(cfg)}
+                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all cursor-pointer"
+                              title="Click to change group"
+                            >
+                              <Folder className="w-3 h-3" />
+                              <span>{cfg.groupName || 'General'}</span>
+                            </button>
                           </div>
                           <span className="text-[11px] font-mono text-text-muted truncate max-w-md" title={cfg.url}>
                             {cfg.url}
@@ -2275,6 +2439,183 @@ export const ApiSchedulerView: React.FC = () => {
             fetchSchedulers();
           }}
         />
+      )}
+
+      {/* ── MANAGE SCHEDULER GROUPS MODAL ─────────────────────────────── */}
+      {isManageGroupsModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-bg-panel border border-border-main rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-border-main flex items-center justify-between bg-bg-editor/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                  <FolderTree className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text-main">Manage Scheduler Groups</h3>
+                  <p className="text-[11px] text-text-muted">Organize ingestion schedules into categories</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsManageGroupsModalOpen(false)}
+                className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Create New Group Input */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
+                  Create New Group
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    className="w-full bg-bg-main border border-border-main focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-3 py-2 text-xs outline-none text-text-main font-medium shadow-inner"
+                    placeholder="e.g. Finance Ingest, Sales Sync, Master Data..."
+                    value={newGroupInputName}
+                    onChange={e => setNewGroupInputName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && newGroupInputName.trim()) {
+                        handleCreateGroup(newGroupInputName.trim());
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={!newGroupInputName.trim()}
+                    onClick={() => handleCreateGroup(newGroupInputName.trim())}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shrink-0"
+                  >
+                    + Add
+                  </button>
+                </div>
+              </div>
+
+              {/* Existing Groups List */}
+              <div className="space-y-2 pt-2">
+                <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider block">
+                  Existing Groups ({allGroups.length})
+                </label>
+                <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                  {allGroups.map(grp => {
+                    const count = schedulers.filter(s => (s.groupName || 'General') === grp).length;
+                    return (
+                      <div
+                        key={grp}
+                        onClick={() => {
+                          setSelectedGroup(grp);
+                          setIsManageGroupsModalOpen(false);
+                        }}
+                        className={clsx(
+                          "flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer",
+                          selectedGroup === grp
+                            ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300"
+                            : "bg-bg-main/60 border-border-main hover:bg-bg-hover hover:border-indigo-500/30 text-text-main"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Folder className="w-4 h-4 text-indigo-400" />
+                          <span className="text-xs font-bold">{grp}</span>
+                        </div>
+                        <span className="text-[11px] font-mono px-2 py-0.5 bg-bg-panel rounded-md border border-border-main text-text-muted font-bold">
+                          {count} {count === 1 ? 'Job' : 'Jobs'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-border-main flex items-center justify-end bg-bg-main/40">
+              <button
+                type="button"
+                onClick={() => setIsManageGroupsModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── QUICK CHANGE SCHEDULER GROUP MODAL ───────────────────────── */}
+      {isQuickGroupModalOpen && quickGroupTarget && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-bg-panel border border-border-main rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-border-main flex items-center justify-between bg-bg-editor/50">
+              <div className="flex items-center gap-2">
+                <Folder className="w-4 h-4 text-indigo-400" />
+                <h3 className="text-sm font-bold text-text-main">Change Schedule Group</h3>
+              </div>
+              <button
+                onClick={() => setIsQuickGroupModalOpen(false)}
+                className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-text-muted">
+                Move schedule <b className="text-text-main font-bold">"{quickGroupTarget.name}"</b> to a group:
+              </p>
+              <div className="relative">
+                <input
+                  list="quick-modal-scheduler-group-list"
+                  className="w-full bg-bg-main border border-border-main focus:border-indigo-500 rounded-xl p-2.5 text-xs outline-none text-text-main font-bold shadow-inner"
+                  value={quickGroupValue}
+                  onChange={e => setQuickGroupValue(e.target.value)}
+                  placeholder="Select or enter group name..."
+                />
+                <datalist id="quick-modal-scheduler-group-list">
+                  {allGroups.map(g => (
+                    <option key={g} value={g} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                {allGroups.map(g => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setQuickGroupValue(g)}
+                    className={clsx(
+                      "px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer",
+                      quickGroupValue === g
+                        ? "bg-indigo-600 text-white border-indigo-500"
+                        : "bg-bg-main hover:bg-bg-hover text-text-muted border-border-main"
+                    )}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-border-main flex items-center justify-end gap-2 bg-bg-main/40">
+              <button
+                type="button"
+                onClick={() => setIsQuickGroupModalOpen(false)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuickGroup}
+                disabled={isSavingQuickGroup}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-indigo-500/20 flex items-center gap-1.5"
+              >
+                {isSavingQuickGroup ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                <span>Save Group</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

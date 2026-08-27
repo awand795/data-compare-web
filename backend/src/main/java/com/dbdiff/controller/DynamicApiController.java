@@ -73,6 +73,18 @@ public class DynamicApiController {
 
         ApiEndpoint endpoint = optEndpoint.get();
 
+        // ── IP Allowlist Security Check ─────────────────────────────────────────
+        String clientIp = getClientIpAddress(request);
+        String ipAllowlist = endpoint.getIpAllowlist();
+        if (!isIpAllowed(clientIp, ipAllowlist)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of(
+                        "error", "Forbidden",
+                        "message", "Access denied: Client IP [" + clientIp + "] is not in the allowed IP list for this endpoint."
+                    ));
+        }
+        // ────────────────────────────────────────────────────────────────────────
+
         // Check authentication
         if (endpoint.isPublic() == false) {
             String token = endpoint.getAuthToken();
@@ -315,5 +327,140 @@ public class DynamicApiController {
         }
 
         return clauses.isEmpty() ? "1=1" : String.join(" AND ", clauses);
+    }
+
+    /**
+     * Extracts the real client IP address from request headers or remote socket.
+     */
+    private String getClientIpAddress(HttpServletRequest request) {
+        String[] headerCandidates = {
+            "X-Forwarded-For",
+            "X-Real-IP",
+            "CF-Connecting-IP",
+            "Proxy-Client-IP",
+            "WL-Proxy-Client-IP",
+            "HTTP_X_FORWARDED_FOR",
+            "HTTP_X_FORWARDED",
+            "HTTP_X_CLUSTER_CLIENT_IP",
+            "HTTP_CLIENT_IP",
+            "HTTP_FORWARDED_FOR",
+            "HTTP_FORWARDED",
+            "HTTP_VIA",
+            "REMOTE_ADDR"
+        };
+
+        for (String header : headerCandidates) {
+            String ipList = request.getHeader(header);
+            if (ipList != null && !ipList.trim().isEmpty() && !"unknown".equalsIgnoreCase(ipList.trim())) {
+                // X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
+                String firstIp = ipList.split(",")[0].trim();
+                return normalizeIp(firstIp);
+            }
+        }
+
+        return normalizeIp(request.getRemoteAddr());
+    }
+
+    private String normalizeIp(String ip) {
+        if (ip == null) return "127.0.0.1";
+        String clean = ip.trim();
+        if ("0:0:0:0:0:0:0:1".equals(clean) || "::1".equals(clean)) {
+            return "127.0.0.1";
+        }
+        if (clean.startsWith("::ffff:")) {
+            return clean.substring(7);
+        }
+        return clean;
+    }
+
+    /**
+     * Evaluates whether a client IP is authorized under the given IP allowlist rules.
+     * Supports comma/newline-separated single IPs, wildcards (*, 192.168.1.*), and CIDR ranges (10.0.0.0/8).
+     */
+    private boolean isIpAllowed(String clientIp, String allowlist) {
+        if (allowlist == null || allowlist.trim().isEmpty() || "*".equals(allowlist.trim()) || "0.0.0.0/0".equals(allowlist.trim())) {
+            return true;
+        }
+
+        String normalizedClient = normalizeIp(clientIp);
+        String[] rules = allowlist.split("[,;\\r\\n]+");
+
+        for (String rawRule : rules) {
+            String rule = rawRule.trim();
+            if (rule.isEmpty()) continue;
+
+            if ("*".equals(rule) || "0.0.0.0/0".equals(rule)) {
+                return true;
+            }
+
+            String normalizedRule = normalizeIp(rule);
+
+            // Exact match
+            if (normalizedClient.equalsIgnoreCase(normalizedRule)) {
+                return true;
+            }
+
+            // Localhost match
+            if (isLocalhost(normalizedClient) && isLocalhost(normalizedRule)) {
+                return true;
+            }
+
+            // Wildcard match (e.g. 192.168.1.*)
+            if (rule.endsWith(".*")) {
+                String prefix = rule.substring(0, rule.length() - 1); // "192.168.1."
+                if (normalizedClient.startsWith(prefix)) {
+                    return true;
+                }
+            }
+
+            // CIDR range match (e.g. 192.168.1.0/24 or 10.0.0.0/8)
+            if (rule.contains("/")) {
+                if (matchesCidr(normalizedClient, rule)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isLocalhost(String ip) {
+        return "127.0.0.1".equals(ip) || "localhost".equalsIgnoreCase(ip) || "::1".equals(ip);
+    }
+
+    private boolean matchesCidr(String ip, String cidr) {
+        try {
+            String[] parts = cidr.split("/");
+            if (parts.length != 2) return false;
+
+            String baseIp = parts[0].trim();
+            int prefixLength = Integer.parseInt(parts[1].trim());
+
+            long ipLong = ipToLong(ip);
+            long baseLong = ipToLong(baseIp);
+
+            if (ipLong == -1 || baseLong == -1) return false;
+
+            long mask = (prefixLength == 0) ? 0 : (-1L << (32 - prefixLength)) & 0xFFFFFFFFL;
+            return (ipLong & mask) == (baseLong & mask);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private long ipToLong(String ip) {
+        try {
+            String[] octets = ip.split("\\.");
+            if (octets.length != 4) return -1;
+            long result = 0;
+            for (int i = 0; i < 4; i++) {
+                long octet = Long.parseLong(octets[i]);
+                if (octet < 0 || octet > 255) return -1;
+                result = (result << 8) | octet;
+            }
+            return result;
+        } catch (Exception e) {
+            return -1;
+        }
     }
 }

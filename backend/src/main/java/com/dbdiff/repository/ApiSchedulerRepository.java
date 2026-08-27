@@ -53,14 +53,15 @@ public class ApiSchedulerRepository {
             jdbcTemplate.execute(sql);
             
             String[] alterSqls = {
-                "ALTER TABLE api_scheduler_configs ADD COLUMN notification_channel_id TEXT",
+                "ALTER TABLE api_scheduler_configs ADD COLUMN IF NOT EXISTS notification_channel_id TEXT",
                 "ALTER TABLE api_scheduler_configs ALTER COLUMN notification_channel_id TYPE TEXT",
                 "ALTER TABLE api_scheduler_configs ALTER COLUMN target_connection_id TYPE VARCHAR(255)",
                 "ALTER TABLE api_scheduler_configs ALTER COLUMN id TYPE VARCHAR(255)",
                 "ALTER TABLE api_scheduler_configs ALTER COLUMN cron_expression TYPE VARCHAR(255)",
                 "ALTER TABLE api_scheduler_configs ALTER COLUMN auth_type TYPE VARCHAR(100)",
                 "ALTER TABLE api_scheduler_configs ALTER COLUMN method TYPE VARCHAR(50)",
-                "ALTER TABLE api_scheduler_configs ALTER COLUMN body_type TYPE VARCHAR(50)"
+                "ALTER TABLE api_scheduler_configs ALTER COLUMN body_type TYPE VARCHAR(50)",
+                "ALTER TABLE api_scheduler_configs ADD COLUMN IF NOT EXISTS group_name VARCHAR(100) DEFAULT 'General'"
             };
             for (String alterSql : alterSqls) {
                 try {
@@ -94,6 +95,10 @@ public class ApiSchedulerRepository {
             cfg.setKodeData(rs.getString("kode_data"));
             cfg.setCronExpression(rs.getString("cron_expression"));
             cfg.setNotificationChannelId(rs.getString("notification_channel_id"));
+            try {
+                String grp = rs.getString("group_name");
+                cfg.setGroupName(grp != null && !grp.trim().isEmpty() ? grp : "General");
+            } catch (SQLException ignored) {}
             cfg.setActive(rs.getBoolean("is_active"));
 
             if (rs.getTimestamp("created_at") != null) {
@@ -121,28 +126,75 @@ public class ApiSchedulerRepository {
     }
 
     public int insert(ApiSchedulerConfig cfg) {
-        String sql = "INSERT INTO api_scheduler_configs (" +
-                "id, name, method, url, query_params, headers, auth_type, auth_username, auth_password, auth_token, " +
-                "body_type, body_content, target_connection_id, target_table, kode_data, cron_expression, notification_channel_id, is_active, " +
-                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
-        return jdbcTemplate.update(sql,
-                cfg.getId(), cfg.getName(), cfg.getMethod(), cfg.getUrl(), cfg.getQueryParams(), cfg.getHeaders(),
-                cfg.getAuthType(), cfg.getAuthUsername(), cfg.getAuthPassword(), cfg.getAuthToken(),
-                cfg.getBodyType(), cfg.getBodyContent(), cfg.getTargetConnectionId(), cfg.getTargetTable(),
-                cfg.getKodeData(), cfg.getCronExpression(), cfg.getNotificationChannelId(), cfg.isActive());
+        String groupName = (cfg.getGroupName() != null && !cfg.getGroupName().trim().isEmpty()) ? cfg.getGroupName().trim() : "General";
+        try {
+            String sql = "INSERT INTO api_scheduler_configs (" +
+                    "id, name, method, url, query_params, headers, auth_type, auth_username, auth_password, auth_token, " +
+                    "body_type, body_content, target_connection_id, target_table, kode_data, cron_expression, notification_channel_id, group_name, is_active, " +
+                    "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
+            return jdbcTemplate.update(sql,
+                    cfg.getId(), cfg.getName(), cfg.getMethod(), cfg.getUrl(), cfg.getQueryParams(), cfg.getHeaders(),
+                    cfg.getAuthType(), cfg.getAuthUsername(), cfg.getAuthPassword(), cfg.getAuthToken(),
+                    cfg.getBodyType(), cfg.getBodyContent(), cfg.getTargetConnectionId(), cfg.getTargetTable(),
+                    cfg.getKodeData(), cfg.getCronExpression(), cfg.getNotificationChannelId(), groupName, cfg.isActive());
+        } catch (Exception e) {
+            String sql = "INSERT INTO api_scheduler_configs (" +
+                    "id, name, method, url, query_params, headers, auth_type, auth_username, auth_password, auth_token, " +
+                    "body_type, body_content, target_connection_id, target_table, kode_data, cron_expression, notification_channel_id, is_active, " +
+                    "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
+            return jdbcTemplate.update(sql,
+                    cfg.getId(), cfg.getName(), cfg.getMethod(), cfg.getUrl(), cfg.getQueryParams(), cfg.getHeaders(),
+                    cfg.getAuthType(), cfg.getAuthUsername(), cfg.getAuthPassword(), cfg.getAuthToken(),
+                    cfg.getBodyType(), cfg.getBodyContent(), cfg.getTargetConnectionId(), cfg.getTargetTable(),
+                    cfg.getKodeData(), cfg.getCronExpression(), cfg.getNotificationChannelId(), cfg.isActive());
+        }
     }
 
     public int update(ApiSchedulerConfig cfg) {
-        String sql = "UPDATE api_scheduler_configs SET " +
-                "name = ?, method = ?, url = ?, query_params = ?, headers = ?, auth_type = ?, auth_username = ?, " +
-                "auth_password = ?, auth_token = ?, body_type = ?, body_content = ?, target_connection_id = ?, " +
-                "target_table = ?, kode_data = ?, cron_expression = ?, notification_channel_id = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP " +
-                "WHERE id = ?";
-        return jdbcTemplate.update(sql,
-                cfg.getName(), cfg.getMethod(), cfg.getUrl(), cfg.getQueryParams(), cfg.getHeaders(),
-                cfg.getAuthType(), cfg.getAuthUsername(), cfg.getAuthPassword(), cfg.getAuthToken(),
-                cfg.getBodyType(), cfg.getBodyContent(), cfg.getTargetConnectionId(), cfg.getTargetTable(),
-                cfg.getKodeData(), cfg.getCronExpression(), cfg.getNotificationChannelId(), cfg.isActive(), cfg.getId());
+        String groupName = (cfg.getGroupName() != null && !cfg.getGroupName().trim().isEmpty()) ? cfg.getGroupName().trim() : "General";
+        try {
+            String sql = "UPDATE api_scheduler_configs SET " +
+                    "name = ?, method = ?, url = ?, query_params = ?, headers = ?, auth_type = ?, auth_username = ?, " +
+                    "auth_password = ?, auth_token = ?, body_type = ?, body_content = ?, target_connection_id = ?, " +
+                    "target_table = ?, kode_data = ?, cron_expression = ?, notification_channel_id = ?, group_name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP " +
+                    "WHERE id = ?";
+            return jdbcTemplate.update(sql,
+                    cfg.getName(), cfg.getMethod(), cfg.getUrl(), cfg.getQueryParams(), cfg.getHeaders(),
+                    cfg.getAuthType(), cfg.getAuthUsername(), cfg.getAuthPassword(), cfg.getAuthToken(),
+                    cfg.getBodyType(), cfg.getBodyContent(), cfg.getTargetConnectionId(), cfg.getTargetTable(),
+                    cfg.getKodeData(), cfg.getCronExpression(), cfg.getNotificationChannelId(), groupName, cfg.isActive(), cfg.getId());
+        } catch (Exception e) {
+            String sql = "UPDATE api_scheduler_configs SET " +
+                    "name = ?, method = ?, url = ?, query_params = ?, headers = ?, auth_type = ?, auth_username = ?, " +
+                    "auth_password = ?, auth_token = ?, body_type = ?, body_content = ?, target_connection_id = ?, " +
+                    "target_table = ?, kode_data = ?, cron_expression = ?, notification_channel_id = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP " +
+                    "WHERE id = ?";
+            return jdbcTemplate.update(sql,
+                    cfg.getName(), cfg.getMethod(), cfg.getUrl(), cfg.getQueryParams(), cfg.getHeaders(),
+                    cfg.getAuthType(), cfg.getAuthUsername(), cfg.getAuthPassword(), cfg.getAuthToken(),
+                    cfg.getBodyType(), cfg.getBodyContent(), cfg.getTargetConnectionId(), cfg.getTargetTable(),
+                    cfg.getKodeData(), cfg.getCronExpression(), cfg.getNotificationChannelId(), cfg.isActive(), cfg.getId());
+        }
+    }
+
+    public int updateGroupName(String id, String groupName) {
+        String finalGroup = (groupName != null && !groupName.trim().isEmpty()) ? groupName.trim() : "General";
+        try {
+            return jdbcTemplate.update(
+                "UPDATE api_scheduler_configs SET group_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                finalGroup, id
+            );
+        } catch (Exception e) {
+            try {
+                jdbcTemplate.execute("ALTER TABLE api_scheduler_configs ADD COLUMN IF NOT EXISTS group_name VARCHAR(100) DEFAULT 'General'");
+                return jdbcTemplate.update(
+                    "UPDATE api_scheduler_configs SET group_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    finalGroup, id
+                );
+            } catch (Exception ex) {
+                throw new RuntimeException("Failed to update group name: " + ex.getMessage(), ex);
+            }
+        }
     }
 
     public int updateLastRun(String id, String status, String message) {

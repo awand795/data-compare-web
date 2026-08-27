@@ -22,6 +22,9 @@ public class ApiEndpoint {
     @JsonAlias({"allowRawSql"})
     private boolean allowRawSql;
 
+    private String ipAllowlist;
+    private String groupName;
+
     private String authToken;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -61,6 +64,12 @@ public class ApiEndpoint {
 
     @JsonProperty("allowRawSql")
     public void setAllowRawSql(boolean allowRawSql) { this.allowRawSql = allowRawSql; }
+
+    public String getIpAllowlist() { return ipAllowlist; }
+    public void setIpAllowlist(String ipAllowlist) { this.ipAllowlist = ipAllowlist; }
+
+    public String getGroupName() { return groupName != null && !groupName.trim().isEmpty() ? groupName : "General"; }
+    public void setGroupName(String groupName) { this.groupName = groupName; }
 
     public String getAuthToken() { return authToken; }
     public void setAuthToken(String authToken) { this.authToken = authToken; }

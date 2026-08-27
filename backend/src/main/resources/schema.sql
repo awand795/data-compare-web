@@ -143,6 +143,9 @@ ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_table VARCH
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_connection_id VARCHAR(50);
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_database VARCHAR(100);
 ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS allow_raw_sql BOOLEAN DEFAULT FALSE;
+ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS ip_allowlist TEXT;
+ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS group_name VARCHAR(100) DEFAULT 'General';
+ALTER TABLE api_scheduler_configs ADD COLUMN IF NOT EXISTS group_name VARCHAR(100) DEFAULT 'General';
 
 CREATE TABLE IF NOT EXISTS api_endpoints (
     id VARCHAR(50) PRIMARY KEY,
@@ -155,6 +158,8 @@ CREATE TABLE IF NOT EXISTS api_endpoints (
     enable_pagination BOOLEAN DEFAULT FALSE,
     is_public BOOLEAN DEFAULT FALSE,
     allow_raw_sql BOOLEAN DEFAULT FALSE,
+    ip_allowlist TEXT,
+    group_name VARCHAR(100) DEFAULT 'General',
     auth_token VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

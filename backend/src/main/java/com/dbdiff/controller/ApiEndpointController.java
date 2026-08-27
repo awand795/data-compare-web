@@ -321,6 +321,30 @@ public class ApiEndpointController {
         }
     }
 
+    @PatchMapping("/{id}/ip-allowlist")
+    public ResponseEntity<?> updateIpAllowlist(@PathVariable String id, @RequestBody Map<String, String> body) {
+        String ipAllowlist = body.get("ipAllowlist");
+        try {
+            apiEndpointRepository.updateIpAllowlist(id, ipAllowlist);
+            Optional<ApiEndpoint> updated = apiEndpointRepository.findById(id);
+            return ResponseEntity.ok(updated.orElse(null));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to update IP allowlist"));
+        }
+    }
+
+    @PatchMapping("/{id}/group")
+    public ResponseEntity<?> updateGroupName(@PathVariable String id, @RequestBody Map<String, String> body) {
+        String groupName = body.get("groupName");
+        try {
+            apiEndpointRepository.updateGroupName(id, groupName);
+            Optional<ApiEndpoint> updated = apiEndpointRepository.findById(id);
+            return ResponseEntity.ok(updated.orElse(null));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to update group name"));
+        }
+    }
+
     @PostMapping("/{id}/share")
     public ResponseEntity<?> share(@PathVariable String id) {
         Optional<ApiEndpoint> endpointOpt = apiEndpointRepository.findById(id);

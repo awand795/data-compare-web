@@ -22,6 +22,7 @@ public class ApiSchedulerConfig {
     
     private String cronExpression; // e.g. "0 */5 * * * *" or interval string
     private String notificationChannelId; // Shared Telegram/Discord Notification Channel ID
+    private String groupName; // Group / Category
     private boolean active = true;
     
     private LocalDateTime createdAt;
@@ -164,6 +165,14 @@ public class ApiSchedulerConfig {
 
     public void setNotificationChannelId(String notificationChannelId) {
         this.notificationChannelId = notificationChannelId;
+    }
+
+    public String getGroupName() {
+        return groupName != null && !groupName.trim().isEmpty() ? groupName : "General";
+    }
+
+    public void setGroupName(String groupName) {
+        this.groupName = groupName;
     }
 
     public boolean isActive() {

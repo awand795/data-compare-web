@@ -7,7 +7,8 @@ import {
   Settings2, ChevronDown, ChevronUp, X, AlertCircle, Loader2, 
   Search, Eraser, Code2, 
   ListRestart, Bug, SquareTerminal, CopyPlus, FileCode,
-  LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal
+  LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal,
+  Folder, FolderPlus, FolderTree, Shield, Globe
 } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -31,6 +32,8 @@ interface ApiEndpoint {
   enablePagination: boolean;
   isPublic: boolean;
   allowRawSql?: boolean;
+  ipAllowlist?: string;
+  groupName?: string;
   authToken: string;
 }
 
@@ -91,6 +94,19 @@ export const ApiBuilderView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [methodFilter, setMethodFilter] = useState<string>('ALL');
   const [securityFilter, setSecurityFilter] = useState<string>('ALL');
+  const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
+
+  // Group Management & Quick IP Modals
+  const [isManageGroupsModalOpen, setIsManageGroupsModalOpen] = useState(false);
+  const [newGroupInputName, setNewGroupInputName] = useState('');
+  const [isQuickIpModalOpen, setIsQuickIpModalOpen] = useState(false);
+  const [quickIpTarget, setQuickIpTarget] = useState<ApiEndpoint | null>(null);
+  const [quickIpValue, setQuickIpValue] = useState('');
+  const [isSavingQuickIp, setIsSavingQuickIp] = useState(false);
+  const [isQuickGroupModalOpen, setIsQuickGroupModalOpen] = useState(false);
+  const [quickGroupTarget, setQuickGroupTarget] = useState<ApiEndpoint | null>(null);
+  const [quickGroupValue, setQuickGroupValue] = useState('');
+  const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
   
   // Testing States
   const [testResult, setTestResult] = useState<any>(null);
@@ -226,6 +242,8 @@ export const ApiBuilderView: React.FC = () => {
       enablePagination: false,
       isPublic: false,
       allowRawSql: false,
+      ipAllowlist: '',
+      groupName: selectedGroup !== 'ALL' ? selectedGroup : 'General',
       authToken: generateToken()
     };
     setCurrentApi(newApi);
@@ -236,6 +254,58 @@ export const ApiBuilderView: React.FC = () => {
     setIsDirty(false);
     editInitialRef.current = JSON.stringify({ api: newApi, params: [] });
     setViewMode('edit');
+  };
+
+  const handleOpenQuickIp = (api: ApiEndpoint) => {
+    setQuickIpTarget(api);
+    setQuickIpValue(api.ipAllowlist || '');
+    setIsQuickIpModalOpen(true);
+  };
+
+  const handleSaveQuickIp = async () => {
+    if (!quickIpTarget || !quickIpTarget.id) return;
+    setIsSavingQuickIp(true);
+    try {
+      await axios.patch(`/api/api-builder/${quickIpTarget.id}/ip-allowlist`, { ipAllowlist: quickIpValue });
+      addToast({ type: 'success', title: 'IP Allowlist Updated', message: `Updated IP rules for "${quickIpTarget.name}".` });
+      setIsQuickIpModalOpen(false);
+      fetchEndpoints();
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Update Failed', message: err.response?.data?.error || err.message });
+    } finally {
+      setIsSavingQuickIp(false);
+    }
+  };
+
+  const handleOpenQuickGroup = (api: ApiEndpoint) => {
+    setQuickGroupTarget(api);
+    setQuickGroupValue(api.groupName || 'General');
+    setIsQuickGroupModalOpen(true);
+  };
+
+  const handleSaveQuickGroup = async () => {
+    if (!quickGroupTarget || !quickGroupTarget.id) return;
+    setIsSavingQuickGroup(true);
+    try {
+      const grp = quickGroupValue.trim() || 'General';
+      await axios.patch(`/api/api-builder/${quickGroupTarget.id}/group`, { groupName: grp });
+      addToast({ type: 'success', title: 'Group Updated', message: `Moved "${quickGroupTarget.name}" to group "${grp}".` });
+      setIsQuickGroupModalOpen(false);
+      fetchEndpoints();
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Update Failed', message: err.response?.data?.error || err.message });
+    } finally {
+      setIsSavingQuickGroup(false);
+    }
+  };
+
+  const handleCreateGroup = (groupName: string) => {
+    const clean = groupName.trim();
+    if (!clean) return;
+    setSelectedGroup(clean);
+    setIsManageGroupsModalOpen(false);
+    setNewGroupInputName('');
+    addToast({ type: 'info', title: 'Group Selected', message: `Switched to group "${clean}".` });
   };
 
   const generateToken = () => {
@@ -492,23 +562,39 @@ export const ApiBuilderView: React.FC = () => {
     return conn ? `${conn.name} (${conn.type})` : connectionId;
   };
 
+  // All Groups extraction
+  const allGroups = useMemo(() => {
+    const set = new Set<string>();
+    set.add('General');
+    endpoints.forEach(e => {
+      const g = (e.groupName || 'General').trim();
+      if (g) set.add(g);
+    });
+    return Array.from(set).sort((a, b) => a === 'General' ? -1 : b === 'General' ? 1 : a.localeCompare(b));
+  }, [endpoints]);
+
   // Filtered Endpoints List
   const filteredEndpoints = useMemo(() => {
     return endpoints.filter(api => {
-      const matchesSearch = 
-        api.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        api.endpointPath.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        api.sqlQuery.toLowerCase().includes(searchQuery.toLowerCase());
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q || 
+        api.name.toLowerCase().includes(q) ||
+        api.endpointPath.toLowerCase().includes(q) ||
+        ((api.groupName || 'General').toLowerCase().includes(q)) ||
+        (api.sqlQuery && api.sqlQuery.toLowerCase().includes(q));
       
-      const matchesMethod = methodFilter === 'ALL' || api.method === methodFilter;
+      const matchesMethod = methodFilter === 'ALL' || api.method.toUpperCase() === methodFilter;
       const matchesSecurity = 
         securityFilter === 'ALL' || 
         (securityFilter === 'PUBLIC' && api.isPublic) ||
-        (securityFilter === 'PROTECTED' && !api.isPublic);
+        (securityFilter === 'PROTECTED' && !api.isPublic) ||
+        (securityFilter === 'IP_RESTRICTED' && Boolean(api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'));
+      
+      const matchesGroup = selectedGroup === 'ALL' || (api.groupName || 'General') === selectedGroup;
 
-      return matchesSearch && matchesMethod && matchesSecurity;
+      return matchesSearch && matchesMethod && matchesSecurity && matchesGroup;
     });
-  }, [endpoints, searchQuery, methodFilter, securityFilter]);
+  }, [endpoints, searchQuery, methodFilter, securityFilter, selectedGroup]);
 
   // Method Counts
   const methodStats = useMemo(() => {
@@ -549,6 +635,18 @@ export const ApiBuilderView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsManageGroupsModalOpen(true)}
+              className="px-4 py-3 bg-bg-panel hover:bg-bg-hover text-text-main border border-border-main rounded-xl flex items-center gap-2 font-bold transition-all shadow-sm cursor-pointer"
+              title="Manage API Groups"
+            >
+              <FolderTree className="w-4 h-4 text-indigo-400" />
+              <span className="hidden sm:inline text-xs">Manage Groups</span>
+              <span className="px-2 py-0.5 text-[10px] bg-indigo-500/20 text-indigo-300 rounded-full font-mono font-bold">
+                {allGroups.length}
+              </span>
+            </button>
+
             <button 
               onClick={handleCreateNew}
               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl flex items-center gap-2.5 font-bold transition-all shadow-xl shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98]"
@@ -598,6 +696,64 @@ export const ApiBuilderView: React.FC = () => {
           </div>
         </div>
 
+        {/* GROUP FILTER TABS */}
+        <div className="flex items-center justify-between gap-3 mb-4 shrink-0 overflow-x-auto pb-1">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedGroup('ALL')}
+              className={clsx(
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap cursor-pointer",
+                selectedGroup === 'ALL'
+                  ? "bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-500/25"
+                  : "bg-bg-panel text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
+              )}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>All Endpoints</span>
+              <span className={clsx("px-1.5 py-0.2 text-[10px] font-mono rounded-full font-bold", selectedGroup === 'ALL' ? "bg-white/20 text-white" : "bg-bg-editor text-text-muted")}>
+                {endpoints.length}
+              </span>
+            </button>
+
+            {allGroups.map(grp => {
+              const count = endpoints.filter(e => (e.groupName || 'General') === grp).length;
+              const isSelected = selectedGroup === grp;
+              return (
+                <button
+                  key={grp}
+                  onClick={() => setSelectedGroup(grp)}
+                  className={clsx(
+                    "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap cursor-pointer",
+                    isSelected
+                      ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/25"
+                      : "bg-bg-panel text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
+                  )}
+                >
+                  <Folder className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>{grp}</span>
+                  <span className={clsx("px-1.5 py-0.2 text-[10px] font-mono rounded-full font-bold", isSelected ? "bg-white/20 text-white" : "bg-bg-editor text-text-muted")}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={() => {
+              const name = prompt('Enter new Group name:');
+              if (name && name.trim()) {
+                handleCreateGroup(name.trim());
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-bg-panel hover:bg-bg-hover border border-dashed border-border-main hover:border-indigo-500/50 text-text-muted hover:text-indigo-400 text-xs font-bold transition-all shrink-0 cursor-pointer"
+            title="Create New Group"
+          >
+            <FolderPlus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">+ Add Group</span>
+          </button>
+        </div>
+
         {/* SEARCH, FILTER & VIEW CONTROLS */}
         <div className="bg-bg-panel border border-border-main p-4 rounded-2xl shadow-lg mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
           <div className="flex flex-1 items-center gap-3">
@@ -606,7 +762,7 @@ export const ApiBuilderView: React.FC = () => {
               <input 
                 type="text"
                 className="w-full bg-bg-editor border border-border-main rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-text-main transition-all shadow-inner"
-                placeholder="Search endpoints by name, route path, or SQL..."
+                placeholder={selectedGroup === 'ALL' ? "Search endpoints across all groups..." : `Search in group "${selectedGroup}"...`}
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
               />
@@ -649,6 +805,7 @@ export const ApiBuilderView: React.FC = () => {
               <option value="ALL">All Security Types</option>
               <option value="PUBLIC">Public Access Only</option>
               <option value="PROTECTED">Protected Only</option>
+              <option value="IP_RESTRICTED">IP Restricted Only</option>
             </select>
 
             {/* View Mode Toggle */}
@@ -726,7 +883,7 @@ export const ApiBuilderView: React.FC = () => {
                   <div>
                     {/* Card Top Header */}
                     <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className={clsx("px-2.5 py-1 rounded-lg text-[10px] font-black tracking-widest uppercase shadow-sm", getMethodBadgeClass(api.method))}>
                           {api.method}
                         </span>
@@ -735,17 +892,32 @@ export const ApiBuilderView: React.FC = () => {
                             Paginated
                           </span>
                         )}
+                        <button
+                          onClick={() => handleOpenQuickGroup(api)}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all cursor-pointer"
+                          title="Click to change group"
+                        >
+                          <Folder className="w-3 h-3" />
+                          <span>{api.groupName || 'General'}</span>
+                        </button>
                       </div>
 
-                      {api.isPublic ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
-                          <ShieldCheck className="w-3.5 h-3.5" /> Public
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full">
-                          <ShieldAlert className="w-3.5 h-3.5" /> Protected
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5 flex-col items-end">
+                        {api.isPublic ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
+                            <ShieldCheck className="w-3.5 h-3.5" /> Public
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full">
+                            <ShieldAlert className="w-3.5 h-3.5" /> Protected
+                          </span>
+                        )}
+                        {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded" title={`Allowed: ${api.ipAllowlist}`}>
+                            <Shield className="w-2.5 h-2.5" /> IP Locked
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     {/* API Title & Route */}
@@ -773,28 +945,47 @@ export const ApiBuilderView: React.FC = () => {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleViewSpec(api)}
-                        className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-all"
+                        className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-all cursor-pointer"
                         title="View Documentation & Spec"
                       >
                         <FileJson className="w-4 h-4" />
                       </button>
                       <button
+                        onClick={() => handleOpenQuickIp(api)}
+                        className={clsx(
+                          "p-2 rounded-lg transition-all relative cursor-pointer",
+                          api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
+                            ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30"
+                            : "text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10"
+                        )}
+                        title={
+                          api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
+                            ? `IP Allowlist Active: ${api.ipAllowlist}`
+                            : "Configure IP Allowlist (Open to all IPs)"
+                        }
+                      >
+                        <Shield className="w-4 h-4" />
+                        {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' && (
+                          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        )}
+                      </button>
+                      <button
                         onClick={() => handleClone(api)}
-                        className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-all"
+                        className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-all cursor-pointer"
                         title="Duplicate Endpoint"
                       >
                         <CopyPlus className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleEdit(api)}
-                        className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
+                        className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all cursor-pointer"
                         title="Edit Endpoint"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteClick(api)}
-                        className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
+                        className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all cursor-pointer"
                         title="Delete Endpoint"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -812,10 +1003,10 @@ export const ApiBuilderView: React.FC = () => {
               <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
                 <thead className="bg-bg-editor text-text-muted font-bold border-b border-border-main sticky top-0 z-10 shadow-sm">
                   <tr>
-                    <th className="p-4 uppercase tracking-wider text-xs">Name</th>
+                    <th className="p-4 uppercase tracking-wider text-xs">Name &amp; Group</th>
                     <th className="p-4 uppercase tracking-wider text-xs">Method &amp; Path</th>
                     <th className="p-4 uppercase tracking-wider text-xs">Database Connection</th>
-                    <th className="p-4 uppercase tracking-wider text-xs">Security</th>
+                    <th className="p-4 uppercase tracking-wider text-xs">Security &amp; IP</th>
                     <th className="p-4 text-right uppercase tracking-wider text-xs">Actions</th>
                   </tr>
                 </thead>
@@ -828,6 +1019,14 @@ export const ApiBuilderView: React.FC = () => {
                           {api.enablePagination && (
                             <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded font-mono border border-blue-500/20">Pg</span>
                           )}
+                          <button
+                            onClick={() => handleOpenQuickGroup(api)}
+                            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all cursor-pointer ml-1"
+                            title="Click to change group"
+                          >
+                            <Folder className="w-3 h-3" />
+                            <span>{api.groupName || 'General'}</span>
+                          </button>
                         </div>
                       </td>
                       <td className="p-4">
@@ -845,28 +1044,58 @@ export const ApiBuilderView: React.FC = () => {
                         {getConnectionName(api.connectionId)}
                       </td>
                       <td className="p-4">
-                        {api.isPublic ? (
-                          <span className="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
-                            <ShieldCheck className="w-3.5 h-3.5" /> Public
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 text-amber-400 text-xs font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
-                            <ShieldAlert className="w-3.5 h-3.5" /> Protected
-                          </span>
-                        )}
+                        <div className="flex flex-col gap-1">
+                          {api.isPublic ? (
+                            <span className="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full w-fit">
+                              <ShieldCheck className="w-3.5 h-3.5" /> Public
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-amber-400 text-xs font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full w-fit">
+                              <ShieldAlert className="w-3.5 h-3.5" /> Protected
+                            </span>
+                          )}
+                          {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded w-fit" title={`Allowed IPs: ${api.ipAllowlist}`}>
+                              <Shield className="w-3 h-3" /> IP Restricted
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-text-muted">
+                              <Globe className="w-3 h-3" /> All IPs
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-4">
                         <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => handleViewSpec(api)} className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors" title="View Spec">
+                          <button onClick={() => handleViewSpec(api)} className="p-2 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors cursor-pointer" title="View Spec">
                             <FileJson className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleClone(api)} className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors" title="Clone API">
+                          <button
+                            onClick={() => handleOpenQuickIp(api)}
+                            className={clsx(
+                              "p-2 rounded-lg transition-all relative cursor-pointer",
+                              api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
+                                ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30"
+                                : "text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10"
+                            )}
+                            title={
+                              api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
+                                ? `IP Allowlist: ${api.ipAllowlist}`
+                                : "Configure IP Allowlist (Open to all IPs)"
+                            }
+                          >
+                            <Shield className="w-4 h-4" />
+                            {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' && (
+                              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                            )}
+                          </button>
+                          <button onClick={() => handleClone(api)} className="p-2 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer" title="Clone API">
                             <CopyPlus className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleEdit(api)} className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit API">
+                          <button onClick={() => handleEdit(api)} className="p-2 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer" title="Edit API">
                             <Pencil className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleDeleteClick(api)} className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors" title="Delete API">
+                          <button onClick={() => handleDeleteClick(api)} className="p-2 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer" title="Delete API">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -875,6 +1104,292 @@ export const ApiBuilderView: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── QUICK IP ALLOWLIST MODAL ─────────────────────────────────────── */}
+        {isQuickIpModalOpen && quickIpTarget && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-bg-panel border border-border-main rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
+              <div className="p-5 border-b border-border-main flex items-center justify-between bg-bg-editor/50">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <Shield className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-text-main">IP Allowlist &amp; Security</h3>
+                    <p className="text-[11px] text-text-muted">Restrict client access by IP or subnet range</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsQuickIpModalOpen(false)}
+                  className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* Target API Summary */}
+                <div className="bg-bg-editor p-3 rounded-xl border border-border-main flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-text-main block truncate">{quickIpTarget.name}</span>
+                    <code className="text-[11px] font-mono text-blue-400 block truncate">/api/data{quickIpTarget.endpointPath}</code>
+                  </div>
+                  <span className={clsx("px-2 py-0.5 rounded text-[10px] font-black shrink-0 uppercase", getMethodBadgeClass(quickIpTarget.method))}>
+                    {quickIpTarget.method}
+                  </span>
+                </div>
+
+                {/* IP Allowlist Input */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
+                      Allowed IP Addresses / Subnets
+                    </label>
+                    {quickIpValue.trim() ? (
+                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
+                        Restricted
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
+                        Open Access (All IPs)
+                      </span>
+                    )}
+                  </div>
+                  <textarea
+                    rows={3}
+                    className="w-full bg-[#0d1117] border border-border-main focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl p-3 text-xs outline-none text-emerald-300 font-mono resize-none shadow-inner leading-relaxed"
+                    placeholder="Leave empty to allow all IP addresses.&#10;Or enter: 192.168.1.100, 10.0.0.0/24, 203.0.113.50"
+                    value={quickIpValue}
+                    onChange={e => setQuickIpValue(e.target.value)}
+                  />
+                </div>
+
+                {/* Quick Helper Action Chips */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setQuickIpValue('')}
+                    className="px-2.5 py-1 rounded-lg bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-rose-400 border border-border-main text-[11px] font-bold transition-all"
+                  >
+                    🌐 Allow All IPs (Clear)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const trimmed = quickIpValue.trim();
+                      if (!trimmed.includes('127.0.0.1')) {
+                        setQuickIpValue(trimmed ? `${trimmed}, 127.0.0.1` : '127.0.0.1');
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-indigo-400 border border-border-main text-[11px] font-bold transition-all"
+                  >
+                    ➕ Add 127.0.0.1 (Localhost)
+                  </button>
+                </div>
+
+                <div className="text-[11px] text-text-muted leading-relaxed bg-blue-500/5 border border-blue-500/10 rounded-xl p-3">
+                  <span className="font-semibold text-blue-400">💡 Format Guide:</span> Separate multiple IPs using commas or line breaks. Supports single IPv4/IPv6, CIDR blocks (e.g. <code className="font-mono text-blue-300">192.168.1.0/24</code>), and wildcard masks.
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-border-main flex items-center justify-end gap-2 bg-bg-editor/40">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickIpModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveQuickIp}
+                  disabled={isSavingQuickIp}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center gap-2"
+                >
+                  {isSavingQuickIp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>{isSavingQuickIp ? 'Saving...' : 'Save IP Allowlist'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── MANAGE GROUPS MODAL ────────────────────────────────────────── */}
+        {isManageGroupsModalOpen && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-bg-panel border border-border-main rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+              <div className="p-5 border-b border-border-main flex items-center justify-between bg-bg-editor/50">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                    <FolderTree className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-text-main">Manage API Groups</h3>
+                    <p className="text-[11px] text-text-muted">Organize endpoints into structured folders</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsManageGroupsModalOpen(false)}
+                  className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* Create New Group Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
+                    Create New Group
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      className="w-full bg-bg-editor border border-border-main focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-3 py-2 text-xs outline-none text-text-main font-medium shadow-inner"
+                      placeholder="e.g. Sales, Finance, Auth Module..."
+                      value={newGroupInputName}
+                      onChange={e => setNewGroupInputName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && newGroupInputName.trim()) {
+                          handleCreateGroup(newGroupInputName.trim());
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={!newGroupInputName.trim()}
+                      onClick={() => handleCreateGroup(newGroupInputName.trim())}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shrink-0"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                </div>
+
+                {/* Existing Groups List */}
+                <div className="space-y-2 pt-2">
+                  <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider block">
+                    Existing Groups ({allGroups.length})
+                  </label>
+                  <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                    {allGroups.map(grp => {
+                      const count = endpoints.filter(e => (e.groupName || 'General') === grp).length;
+                      return (
+                        <div
+                          key={grp}
+                          onClick={() => {
+                            setSelectedGroup(grp);
+                            setIsManageGroupsModalOpen(false);
+                          }}
+                          className={clsx(
+                            "flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer",
+                            selectedGroup === grp
+                              ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300"
+                              : "bg-bg-editor/60 border-border-main hover:bg-bg-hover hover:border-indigo-500/30 text-text-main"
+                          )}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Folder className="w-4 h-4 text-indigo-400" />
+                            <span className="text-xs font-bold">{grp}</span>
+                          </div>
+                          <span className="text-[11px] font-mono px-2 py-0.5 bg-bg-panel rounded-md border border-border-main text-text-muted font-bold">
+                            {count} {count === 1 ? 'API' : 'APIs'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-border-main flex items-center justify-end bg-bg-editor/40">
+                <button
+                  type="button"
+                  onClick={() => setIsManageGroupsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── QUICK CHANGE GROUP MODAL ───────────────────────────────────── */}
+        {isQuickGroupModalOpen && quickGroupTarget && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-bg-panel border border-border-main rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden flex flex-col">
+              <div className="p-5 border-b border-border-main flex items-center justify-between bg-bg-editor/50">
+                <div className="flex items-center gap-2">
+                  <Folder className="w-4 h-4 text-indigo-400" />
+                  <h3 className="text-sm font-bold text-text-main">Change Group</h3>
+                </div>
+                <button
+                  onClick={() => setIsQuickGroupModalOpen(false)}
+                  className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-3">
+                <p className="text-xs text-text-muted">
+                  Move endpoint <b className="text-text-main font-bold">"{quickGroupTarget.name}"</b> to a group:
+                </p>
+                <div className="relative">
+                  <input
+                    list="quick-modal-group-list"
+                    className="w-full bg-bg-editor border border-border-main focus:border-indigo-500 rounded-xl p-2.5 text-xs outline-none text-text-main font-bold shadow-inner"
+                    value={quickGroupValue}
+                    onChange={e => setQuickGroupValue(e.target.value)}
+                    placeholder="Select or enter group name..."
+                  />
+                  <datalist id="quick-modal-group-list">
+                    {allGroups.map(g => (
+                      <option key={g} value={g} />
+                    ))}
+                  </datalist>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  {allGroups.map(g => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setQuickGroupValue(g)}
+                      className={clsx(
+                        "px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all",
+                        quickGroupValue === g
+                          ? "bg-indigo-600 text-white border-indigo-500"
+                          : "bg-bg-editor hover:bg-bg-hover text-text-muted border-border-main"
+                      )}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-border-main flex items-center justify-end gap-2 bg-bg-editor/40">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickGroupModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveQuickGroup}
+                  disabled={isSavingQuickGroup}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-indigo-500/20 flex items-center gap-1.5"
+                >
+                  {isSavingQuickGroup ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>Save Group</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1512,6 +2027,31 @@ export const ApiBuilderView: React.FC = () => {
                       />
                     </div>
                   </div>
+
+                  {/* Group / Category */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-text-muted uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                      <span>Group / Category</span>
+                      <span className="text-[10px] text-indigo-400 font-normal">Optional</span>
+                    </label>
+                    <div className="relative">
+                      <input 
+                        list="builder-group-list"
+                        className="w-full bg-bg-editor border border-border-main focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl p-3 text-sm outline-none text-text-main transition-all shadow-inner font-medium"
+                        value={currentApi.groupName || 'General'}
+                        onChange={e => setCurrentApi({...currentApi, groupName: e.target.value})}
+                        placeholder="e.g. Sales Module, Inventory, Master Data..."
+                      />
+                      <datalist id="builder-group-list">
+                        {allGroups.map(g => (
+                          <option key={g} value={g} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <span className="text-[10px] text-text-muted mt-1 block">
+                      Assign to an existing group or type a new group name.
+                    </span>
+                  </div>
                 </div>
 
                 {/* SECTION 2: PARAMETERS SCHEMA */}
@@ -1737,6 +2277,49 @@ export const ApiBuilderView: React.FC = () => {
                         </span>
                       </div>
                     </label>
+                  </div>
+
+                  {/* IP Address Allowlist Card */}
+                  <div className="bg-bg-editor/80 border border-border-main hover:border-emerald-500/30 rounded-xl p-4 space-y-2.5 shadow-sm transition-all">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Shield className="w-3.5 h-3.5" /> IP Address Allowlist (Optional)
+                      </label>
+                      {currentApi.ipAllowlist && currentApi.ipAllowlist.trim() && currentApi.ipAllowlist.trim() !== '*' ? (
+                        <button
+                          type="button"
+                          onClick={() => setCurrentApi({ ...currentApi, ipAllowlist: '' })}
+                          className="text-[11px] text-text-muted hover:text-rose-400 font-bold cursor-pointer transition-colors"
+                        >
+                          Clear (Allow All)
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded font-mono font-bold">
+                          All IPs Allowed
+                        </span>
+                      )}
+                    </div>
+                    <textarea 
+                      rows={2}
+                      className="w-full bg-[#0d1117] border border-border-main focus:border-emerald-500/60 rounded-xl p-2.5 text-xs outline-none text-emerald-300 font-mono shadow-inner resize-none font-medium"
+                      value={currentApi.ipAllowlist || ''}
+                      onChange={e => setCurrentApi({...currentApi, ipAllowlist: e.target.value})}
+                      placeholder="Leave blank to allow all IPs. Or enter: 192.168.1.100, 10.0.0.0/24, 203.0.113.50"
+                    />
+                    <div className="flex items-center justify-between text-[10px] text-text-muted">
+                      <span>Separate multiple IPs with commas or newlines. Subnet CIDR (/24) supported.</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const existing = currentApi.ipAllowlist ? currentApi.ipAllowlist.trim() : '';
+                          const added = existing ? `${existing}, 127.0.0.1` : '127.0.0.1';
+                          setCurrentApi({ ...currentApi, ipAllowlist: added });
+                        }}
+                        className="text-indigo-400 hover:text-indigo-300 font-bold cursor-pointer shrink-0 ml-2"
+                      >
+                        + Add 127.0.0.1
+                      </button>
+                    </div>
                   </div>
                 </div>
 
