@@ -679,26 +679,116 @@ public class DataWarehouseService {
                     List<String> unionSelects = new ArrayList<>();
                     for (ConnectionDetails cItem : allConns) {
                         String cBaseName = cItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                        DataSource specificDs = (allConns.size() == 1) ? sourceDs : connectionManagerService.getDataSource(cItem);
                         for (String t : physicalTables) {
                             String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
                             String landingTbl = "landing_" + cBaseName + "_" + cleanTable;
                             
+                            List<ColumnInfo> tLandingCols = new ArrayList<>();
+                            Set<String> tPKs = new LinkedHashSet<>();
+                            try (Connection conn = specificDs.getConnection()) {
+                                DatabaseMetaData metaData = conn.getMetaData();
+                                String schemaName = null;
+                                String tableName = t;
+                                if (t.contains(".")) {
+                                    int dotIdx = t.indexOf('.');
+                                    schemaName = t.substring(0, dotIdx);
+                                    tableName = t.substring(dotIdx + 1);
+                                } else {
+                                    schemaName = cItem.getSchema();
+                                }
+                                tableName = tableName.replaceAll("[\"``]", "");
+                                if (schemaName != null) schemaName = schemaName.replaceAll("[\"``]", "");
+                                
+                                try (ResultSet colRs = metaData.getColumns(null, schemaName, tableName, "%")) {
+                                    while (colRs.next()) {
+                                        ColumnInfo col = new ColumnInfo();
+                                        col.name = colRs.getString("COLUMN_NAME");
+                                        col.postgresType = mapJdbcTypeToPostgres(
+                                            colRs.getInt("DATA_TYPE"),
+                                            colRs.getInt("COLUMN_SIZE"),
+                                            colRs.getInt("DECIMAL_DIGITS"),
+                                            colRs.getString("TYPE_NAME")
+                                        );
+                                        tLandingCols.add(col);
+                                    }
+                                }
+                                try (ResultSet pkRs = metaData.getPrimaryKeys(null, schemaName, tableName)) {
+                                    while (pkRs.next()) {
+                                        String pkCol = pkRs.getString("COLUMN_NAME");
+                                        if (pkCol != null) tPKs.add(pkCol);
+                                    }
+                                }
+                            } catch (Exception ignored) {}
+                            
+                            if (tLandingCols.isEmpty()) {
+                                String schemaPrefix = t.contains(".") ? "" : 
+                                    ("postgresql".equalsIgnoreCase(cItem.getType()) ? 
+                                        (cItem.getSchema() != null && !cItem.getSchema().trim().isEmpty() ? cItem.getSchema().trim() + "." : "public.") : "");
+                                String tableDdlSql = "SELECT * FROM " + schemaPrefix + t + " LIMIT 0";
+                                try (Connection conn = specificDs.getConnection();
+                                     PreparedStatement ps = conn.prepareStatement(tableDdlSql);
+                                     ResultSet rs = ps.executeQuery()) {
+                                    ResultSetMetaData meta = rs.getMetaData();
+                                    for (int i = 1; i <= meta.getColumnCount(); i++) {
+                                        ColumnInfo col = new ColumnInfo();
+                                        col.name = meta.getColumnLabel(i);
+                                        col.postgresType = mapJdbcTypeToPostgres(
+                                            meta.getColumnType(i),
+                                            meta.getPrecision(i),
+                                            meta.getScale(i),
+                                            meta.getColumnTypeName(i)
+                                        );
+                                        tLandingCols.add(col);
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                            if (tLandingCols.isEmpty()) {
+                                tLandingCols = targetColumns;
+                            }
+                            if (tPKs.isEmpty() && !tLandingCols.isEmpty()) {
+                                tPKs.add(tLandingCols.get(0).name);
+                            }
+                            
+                            // Check if existing landing table columns match tLandingCols
+                            boolean recreateLanding = false;
+                            try (Connection conn = targetDs.getConnection();
+                                 Statement st = conn.createStatement()) {
+                                DatabaseMetaData meta = conn.getMetaData();
+                                Set<String> existingCols = new HashSet<>();
+                                try (ResultSet rs = meta.getColumns(null, targetSchema, landingTbl, "%")) {
+                                    while (rs.next()) {
+                                        existingCols.add(rs.getString("COLUMN_NAME").toLowerCase());
+                                    }
+                                }
+                                if (!existingCols.isEmpty()) {
+                                    for (ColumnInfo col : tLandingCols) {
+                                        if (!existingCols.contains(col.name.toLowerCase())) {
+                                            recreateLanding = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (recreateLanding) {
+                                    st.execute("DROP TABLE IF EXISTS " + targetSchema + "." + landingTbl + " CASCADE");
+                                    sendLog(emitter, "Refreshed PostgreSQL landing table schema for `" + targetSchema + "." + landingTbl + "`.");
+                                }
+                            } catch (Exception ignored) {}
+
                             StringBuilder pgLandingDdl = new StringBuilder();
                             pgLandingDdl.append("CREATE TABLE IF NOT EXISTS ").append(targetSchema).append(".").append(landingTbl).append(" (\n");
-                            for (ColumnInfo col : targetColumns) {
+                            for (ColumnInfo col : tLandingCols) {
                                 pgLandingDdl.append("    \"").append(col.name).append("\" ").append(col.postgresType != null ? col.postgresType : "TEXT").append(",\n");
                             }
                             pgLandingDdl.append("    \"is_deleted\" BOOLEAN DEFAULT FALSE,\n");
                             
                             StringBuilder pkBld = new StringBuilder();
-                            for (String pk : compositePKs) {
+                            for (String pk : tPKs) {
                                 if (pkBld.length() > 0) pkBld.append(", ");
                                 pkBld.append("\"").append(pk).append("\"");
                             }
                             if (pkBld.length() > 0) {
                                 pgLandingDdl.append("    PRIMARY KEY (").append(pkBld.toString()).append(")\n");
-                            } else if (!targetColumns.isEmpty()) {
-                                pgLandingDdl.append("    PRIMARY KEY (\"").append(targetColumns.get(0).name).append("\")\n");
                             }
                             pgLandingDdl.append(")");
 
@@ -710,8 +800,27 @@ public class DataWarehouseService {
                             } catch (Exception e) {
                                 sendLog(emitter, "WARNING: Landing table creation: " + e.getMessage());
                             }
-
+                        }
+                        
+                        // Build query for this source connection
+                        if (physicalTables.size() == 1) {
+                            String t = physicalTables.get(0);
+                            String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
+                            String landingTbl = "landing_" + cBaseName + "_" + cleanTable;
                             unionSelects.add("SELECT '" + cItem.getName() + "' AS source_db, * FROM " + targetSchema + "." + landingTbl + " WHERE (is_deleted IS NULL OR is_deleted = false)");
+                        } else {
+                            String subQuery = originalQuery;
+                            for (String t : physicalTables) {
+                                String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
+                                String landingTbl = targetSchema + ".landing_" + cBaseName + "_" + cleanTable;
+                                subQuery = subQuery.replaceAll("(?i)\\b" + java.util.regex.Pattern.quote(t) + "\\b", landingTbl);
+                                if (t.contains(".")) {
+                                    String bareTable = t.substring(t.indexOf('.') + 1);
+                                    subQuery = subQuery.replaceAll("(?i)\\b" + java.util.regex.Pattern.quote(bareTable) + "\\b", landingTbl);
+                                }
+                            }
+                            subQuery = subQuery.replaceFirst("(?i)^(\\s*SELECT\\s+)", "$1'" + cItem.getName() + "' AS source_db, ");
+                            unionSelects.add(subQuery);
                         }
                     }
 
@@ -1543,27 +1652,8 @@ public class DataWarehouseService {
                                         List<Integer> colIndices = new ArrayList<>();
                                         
                                         for (int i = 1; i <= cols; i++) {
-                                            String colLabel = meta.getColumnLabel(i);
-                                            boolean matched = false;
-                                            for (ColumnInfo c : targetColumns) {
-                                                if (c.name.equalsIgnoreCase(colLabel)) {
-                                                    colNames.add("\"" + c.name + "\"");
-                                                    colIndices.add(i);
-                                                    matched = true;
-                                                    break;
-                                                }
-                                            }
-                                            if (!matched && targetColumns.isEmpty()) {
-                                                colNames.add("\"" + colLabel + "\"");
-                                                colIndices.add(i);
-                                            }
-                                        }
-                                        
-                                        if (colNames.isEmpty()) {
-                                            for (int i = 1; i <= cols; i++) {
-                                                colNames.add("\"" + meta.getColumnLabel(i) + "\"");
-                                                colIndices.add(i);
-                                            }
+                                            colNames.add("\"" + meta.getColumnLabel(i) + "\"");
+                                            colIndices.add(i);
                                         }
 
                                         List<String> placeholders = new ArrayList<>();
