@@ -1529,24 +1529,56 @@ public class DataWarehouseService {
                                 
                                 if (currentCount == 0) {
                                     sendLog(emitter, "Initial sync: Copying existing rows from source [" + cItem.getName() + "] table `" + t + "` to `" + targetSchema + "." + destTable + "`...");
-                                    String srcSelect = "SELECT * FROM " + t;
+                                    String schemaPrefix = t.contains(".") ? "" : 
+                                        ("postgresql".equalsIgnoreCase(cItem.getType()) ? 
+                                            (cItem.getSchema() != null && !cItem.getSchema().trim().isEmpty() ? cItem.getSchema().trim() + "." : "public.") : "");
+                                    String srcSelect = (physicalTables.size() == 1 && request.getQuery() != null && !request.getQuery().trim().isEmpty()) 
+                                        ? request.getQuery() 
+                                        : ("SELECT * FROM " + schemaPrefix + t);
                                     try (Statement srcStmt = specificSrcConn.createStatement();
                                          ResultSet srcRs = srcStmt.executeQuery(srcSelect)) {
                                         ResultSetMetaData meta = srcRs.getMetaData();
                                         int cols = meta.getColumnCount();
                                         List<String> colNames = new ArrayList<>();
-                                        List<String> placeholders = new ArrayList<>();
+                                        List<Integer> colIndices = new ArrayList<>();
+                                        
                                         for (int i = 1; i <= cols; i++) {
-                                            colNames.add("\"" + meta.getColumnLabel(i) + "\"");
+                                            String colLabel = meta.getColumnLabel(i);
+                                            boolean matched = false;
+                                            for (ColumnInfo c : targetColumns) {
+                                                if (c.name.equalsIgnoreCase(colLabel)) {
+                                                    colNames.add("\"" + c.name + "\"");
+                                                    colIndices.add(i);
+                                                    matched = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (!matched && targetColumns.isEmpty()) {
+                                                colNames.add("\"" + colLabel + "\"");
+                                                colIndices.add(i);
+                                            }
+                                        }
+                                        
+                                        if (colNames.isEmpty()) {
+                                            for (int i = 1; i <= cols; i++) {
+                                                colNames.add("\"" + meta.getColumnLabel(i) + "\"");
+                                                colIndices.add(i);
+                                            }
+                                        }
+
+                                        List<String> placeholders = new ArrayList<>();
+                                        for (int i = 0; i < colNames.size(); i++) {
                                             placeholders.add("?");
                                         }
+
                                         String insertSql = "INSERT INTO " + targetSchema + "." + destTable + " (" + String.join(", ", colNames) + ") VALUES (" + String.join(", ", placeholders) + ") ON CONFLICT DO NOTHING";
                                         try (PreparedStatement insertPs = targetConn.prepareStatement(insertSql)) {
                                             int batchSize = 0;
                                             long totalInserted = 0;
                                             while (srcRs.next()) {
-                                                for (int i = 1; i <= cols; i++) {
-                                                    insertPs.setObject(i, srcRs.getObject(i));
+                                                for (int idx = 0; idx < colIndices.size(); idx++) {
+                                                    int srcColIdx = colIndices.get(idx);
+                                                    insertPs.setObject(idx + 1, srcRs.getObject(srcColIdx));
                                                 }
                                                 insertPs.addBatch();
                                                 batchSize++;
