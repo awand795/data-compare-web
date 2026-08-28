@@ -1166,7 +1166,7 @@ export const ApiBuilderView: React.FC = () => {
                         </div>
                       ) : displayMode === 'grid' ? (
                         /* GRID CARDS */
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-1">
                           {group.items.map(api => (
                             <div 
                               key={api.id}
@@ -1297,9 +1297,9 @@ export const ApiBuilderView: React.FC = () => {
                         </div>
                       ) : (
                         /* TABLE VIEW */
-                        <div className="border border-border-main rounded-xl overflow-hidden shadow-inner bg-bg-panel">
+                        <div className="border border-border-main rounded-xl overflow-x-auto max-h-[600px] overflow-y-auto shadow-inner bg-bg-panel">
                           <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
-                            <thead className="bg-bg-editor text-text-muted font-bold border-b border-border-main text-xs">
+                            <thead className="bg-bg-editor text-text-muted font-bold border-b border-border-main text-xs sticky top-0 z-10 shadow-sm">
                               <tr>
                                 <th className="p-3 uppercase tracking-wider text-[11px]">Name &amp; Group</th>
                                 <th className="p-3 uppercase tracking-wider text-[11px]">Method &amp; Path</th>

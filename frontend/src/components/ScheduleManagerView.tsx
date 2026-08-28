@@ -708,7 +708,7 @@ export const ScheduleManagerView: React.FC = () => {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="bg-bg-panel border border-border-main rounded-xl overflow-x-auto shadow-sm">
+                                                <div className="bg-bg-panel border border-border-main rounded-xl overflow-x-auto max-h-[600px] overflow-y-auto shadow-sm">
                                                     <table className="w-full text-left text-xs border-collapse min-w-[700px]">
                                                         <thead className="bg-bg-header text-[10px] text-text-muted uppercase tracking-wider border-b border-border-main sticky top-0 z-10">
                                                             <tr>

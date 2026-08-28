@@ -2117,10 +2117,9 @@ export const ApiSchedulerView: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <div className="border border-border-main rounded-xl overflow-hidden shadow-inner bg-bg-panel">
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left border-collapse min-w-[900px]">
-                            <thead className="bg-bg-editor text-[11px] font-bold text-text-muted uppercase tracking-wider border-b border-border-main">
+                      <div className="border border-border-main rounded-xl overflow-x-auto max-h-[600px] overflow-y-auto shadow-inner bg-bg-panel">
+                        <table className="w-full text-left border-collapse min-w-[900px]">
+                          <thead className="bg-bg-editor text-[11px] font-bold text-text-muted uppercase tracking-wider border-b border-border-main sticky top-0 z-10 shadow-sm">
                               <tr>
                                 <th className="py-3 px-4 w-16 text-center">Status</th>
                                 <th className="py-3 px-4">Schedule &amp; Endpoint</th>
@@ -2324,7 +2323,6 @@ export const ApiSchedulerView: React.FC = () => {
                               })}
                             </tbody>
                           </table>
-                        </div>
                       </div>
                     )}
                   </div>
