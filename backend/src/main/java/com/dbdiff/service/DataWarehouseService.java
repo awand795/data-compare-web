@@ -1644,53 +1644,81 @@ public class DataWarehouseService {
                                     String srcSelect = (physicalTables.size() == 1 && request.getQuery() != null && !request.getQuery().trim().isEmpty()) 
                                         ? request.getQuery() 
                                         : ("SELECT * FROM " + schemaPrefix + t);
-                                    try (Statement srcStmt = specificSrcConn.createStatement();
-                                         ResultSet srcRs = srcStmt.executeQuery(srcSelect)) {
-                                        ResultSetMetaData meta = srcRs.getMetaData();
-                                        int cols = meta.getColumnCount();
-                                        List<String> colNames = new ArrayList<>();
-                                        List<Integer> colIndices = new ArrayList<>();
-                                        
-                                        for (int i = 1; i <= cols; i++) {
-                                            colNames.add("\"" + meta.getColumnLabel(i) + "\"");
-                                            colIndices.add(i);
-                                        }
+                                     try {
+                                         specificSrcConn.setAutoCommit(false);
+                                     } catch (Exception ignored) {}
+                                     
+                                     try (Statement srcStmt = specificSrcConn.createStatement()) {
+                                         srcStmt.setFetchSize(5000);
+                                         try (ResultSet srcRs = srcStmt.executeQuery(srcSelect)) {
+                                             ResultSetMetaData meta = srcRs.getMetaData();
+                                             int cols = meta.getColumnCount();
+                                             List<String> colNames = new ArrayList<>();
+                                             List<Integer> colIndices = new ArrayList<>();
+                                             
+                                             for (int i = 1; i <= cols; i++) {
+                                                 colNames.add("\"" + meta.getColumnLabel(i) + "\"");
+                                                 colIndices.add(i);
+                                             }
 
-                                        List<String> placeholders = new ArrayList<>();
-                                        for (int i = 0; i < colNames.size(); i++) {
-                                            placeholders.add("?");
-                                        }
+                                             List<String> placeholders = new ArrayList<>();
+                                             for (int i = 0; i < colNames.size(); i++) {
+                                                 placeholders.add("?");
+                                             }
 
-                                        String insertSql = "INSERT INTO " + targetSchema + "." + destTable + " (" + String.join(", ", colNames) + ") VALUES (" + String.join(", ", placeholders) + ") ON CONFLICT DO NOTHING";
-                                        try (PreparedStatement insertPs = targetConn.prepareStatement(insertSql)) {
-                                            int batchSize = 0;
-                                            long totalInserted = 0;
-                                            while (srcRs.next()) {
-                                                for (int idx = 0; idx < colIndices.size(); idx++) {
-                                                    int srcColIdx = colIndices.get(idx);
-                                                    insertPs.setObject(idx + 1, srcRs.getObject(srcColIdx));
-                                                }
-                                                insertPs.addBatch();
-                                                batchSize++;
-                                                if (batchSize >= 1000) {
-                                                    insertPs.executeBatch();
-                                                    totalInserted += batchSize;
-                                                    batchSize = 0;
-                                                }
-                                            }
-                                            if (batchSize > 0) {
-                                                insertPs.executeBatch();
-                                                totalInserted += batchSize;
-                                            }
-                                            sendLog(emitter, "Copied " + totalInserted + " records into `" + targetSchema + "." + destTable + "`.");
-                                        }
-                                    } catch (Exception ex) {
-                                        logger.warn("Initial direct sync failed for {}: {}", destTable, ex.getMessage());
-                                        sendLog(emitter, "WARNING: Direct sync for `" + destTable + "`: " + ex.getMessage());
-                                    }
-                                } else {
-                                    sendLog(emitter, "Target table `" + targetSchema + "." + destTable + "` already contains " + currentCount + " rows.");
-                                }
+                                             String insertSql = "INSERT INTO " + targetSchema + "." + destTable + " (" + String.join(", ", colNames) + ") VALUES (" + String.join(", ", placeholders) + ") ON CONFLICT DO NOTHING";
+                                             try {
+                                                 targetConn.setAutoCommit(false);
+                                             } catch (Exception ignored) {}
+
+                                             try (PreparedStatement insertPs = targetConn.prepareStatement(insertSql)) {
+                                                 int batchSize = 0;
+                                                 long totalInserted = 0;
+                                                 while (srcRs.next()) {
+                                                     for (int idx = 0; idx < colIndices.size(); idx++) {
+                                                         int srcColIdx = colIndices.get(idx);
+                                                         insertPs.setObject(idx + 1, srcRs.getObject(srcColIdx));
+                                                     }
+                                                     insertPs.addBatch();
+                                                     batchSize++;
+                                                     if (batchSize >= 5000) {
+                                                         insertPs.executeBatch();
+                                                         try { targetConn.commit(); } catch (Exception ignored) {}
+                                                         totalInserted += batchSize;
+                                                         batchSize = 0;
+                                                         if (totalInserted % 25000 == 0) {
+                                                             sendLog(emitter, "Copied " + totalInserted + " records into `" + targetSchema + "." + destTable + "`...");
+                                                         }
+                                                     }
+                                                 }
+                                                 if (batchSize > 0) {
+                                                     insertPs.executeBatch();
+                                                     try { targetConn.commit(); } catch (Exception ignored) {}
+                                                     totalInserted += batchSize;
+                                                 }
+                                                 sendLog(emitter, "Copied " + totalInserted + " records into `" + targetSchema + "." + destTable + "`.");
+                                             } finally {
+                                                 try { targetConn.setAutoCommit(true); } catch (Exception ignored) {}
+                                             }
+                                         }
+                                     } catch (Exception ex) {
+                                         String safeMsg = ex.getMessage();
+                                         if (safeMsg != null) {
+                                             if (safeMsg.contains("ERROR:")) {
+                                                 safeMsg = safeMsg.substring(safeMsg.indexOf("ERROR:"));
+                                             }
+                                             if (safeMsg.length() > 200) {
+                                                 safeMsg = safeMsg.substring(0, 200) + "...";
+                                             }
+                                         }
+                                         logger.warn("Initial direct sync failed for {}: {}", destTable, safeMsg);
+                                         sendLog(emitter, "WARNING: Direct sync for `" + destTable + "`: " + safeMsg);
+                                     } finally {
+                                         try { specificSrcConn.setAutoCommit(true); } catch (Exception ignored) {}
+                                     }
+                                 } else {
+                                     sendLog(emitter, "Target table `" + targetSchema + "." + destTable + "` already contains " + currentCount + " rows.");
+                                 }
                             }
                         }
                     }
