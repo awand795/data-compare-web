@@ -344,9 +344,11 @@ public class DataWarehouseService {
             // Generate shared source connector name per connection, and target-specific sink connector name
             String baseName = request.getSourceConnection().getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
             long deployId = request.getDeployId() != null ? Long.parseLong(request.getDeployId()) : System.currentTimeMillis();
+            boolean isPostgresTargetEarly = "postgresql".equalsIgnoreCase(request.getTargetConnection().getType());
             String cleanTarget = request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "");
             String sourceConnectorName = "source-" + baseName + "-shared";
-            String sinkConnectorName = "sink-clickhouse-" + cleanTarget + "-" + deployId;
+            String sinkPrefix = isPostgresTargetEarly ? "sink-postgres-" : "sink-clickhouse-";
+            String sinkConnectorName = sinkPrefix + cleanTarget + "-" + deployId;
             
             org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
             headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
@@ -362,7 +364,7 @@ public class DataWarehouseService {
                     for (String cName : connectors) {
                         // Check if it belongs to this pipeline target or source
                         if (cName.startsWith("source-" + baseName + "-" + cleanTarget) || 
-                            (cName.matches("sink-clickhouse-" + cleanTarget + "-[0-9]+") && !cName.endsWith("-" + deployId))) {
+                            (cName.matches("sink-(clickhouse|postgres)-" + cleanTarget + "-[0-9]+") && !cName.endsWith("-" + deployId))) {
                             sendLog(emitter, "Deleting old connector: " + cName);
                             try {
                                 restTemplate.delete(DEBEZIUM_URL + "/" + cName);
@@ -1391,8 +1393,8 @@ public class DataWarehouseService {
                     sinkConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
                     
                     sinkConfig.put("transforms.routeTable.type", "org.apache.kafka.connect.transforms.RegexRouter");
-                    sinkConfig.put("transforms.routeTable.regex", "cdc_([^_]+(?:_[^_]+)*)_([^_]+)_([^_]+)");
-                    sinkConfig.put("transforms.routeTable.replacement", targetSchema + ".landing_$1_$3");
+                    sinkConfig.put("transforms.routeTable.regex", "cdc_(.*)");
+                    sinkConfig.put("transforms.routeTable.replacement", targetSchema + ".landing_$1");
                 } else {
                     sinkConfig.put("transforms", "unwrap,routeTable");
                     sinkConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
@@ -1509,8 +1511,70 @@ public class DataWarehouseService {
             // STEP 6: Wait for Snapshot to Complete
             // =========================================================================
             if (isPostgresTarget) {
-                sendLog(emitter, "Waiting for initial PostgreSQL snapshot to populate target table/views...");
-                Thread.sleep(5000);
+                sendLog(emitter, "Checking and populating initial data for PostgreSQL target...");
+                try (Connection targetConn = targetDs.getConnection()) {
+                    for (ConnectionDetails cItem : allConns) {
+                        DataSource specificSrcDs = (allConns.size() == 1) ? sourceDs : connectionManagerService.getDataSource(cItem);
+                        try (Connection specificSrcConn = specificSrcDs.getConnection()) {
+                            String cBaseName = cItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                            for (String t : physicalTables) {
+                                String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
+                                String destTable = (allConns.size() > 1) ? ("landing_" + cBaseName + "_" + cleanTable) : request.getTargetTable();
+                                
+                                long currentCount = 0;
+                                try (Statement st = targetConn.createStatement();
+                                     ResultSet rs = st.executeQuery("SELECT count(*) FROM " + targetSchema + "." + destTable)) {
+                                    if (rs.next()) currentCount = rs.getLong(1);
+                                } catch (Exception ignored) {}
+                                
+                                if (currentCount == 0) {
+                                    sendLog(emitter, "Initial sync: Copying existing rows from source [" + cItem.getName() + "] table `" + t + "` to `" + targetSchema + "." + destTable + "`...");
+                                    String srcSelect = "SELECT * FROM " + t;
+                                    try (Statement srcStmt = specificSrcConn.createStatement();
+                                         ResultSet srcRs = srcStmt.executeQuery(srcSelect)) {
+                                        ResultSetMetaData meta = srcRs.getMetaData();
+                                        int cols = meta.getColumnCount();
+                                        List<String> colNames = new ArrayList<>();
+                                        List<String> placeholders = new ArrayList<>();
+                                        for (int i = 1; i <= cols; i++) {
+                                            colNames.add("\"" + meta.getColumnLabel(i) + "\"");
+                                            placeholders.add("?");
+                                        }
+                                        String insertSql = "INSERT INTO " + targetSchema + "." + destTable + " (" + String.join(", ", colNames) + ") VALUES (" + String.join(", ", placeholders) + ") ON CONFLICT DO NOTHING";
+                                        try (PreparedStatement insertPs = targetConn.prepareStatement(insertSql)) {
+                                            int batchSize = 0;
+                                            long totalInserted = 0;
+                                            while (srcRs.next()) {
+                                                for (int i = 1; i <= cols; i++) {
+                                                    insertPs.setObject(i, srcRs.getObject(i));
+                                                }
+                                                insertPs.addBatch();
+                                                batchSize++;
+                                                if (batchSize >= 1000) {
+                                                    insertPs.executeBatch();
+                                                    totalInserted += batchSize;
+                                                    batchSize = 0;
+                                                }
+                                            }
+                                            if (batchSize > 0) {
+                                                insertPs.executeBatch();
+                                                totalInserted += batchSize;
+                                            }
+                                            sendLog(emitter, "Copied " + totalInserted + " records into `" + targetSchema + "." + destTable + "`.");
+                                        }
+                                    } catch (Exception ex) {
+                                        logger.warn("Initial direct sync failed for {}: {}", destTable, ex.getMessage());
+                                        sendLog(emitter, "WARNING: Direct sync for `" + destTable + "`: " + ex.getMessage());
+                                    }
+                                } else {
+                                    sendLog(emitter, "Target table `" + targetSchema + "." + destTable + "` already contains " + currentCount + " rows.");
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    logger.warn("Initial PostgreSQL population error: {}", ex.getMessage());
+                }
                 sendLog(emitter, "PostgreSQL CDC Pipeline deployment completed successfully.");
             } else {
                 sendLog(emitter, "Waiting for initial snapshot to complete and populate the target table...");

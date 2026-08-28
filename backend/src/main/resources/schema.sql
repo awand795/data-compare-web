@@ -209,3 +209,11 @@ CREATE TABLE IF NOT EXISTS system_alert_schedules (
     last_alert_time TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS app_groups (
+    id SERIAL PRIMARY KEY,
+    module VARCHAR(50) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_app_groups_module_name UNIQUE (module, name)
+);

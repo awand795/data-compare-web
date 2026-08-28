@@ -133,8 +133,18 @@ export const ApiBuilderView: React.FC = () => {
 
   const editInitialRef = useRef<string>('');
 
+  const fetchGroups = async () => {
+    try {
+      const res = await axios.get('/api/groups?module=API_BUILDER');
+      if (Array.isArray(res.data)) setCustomGroups(res.data);
+    } catch (e) {
+      console.error('Failed to fetch groups', e);
+    }
+  };
+
   useEffect(() => {
     fetchEndpoints();
+    fetchGroups();
   }, []);
 
   // Track dirty state
@@ -344,13 +354,20 @@ export const ApiBuilderView: React.FC = () => {
     }
   };
 
-  const handleCreateGroup = (groupName: string) => {
+  const [customGroups, setCustomGroups] = useState<string[]>([]);
+
+  const handleCreateGroup = async (groupName: string) => {
     const clean = groupName.trim();
     if (!clean) return;
-    setSelectedGroup(clean);
-    setIsManageGroupsModalOpen(false);
-    setNewGroupInputName('');
-    addToast({ type: 'info', title: 'Group Selected', message: `Switched to group "${clean}".` });
+    try {
+      await axios.post('/api/groups', { module: 'API_BUILDER', name: clean });
+      setCustomGroups(prev => prev.includes(clean) ? prev : [...prev, clean]);
+      setSelectedGroup(clean);
+      setNewGroupInputName('');
+      addToast({ type: 'success', title: 'Group Created', message: `API group "${clean}" saved in database.` });
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Failed to Create Group', message: err?.response?.data?.error || err.message });
+    }
   };
 
   const handleRenameGroup = async (oldName: string, newName: string) => {
@@ -358,20 +375,23 @@ export const ApiBuilderView: React.FC = () => {
       setEditingGroupName(null);
       return;
     }
+    const trimmedNew = newName.trim();
     setIsProcessingGroupAction(true);
     try {
       await axios.put('/api/api-builder/groups/rename', {
         oldName: oldName.trim(),
-        newName: newName.trim()
+        newName: trimmedNew
       });
+      setCustomGroups(prev => prev.map(g => g === oldName ? trimmedNew : g));
       addToast({
         type: 'success',
         title: 'Group Renamed',
-        message: `Group "${oldName}" was renamed to "${newName.trim()}".`
+        message: `Group "${oldName}" was renamed to "${trimmedNew}".`
       });
       setEditingGroupName(null);
-      if (selectedGroup === oldName) setSelectedGroup(newName.trim());
+      if (selectedGroup === oldName) setSelectedGroup(trimmedNew);
       fetchEndpoints();
+      fetchGroups();
     } catch (err: any) {
       addToast({
         type: 'error',
@@ -387,6 +407,8 @@ export const ApiBuilderView: React.FC = () => {
     setIsProcessingGroupAction(true);
     try {
       await axios.delete(`/api/api-builder/groups/${encodeURIComponent(groupName)}`);
+      await axios.delete(`/api/groups?module=API_BUILDER&name=${encodeURIComponent(groupName)}`);
+      setCustomGroups(prev => prev.filter(g => g !== groupName));
       addToast({
         type: 'info',
         title: 'Group Deleted',
@@ -395,6 +417,7 @@ export const ApiBuilderView: React.FC = () => {
       setDeletingGroupName(null);
       if (selectedGroup === groupName) setSelectedGroup('ALL');
       fetchEndpoints();
+      fetchGroups();
     } catch (err: any) {
       addToast({
         type: 'error',
@@ -684,12 +707,16 @@ export const ApiBuilderView: React.FC = () => {
   const allGroups = useMemo(() => {
     const set = new Set<string>();
     set.add('General');
+    customGroups.forEach(g => {
+      const clean = getApiGroupName(g);
+      if (clean) set.add(clean);
+    });
     endpoints.forEach(e => {
       const g = getApiGroupName(e.groupName);
       if (g) set.add(g);
     });
     return Array.from(set).sort((a, b) => a === 'General' ? -1 : b === 'General' ? 1 : a.localeCompare(b));
-  }, [endpoints]);
+  }, [endpoints, customGroups]);
 
   // Filtered Endpoints List
   const filteredEndpoints = useMemo(() => {

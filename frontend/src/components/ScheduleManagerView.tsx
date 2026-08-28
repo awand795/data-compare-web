@@ -80,9 +80,22 @@ export const ScheduleManagerView: React.FC = () => {
             .catch(err => console.error("Failed to fetch schedules", err));
     };
 
+    const [customGroups, setCustomGroups] = useState<string[]>([]);
+
+    const loadGroups = () => {
+        axios.get('/api/groups?module=SCHEDULE_JOB')
+            .then(res => {
+                if (Array.isArray(res.data)) {
+                    setCustomGroups(res.data);
+                }
+            })
+            .catch(err => console.error("Failed to fetch groups from DB", err));
+    };
+
     // Fetch on mount
     useEffect(() => {
         loadSchedules();
+        loadGroups();
         axios.get('/api/notification-channels')
             .then(res => setNotificationChannels(res.data || []))
             .catch(err => console.error("Failed to fetch channels", err));
@@ -95,12 +108,16 @@ export const ScheduleManagerView: React.FC = () => {
     const allGroups = useMemo(() => {
         const set = new Set<string>();
         set.add('General');
+        customGroups.forEach(g => {
+            const clean = getJobGroupName(g);
+            if (clean) set.add(clean);
+        });
         schedules.forEach(s => {
             const g = getJobGroupName(s.groupName);
             if (g) set.add(g);
         });
         return Array.from(set).sort((a, b) => a === 'General' ? -1 : b === 'General' ? 1 : a.localeCompare(b));
-    }, [schedules]);
+    }, [schedules, customGroups]);
 
     // Realtime search and group filtering
     const filteredSchedules = useMemo(() => {
@@ -239,13 +256,18 @@ export const ScheduleManagerView: React.FC = () => {
         }
     };
 
-    const handleCreateGroup = (name: string) => {
+    const handleCreateGroup = async (name: string) => {
         if (!name.trim()) return;
         const formatted = name.trim();
-        setSelectedGroup(formatted);
-        setNewGroupInputName('');
-        setIsManageGroupsModalOpen(false);
-        addToast({ type: 'info', title: 'Group Selected', message: `Filtered by group "${formatted}". Assign jobs to this group via Edit or Quick Group button.` });
+        try {
+            await axios.post('/api/groups', { module: 'SCHEDULE_JOB', name: formatted });
+            setCustomGroups(prev => prev.includes(formatted) ? prev : [...prev, formatted]);
+            setSelectedGroup(formatted);
+            setNewGroupInputName('');
+            addToast({ type: 'success', title: 'Group Created', message: `Group "${formatted}" saved in database.` });
+        } catch (err: any) {
+            addToast({ type: 'error', title: 'Failed to Create Group', message: err?.response?.data?.error || err.message });
+        }
     };
 
     const handleRenameGroup = async (oldName: string, newName: string) => {
@@ -253,20 +275,23 @@ export const ScheduleManagerView: React.FC = () => {
             setEditingGroupName(null);
             return;
         }
+        const trimmedNew = newName.trim();
         setIsProcessingGroupAction(true);
         try {
             await axios.put('/api/schedules/groups/rename', {
                 oldName: oldName.trim(),
-                newName: newName.trim()
+                newName: trimmedNew
             });
+            setCustomGroups(prev => prev.map(g => g === oldName ? trimmedNew : g));
             addToast({
                 type: 'success',
                 title: 'Group Renamed',
-                message: `Group "${oldName}" was renamed to "${newName.trim()}".`
+                message: `Group "${oldName}" was renamed to "${trimmedNew}".`
             });
             setEditingGroupName(null);
-            if (selectedGroup === oldName) setSelectedGroup(newName.trim());
+            if (selectedGroup === oldName) setSelectedGroup(trimmedNew);
             loadSchedules();
+            loadGroups();
         } catch (err: any) {
             addToast({
                 type: 'error',
@@ -282,6 +307,8 @@ export const ScheduleManagerView: React.FC = () => {
         setIsProcessingGroupAction(true);
         try {
             await axios.delete(`/api/schedules/groups/${encodeURIComponent(groupName)}`);
+            await axios.delete(`/api/groups?module=SCHEDULE_JOB&name=${encodeURIComponent(groupName)}`);
+            setCustomGroups(prev => prev.filter(g => g !== groupName));
             addToast({
                 type: 'info',
                 title: 'Group Deleted',
@@ -290,6 +317,7 @@ export const ScheduleManagerView: React.FC = () => {
             setDeletingGroupName(null);
             if (selectedGroup === groupName) setSelectedGroup('ALL');
             loadSchedules();
+            loadGroups();
         } catch (err: any) {
             addToast({
                 type: 'error',

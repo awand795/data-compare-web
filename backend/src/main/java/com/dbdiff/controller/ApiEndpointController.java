@@ -345,12 +345,18 @@ public class ApiEndpointController {
         }
     }
 
+    @Autowired
+    private com.dbdiff.repository.AppGroupRepository appGroupRepository;
+
     @PutMapping("/groups/rename")
     public ResponseEntity<?> renameGroup(@RequestBody Map<String, String> body) {
         String oldName = body.get("oldName");
         String newName = body.get("newName");
         try {
             int affected = apiEndpointRepository.renameGroup(oldName, newName);
+            if (appGroupRepository != null) {
+                appGroupRepository.renameGroup("API_BUILDER", oldName, newName);
+            }
             return ResponseEntity.ok(Map.of("success", true, "message", "Renamed group successfully", "affected", affected));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to rename group"));
@@ -361,6 +367,9 @@ public class ApiEndpointController {
     public ResponseEntity<?> deleteGroup(@PathVariable String groupName) {
         try {
             int affected = apiEndpointRepository.deleteGroup(groupName);
+            if (appGroupRepository != null) {
+                appGroupRepository.deleteGroup("API_BUILDER", groupName);
+            }
             return ResponseEntity.ok(Map.of("success", true, "message", "Group deleted successfully and items moved to General", "affected", affected));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to delete group"));
