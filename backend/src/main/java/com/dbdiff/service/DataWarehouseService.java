@@ -809,7 +809,10 @@ public class DataWarehouseService {
                             String landingTbl = "landing_" + cBaseName + "_" + cleanTable;
                             unionSelects.add("SELECT '" + cItem.getName() + "' AS source_db, * FROM " + targetSchema + "." + landingTbl + " WHERE (is_deleted IS NULL OR is_deleted = false)");
                         } else {
-                            String subQuery = originalQuery;
+                            String subQuery = originalQuery != null ? originalQuery.trim() : "";
+                            if (subQuery.endsWith(";")) {
+                                subQuery = subQuery.substring(0, subQuery.length() - 1).trim();
+                            }
                             for (String t : physicalTables) {
                                 String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
                                 String landingTbl = targetSchema + ".landing_" + cBaseName + "_" + cleanTable;
@@ -819,8 +822,7 @@ public class DataWarehouseService {
                                     subQuery = subQuery.replaceAll("(?i)\\b" + java.util.regex.Pattern.quote(bareTable) + "\\b", landingTbl);
                                 }
                             }
-                            subQuery = subQuery.replaceFirst("(?i)^(\\s*SELECT\\s+)", "$1'" + cItem.getName() + "' AS source_db, ");
-                            unionSelects.add(subQuery);
+                            unionSelects.add("SELECT '" + cItem.getName() + "' AS source_db, _branch.* FROM (" + subQuery + ") AS _branch");
                         }
                     }
 
