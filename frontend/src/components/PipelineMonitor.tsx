@@ -675,8 +675,8 @@ export const PipelineMonitor: React.FC = () => {
                   const ts = Number(tsStr);
                   const existingKey = Object.keys(acc).find(k => !k.startsWith('Shared:') && !isNaN(Number(k)) && Math.abs(Number(k) - ts) <= 2000);
                   deployId = existingKey ? existingKey : tsStr;
-                } else if (p.name.startsWith('sink-clickhouse-')) {
-                  deployId = p.name.replace('sink-clickhouse-', '');
+                } else if (p.name.startsWith('sink-')) {
+                  deployId = p.name.replace(/^sink-[^-]+-/, '');
                 } else if (p.name.startsWith('source-')) {
                   const parts = p.name.split('-');
                   deployId = parts.length >= 3 ? parts.slice(2).join('-') : p.name;
@@ -690,7 +690,7 @@ export const PipelineMonitor: React.FC = () => {
               }, {} as Record<string, Pipeline[]>)
             ).sort((a, b) => b[0].localeCompare(a[0])).map(([deployId, groupPipelines]) => {
               // Try to find target table name from sink connector
-              const sink = groupPipelines.find(p => p.name.startsWith('sink-clickhouse-'));
+              const sink = groupPipelines.find(p => p.name.startsWith('sink-'));
               let folderName = `Deployment ID: ${deployId}`;
               let icon = "🗂️";
               if (deployId.startsWith('Shared:')) {
@@ -702,7 +702,15 @@ export const PipelineMonitor: React.FC = () => {
                 const tsStr = sink.name.slice(lastDash + 1);
                 const hasTimestamp = lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10;
 
-                const targetTable = hasTimestamp ? sink.name.slice('sink-clickhouse-'.length, lastDash) : sink.name.slice('sink-clickhouse-'.length);
+                let targetTable = '';
+                if (sink.name.startsWith('sink-clickhouse-')) {
+                  targetTable = hasTimestamp ? sink.name.slice('sink-clickhouse-'.length, lastDash) : sink.name.slice('sink-clickhouse-'.length);
+                } else if (sink.name.startsWith('sink-postgres-')) {
+                  targetTable = hasTimestamp ? sink.name.slice('sink-postgres-'.length, lastDash) : sink.name.slice('sink-postgres-'.length);
+                } else {
+                  const trimmed = sink.name.replace(/^sink-[^-]+-/, '');
+                  targetTable = hasTimestamp ? trimmed.slice(0, trimmed.lastIndexOf('-')) : trimmed;
+                }
                 folderName = `Pipeline: ${targetTable || deployId}`;
               } else {
                 folderName = `Pipeline: ${deployId}`;
@@ -820,6 +828,20 @@ export const PipelineMonitor: React.FC = () => {
 
                   {groupPipelines.map(p => {
                     const info = (() => {
+                      if (p.name.startsWith('sink-postgres-')) {
+                        const parts = p.name.split('-');
+                        const targetTable = parts.slice(2, -1).join('-') || parts.slice(2).join('-');
+                        const sourcesText = sourceDbNames.length > 0 ? sourceDbNames.join(', ') : '';
+                        return {
+                          title: `PostgreSQL Sink → ${targetTable}`,
+                          sourcesInfo: sourcesText ? `Consuming CDC streams from: ${sourcesText}` : '',
+                          rawName: p.name,
+                          badge: 'POSTGRESQL TARGET',
+                          badgeClass: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
+                          isSink: true
+                        };
+                      }
+
                       if (p.name.startsWith('sink-clickhouse-')) {
                         const parts = p.name.split('-');
                         const targetTable = parts.slice(2, -1).join('-') || parts.slice(2).join('-');
@@ -830,6 +852,20 @@ export const PipelineMonitor: React.FC = () => {
                           rawName: p.name,
                           badge: 'CLICKHOUSE TARGET',
                           badgeClass: 'bg-amber-500/10 text-amber-500 border border-amber-500/20',
+                          isSink: true
+                        };
+                      }
+
+                      if (p.name.startsWith('sink-')) {
+                        const parts = p.name.split('-');
+                        const targetTable = parts.slice(1, -1).join('-') || parts.slice(1).join('-');
+                        const sourcesText = sourceDbNames.length > 0 ? sourceDbNames.join(', ') : '';
+                        return {
+                          title: `Sink → ${targetTable}`,
+                          sourcesInfo: sourcesText ? `Consuming CDC streams from: ${sourcesText}` : '',
+                          rawName: p.name,
+                          badge: 'TARGET SINK',
+                          badgeClass: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
                           isSink: true
                         };
                       }
