@@ -173,29 +173,164 @@ public class ApiEndpointController {
                     paginatedSql = cleanSql + " LIMIT " + limit + " OFFSET " + offset;
                 }
 
-                List<Map<String, Object>> data = jdbcTemplate.queryForList(paginatedSql, params);
-
                 int totalPages = limit > 0 ? (int) Math.ceil((double) totalRecords / limit) : (totalRecords > 0 ? 1 : 0);
 
-                Map<String, Object> paginationMeta = new HashMap<>();
-                paginationMeta.put("current_page", page);
-                paginationMeta.put("limit", limit);
-                paginationMeta.put("offset", offset);
-                paginationMeta.put("total_records", totalRecords);
-                paginationMeta.put("total_pages", totalPages);
+                final int finalPage = page;
+                final int finalLimit = limit;
+                final int finalOffset = offset;
+                final int finalTotalRecords = totalRecords;
+                final int finalTotalPages = totalPages;
+                final String finalPaginatedSql = paginatedSql;
+                final Map<String, Object> finalParams = params;
 
-                Map<String, Object> responseBody = new HashMap<>();
-                responseBody.put("data", data);
-                responseBody.put("pagination", paginationMeta);
+                org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody stream = out -> {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    try (com.fasterxml.jackson.core.JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
+                        gen.writeStartObject(); // {
 
-                return ResponseEntity.ok(responseBody);
+                        // Pagination metadata
+                        gen.writeObjectFieldStart("pagination");
+                        gen.writeNumberField("current_page", finalPage);
+                        gen.writeNumberField("limit", finalLimit);
+                        gen.writeNumberField("offset", finalOffset);
+                        gen.writeNumberField("total_records", finalTotalRecords);
+                        gen.writeNumberField("total_pages", finalTotalPages);
+                        gen.writeEndObject();
+
+                        // Data array start
+                        gen.writeArrayFieldStart("data");
+
+                        final String[] colNamesRef = new String[1];
+                        final int[] colCountRef = new int[1];
+                        final int[] rowCount = new int[]{0};
+
+                        jdbcTemplate.query(finalPaginatedSql, finalParams, (java.sql.ResultSet rs) -> {
+                            try {
+                                if (colNamesRef[0] == null) {
+                                    java.sql.ResultSetMetaData meta = rs.getMetaData();
+                                    colCountRef[0] = meta.getColumnCount();
+                                    String[] cols = new String[colCountRef[0]];
+                                    for (int i = 1; i <= colCountRef[0]; i++) {
+                                        cols[i - 1] = meta.getColumnLabel(i);
+                                    }
+                                    colNamesRef[0] = String.join("\u0000", cols);
+                                }
+                                String[] colNames = colNamesRef[0].split("\u0000", -1);
+                                gen.writeStartObject();
+                                for (int i = 1; i <= colCountRef[0]; i++) {
+                                    gen.writeObjectField(colNames[i - 1], getSafeObject(rs, i));
+                                }
+                                gen.writeEndObject();
+                                rowCount[0]++;
+                                if (rowCount[0] % 1000 == 0) {
+                                    gen.flush();
+                                }
+                            } catch (Exception ex) {
+                                throw new RuntimeException(ex);
+                            }
+                        });
+
+                        gen.writeEndArray(); // end data array
+                        gen.writeEndObject(); // end root object
+                        gen.flush();
+                    } catch (Exception e) {
+                        org.slf4j.LoggerFactory.getLogger(ApiEndpointController.class).error("Test query streaming error: {}", e.getMessage());
+                    }
+                };
+
+                return ResponseEntity.ok()
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .header("X-Accel-Buffering", "no")
+                        .header("Cache-Control", "no-cache")
+                        .body(stream);
             }
 
-            List<Map<String, Object>> results = jdbcTemplate.queryForList(sql, params);
-            return ResponseEntity.ok(results);
+            final String finalSql = sql;
+            final Map<String, Object> finalParams = params;
+
+            org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody stream = out -> {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                try (com.fasterxml.jackson.core.JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
+                    gen.writeStartArray(); // [
+
+                    final String[] colNamesRef = new String[1];
+                    final int[] colCountRef = new int[1];
+                    final int[] rowCount = new int[]{0};
+
+                    jdbcTemplate.query(finalSql, finalParams, (java.sql.ResultSet rs) -> {
+                        try {
+                            if (colNamesRef[0] == null) {
+                                java.sql.ResultSetMetaData meta = rs.getMetaData();
+                                colCountRef[0] = meta.getColumnCount();
+                                String[] cols = new String[colCountRef[0]];
+                                for (int i = 1; i <= colCountRef[0]; i++) {
+                                    cols[i - 1] = meta.getColumnLabel(i);
+                                }
+                                colNamesRef[0] = String.join("\u0000", cols);
+                            }
+                            String[] colNames = colNamesRef[0].split("\u0000", -1);
+                            gen.writeStartObject();
+                            for (int i = 1; i <= colCountRef[0]; i++) {
+                                gen.writeObjectField(colNames[i - 1], getSafeObject(rs, i));
+                            }
+                            gen.writeEndObject();
+                            rowCount[0]++;
+                            if (rowCount[0] % 1000 == 0) {
+                                gen.flush();
+                            }
+                        } catch (Exception ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    });
+
+                    gen.writeEndArray(); // ]
+                    gen.flush();
+                } catch (Exception e) {
+                    org.slf4j.LoggerFactory.getLogger(ApiEndpointController.class).error("Test query streaming error: {}", e.getMessage());
+                }
+            };
+
+            return ResponseEntity.ok()
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .header("X-Accel-Buffering", "no")
+                    .header("Cache-Control", "no-cache")
+                    .body(stream);
         } catch(Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
+    }
+
+    private Object getSafeObject(java.sql.ResultSet rs, int colIdx) throws java.sql.SQLException {
+        Object val = rs.getObject(colIdx);
+        if (val == null) return null;
+        if (val instanceof java.sql.Blob) {
+            java.sql.Blob b = (java.sql.Blob) val;
+            return "[BLOB Data: " + b.length() + " bytes]";
+        } else if (val instanceof java.sql.Clob) {
+            java.sql.Clob c = (java.sql.Clob) val;
+            return "[CLOB Data: " + c.length() + " chars]";
+        } else if (val instanceof byte[]) {
+            return "[BINARY Data: " + ((byte[]) val).length + " bytes]";
+        } else if (val instanceof java.sql.Timestamp) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format((java.util.Date) val);
+        } else if (val instanceof java.sql.Date) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd").format((java.util.Date) val);
+        } else if (val instanceof java.sql.Time) {
+            return new java.text.SimpleDateFormat("HH:mm:ss").format((java.util.Date) val);
+        } else if (val instanceof java.util.Date) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format((java.util.Date) val);
+        } else if (val instanceof java.time.LocalDateTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format((java.time.LocalDateTime) val);
+        } else if (val instanceof java.time.LocalDate) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").format((java.time.LocalDate) val);
+        } else if (val instanceof java.time.LocalTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss").format((java.time.LocalTime) val);
+        } else if (val instanceof java.time.ZonedDateTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").format((java.time.ZonedDateTime) val);
+        } else if (val instanceof java.time.OffsetDateTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX").format((java.time.OffsetDateTime) val);
+        }
+        return val;
     }
 
     private static final Set<String> ALLOWED_OPS = new HashSet<>(Arrays.asList(
