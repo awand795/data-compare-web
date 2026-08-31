@@ -477,9 +477,9 @@ public class DynamicApiController {
      */
     private String getClientIpAddress(HttpServletRequest request) {
         String[] headerCandidates = {
-            "X-Forwarded-For",
             "X-Real-IP",
             "CF-Connecting-IP",
+            "X-Forwarded-For",
             "Proxy-Client-IP",
             "WL-Proxy-Client-IP",
             "HTTP_X_FORWARDED_FOR",
@@ -495,9 +495,10 @@ public class DynamicApiController {
         for (String header : headerCandidates) {
             String ipList = request.getHeader(header);
             if (ipList != null && !ipList.trim().isEmpty() && !"unknown".equalsIgnoreCase(ipList.trim())) {
-                // X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
-                String firstIp = ipList.split(",")[0].trim();
-                return normalizeIp(firstIp);
+                // In case of multiple IPs, take the last IP added by trusted proxies, or first if single
+                String[] ips = ipList.split(",");
+                String resolvedIp = ips[ips.length - 1].trim();
+                return normalizeIp(resolvedIp);
             }
         }
 
