@@ -768,6 +768,9 @@ public class DataWarehouseService {
                                             break;
                                         }
                                     }
+                                    if (!existingCols.contains("sync_dt")) {
+                                        recreateLanding = true;
+                                    }
                                 }
                                 if (recreateLanding) {
                                     st.execute("DROP TABLE IF EXISTS " + targetSchema + "." + landingTbl + " CASCADE");
@@ -779,6 +782,10 @@ public class DataWarehouseService {
                             pgLandingDdl.append("CREATE TABLE IF NOT EXISTS ").append(targetSchema).append(".").append(landingTbl).append(" (\n");
                             for (ColumnInfo col : tLandingCols) {
                                 pgLandingDdl.append("    \"").append(col.name).append("\" ").append(col.postgresType != null ? col.postgresType : "TEXT").append(",\n");
+                            }
+                            boolean hasLandingSyncDt = tLandingCols.stream().anyMatch(c -> "sync_dt".equalsIgnoreCase(c.name));
+                            if (!hasLandingSyncDt) {
+                                pgLandingDdl.append("    \"sync_dt\" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n");
                             }
                             pgLandingDdl.append("    \"is_deleted\" BOOLEAN DEFAULT FALSE,\n");
                             
@@ -822,7 +829,9 @@ public class DataWarehouseService {
                                     subQuery = subQuery.replaceAll("(?i)\\b" + java.util.regex.Pattern.quote(bareTable) + "\\b", landingTbl);
                                 }
                             }
-                            unionSelects.add("SELECT '" + cItem.getName() + "' AS source_db, _branch.* FROM (" + subQuery + ") AS _branch");
+                            boolean hasQuerySyncDt = targetColumns.stream().anyMatch(c -> "sync_dt".equalsIgnoreCase(c.name));
+                            String syncDtClause = hasQuerySyncDt ? "" : "CURRENT_TIMESTAMP AS sync_dt, ";
+                            unionSelects.add("SELECT '" + cItem.getName() + "' AS source_db, " + syncDtClause + "_branch.* FROM (" + subQuery + ") AS _branch");
                         }
                     }
 
@@ -843,6 +852,10 @@ public class DataWarehouseService {
                     pgTargetDdl.append("CREATE TABLE IF NOT EXISTS ").append(targetSchema).append(".").append(request.getTargetTable()).append(" (\n");
                     for (ColumnInfo col : targetColumns) {
                         pgTargetDdl.append("    \"").append(col.name).append("\" ").append(col.postgresType != null ? col.postgresType : "TEXT").append(",\n");
+                    }
+                    boolean hasTargetSyncDt = targetColumns.stream().anyMatch(c -> "sync_dt".equalsIgnoreCase(c.name));
+                    if (!hasTargetSyncDt) {
+                        pgTargetDdl.append("    \"sync_dt\" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n");
                     }
                     pgTargetDdl.append("    \"is_deleted\" BOOLEAN DEFAULT FALSE,\n");
                     
