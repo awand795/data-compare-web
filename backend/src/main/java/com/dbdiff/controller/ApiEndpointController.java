@@ -49,20 +49,22 @@ public class ApiEndpointController {
     }
 
     @PostMapping("/test-query")
-    public ResponseEntity<?> testQuery(@RequestBody TestRequest request) {
+    public void testQuery(@RequestBody TestRequest request, jakarta.servlet.http.HttpServletResponse response) throws Exception {
         ApiEndpoint endpoint = request.api;
         Map<String, Object> params = request.params;
         if (params == null) params = new HashMap<>();
 
         ApiParameterValidator.ValidationResult result = apiParameterValidator.validate(endpoint.getParameters(), params);
         if (!result.isValid()) {
-            return ResponseEntity.badRequest().body(Map.of("errors", result.getErrors()));
+            sendJsonError(response, 400, Map.of("errors", result.getErrors()));
+            return;
         }
         params = result.getParams();
 
         ConnectionDetails conn = connectionRepository.findById(endpoint.getConnectionId());
         if (conn == null) {
-             return ResponseEntity.status(500).body(Map.of("error", "Connection not found"));
+            sendJsonError(response, 500, Map.of("error", "Connection not found"));
+            return;
         }
         try {
             javax.sql.DataSource dataSource = connectionManagerService.getDataSource(conn);
@@ -120,6 +122,13 @@ public class ApiEndpointController {
             }
             // ───────────────────────────────────────────────────────────────────────
 
+            response.setStatus(200);
+            response.setContentType("application/json;charset=UTF-8");
+            response.setHeader("X-Accel-Buffering", "no");
+            response.setHeader("Cache-Control", "no-cache");
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
             if (endpoint.isEnablePagination()) {
                 int limit = 10;
                 int offset = 0;
@@ -127,23 +136,35 @@ public class ApiEndpointController {
 
                 if (params.containsKey("limit")) {
                     String val = params.get("limit").toString();
-                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'limit' must be a valid integer")));
+                    if (!val.matches("-?\\d+")) {
+                        sendJsonError(response, 400, Map.of("errors", List.of("Parameter 'limit' must be a valid integer")));
+                        return;
+                    }
                     limit = Integer.parseInt(val);
                 } else if (params.containsKey("size")) {
                     String val = params.get("size").toString();
-                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'size' must be a valid integer")));
+                    if (!val.matches("-?\\d+")) {
+                        sendJsonError(response, 400, Map.of("errors", List.of("Parameter 'size' must be a valid integer")));
+                        return;
+                    }
                     limit = Integer.parseInt(val);
                 }
                 
                 if (params.containsKey("page")) {
                     String val = params.get("page").toString();
-                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'page' must be a valid integer")));
+                    if (!val.matches("-?\\d+")) {
+                        sendJsonError(response, 400, Map.of("errors", List.of("Parameter 'page' must be a valid integer")));
+                        return;
+                    }
                     page = Integer.parseInt(val);
                     if (page < 1) page = 1;
                     offset = (page - 1) * limit;
                 } else if (params.containsKey("offset")) {
                     String val = params.get("offset").toString();
-                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'offset' must be a valid integer")));
+                    if (!val.matches("-?\\d+")) {
+                        sendJsonError(response, 400, Map.of("errors", List.of("Parameter 'offset' must be a valid integer")));
+                        return;
+                    }
                     offset = Integer.parseInt(val);
                     page = (limit > 0 ? (offset / limit) + 1 : 1);
                 }
@@ -175,89 +196,64 @@ public class ApiEndpointController {
 
                 int totalPages = limit > 0 ? (int) Math.ceil((double) totalRecords / limit) : (totalRecords > 0 ? 1 : 0);
 
-                final int finalPage = page;
-                final int finalLimit = limit;
-                final int finalOffset = offset;
-                final int finalTotalRecords = totalRecords;
-                final int finalTotalPages = totalPages;
-                final String finalPaginatedSql = paginatedSql;
-                final Map<String, Object> finalParams = params;
+                try (com.fasterxml.jackson.core.JsonGenerator gen = mapper.getFactory().createGenerator(response.getOutputStream(), com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
+                    gen.writeStartObject(); // {
 
-                org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody stream = out -> {
-                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                    try (com.fasterxml.jackson.core.JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
-                        gen.writeStartObject(); // {
+                    // Pagination metadata
+                    gen.writeObjectFieldStart("pagination");
+                    gen.writeNumberField("current_page", page);
+                    gen.writeNumberField("limit", limit);
+                    gen.writeNumberField("offset", offset);
+                    gen.writeNumberField("total_records", totalRecords);
+                    gen.writeNumberField("total_pages", totalPages);
+                    gen.writeEndObject();
 
-                        // Pagination metadata
-                        gen.writeObjectFieldStart("pagination");
-                        gen.writeNumberField("current_page", finalPage);
-                        gen.writeNumberField("limit", finalLimit);
-                        gen.writeNumberField("offset", finalOffset);
-                        gen.writeNumberField("total_records", finalTotalRecords);
-                        gen.writeNumberField("total_pages", finalTotalPages);
-                        gen.writeEndObject();
+                    // Data array start
+                    gen.writeArrayFieldStart("data");
 
-                        // Data array start
-                        gen.writeArrayFieldStart("data");
+                    final String[] colNamesRef = new String[1];
+                    final int[] colCountRef = new int[1];
+                    final int[] rowCount = new int[]{0};
 
-                        final String[] colNamesRef = new String[1];
-                        final int[] colCountRef = new int[1];
-                        final int[] rowCount = new int[]{0};
-
-                        jdbcTemplate.query(finalPaginatedSql, finalParams, (java.sql.ResultSet rs) -> {
-                            try {
-                                if (colNamesRef[0] == null) {
-                                    java.sql.ResultSetMetaData meta = rs.getMetaData();
-                                    colCountRef[0] = meta.getColumnCount();
-                                    String[] cols = new String[colCountRef[0]];
-                                    for (int i = 1; i <= colCountRef[0]; i++) {
-                                        cols[i - 1] = meta.getColumnLabel(i);
-                                    }
-                                    colNamesRef[0] = String.join("\u0000", cols);
-                                }
-                                String[] colNames = colNamesRef[0].split("\u0000", -1);
-                                gen.writeStartObject();
+                    jdbcTemplate.query(paginatedSql, params, (java.sql.ResultSet rs) -> {
+                        try {
+                            if (colNamesRef[0] == null) {
+                                java.sql.ResultSetMetaData meta = rs.getMetaData();
+                                colCountRef[0] = meta.getColumnCount();
+                                String[] cols = new String[colCountRef[0]];
                                 for (int i = 1; i <= colCountRef[0]; i++) {
-                                    gen.writeObjectField(colNames[i - 1], getSafeObject(rs, i));
+                                    cols[i - 1] = meta.getColumnLabel(i);
                                 }
-                                gen.writeEndObject();
-                                rowCount[0]++;
-                                if (rowCount[0] % 1000 == 0) {
-                                    gen.flush();
-                                }
-                            } catch (Exception ex) {
-                                throw new RuntimeException(ex);
+                                colNamesRef[0] = String.join("\u0000", cols);
                             }
-                        });
+                            String[] colNames = colNamesRef[0].split("\u0000", -1);
+                            gen.writeStartObject();
+                            for (int i = 1; i <= colCountRef[0]; i++) {
+                                gen.writeObjectField(colNames[i - 1], getSafeObject(rs, i));
+                            }
+                            gen.writeEndObject();
+                            rowCount[0]++;
+                            if (rowCount[0] % 1000 == 0) {
+                                gen.flush();
+                            }
+                        } catch (Exception ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    });
 
-                        gen.writeEndArray(); // end data array
-                        gen.writeEndObject(); // end root object
-                        gen.flush();
-                    } catch (Exception e) {
-                        org.slf4j.LoggerFactory.getLogger(ApiEndpointController.class).error("Test query streaming error: {}", e.getMessage());
-                    }
-                };
-
-                return ResponseEntity.ok()
-                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                        .header("X-Accel-Buffering", "no")
-                        .header("Cache-Control", "no-cache")
-                        .body(stream);
-            }
-
-            final String finalSql = sql;
-            final Map<String, Object> finalParams = params;
-
-            org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody stream = out -> {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                try (com.fasterxml.jackson.core.JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
+                    gen.writeEndArray(); // end data array
+                    gen.writeEndObject(); // end root object
+                    gen.flush();
+                }
+            } else {
+                try (com.fasterxml.jackson.core.JsonGenerator gen = mapper.getFactory().createGenerator(response.getOutputStream(), com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
                     gen.writeStartArray(); // [
 
                     final String[] colNamesRef = new String[1];
                     final int[] colCountRef = new int[1];
                     final int[] rowCount = new int[]{0};
 
-                    jdbcTemplate.query(finalSql, finalParams, (java.sql.ResultSet rs) -> {
+                    jdbcTemplate.query(sql, params, (java.sql.ResultSet rs) -> {
                         try {
                             if (colNamesRef[0] == null) {
                                 java.sql.ResultSetMetaData meta = rs.getMetaData();
@@ -285,19 +281,24 @@ public class ApiEndpointController {
 
                     gen.writeEndArray(); // ]
                     gen.flush();
-                } catch (Exception e) {
-                    org.slf4j.LoggerFactory.getLogger(ApiEndpointController.class).error("Test query streaming error: {}", e.getMessage());
                 }
-            };
-
-            return ResponseEntity.ok()
-                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                    .header("X-Accel-Buffering", "no")
-                    .header("Cache-Control", "no-cache")
-                    .body(stream);
+            }
         } catch(Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            org.slf4j.LoggerFactory.getLogger(ApiEndpointController.class).error("Test query error: {}", e.getMessage());
+            sendJsonError(response, 500, Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
         }
+    }
+
+    private void sendJsonError(jakarta.servlet.http.HttpServletResponse response, int status, Object body) {
+        try {
+            if (!response.isCommitted()) {
+                response.setStatus(status);
+                response.setContentType("application/json;charset=UTF-8");
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                response.getWriter().write(mapper.writeValueAsString(body));
+                response.getWriter().flush();
+            }
+        } catch (Exception ignored) {}
     }
 
     private Object getSafeObject(java.sql.ResultSet rs, int colIdx) throws java.sql.SQLException {

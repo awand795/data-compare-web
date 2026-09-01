@@ -41,12 +41,13 @@ public class DynamicApiController {
     private ConnectionManagerService connectionManagerService;
 
     @RequestMapping(value = "/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE})
-    public ResponseEntity<?> handleRequest(
+    public void handleRequest(
             HttpServletRequest request,
+            jakarta.servlet.http.HttpServletResponse response,
             @RequestParam Map<String, Object> queryParams,
             @RequestBody(required = false) Map<String, Object> bodyParams,
             @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestHeader(value = "x-api-key", required = false) String xApiKey) {
+            @RequestHeader(value = "x-api-key", required = false) String xApiKey) throws Exception {
 
         // Extract path after /api/data
         String path = (String) request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
@@ -67,8 +68,8 @@ public class DynamicApiController {
 
         Optional<ApiEndpoint> optEndpoint = apiEndpointRepository.findByPathAndMethod(path, method);
         if (optEndpoint.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", "Endpoint not found: " + method + " " + path));
+            sendJsonError(response, HttpStatus.NOT_FOUND.value(), Map.of("error", "Endpoint not found: " + method + " " + path));
+            return;
         }
 
         ApiEndpoint endpoint = optEndpoint.get();
@@ -77,11 +78,11 @@ public class DynamicApiController {
         String clientIp = getClientIpAddress(request);
         String ipAllowlist = endpoint.getIpAllowlist();
         if (!isIpAllowed(clientIp, ipAllowlist)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of(
-                        "error", "Forbidden",
-                        "message", "Access denied: Client IP [" + clientIp + "] is not in the allowed IP list for this endpoint."
-                    ));
+            sendJsonError(response, HttpStatus.FORBIDDEN.value(), Map.of(
+                "error", "Forbidden",
+                "message", "Access denied: Client IP [" + clientIp + "] is not in the allowed IP list for this endpoint."
+            ));
+            return;
         }
         // ────────────────────────────────────────────────────────────────────────
 
@@ -97,8 +98,8 @@ public class DynamicApiController {
                 }
 
                 if (providedToken == null || !providedToken.equals(token)) {
-                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                            .body(Map.of("error", "Unauthorized. Invalid or missing token."));
+                    sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of("error", "Unauthorized. Invalid or missing token."));
+                    return;
                 }
             }
         }
@@ -110,15 +111,16 @@ public class DynamicApiController {
 
         ApiParameterValidator.ValidationResult validationResult = apiParameterValidator.validate(endpoint.getParameters(), allParams);
         if (!validationResult.isValid()) {
-            return ResponseEntity.badRequest().body(Map.of("errors", validationResult.getErrors()));
+            sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of("errors", validationResult.getErrors()));
+            return;
         }
         allParams = validationResult.getParams();
 
         // Fetch Connection
         ConnectionDetails optConn = connectionRepository.findById(endpoint.getConnectionId());
         if (optConn == null) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Database connection configuration not found"));
+            sendJsonError(response, HttpStatus.INTERNAL_SERVER_ERROR.value(), Map.of("error", "Database connection configuration not found"));
+            return;
         }
 
         try {
@@ -177,6 +179,13 @@ public class DynamicApiController {
             }
             // ───────────────────────────────────────────────────────────────────────
 
+            response.setStatus(HttpStatus.OK.value());
+            response.setContentType("application/json;charset=UTF-8");
+            response.setHeader("X-Accel-Buffering", "no");
+            response.setHeader("Cache-Control", "no-cache");
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
             // Pagination support
             if (endpoint.isEnablePagination()) {
                 int limit = 10;
@@ -185,23 +194,35 @@ public class DynamicApiController {
 
                 if (allParams.containsKey("limit")) {
                     String val = allParams.get("limit").toString();
-                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'limit' must be a valid integer")));
+                    if (!val.matches("-?\\d+")) {
+                        sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of("errors", List.of("Parameter 'limit' must be a valid integer")));
+                        return;
+                    }
                     limit = Integer.parseInt(val);
                 } else if (allParams.containsKey("size")) {
                     String val = allParams.get("size").toString();
-                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'size' must be a valid integer")));
+                    if (!val.matches("-?\\d+")) {
+                        sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of("errors", List.of("Parameter 'size' must be a valid integer")));
+                        return;
+                    }
                     limit = Integer.parseInt(val);
                 }
                 
                 if (allParams.containsKey("page")) {
                     String val = allParams.get("page").toString();
-                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'page' must be a valid integer")));
+                    if (!val.matches("-?\\d+")) {
+                        sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of("errors", List.of("Parameter 'page' must be a valid integer")));
+                        return;
+                    }
                     page = Integer.parseInt(val);
                     if (page < 1) page = 1;
                     offset = (page - 1) * limit;
                 } else if (allParams.containsKey("offset")) {
                     String val = allParams.get("offset").toString();
-                    if (!val.matches("-?\\d+")) return ResponseEntity.badRequest().body(Map.of("errors", List.of("Parameter 'offset' must be a valid integer")));
+                    if (!val.matches("-?\\d+")) {
+                        sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of("errors", List.of("Parameter 'offset' must be a valid integer")));
+                        return;
+                    }
                     offset = Integer.parseInt(val);
                     page = (limit > 0 ? (offset / limit) + 1 : 1);
                 }
@@ -233,89 +254,64 @@ public class DynamicApiController {
 
                 int totalPages = limit > 0 ? (int) Math.ceil((double) totalRecords / limit) : (totalRecords > 0 ? 1 : 0);
 
-                final int finalPage = page;
-                final int finalLimit = limit;
-                final int finalOffset = offset;
-                final int finalTotalRecords = totalRecords;
-                final int finalTotalPages = totalPages;
-                final String finalPaginatedSql = paginatedSql;
-                final Map<String, Object> finalParams = allParams;
+                try (com.fasterxml.jackson.core.JsonGenerator gen = mapper.getFactory().createGenerator(response.getOutputStream(), com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
+                    gen.writeStartObject(); // {
 
-                org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody stream = out -> {
-                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                    try (com.fasterxml.jackson.core.JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
-                        gen.writeStartObject(); // {
+                    // Pagination metadata
+                    gen.writeObjectFieldStart("pagination");
+                    gen.writeNumberField("current_page", page);
+                    gen.writeNumberField("limit", limit);
+                    gen.writeNumberField("offset", offset);
+                    gen.writeNumberField("total_records", totalRecords);
+                    gen.writeNumberField("total_pages", totalPages);
+                    gen.writeEndObject();
 
-                        // Pagination metadata
-                        gen.writeObjectFieldStart("pagination");
-                        gen.writeNumberField("current_page", finalPage);
-                        gen.writeNumberField("limit", finalLimit);
-                        gen.writeNumberField("offset", finalOffset);
-                        gen.writeNumberField("total_records", finalTotalRecords);
-                        gen.writeNumberField("total_pages", finalTotalPages);
-                        gen.writeEndObject();
+                    // Data array start
+                    gen.writeArrayFieldStart("data");
 
-                        // Data array start
-                        gen.writeArrayFieldStart("data");
+                    final String[] colNamesRef = new String[1];
+                    final int[] colCountRef = new int[1];
+                    final int[] rowCount = new int[]{0};
 
-                        final String[] colNamesRef = new String[1];
-                        final int[] colCountRef = new int[1];
-                        final int[] rowCount = new int[]{0};
-
-                        jdbcTemplate.query(finalPaginatedSql, finalParams, (java.sql.ResultSet rs) -> {
-                            try {
-                                if (colNamesRef[0] == null) {
-                                    java.sql.ResultSetMetaData meta = rs.getMetaData();
-                                    colCountRef[0] = meta.getColumnCount();
-                                    String[] cols = new String[colCountRef[0]];
-                                    for (int i = 1; i <= colCountRef[0]; i++) {
-                                        cols[i - 1] = meta.getColumnLabel(i);
-                                    }
-                                    colNamesRef[0] = String.join("\u0000", cols);
-                                }
-                                String[] colNames = colNamesRef[0].split("\u0000", -1);
-                                gen.writeStartObject();
+                    jdbcTemplate.query(paginatedSql, allParams, (java.sql.ResultSet rs) -> {
+                        try {
+                            if (colNamesRef[0] == null) {
+                                java.sql.ResultSetMetaData meta = rs.getMetaData();
+                                colCountRef[0] = meta.getColumnCount();
+                                String[] cols = new String[colCountRef[0]];
                                 for (int i = 1; i <= colCountRef[0]; i++) {
-                                    gen.writeObjectField(colNames[i - 1], getSafeObject(rs, i));
+                                    cols[i - 1] = meta.getColumnLabel(i);
                                 }
-                                gen.writeEndObject();
-                                rowCount[0]++;
-                                if (rowCount[0] % 1000 == 0) {
-                                    gen.flush();
-                                }
-                            } catch (Exception ex) {
-                                throw new RuntimeException(ex);
+                                colNamesRef[0] = String.join("\u0000", cols);
                             }
-                        });
+                            String[] colNames = colNamesRef[0].split("\u0000", -1);
+                            gen.writeStartObject();
+                            for (int i = 1; i <= colCountRef[0]; i++) {
+                                gen.writeObjectField(colNames[i - 1], getSafeObject(rs, i));
+                            }
+                            gen.writeEndObject();
+                            rowCount[0]++;
+                            if (rowCount[0] % 1000 == 0) {
+                                gen.flush();
+                            }
+                        } catch (Exception ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    });
 
-                        gen.writeEndArray(); // end data array
-                        gen.writeEndObject(); // end root object
-                        gen.flush();
-                    } catch (Exception e) {
-                        org.slf4j.LoggerFactory.getLogger(DynamicApiController.class).error("Streaming error: {}", e.getMessage());
-                    }
-                };
-
-                return ResponseEntity.ok()
-                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                        .header("X-Accel-Buffering", "no")
-                        .header("Cache-Control", "no-cache")
-                        .body(stream);
-            }
-
-            final String finalSql = sql;
-            final Map<String, Object> finalParams = allParams;
-
-            org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody stream = out -> {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                try (com.fasterxml.jackson.core.JsonGenerator gen = mapper.getFactory().createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
+                    gen.writeEndArray(); // end data array
+                    gen.writeEndObject(); // end root object
+                    gen.flush();
+                }
+            } else {
+                try (com.fasterxml.jackson.core.JsonGenerator gen = mapper.getFactory().createGenerator(response.getOutputStream(), com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
                     gen.writeStartArray(); // [
 
                     final String[] colNamesRef = new String[1];
                     final int[] colCountRef = new int[1];
                     final int[] rowCount = new int[]{0};
 
-                    jdbcTemplate.query(finalSql, finalParams, (java.sql.ResultSet rs) -> {
+                    jdbcTemplate.query(sql, allParams, (java.sql.ResultSet rs) -> {
                         try {
                             if (colNamesRef[0] == null) {
                                 java.sql.ResultSetMetaData meta = rs.getMetaData();
@@ -343,21 +339,25 @@ public class DynamicApiController {
 
                     gen.writeEndArray(); // ]
                     gen.flush();
-                } catch (Exception e) {
-                    org.slf4j.LoggerFactory.getLogger(DynamicApiController.class).error("Streaming error: {}", e.getMessage());
                 }
-            };
-
-            return ResponseEntity.ok()
-                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                    .header("X-Accel-Buffering", "no")
-                    .header("Cache-Control", "no-cache")
-                    .body(stream);
+            }
 
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Database execution error: " + e.getMessage()));
+            org.slf4j.LoggerFactory.getLogger(DynamicApiController.class).error("Database execution error: {}", e.getMessage());
+            sendJsonError(response, HttpStatus.INTERNAL_SERVER_ERROR.value(), Map.of("error", "Database execution error: " + e.getMessage()));
         }
+    }
+
+    private void sendJsonError(jakarta.servlet.http.HttpServletResponse response, int status, Object body) {
+        try {
+            if (!response.isCommitted()) {
+                response.setStatus(status);
+                response.setContentType("application/json;charset=UTF-8");
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                response.getWriter().write(mapper.writeValueAsString(body));
+                response.getWriter().flush();
+            }
+        } catch (Exception ignored) {}
     }
 
     private Object getSafeObject(java.sql.ResultSet rs, int colIdx) throws java.sql.SQLException {
