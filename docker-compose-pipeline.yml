@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 1. ZooKeeper Coordinator (0.5 GB RAM)
   zookeeper:

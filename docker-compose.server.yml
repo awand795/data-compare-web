@@ -1,0 +1,42 @@
+services:
+  backend:
+    image: awandadarkotech/darkosync-backend:latest
+    container_name: darkosync-backend
+    restart: unless-stopped
+    # Menggunakan host network agar menyatu dengan IP server (localhost)
+    network_mode: "host"
+    environment:
+      - JAVA_OPTS=-Xmx1536m -Xms1536m -DMALLOC_ARENA_MAX=2
+      - MALLOC_ARENA_MAX=2
+      - TZ=Asia/Jakarta
+      # Karena network_mode host, semua service di server bisa dipanggil dengan 127.0.0.1
+      - DB_HOST=127.0.0.1
+      - DB_PORT=8832
+      - DB_NAME=data_setting_sync
+      - DB_USER=postgres
+      - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
+      - KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092
+      - DEBEZIUM_BASE_URL=http://127.0.0.1:8083
+    volumes:
+      - /home/awanda/darkosync/ssh-keys:/app/ssh-keys:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    image: awandadarkotech/darkosync-frontend:latest
+    container_name: darkosync-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+      - "5175:80"
+    extra_hosts:
+      # Mengakali Nginx frontend agar mengenali "backend" sebagai server host
+      - "backend:host-gateway"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

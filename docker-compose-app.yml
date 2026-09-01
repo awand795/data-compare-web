@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Spring Boot Backend (Connected via Pipeline SSH Tunnel to Server 94.237.69.119)
   backend:
