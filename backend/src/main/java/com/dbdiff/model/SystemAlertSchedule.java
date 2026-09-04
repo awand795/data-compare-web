@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 public class SystemAlertSchedule {
     private String id;
     private String name;
-    private String targetDisk = "/dev/sda2";
+    private String targetDisk = "all";
     private int diskThresholdPercent = 70;
     private int ramThresholdPercent = 80;
     private boolean checkDisk = true;

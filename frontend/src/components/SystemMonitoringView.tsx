@@ -78,7 +78,7 @@ export const SystemMonitoringView: React.FC = () => {
 
   // Form State
   const [formName, setFormName] = useState('');
-  const [formTargetDisk, setFormTargetDisk] = useState('/dev/sda2');
+  const [formTargetDisk, setFormTargetDisk] = useState('all');
   const [formDiskThreshold, setFormDiskThreshold] = useState(70);
   const [formRamThreshold, setFormRamThreshold] = useState(80);
   const [formCheckDisk, setFormCheckDisk] = useState(true);
@@ -140,7 +140,7 @@ export const SystemMonitoringView: React.FC = () => {
   const handleOpenCreateForm = () => {
     setEditingSchedule(null);
     setFormName('Server Health Check & Alert');
-    setFormTargetDisk('/dev/sda2');
+    setFormTargetDisk('all');
     setFormDiskThreshold(70);
     setFormRamThreshold(80);
     setFormCheckDisk(true);
@@ -154,7 +154,7 @@ export const SystemMonitoringView: React.FC = () => {
   const handleOpenEditForm = (s: SystemAlertSchedule) => {
     setEditingSchedule(s);
     setFormName(s.name);
-    setFormTargetDisk(s.targetDisk || '/dev/sda2');
+    setFormTargetDisk(s.targetDisk || 'all');
     setFormDiskThreshold(s.diskThresholdPercent || 70);
     setFormRamThreshold(s.ramThresholdPercent || 80);
     setFormCheckDisk(s.checkDisk !== false);
@@ -509,14 +509,21 @@ export const SystemMonitoringView: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {metrics?.disks?.map((disk, idx) => {
-            const isSda2 = disk.filesystem.includes('sda2') || disk.mount === '/';
+            const isRoot = disk.mount === '/' || disk.filesystem.includes('sda2') || disk.filesystem.includes('vda2') || disk.filesystem === 'overlay';
+            const isClickhouse = disk.mount.includes('clickhouse');
+            const isKafka = disk.mount.includes('kafka');
+
             return (
               <div 
                 key={idx}
                 className={clsx(
                   "p-3.5 rounded-lg border flex flex-col justify-between transition-all",
-                  isSda2 
+                  isRoot 
                     ? "bg-blue-500/5 border-blue-500/40 shadow-sm" 
+                    : isClickhouse
+                    ? "bg-amber-500/5 border-amber-500/30 shadow-sm"
+                    : isKafka
+                    ? "bg-purple-500/5 border-purple-500/30 shadow-sm"
                     : "bg-bg-main border-border-main"
                 )}
               >
@@ -524,9 +531,19 @@ export const SystemMonitoringView: React.FC = () => {
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span className="font-mono text-xs font-bold text-text-main truncate flex items-center gap-1.5">
                       {disk.filesystem}
-                      {isSda2 && (
+                      {isRoot && (
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500 text-white uppercase tracking-wider">
                           Primary / OS
+                        </span>
+                      )}
+                      {isClickhouse && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500 text-white uppercase tracking-wider">
+                          ClickHouse
+                        </span>
+                      )}
+                      {isKafka && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500 text-white uppercase tracking-wider">
+                          Kafka
                         </span>
                       )}
                     </span>
@@ -642,7 +659,9 @@ export const SystemMonitoringView: React.FC = () => {
                           {s.checkDisk ? (
                             <div className="flex items-center gap-1.5">
                               <HardDrive className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                              <span className="font-mono font-bold text-text-main">{s.targetDisk || '/dev/sda2'}</span>
+                              <span className="font-mono font-bold text-text-main">
+                                {s.targetDisk === 'all' ? 'Semua Partisi (All)' : (s.targetDisk || 'Semua Partisi (All)')}
+                              </span>
                               <span className="text-red-400 font-bold">&ge; {s.diskThresholdPercent}%</span>
                             </div>
                           ) : (
@@ -822,13 +841,14 @@ export const SystemMonitoringView: React.FC = () => {
                       <select
                         value={formTargetDisk}
                         onChange={e => setFormTargetDisk(e.target.value)}
-                        className="w-full bg-bg-main border border-border-main rounded-lg px-2.5 py-1.5 text-text-main focus:outline-none focus:border-blue-500 font-mono"
+                        className="w-full bg-bg-main border border-border-main rounded-lg px-2.5 py-1.5 text-text-main focus:outline-none focus:border-blue-500 font-mono text-xs"
                       >
-                        <option value="/dev/sda2">/dev/sda2 (Recommended Primary Disk)</option>
+                        <option value="all">Semua Partisi Disk (All - Recommended)</option>
                         <option value="/">Root Mount (/)</option>
-                        <option value="all">Semua Partisi Disk (All)</option>
-                        {metrics?.disks?.filter(d => d.filesystem !== '/dev/sda2').map((d, i) => (
-                          <option key={i} value={d.filesystem}>{d.filesystem} ({d.mount})</option>
+                        {metrics?.disks?.map((d, i) => (
+                          <option key={i} value={d.mount !== '/' ? d.mount : d.filesystem}>
+                            {d.filesystem} ({d.mount})
+                          </option>
                         ))}
                       </select>
                     </div>

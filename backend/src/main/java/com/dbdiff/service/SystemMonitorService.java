@@ -199,9 +199,9 @@ public class SystemMonitorService {
 
     private void collectDiskMetrics(SystemMetrics metrics) {
         List<DiskInfo> disks = new ArrayList<>();
-        Set<String> seenMounts = new HashSet<>();
+        Map<String, DiskInfo> diskByMount = new LinkedHashMap<>();
 
-        // 1. Try running `df -Pk` on Linux to get real filesystem names like /dev/sda2
+        // 1. Try running `df -Pk` on Linux to get real filesystem names like /dev/vda2, /dev/vdb1, /dev/sda2
         boolean dfSuccess = false;
         try {
             Process process = new ProcessBuilder("df", "-Pk").start();
@@ -220,8 +220,28 @@ public class SystemMonitorService {
                         double pct = Double.parseDouble(pctStr);
                         String mount = parts[5];
 
-                        // Filter out virtual filesystems unless relevant
-                        if (filesystem.startsWith("/dev/") || mount.equals("/") || filesystem.contains("sda") || filesystem.contains("nvme") || filesystem.contains("vda")) {
+                        // Skip Docker internal overlayfs snapshots
+                        if (mount.contains("/var/lib/docker/rootfs") || mount.contains("/containerd/io.containerd")) {
+                            continue;
+                        }
+
+                        // Normalize /host mounts back to original host mount points
+                        if (mount.equals("/host")) {
+                            mount = "/";
+                        } else if (mount.startsWith("/host/")) {
+                            mount = mount.substring(5); // e.g. /host/data/clickhouse -> /data/clickhouse
+                        }
+
+                        // Filter relevant physical or root filesystems
+                        boolean isRelevant = filesystem.startsWith("/dev/") ||
+                                             mount.equals("/") ||
+                                             filesystem.contains("sda") ||
+                                             filesystem.contains("vda") ||
+                                             filesystem.contains("vdb") ||
+                                             filesystem.contains("vdc") ||
+                                             filesystem.contains("nvme");
+
+                        if (isRelevant) {
                             DiskInfo di = new DiskInfo();
                             di.setFilesystem(filesystem);
                             di.setMount(mount);
@@ -229,17 +249,21 @@ public class SystemMonitorService {
                             di.setUsedBytes(usedBytes);
                             di.setFreeBytes(freeBytes);
                             di.setUsagePercent(pct);
-                            if (filesystem.contains("sda2") || mount.equals("/")) {
-                                di.setTargetMatch(true);
+
+                            boolean isPrimary = mount.equals("/") || filesystem.contains("sda2") || filesystem.contains("vda2");
+                            di.setTargetMatch(isPrimary);
+
+                            // Prefer physical block device (/dev/...) over virtual 'overlay' for the same mount
+                            if (!diskByMount.containsKey(mount) || (filesystem.startsWith("/dev/") && !diskByMount.get(mount).getFilesystem().startsWith("/dev/"))) {
+                                diskByMount.put(mount, di);
                             }
-                            disks.add(di);
-                            seenMounts.add(mount);
                         }
                     }
                 }
             }
             process.waitFor();
-            if (!disks.isEmpty()) {
+            if (!diskByMount.isEmpty()) {
+                disks.addAll(diskByMount.values());
                 dfSuccess = true;
             }
         } catch (Exception ignored) {}
@@ -262,7 +286,7 @@ public class SystemMonitorService {
                         di.setUsedBytes(used);
                         di.setFreeBytes(usable);
                         di.setUsagePercent(pct);
-                        if (store.name().contains("sda2")) {
+                        if (store.name().contains("sda2") || store.name().contains("vda2") || store.name().equals("/")) {
                             di.setTargetMatch(true);
                         }
                         disks.add(di);
@@ -285,6 +309,7 @@ public class SystemMonitorService {
                     di.setUsedBytes(used);
                     di.setFreeBytes(free);
                     di.setUsagePercent(pct);
+                    di.setTargetMatch(true);
                     disks.add(di);
                 }
             }
@@ -312,25 +337,50 @@ public class SystemMonitorService {
         // 2. Check Disk Threshold
         if (schedule.isCheckDisk()) {
             String targetDisk = schedule.getTargetDisk() != null ? schedule.getTargetDisk().trim().toLowerCase() : "";
+            boolean anyMatched = false;
+
             for (DiskInfo disk : metrics.getDisks()) {
                 boolean matches = false;
-                if (targetDisk.isEmpty() || "all".equals(targetDisk)) {
+                if (targetDisk.isEmpty() || "all".equals(targetDisk) || "semua".equals(targetDisk)) {
                     matches = true;
                 } else if (disk.getFilesystem().toLowerCase().contains(targetDisk) ||
                            disk.getMount().toLowerCase().equals(targetDisk) ||
-                           (targetDisk.contains("sda2") && disk.getFilesystem().contains("sda2"))) {
+                           disk.getMount().toLowerCase().contains(targetDisk) ||
+                           // Smart aliases for primary OS root partition:
+                           ((targetDisk.equals("/") || targetDisk.contains("root") || targetDisk.contains("sda2") || targetDisk.contains("vda2") || targetDisk.contains("sda") || targetDisk.contains("vda")) &&
+                            (disk.getMount().equals("/") || disk.getFilesystem().contains("vda2") || disk.getFilesystem().contains("sda2") || disk.getFilesystem().equals("overlay")))) {
                     matches = true;
                 }
 
-                if (matches && disk.getUsagePercent() >= schedule.getDiskThresholdPercent()) {
-                    isCritical = true;
-                    alertReasons.add(String.format("🚨 <b>Disk [%s]:</b> %.1f%% (Batas: %d%%) | Sisa: %s / Total: %s (Mount: %s)",
-                            disk.getFilesystem(),
-                            disk.getUsagePercent(),
-                            schedule.getDiskThresholdPercent(),
-                            formatBytes(disk.getFreeBytes()),
-                            formatBytes(disk.getTotalBytes()),
-                            disk.getMount()));
+                if (matches) {
+                    anyMatched = true;
+                    if (disk.getUsagePercent() >= schedule.getDiskThresholdPercent()) {
+                        isCritical = true;
+                        alertReasons.add(String.format("🚨 <b>Disk [%s (%s)]:</b> %.1f%% (Batas: %d%%) | Sisa: %s / Total: %s",
+                                disk.getFilesystem(),
+                                disk.getMount(),
+                                disk.getUsagePercent(),
+                                schedule.getDiskThresholdPercent(),
+                                formatBytes(disk.getFreeBytes()),
+                                formatBytes(disk.getTotalBytes())));
+                    }
+                }
+            }
+
+            // Fail-safe: if specific targetDisk was not found at all, evaluate all disks to prevent silent failure
+            if (!anyMatched && !metrics.getDisks().isEmpty()) {
+                logger.warn("Target disk '{}' not found in detected disks. Falling back to all disks for safety.", targetDisk);
+                for (DiskInfo disk : metrics.getDisks()) {
+                    if (disk.getUsagePercent() >= schedule.getDiskThresholdPercent()) {
+                        isCritical = true;
+                        alertReasons.add(String.format("🚨 <b>Disk [%s (%s)]:</b> %.1f%% (Batas: %d%%) | Sisa: %s / Total: %s",
+                                disk.getFilesystem(),
+                                disk.getMount(),
+                                disk.getUsagePercent(),
+                                schedule.getDiskThresholdPercent(),
+                                formatBytes(disk.getFreeBytes()),
+                                formatBytes(disk.getTotalBytes())));
+                    }
                 }
             }
         }

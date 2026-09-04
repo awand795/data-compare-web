@@ -19,6 +19,7 @@ services:
       - DEBEZIUM_BASE_URL=http://127.0.0.1:8083
     volumes:
       - /home/awanda/darkosync/ssh-keys:/app/ssh-keys:ro
+      - /:/host:ro
     logging:
       driver: "json-file"
       options:
