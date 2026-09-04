@@ -129,6 +129,13 @@ public class SshTunnelService implements DisposableBean {
         }
         logger.info("Spawning autossh: {}", String.join(" ", logCmd));
 
+        // Ensure assignedLocalPort is not held by any stale orphaned ssh process
+        try {
+            if (!System.getProperty("os.name", "").toLowerCase().contains("win")) {
+                new ProcessBuilder("sh", "-c", "pkill -9 -f ':" + assignedLocalPort + ":' || true").start().waitFor();
+            }
+        } catch (Exception ignored) {}
+
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         Process process = pb.start();
@@ -189,6 +196,7 @@ public class SshTunnelService implements DisposableBean {
         Process p = activeAutossh.remove(connectionId);
         if (p != null) {
             try {
+                p.descendants().forEach(ProcessHandle::destroyForcibly);
                 if (p.isAlive()) {
                     p.destroyForcibly();
                 }
@@ -206,9 +214,12 @@ public class SshTunnelService implements DisposableBean {
     public void destroy() throws Exception {
         logger.info("Shutting down all active autossh processes during application exit...");
         for (Map.Entry<String, Process> entry : activeAutossh.entrySet()) {
-            if (entry.getValue() != null && entry.getValue().isAlive()) {
+            if (entry.getValue() != null) {
                 try {
-                    entry.getValue().destroyForcibly();
+                    entry.getValue().descendants().forEach(ProcessHandle::destroyForcibly);
+                    if (entry.getValue().isAlive()) {
+                        entry.getValue().destroyForcibly();
+                    }
                 } catch (Exception ignored) {}
                 logger.info("Killed autossh for {}", entry.getKey());
             }
