@@ -898,28 +898,12 @@ export const PipelineMonitor: React.FC = () => {
 
               const isSpecialGroup = deployId.startsWith('Shared:');
 
-              // Compute list of Source DB names for this pipeline
+              // Compute list of Source DB names for this pipeline from its active sources
               const sourcesInfo = pipelineSources[deployId];
-              const sourceDbNames = Array.from(new Set(
-                pipelines
-                  .filter(p => p.name.startsWith('source-'))
-                  .map(p => {
-                    let rawDb = p.name.replace(/^source-/, '').replace(/-shared$/, '');
-                    const lastDash = rawDb.lastIndexOf('-');
-                    if (lastDash > 0 && !isNaN(Number(rawDb.slice(lastDash + 1)))) {
-                      rawDb = rawDb.slice(0, lastDash);
-                    }
-                    const conn = connections.find((c: any) => {
-                      const cleanCName = (c.name || '').replaceAll(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
-                      return cleanCName === rawDb.toLowerCase() || String(c.id) === rawDb || cleanCName.startsWith(rawDb.toLowerCase());
-                    });
-                    return conn ? conn.name : rawDb.replace(/_/g, ' ').toUpperCase();
-                  })
-              ));
-
+              const isSourcesLoading = loadingSources[deployId];
               const displaySources: string[] = (sourcesInfo?.activeSources && sourcesInfo.activeSources.length > 0)
                 ? sourcesInfo.activeSources.map(s => s.name)
-                : sourceDbNames;
+                : [];
 
               return (
               <div key={deployId} className="bg-bg-main border border-border-main rounded-xl overflow-hidden">
@@ -1005,6 +989,8 @@ export const PipelineMonitor: React.FC = () => {
                               {srcName}
                             </span>
                           ))
+                        ) : isSourcesLoading ? (
+                          <span className="text-[10px] text-text-muted italic">Loading sources...</span>
                         ) : (
                           <span className="text-[10px] text-text-muted italic">No sources connected</span>
                         )}
@@ -1043,10 +1029,10 @@ export const PipelineMonitor: React.FC = () => {
 
                   {groupPipelines.map(p => {
                     const info = (() => {
+                      const sourcesText = displaySources.length > 0 ? displaySources.join(', ') : '';
                       if (p.name.startsWith('sink-postgres-')) {
                         const parts = p.name.split('-');
                         const targetTable = parts.slice(2, -1).join('-') || parts.slice(2).join('-');
-                        const sourcesText = sourceDbNames.length > 0 ? sourceDbNames.join(', ') : '';
                         return {
                           title: `PostgreSQL Sink → ${targetTable}`,
                           sourcesInfo: sourcesText ? `Consuming CDC streams from: ${sourcesText}` : '',
@@ -1060,7 +1046,6 @@ export const PipelineMonitor: React.FC = () => {
                       if (p.name.startsWith('sink-clickhouse-')) {
                         const parts = p.name.split('-');
                         const targetTable = parts.slice(2, -1).join('-') || parts.slice(2).join('-');
-                        const sourcesText = sourceDbNames.length > 0 ? sourceDbNames.join(', ') : '';
                         return {
                           title: `ClickHouse Sink → ${targetTable}`,
                           sourcesInfo: sourcesText ? `Consuming CDC streams from: ${sourcesText}` : '',
@@ -1074,7 +1059,6 @@ export const PipelineMonitor: React.FC = () => {
                       if (p.name.startsWith('sink-')) {
                         const parts = p.name.split('-');
                         const targetTable = parts.slice(1, -1).join('-') || parts.slice(1).join('-');
-                        const sourcesText = sourceDbNames.length > 0 ? sourceDbNames.join(', ') : '';
                         return {
                           title: `Sink → ${targetTable}`,
                           sourcesInfo: sourcesText ? `Consuming CDC streams from: ${sourcesText}` : '',

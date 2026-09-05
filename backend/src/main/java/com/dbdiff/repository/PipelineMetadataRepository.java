@@ -76,7 +76,7 @@ public class PipelineMetadataRepository {
         if (targetTable == null || targetTable.trim().isEmpty()) return result;
         try {
             java.util.List<Map<String, Object>> list = jdbcTemplate.queryForList(
-                "SELECT source_connection_id, source_connection_ids FROM data_warehouse_pipelines WHERE target_table = ?",
+                "SELECT source_connection_id, source_connection_ids FROM data_warehouse_pipelines WHERE target_table = ? AND (target_database <> 'default' OR target_database IS NULL)",
                 targetTable.trim()
             );
             for (Map<String, Object> row : list) {
