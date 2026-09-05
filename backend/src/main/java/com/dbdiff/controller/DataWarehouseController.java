@@ -104,6 +104,34 @@ public class DataWarehouseController {
         return ResponseEntity.ok(meta);
     }
 
+    @GetMapping("/pipelines/sources/{deployId}")
+    public ResponseEntity<?> getPipelineSources(@PathVariable String deployId) {
+        return ResponseEntity.ok(dataWarehouseService.getPipelineSources(deployId));
+    }
+
+    @PostMapping(value = "/pipelines/add-source/{deployId}", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter addSourceToPipeline(@PathVariable String deployId, @RequestBody java.util.Map<String, Object> body) {
+        SseEmitter emitter = new SseEmitter(7_200_000L); // 2 hours timeout
+        executor.execute(() -> {
+            try {
+                Object idsObj = body.get("sourceConnectionIds");
+                java.util.List<String> connIds = new java.util.ArrayList<>();
+                if (idsObj instanceof java.util.List) {
+                    for (Object item : (java.util.List<?>) idsObj) {
+                        if (item != null) connIds.add(item.toString());
+                    }
+                } else if (idsObj != null) {
+                    connIds.add(idsObj.toString());
+                }
+                dataWarehouseService.addSourceToPipeline(deployId, connIds, emitter);
+                emitter.complete();
+            } catch (Exception e) {
+                emitter.completeWithError(e);
+            }
+        });
+        return emitter;
+    }
+
     @PostMapping(value = "/pipelines/backfill-cdc/{deployId}", produces = "text/event-stream")
     public org.springframework.web.servlet.mvc.method.annotation.SseEmitter backfillCdcPipeline(
             @PathVariable String deployId) {

@@ -145,6 +145,7 @@ ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS source_connection_
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_table VARCHAR(200);
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_connection_id VARCHAR(50);
 ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS target_database VARCHAR(100);
+ALTER TABLE data_warehouse_pipelines ADD COLUMN IF NOT EXISTS source_connection_ids TEXT;
 ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS allow_raw_sql BOOLEAN DEFAULT FALSE;
 ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS ip_allowlist TEXT;
 ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS group_name VARCHAR(100) DEFAULT 'General';

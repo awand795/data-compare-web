@@ -15,6 +15,20 @@ interface Pipeline {
   lag?: number;
 }
 
+interface PipelineSourceItem {
+  id: string;
+  name: string;
+  type: string;
+  database: string;
+}
+
+interface PipelineSourcesData {
+  deployId: string;
+  targetTable: string;
+  activeSources: PipelineSourceItem[];
+  availableSources: PipelineSourceItem[];
+}
+
 export const PipelineMonitor: React.FC = () => {
   const { connections, addToast, showAlert } = useAppStore();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -44,6 +58,21 @@ export const PipelineMonitor: React.FC = () => {
   const [editQueryLogs, setEditQueryLogs] = useState<string[]>([]);
   const [isUpdatingQuery, setIsUpdatingQuery] = useState(false);
   const editLogEndRef = useRef<HTMLDivElement>(null);
+
+  // Pipeline Sources & Add Source DB State
+  const [pipelineSources, setPipelineSources] = useState<Record<string, PipelineSourcesData>>({});
+  const [loadingSources, setLoadingSources] = useState<Record<string, boolean>>({});
+  const [addSourceModal, setAddSourceModal] = useState<{
+    deployId: string;
+    folderName: string;
+    targetTable: string;
+    activeSources: PipelineSourceItem[];
+    availableSources: PipelineSourceItem[];
+  } | null>(null);
+  const [selectedSourcesToAdd, setSelectedSourcesToAdd] = useState<string[]>([]);
+  const [addSourceLogs, setAddSourceLogs] = useState<string[]>([]);
+  const [isAddingSources, setIsAddingSources] = useState(false);
+  const addSourceLogEndRef = useRef<HTMLDivElement>(null);
 
   const [renameModalOpen, setRenameModalOpen] = useState<{deployId: string, currentName: string} | null>(null);
   const [newPipelineName, setNewPipelineName] = useState('');
@@ -275,12 +304,160 @@ export const PipelineMonitor: React.FC = () => {
 
   const filteredPipelines = pipelines.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
+  const getSinkTargetTable = (name: string): string | null => {
+    if (name.startsWith('sink-clickhouse-')) {
+      const withoutPrefix = name.slice('sink-clickhouse-'.length);
+      const lastDash = withoutPrefix.lastIndexOf('-');
+      const tsStr = withoutPrefix.slice(lastDash + 1);
+      if (lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10) {
+        return withoutPrefix.slice(0, lastDash);
+      }
+      return withoutPrefix;
+    }
+    if (name.startsWith('sink-postgres-')) {
+      const withoutPrefix = name.slice('sink-postgres-'.length);
+      const lastDash = withoutPrefix.lastIndexOf('-');
+      const tsStr = withoutPrefix.slice(lastDash + 1);
+      if (lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10) {
+        return withoutPrefix.slice(0, lastDash);
+      }
+      return withoutPrefix;
+    }
+    return null;
+  };
+
+  const fetchSourcesForDeployId = async (deployId: string) => {
+    if (deployId.startsWith('Shared:') || loadingSources[deployId] || pipelineSources[deployId]) return;
+    setLoadingSources(prev => ({ ...prev, [deployId]: true }));
+    try {
+      const res = await fetch(`/api/dwh/pipelines/sources/${deployId}`);
+      if (res.ok) {
+        const data: PipelineSourcesData = await res.json();
+        setPipelineSources(prev => ({ ...prev, [deployId]: data }));
+      }
+    } catch (err) {
+      console.error(`Failed to fetch sources for ${deployId}:`, err);
+    } finally {
+      setLoadingSources(prev => ({ ...prev, [deployId]: false }));
+    }
+  };
+
+  const openAddSourceModal = async (deployId: string, folderName: string, targetTable: string) => {
+    setSelectedSourcesToAdd([]);
+    setAddSourceLogs([]);
+    setIsAddingSources(false);
+
+    const cached = pipelineSources[deployId];
+    setAddSourceModal({
+      deployId,
+      folderName,
+      targetTable,
+      activeSources: cached?.activeSources || [],
+      availableSources: cached?.availableSources || []
+    });
+
+    try {
+      const res = await fetch(`/api/dwh/pipelines/sources/${deployId}`);
+      if (res.ok) {
+        const data: PipelineSourcesData = await res.json();
+        setPipelineSources(prev => ({ ...prev, [deployId]: data }));
+        setAddSourceModal({
+          deployId,
+          folderName,
+          targetTable: data.targetTable || targetTable,
+          activeSources: data.activeSources || [],
+          availableSources: data.availableSources || []
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch pipeline sources:', err);
+    }
+  };
+
+  const handleToggleSourceToAdd = (sourceId: string) => {
+    setSelectedSourcesToAdd(prev => 
+      prev.includes(sourceId) ? prev.filter(id => id !== sourceId) : [...prev, sourceId]
+    );
+  };
+
+  const handleSelectAllAvailableSources = () => {
+    if (!addSourceModal) return;
+    if (selectedSourcesToAdd.length === addSourceModal.availableSources.length) {
+      setSelectedSourcesToAdd([]);
+    } else {
+      setSelectedSourcesToAdd(addSourceModal.availableSources.map(s => s.id));
+    }
+  };
+
+  const handleAddSourcesSubmit = async () => {
+    if (!addSourceModal || selectedSourcesToAdd.length === 0) return;
+
+    setIsAddingSources(true);
+    setAddSourceLogs([`[${new Date().toLocaleTimeString()}] Registering ${selectedSourcesToAdd.length} source database(s) into pipeline...`]);
+
+    try {
+      const res = await fetch(`/api/dwh/pipelines/add-source/${addSourceModal.deployId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceConnectionIds: selectedSourcesToAdd })
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response stream received');
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('data:')) {
+            const msg = line.substring(5).trim();
+            if (msg) {
+              setAddSourceLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+              setTimeout(() => addSourceLogEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+            }
+          }
+        }
+      }
+
+      addToast({ type: 'success', title: 'Source(s) Added', message: 'Database successfully registered and backfilled.' });
+
+      // Refresh sources
+      try {
+        const sourcesRes = await fetch(`/api/dwh/pipelines/sources/${addSourceModal.deployId}`);
+        if (sourcesRes.ok) {
+          const updatedSources = await sourcesRes.json();
+          setPipelineSources(prev => ({ ...prev, [addSourceModal.deployId]: updatedSources }));
+          setAddSourceModal(prev => prev ? {
+            ...prev,
+            activeSources: updatedSources.activeSources || [],
+            availableSources: updatedSources.availableSources || []
+          } : null);
+          setSelectedSourcesToAdd([]);
+        }
+      } catch (ignored) {}
+
+      fetchPipelines();
+    } catch (e: any) {
+      setAddSourceLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ERROR: ${e.message}`]);
+      addToast({ type: 'error', title: 'Failed to Add Source', message: e.message });
+    } finally {
+      setIsAddingSources(false);
+    }
+  };
+
   const toggleGroup = async (deployId: string) => {
     const isExpanding = !expandedGroups[deployId];
     setExpandedGroups(prev => ({
       ...prev,
       [deployId]: isExpanding
     }));
+    if (isExpanding && !deployId.startsWith('Shared:')) {
+      fetchSourcesForDeployId(deployId);
+    }
   };
 
   const openQueryModal = async (deployId: string, folderName: string) => {
@@ -421,6 +598,7 @@ export const PipelineMonitor: React.FC = () => {
         });
 
         dIds.forEach(deployId => {
+          fetchSourcesForDeployId(deployId);
           fetch(`/api/dwh/pipelines/progress/${deployId}`)
             .then(r => r.json())
             .then(res => {
@@ -670,6 +848,19 @@ export const PipelineMonitor: React.FC = () => {
                 const tsStr = p.name.slice(lastDash + 1);
                 const isTimestamp = lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10;
                 
+                // If it's a sink connector, group by its target table across duplicate deployIds
+                const sinkTargetTable = getSinkTargetTable(p.name);
+                if (sinkTargetTable) {
+                  const existingGroup = Object.entries(acc).find(([key, list]) => {
+                    if (key.startsWith('Shared:')) return false;
+                    return list.some(item => getSinkTargetTable(item.name) === sinkTargetTable);
+                  });
+                  if (existingGroup) {
+                    existingGroup[1].push(p);
+                    return acc;
+                  }
+                }
+
                 let deployId = '';
                 if (isTimestamp) {
                   const ts = Number(tsStr);
@@ -691,6 +882,7 @@ export const PipelineMonitor: React.FC = () => {
             ).sort((a, b) => b[0].localeCompare(a[0])).map(([deployId, groupPipelines]) => {
               // Try to find target table name from sink connector
               const sink = groupPipelines.find(p => p.name.startsWith('sink-'));
+              let targetTable = '';
               let folderName = `Deployment ID: ${deployId}`;
               let icon = "🗂️";
               if (deployId.startsWith('Shared:')) {
@@ -698,19 +890,7 @@ export const PipelineMonitor: React.FC = () => {
                 folderName = `Shared DB Source Connector (${dbName})`;
                 icon = "⚡";
               } else if (sink) {
-                const lastDash = sink.name.lastIndexOf('-');
-                const tsStr = sink.name.slice(lastDash + 1);
-                const hasTimestamp = lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10;
-
-                let targetTable = '';
-                if (sink.name.startsWith('sink-clickhouse-')) {
-                  targetTable = hasTimestamp ? sink.name.slice('sink-clickhouse-'.length, lastDash) : sink.name.slice('sink-clickhouse-'.length);
-                } else if (sink.name.startsWith('sink-postgres-')) {
-                  targetTable = hasTimestamp ? sink.name.slice('sink-postgres-'.length, lastDash) : sink.name.slice('sink-postgres-'.length);
-                } else {
-                  const trimmed = sink.name.replace(/^sink-[^-]+-/, '');
-                  targetTable = hasTimestamp ? trimmed.slice(0, trimmed.lastIndexOf('-')) : trimmed;
-                }
+                targetTable = getSinkTargetTable(sink.name) || '';
                 folderName = `Pipeline: ${targetTable || deployId}`;
               } else {
                 folderName = `Pipeline: ${deployId}`;
@@ -719,6 +899,7 @@ export const PipelineMonitor: React.FC = () => {
               const isSpecialGroup = deployId.startsWith('Shared:');
 
               // Compute list of Source DB names for this pipeline
+              const sourcesInfo = pipelineSources[deployId];
               const sourceDbNames = Array.from(new Set(
                 pipelines
                   .filter(p => p.name.startsWith('source-'))
@@ -735,6 +916,10 @@ export const PipelineMonitor: React.FC = () => {
                     return conn ? conn.name : rawDb.replace(/_/g, ' ').toUpperCase();
                   })
               ));
+
+              const displaySources: string[] = (sourcesInfo?.activeSources && sourcesInfo.activeSources.length > 0)
+                ? sourcesInfo.activeSources.map(s => s.name)
+                : sourceDbNames;
 
               return (
               <div key={deployId} className="bg-bg-main border border-border-main rounded-xl overflow-hidden">
@@ -765,35 +950,65 @@ export const PipelineMonitor: React.FC = () => {
                   </div>
                   
                   {!isSpecialGroup && (
-                    <div className="flex items-center gap-2 mt-3 ml-7">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); openQueryModal(deployId, folderName); }} 
-                        className="p-1 rounded bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-colors tooltip"
-                        title="View Original Query"
-                      >
-                        <Code className="w-3.5 h-3.5" />
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); openEditQueryModal(deployId, folderName); }} 
-                        className="p-1 rounded bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition-colors tooltip"
-                        title="Edit Query & Sync Schema"
-                      >
-                        <FileEdit className="w-3.5 h-3.5" />
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); const curName = folderName.replace('Pipeline: ', ''); setRenameModalOpen({ deployId, currentName: curName }); setNewPipelineName(curName); }} 
-                        className="p-1 rounded bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-colors tooltip"
-                        title="Rename Pipeline"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeletePipeline(deployId, folderName); }} 
-                        className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors tooltip"
-                        title="Delete Entire Pipeline"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <div className="flex flex-col gap-2 mt-2 ml-7">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openQueryModal(deployId, folderName); }} 
+                          className="p-1 rounded bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-colors tooltip"
+                          title="View Original Query"
+                        >
+                          <Code className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openEditQueryModal(deployId, folderName); }} 
+                          className="p-1 rounded bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition-colors tooltip"
+                          title="Edit Query & Sync Schema"
+                        >
+                          <FileEdit className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); const curName = folderName.replace('Pipeline: ', ''); setRenameModalOpen({ deployId, currentName: curName }); setNewPipelineName(curName); }} 
+                          className="p-1 rounded bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-colors tooltip"
+                          title="Rename Pipeline"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openAddSourceModal(deployId, folderName, targetTable); }} 
+                          className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-white transition-colors tooltip flex items-center gap-1.5 text-xs font-semibold"
+                          title="Add Source Database to Pipeline"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Source DB</span>
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeletePipeline(deployId, folderName); }} 
+                          className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors tooltip"
+                          title="Delete Entire Pipeline"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Active Sources Badges */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-medium text-text-muted flex items-center gap-1">
+                          <Database className="w-3 h-3 text-indigo-400" />
+                          Sources:
+                        </span>
+                        {displaySources.length > 0 ? (
+                          displaySources.map((srcName, idx) => (
+                            <span 
+                              key={idx} 
+                              className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            >
+                              {srcName}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] text-text-muted italic">No sources connected</span>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1192,6 +1407,169 @@ export const PipelineMonitor: React.FC = () => {
                 <button onClick={() => setEditQueryModal(null)} disabled={isUpdatingQuery} className="px-4 py-2 rounded-lg text-sm font-bold bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 transition-colors disabled:opacity-50">Cancel</button>
                 <button onClick={handleUpdateQuery} disabled={isUpdatingQuery || !editQueryValue.trim()} className="px-5 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50 transition-colors flex items-center gap-2">
                   {isUpdatingQuery ? <><Activity className="w-4 h-4 animate-spin" /> Syncing...</> : <><Save className="w-4 h-4" /> Save & Sync Schema</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addSourceModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-bg-panel w-full max-w-2xl rounded-xl shadow-2xl flex flex-col border border-border-main" style={{ maxHeight: '90vh' }}>
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-emerald-500/10 shrink-0">
+              <div className="flex items-center gap-2">
+                <Database className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-bold text-emerald-300 text-sm md:text-base">
+                  Add Source Database: <span className="text-text-main font-normal">{addSourceModal.folderName}</span>
+                </h3>
+              </div>
+              <button 
+                onClick={() => { if (!isAddingSources) setAddSourceModal(null); }} 
+                className="text-text-muted hover:text-text-main"
+                disabled={isAddingSources}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-5 gap-4">
+              <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
+                <p className="text-xs text-emerald-400 leading-relaxed">
+                  ⚡ <strong>Multi-Database CDC:</strong> Adding a source database will register the required tables in the shared Debezium source connector, create landing tables &amp; materialized views, backfill old data from the source database, and update the ClickHouse sink topic subscription.
+                </p>
+              </div>
+
+              {/* Currently Connected Databases */}
+              <div>
+                <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-2">
+                  Currently Connected Databases ({addSourceModal.activeSources.length})
+                </label>
+                {addSourceModal.activeSources.length === 0 ? (
+                  <p className="text-xs text-text-muted italic">No sources currently connected or loading...</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {addSourceModal.activeSources.map(s => (
+                      <span key={s.id} className="text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="font-bold">{s.name}</span>
+                        <span className="text-[10px] text-text-muted">({s.database || s.type})</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Available Databases to Add */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
+                    Available Warehouse Databases to Add ({addSourceModal.availableSources.length})
+                  </label>
+                  {addSourceModal.availableSources.length > 0 && !isAddingSources && (
+                    <button
+                      type="button"
+                      onClick={handleSelectAllAvailableSources}
+                      className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold"
+                    >
+                      {selectedSourcesToAdd.length === addSourceModal.availableSources.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  )}
+                </div>
+
+                {addSourceModal.availableSources.length === 0 ? (
+                  <div className="p-4 rounded-lg bg-bg-main border border-border-main text-center text-xs text-text-muted italic">
+                    All connections with Data Warehouse enabled are already connected to this pipeline!
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {addSourceModal.availableSources.map(source => {
+                      const isSelected = selectedSourcesToAdd.includes(source.id);
+                      return (
+                        <div
+                          key={source.id}
+                          onClick={() => { if (!isAddingSources) handleToggleSourceToAdd(source.id); }}
+                          className={clsx(
+                            "flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all",
+                            isSelected
+                              ? "bg-indigo-500/10 border-indigo-500/50 text-text-main"
+                              : "bg-bg-main border-border-main text-text-muted hover:border-indigo-500/30",
+                            isAddingSources && "opacity-50 pointer-events-none"
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              disabled={isAddingSources}
+                              className="rounded border-border-main text-indigo-500 focus:ring-0 cursor-pointer"
+                            />
+                            <div>
+                              <span className="text-xs font-bold text-text-main">{source.name}</span>
+                              <span className="text-[11px] text-text-muted ml-2 font-mono">({source.database || source.type})</span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-bg-panel text-text-muted border border-border-main">
+                            {source.type}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Streaming Logs Viewer */}
+              {addSourceLogs.length > 0 && (
+                <div className="flex flex-col flex-1 min-h-[140px] max-h-60 overflow-hidden rounded-lg border border-border-main bg-bg-editor">
+                  <div className="px-3 py-1.5 bg-bg-header/80 border-b border-border-main text-[11px] font-mono text-text-muted flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      {isAddingSources && <Activity className="w-3 h-3 text-emerald-400 animate-spin" />}
+                      Execution Log
+                    </span>
+                    <span className="text-[10px] text-text-muted">{addSourceLogs.length} events</span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] custom-scrollbar">
+                    {addSourceLogs.map((log, i) => (
+                      <div key={i} className={clsx('leading-relaxed', log.includes('ERROR') ? 'text-red-400' : log.includes('✅') ? 'text-emerald-400' : log.includes('WARNING') ? 'text-amber-400' : 'text-slate-300')}>
+                        {log}
+                      </div>
+                    ))}
+                    <div ref={addSourceLogEndRef} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-border-main flex justify-between items-center bg-bg-header/50 shrink-0 rounded-b-xl">
+              <span className="text-xs text-text-muted">
+                {selectedSourcesToAdd.length > 0 ? `${selectedSourcesToAdd.length} database(s) selected` : 'Select database(s) to add'}
+              </span>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setAddSourceModal(null)}
+                  disabled={isAddingSources}
+                  className="px-4 py-2 rounded-lg text-sm font-bold bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 transition-colors disabled:opacity-50"
+                >
+                  {addSourceLogs.length > 0 && !isAddingSources ? 'Close' : 'Cancel'}
+                </button>
+                <button
+                  onClick={handleAddSourcesSubmit}
+                  disabled={isAddingSources || selectedSourcesToAdd.length === 0}
+                  className="px-5 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 transition-colors flex items-center gap-2"
+                >
+                  {isAddingSources ? (
+                    <>
+                      <Activity className="w-4 h-4 animate-spin" />
+                      Adding &amp; Backfilling...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Add &amp; Backfill Selected
+                    </>
+                  )}
                 </button>
               </div>
             </div>
