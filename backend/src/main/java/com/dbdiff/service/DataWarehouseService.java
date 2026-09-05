@@ -1219,10 +1219,10 @@ public class DataWarehouseService {
             // =========================================================================
             // STEP 3: Configure Debezium Source Connector
             // =========================================================================
-            for (ConnectionDetails currentSourceConn : allConns) {
-                String currentBaseName = currentSourceConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
-                String currentSourceConnectorName = "source-" + currentBaseName + "-shared";
-                DataSource currentSourceDs = connectionManagerService.getDataSource(currentSourceConn);
+            ConnectionDetails currentSourceConn = request.getSourceConnection();
+            String currentBaseName = currentSourceConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+            String currentSourceConnectorName = "source-" + currentBaseName + "-shared";
+            DataSource currentSourceDs = connectionManagerService.getDataSource(currentSourceConn);
 
                 sendLog(emitter, "Configuring Debezium Source Connector (" + currentSourceConnectorName + ")...");
             
@@ -1516,9 +1516,6 @@ public class DataWarehouseService {
                         }
                     }
                 }
-
-            
-            }
 
             // =========================================================================
             // STEP 5: Configure Sink Connector
