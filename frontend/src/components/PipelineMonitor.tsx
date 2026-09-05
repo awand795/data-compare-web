@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit, Edit3, Code, FileEdit, Database, Clock, Plus } from 'lucide-react';
+import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit, Edit3, Code, FileEdit, Database, Clock, Plus, Terminal } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -1390,13 +1390,39 @@ export const PipelineMonitor: React.FC = () => {
               </div>
 
               {editQueryLogs.length > 0 && (
-                <div className="flex-1 min-h-0 overflow-y-auto bg-bg-editor border-t border-border-main p-4 font-mono text-[11px] custom-scrollbar">
-                  {editQueryLogs.map((log, i) => (
-                    <div key={i} className={clsx('leading-relaxed', log.includes('ERROR') ? 'text-red-400' : log.includes('✅') ? 'text-emerald-400' : log.includes('WARNING') ? 'text-amber-400' : 'text-slate-300')}>
-                      {log}
-                    </div>
-                  ))}
-                  <div ref={editLogEndRef} />
+                <div className="flex flex-col flex-1 min-h-[140px] max-h-60 overflow-hidden border-t border-slate-700 dark:border-slate-800 bg-[#0f172a] shadow-inner">
+                  <div className="px-3.5 py-1.5 bg-[#1e293b] border-b border-slate-700 dark:border-slate-800 text-[11px] font-mono text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      {isUpdatingQuery ? (
+                        <Activity className="w-3.5 h-3.5 text-purple-400 animate-spin" />
+                      ) : (
+                        <Terminal className="w-3.5 h-3.5 text-purple-400" />
+                      )}
+                      <span className="font-semibold text-slate-100">Schema Sync Log</span>
+                    </span>
+                    <span className="text-[10px] font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-300 border border-slate-700">
+                      {editQueryLogs.length} events
+                    </span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3.5 font-mono text-[11.5px] bg-[#0f172a] select-text custom-scrollbar">
+                    {editQueryLogs.map((log, i) => (
+                      <div
+                        key={i}
+                        className={clsx(
+                          'leading-relaxed py-0.5',
+                          log.includes('ERROR') ? 'text-rose-400 font-semibold' :
+                          log.includes('✅') ? 'text-emerald-400 font-semibold' :
+                          log.includes('WARNING') ? 'text-amber-300 font-medium' :
+                          log.startsWith('---') || log.startsWith('===') ? 'text-slate-500' :
+                          log.includes('Starting') || log.includes('Processing') || log.includes('Backfilling') || log.includes('Synchronizing') ? 'text-sky-300' :
+                          'text-slate-100'
+                        )}
+                      >
+                        {log}
+                      </div>
+                    ))}
+                    <div ref={editLogEndRef} />
+                  </div>
                 </div>
               )}
             </div>
@@ -1419,8 +1445,8 @@ export const PipelineMonitor: React.FC = () => {
           <div className="bg-bg-panel w-full max-w-2xl rounded-xl shadow-2xl flex flex-col border border-border-main" style={{ maxHeight: '90vh' }}>
             <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-emerald-500/10 shrink-0">
               <div className="flex items-center gap-2">
-                <Database className="w-5 h-5 text-emerald-400" />
-                <h3 className="font-bold text-emerald-300 text-sm md:text-base">
+                <Database className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <h3 className="font-bold text-emerald-700 dark:text-emerald-300 text-sm md:text-base">
                   Add Source Database: <span className="text-text-main font-normal">{addSourceModal.folderName}</span>
                 </h3>
               </div>
@@ -1434,8 +1460,8 @@ export const PipelineMonitor: React.FC = () => {
             </div>
 
             <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-5 gap-4">
-              <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
-                <p className="text-xs text-emerald-400 leading-relaxed">
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                <p className="text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed font-medium">
                   ⚡ <strong>Multi-Database CDC:</strong> Adding a source database will register the required tables in the shared Debezium source connector, create landing tables &amp; materialized views, backfill old data from the source database, and update the ClickHouse sink topic subscription.
                 </p>
               </div>
@@ -1450,10 +1476,10 @@ export const PipelineMonitor: React.FC = () => {
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {addSourceModal.activeSources.map(s => (
-                      <span key={s.id} className="text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span key={s.id} className="text-xs font-semibold px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         <span className="font-bold">{s.name}</span>
-                        <span className="text-[10px] text-text-muted">({s.database || s.type})</span>
+                        <span className="text-[10px] opacity-75 font-mono">({s.database || s.type})</span>
                       </span>
                     ))}
                   </div>
@@ -1522,17 +1548,34 @@ export const PipelineMonitor: React.FC = () => {
 
               {/* Streaming Logs Viewer */}
               {addSourceLogs.length > 0 && (
-                <div className="flex flex-col flex-1 min-h-[140px] max-h-60 overflow-hidden rounded-lg border border-border-main bg-bg-editor">
-                  <div className="px-3 py-1.5 bg-bg-header/80 border-b border-border-main text-[11px] font-mono text-text-muted flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      {isAddingSources && <Activity className="w-3 h-3 text-emerald-400 animate-spin" />}
-                      Execution Log
+                <div className="flex flex-col flex-1 min-h-[160px] max-h-64 overflow-hidden rounded-lg border border-slate-700 dark:border-slate-800 bg-[#0f172a] shadow-inner">
+                  <div className="px-3.5 py-2 bg-[#1e293b] border-b border-slate-700 dark:border-slate-800 text-[11px] font-mono text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      {isAddingSources ? (
+                        <Activity className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                      ) : (
+                        <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                      )}
+                      <span className="font-semibold text-slate-100">Execution Log</span>
                     </span>
-                    <span className="text-[10px] text-text-muted">{addSourceLogs.length} events</span>
+                    <span className="text-[10px] font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-300 border border-slate-700">
+                      {addSourceLogs.length} events
+                    </span>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] custom-scrollbar">
+                  <div className="flex-1 overflow-y-auto p-3.5 font-mono text-[11.5px] bg-[#0f172a] select-text custom-scrollbar">
                     {addSourceLogs.map((log, i) => (
-                      <div key={i} className={clsx('leading-relaxed', log.includes('ERROR') ? 'text-red-400' : log.includes('✅') ? 'text-emerald-400' : log.includes('WARNING') ? 'text-amber-400' : 'text-slate-300')}>
+                      <div
+                        key={i}
+                        className={clsx(
+                          'leading-relaxed py-0.5',
+                          log.includes('ERROR') ? 'text-rose-400 font-semibold' :
+                          log.includes('✅') ? 'text-emerald-400 font-semibold' :
+                          log.includes('WARNING') ? 'text-amber-300 font-medium' :
+                          log.startsWith('---') || log.startsWith('===') ? 'text-slate-500' :
+                          log.includes('Starting') || log.includes('Processing') || log.includes('Backfilling') || log.includes('Synchronizing') ? 'text-sky-300' :
+                          'text-slate-100'
+                        )}
+                      >
                         {log}
                       </div>
                     ))}
