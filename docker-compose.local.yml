@@ -4,16 +4,21 @@ services:
     image: darkosync-backend-local:latest
     build:
       context: ./backend
+      dockerfile: Dockerfile.local
     container_name: darkosync-backend
-    restart: unless-stopped
     environment:
       TZ: Asia/Jakarta
-      DB_HOST: war.darkosuite.com
+      DB_HOST: 127.0.0.1
       DB_PORT: 8832
       DB_NAME: data_setting_sync
       DB_USER: postgres
-      DB_PASSWORD: ${INTERNAL_DB_PASSWORD}
+      DB_PASSWORD: ${INTERNAL_DB_PASSWORD:-postgre!PowerData@202608}
+      SSH_HOST: 94.237.69.119
+      SSH_PORT: 8822
+      SSH_USER: awanda
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - target: 8081
         published: 5300
@@ -177,3 +182,4 @@ networks:
   darkosync-network:
     name: darkosync-local-net
     driver: overlay
+    attachable: true

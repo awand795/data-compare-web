@@ -1927,8 +1927,10 @@ public class DataWarehouseService {
                     String sqlWithMeta = addMetadataColsToSelect(rotatedSql, primaryTable);
                     String rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
 
+                    List<String> targetCols = extractSelectColumnNames(rewrittenSql);
+                    String colList = (targetCols != null && !targetCols.isEmpty()) ? " (" + String.join(", ", targetCols) + ") " : " ";
                     String settingsClause = " SETTINGS max_threads = 1, max_memory_usage = 0, join_algorithm = 'grace_hash,partial_merge,hash', max_bytes_before_external_group_by = 100000000, max_bytes_before_external_sort = 100000000";
-                    String insertSql = "INSERT INTO `" + chDb + "`.`" + request.getTargetTable() + "` " + rewrittenSql + settingsClause;
+                    String insertSql = "INSERT INTO `" + chDb + "`.`" + request.getTargetTable() + "`" + colList + rewrittenSql + settingsClause;
                     logger.info("Executing initial snapshot populate SQL:\n{}", insertSql);
                     stmt.execute(insertSql);
                     sendLog(emitter, "Initial snapshot data populated into `" + request.getTargetTable() + "`.");
@@ -2542,6 +2544,31 @@ public class DataWarehouseService {
         }
     }
 
+    private List<String> extractSelectColumnNames(String sql) {
+        List<String> cols = new ArrayList<>();
+        try {
+            net.sf.jsqlparser.statement.Statement stmt = CCJSqlParserUtil.parse(sql);
+            if (stmt instanceof Select) {
+                Select select = (Select) stmt;
+                PlainSelect plain = select.getPlainSelect();
+                if (plain != null && plain.getSelectItems() != null) {
+                    for (net.sf.jsqlparser.statement.select.SelectItem<?> item : plain.getSelectItems()) {
+                        if (item.getAlias() != null && item.getAlias().getName() != null) {
+                            cols.add("`" + item.getAlias().getName().replaceAll("[\"``]", "") + "`");
+                        } else if (item.getExpression() instanceof net.sf.jsqlparser.schema.Column) {
+                            cols.add("`" + ((net.sf.jsqlparser.schema.Column) item.getExpression()).getColumnName().replaceAll("[\"``]", "") + "`");
+                        } else if (item.getExpression() != null) {
+                            cols.add("`" + item.getExpression().toString().replaceAll("[\"``]", "") + "`");
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Could not extract select column names from SQL: " + e.getMessage());
+        }
+        return cols;
+    }
+
     private FromItem rewriteFromItemForClickHouse(FromItem item, List<String> physicalTables, String baseName, ConnectionDetails sourceConn, String chDb, String triggerTable) {
         if (item instanceof Table) {
             Table t = (Table) item;
@@ -2733,6 +2760,14 @@ public class DataWarehouseService {
                         }
                         for (String mv : mvs) { targetStmt.execute("DETACH TABLE `" + chDb + "`.`" + mv + "`"); }
                         
+                        long baseVersion = 0L;
+                        try (ResultSet rsMax = targetStmt.executeQuery("SELECT max(version) FROM `" + chDb + "`.`" + landingTable + "`")) {
+                            if (rsMax.next()) {
+                                baseVersion = rsMax.getLong(1);
+                            }
+                        } catch (Exception ignored) {}
+                        long backfillVersion = Math.max(baseVersion + 1, System.currentTimeMillis() * 1000L);
+                        
                         try {
                             StringBuilder psSql = new StringBuilder("INSERT INTO `").append(chDb).append("`.`").append(landingTable).append("` (`");
                             psSql.append(cols.stream().map(c -> c.name).collect(java.util.stream.Collectors.joining("`, `")));
@@ -2748,9 +2783,48 @@ public class DataWarehouseService {
                             try (PreparedStatement targetPs = targetConn.prepareStatement(psSql.toString())) {
                                 while (rs.next()) {
                                     for (int i = 1; i <= cols.size(); i++) {
-                                        targetPs.setObject(i, rs.getObject(i));
+                                        Object val = rs.getObject(i);
+                                        if (val instanceof java.sql.Date) {
+                                            java.sql.Date d = (java.sql.Date) val;
+                                            java.time.LocalDate ld = d.toLocalDate();
+                                            if (ld.getYear() < 1900) {
+                                                ld = java.time.LocalDate.of(1900, 1, 1);
+                                                val = java.sql.Date.valueOf(ld);
+                                            } else if (ld.getYear() > 2299) {
+                                                ld = java.time.LocalDate.of(2299, 12, 31);
+                                                val = java.sql.Date.valueOf(ld);
+                                            }
+                                            ColumnInfo colInfo = (i - 1 < cols.size()) ? cols.get(i - 1) : null;
+                                            if (colInfo != null && "Date".equalsIgnoreCase(colInfo.clickhouseType) && ld.getYear() < 1970) {
+                                                ld = java.time.LocalDate.of(1970, 1, 1);
+                                                val = java.sql.Date.valueOf(ld);
+                                            }
+                                        } else if (val instanceof java.time.LocalDate) {
+                                            java.time.LocalDate ld = (java.time.LocalDate) val;
+                                            if (ld.getYear() < 1900) {
+                                                ld = java.time.LocalDate.of(1900, 1, 1);
+                                            } else if (ld.getYear() > 2299) {
+                                                ld = java.time.LocalDate.of(2299, 12, 31);
+                                            }
+                                            ColumnInfo colInfo = (i - 1 < cols.size()) ? cols.get(i - 1) : null;
+                                            if (colInfo != null && "Date".equalsIgnoreCase(colInfo.clickhouseType) && ld.getYear() < 1970) {
+                                                ld = java.time.LocalDate.of(1970, 1, 1);
+                                            }
+                                            val = java.sql.Date.valueOf(ld);
+                                        } else if (val instanceof java.sql.Timestamp) {
+                                            java.sql.Timestamp ts = (java.sql.Timestamp) val;
+                                            java.time.LocalDateTime ldt = ts.toLocalDateTime();
+                                            if (ldt.getYear() < 1900) {
+                                                ldt = java.time.LocalDateTime.of(1900, 1, 1, 0, 0, 0);
+                                                val = java.sql.Timestamp.valueOf(ldt);
+                                            } else if (ldt.getYear() > 2299) {
+                                                ldt = java.time.LocalDateTime.of(2299, 12, 31, 23, 59, 59);
+                                                val = java.sql.Timestamp.valueOf(ldt);
+                                            }
+                                        }
+                                        targetPs.setObject(i, val);
                                     }
-                                    targetPs.setLong(cols.size() + 1, 0L);
+                                    targetPs.setLong(cols.size() + 1, backfillVersion);
                                     targetPs.setInt(cols.size() + 2, 0);
                                     targetPs.addBatch();
                                     rowCount++;
@@ -3045,7 +3119,7 @@ public class DataWarehouseService {
         if (lowerName.contains("float") || lowerName.contains("real") || jdbcType == java.sql.Types.FLOAT || jdbcType == java.sql.Types.REAL) return "Float32";
         if (lowerName.contains("double") || lowerName.contains("numeric") || lowerName.contains("decimal") || jdbcType == java.sql.Types.DOUBLE || jdbcType == java.sql.Types.NUMERIC || jdbcType == java.sql.Types.DECIMAL) return "Float64";
         if (lowerName.contains("bool") || jdbcType == java.sql.Types.BOOLEAN || jdbcType == java.sql.Types.BIT) return "Bool";
-        if (lowerName.contains("date") || jdbcType == java.sql.Types.DATE) return "Date";
+        if (lowerName.contains("date") || jdbcType == java.sql.Types.DATE) return "Date32";
         if (lowerName.contains("timestamp") || lowerName.contains("datetime") || lowerName.contains("time") || jdbcType == java.sql.Types.TIMESTAMP || jdbcType == java.sql.Types.TIMESTAMP_WITH_TIMEZONE) {
             return "DateTime64(3)";
         }
@@ -3882,11 +3956,9 @@ public class DataWarehouseService {
                     tableToPKs.put(t, pks);
                 }
 
-                // Update landing tables & MVs for this source connection
+                // Step A: Add new columns to ALL landing tables for this source connection first
                 for (String t : sPhysicalTables) {
                     String landingTable = getClickHouseLandingTable(t, sBaseName, sConn);
-
-                    // Add new columns to landing table
                     for (ColumnInfo ci : newCols) {
                         if (ci.name.equalsIgnoreCase("sync_dt") || ci.name.equalsIgnoreCase("version") || ci.name.equalsIgnoreCase("is_deleted")) continue;
                         try (java.sql.Connection chConn = targetDs.getConnection();
@@ -3894,8 +3966,11 @@ public class DataWarehouseService {
                             chStmt.execute("ALTER TABLE `" + chDb + "`.`" + landingTable + "` ADD COLUMN IF NOT EXISTS `" + ci.name + "` Nullable(" + ci.clickhouseType + ")");
                         } catch (Exception ignored) {}
                     }
+                }
 
-                    // Recreate MV
+                // Step B: Recreate all Materialized Views (now safe because ALL landing tables have new columns)
+                for (String t : sPhysicalTables) {
+                    String landingTable = getClickHouseLandingTable(t, sBaseName, sConn);
                     String mvName = "mv_" + targetTable + "_" + landingTable;
                     try (java.sql.Connection chConn = targetDs.getConnection();
                          java.sql.Statement chStmt = chConn.createStatement()) {
@@ -3916,8 +3991,11 @@ public class DataWarehouseService {
                     } catch (Exception e) {
                         sendLog(emitter, "WARNING: Could not recreate MV `" + mvName + "`: " + e.getMessage());
                     }
+                }
 
-                    // Direct backfill landing table from source PostgreSQL to populate new columns
+                // Step C: Direct backfill landing table from source PostgreSQL to populate new columns
+                for (String t : sPhysicalTables) {
+                    String landingTable = getClickHouseLandingTable(t, sBaseName, sConn);
                     sendLog(emitter, "Backfilling landing table `" + landingTable + "` from [" + sConn.getName() + "] to populate data...");
                     try {
                         backfillLandingTableFromSource(sDs, targetDs, t, landingTable, chDb, sConn, emitter);
@@ -3926,7 +4004,7 @@ public class DataWarehouseService {
                     }
                 }
 
-                // Re-populate target table using ClickHouse SQL across refreshed landing tables
+                // Step D: Re-populate target table using ClickHouse SQL with explicit column names
                 sendLog(emitter, "Populating target table `" + targetTable + "` for [" + sConn.getName() + "] with complete columns...");
                 try (java.sql.Connection chConn = targetDs.getConnection();
                      java.sql.Statement chStmt = chConn.createStatement()) {
@@ -3947,8 +4025,11 @@ public class DataWarehouseService {
                         rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, sPhysicalTables, sBaseName, sConn, chDb);
                     }
 
+                    List<String> targetCols = extractSelectColumnNames(rewrittenSql);
+                    String colList = (targetCols != null && !targetCols.isEmpty()) ? " (" + String.join(", ", targetCols) + ") " : " ";
+
                     String settingsClause = " SETTINGS max_threads = 1, max_memory_usage = 0, join_algorithm = 'grace_hash,partial_merge,hash', max_bytes_before_external_group_by = 100000000, max_bytes_before_external_sort = 100000000";
-                    String insertSql = "INSERT INTO `" + chDb + "`.`" + targetTable + "` " + rewrittenSql + settingsClause;
+                    String insertSql = "INSERT INTO `" + chDb + "`.`" + targetTable + "`" + colList + rewrittenSql + settingsClause;
                     chStmt.execute(insertSql);
                     sendLog(emitter, "Target table populated successfully for [" + sConn.getName() + "].");
                 } catch (Exception ex) {

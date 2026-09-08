@@ -24,8 +24,20 @@ public class ApiEndpoint {
 
     private String ipAllowlist;
     private String groupName;
-
     private String authToken;
+
+    // ── Scheduled Push (Spring Cron) & Failure Notification ──────────────────
+    private boolean cronEnabled = false;
+    private String cronExpression;
+    private String targetEndpointId; // Optional reference to EndpointTarget
+    private String targetUrl;
+    private String targetMethod = "POST";
+    private String targetHeaders;
+    private String notificationChannelId; // Telegram / Discord channel IDs (separated by ;)
+    private LocalDateTime lastPushAt;
+    private String lastPushStatus; // SUCCESS or FAILED
+    private String lastPushMessage;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -73,6 +85,36 @@ public class ApiEndpoint {
 
     public String getAuthToken() { return authToken; }
     public void setAuthToken(String authToken) { this.authToken = authToken; }
+
+    public boolean isCronEnabled() { return cronEnabled; }
+    public void setCronEnabled(boolean cronEnabled) { this.cronEnabled = cronEnabled; }
+
+    public String getCronExpression() { return cronExpression; }
+    public void setCronExpression(String cronExpression) { this.cronExpression = cronExpression; }
+
+    public String getTargetEndpointId() { return targetEndpointId; }
+    public void setTargetEndpointId(String targetEndpointId) { this.targetEndpointId = targetEndpointId; }
+
+    public String getTargetUrl() { return targetUrl; }
+    public void setTargetUrl(String targetUrl) { this.targetUrl = targetUrl; }
+
+    public String getTargetMethod() { return targetMethod != null && !targetMethod.trim().isEmpty() ? targetMethod.toUpperCase() : "POST"; }
+    public void setTargetMethod(String targetMethod) { this.targetMethod = targetMethod; }
+
+    public String getTargetHeaders() { return targetHeaders; }
+    public void setTargetHeaders(String targetHeaders) { this.targetHeaders = targetHeaders; }
+
+    public String getNotificationChannelId() { return notificationChannelId; }
+    public void setNotificationChannelId(String notificationChannelId) { this.notificationChannelId = notificationChannelId; }
+
+    public LocalDateTime getLastPushAt() { return lastPushAt; }
+    public void setLastPushAt(LocalDateTime lastPushAt) { this.lastPushAt = lastPushAt; }
+
+    public String getLastPushStatus() { return lastPushStatus; }
+    public void setLastPushStatus(String lastPushStatus) { this.lastPushStatus = lastPushStatus; }
+
+    public String getLastPushMessage() { return lastPushMessage; }
+    public void setLastPushMessage(String lastPushMessage) { this.lastPushMessage = lastPushMessage; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

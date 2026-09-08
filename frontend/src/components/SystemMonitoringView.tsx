@@ -63,7 +63,7 @@ interface SystemAlertSchedule {
 }
 
 export const SystemMonitoringView: React.FC = () => {
-  const { notificationChannels, setNotificationChannels, addToast } = useAppStore();
+  const { notificationChannels, setNotificationChannels, addToast, showAlert } = useAppStore();
 
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [schedules, setSchedules] = useState<SystemAlertSchedule[]>([]);
@@ -237,15 +237,31 @@ export const SystemMonitoringView: React.FC = () => {
     }
   };
 
-  const handleDeleteSchedule = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete the schedule "${name}"?`)) return;
-    try {
-      await axios.delete(`/api/system-alert-schedules/${id}`);
-      setSchedules(prev => prev.filter(s => s.id !== id));
-      addToast({ type: 'success', title: 'Deleted', message: `Schedule "${name}" removed.` });
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Error', message: 'Failed to delete schedule.' });
-    }
+  const handleDeleteSchedule = (id: string, name: string) => {
+    showAlert({
+      title: 'Delete Alert Schedule',
+      message: `Are you sure you want to delete the schedule "${name}"? This action cannot be undone.`,
+      type: 'error',
+      confirmLabel: 'Delete Schedule',
+      cancelLabel: 'Cancel',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`/api/system-alert-schedules/${id}`);
+          setSchedules(prev => prev.filter(s => s.id !== id));
+          showAlert({
+            title: 'Schedule Deleted',
+            message: `Schedule "${name}" was removed successfully.`,
+            type: 'success'
+          });
+        } catch (err: any) {
+          showAlert({
+            title: 'Delete Failed',
+            message: err.response?.data?.error || err.message || 'Failed to delete schedule.',
+            type: 'error'
+          });
+        }
+      }
+    });
   };
 
   const handleTestAlert = async (id: string, name: string) => {

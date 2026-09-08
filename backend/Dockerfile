@@ -17,19 +17,8 @@ RUN apk add --no-cache openssh-client autossh sshpass
 # Create logs directory
 RUN mkdir -p /app/logs
 
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
 EXPOSE 8081
-ENTRYPOINT ["sh", "-c", "exec java \
-  -XX:+UseContainerSupport \
-  -XX:MaxRAMPercentage=40.0 \
-  -XX:InitialRAMPercentage=15.0 \
-  -XX:MaxMetaspaceSize=256m \
-  -XX:+UseG1GC \
-  -XX:G1HeapRegionSize=1m \
-  -XX:MaxGCPauseMillis=150 \
-  -XX:InitiatingHeapOccupancyPercent=25 \
-  -XX:+ParallelRefProcEnabled \
-  -XX:+UseStringDeduplication \
-  -XX:SoftRefLRUPolicyMSPerMB=0 \
-  -XX:+ExitOnOutOfMemoryError \
-  $JAVA_OPTS \
-  -jar app.jar"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

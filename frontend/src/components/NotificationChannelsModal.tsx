@@ -9,7 +9,7 @@ interface NotificationChannelsModalProps {
 }
 
 export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps> = ({ onClose }) => {
-    const { notificationChannels, setNotificationChannels } = useAppStore();
+    const { notificationChannels, setNotificationChannels, showAlert } = useAppStore();
     const [channels, setChannels] = useState<NotificationChannel[]>(notificationChannels || []);
     const [isCreating, setIsCreating] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -42,25 +42,56 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
             if (editingId) {
                 await axios.put(`/api/notification-channels/${editingId}`, formData);
                 setEditingId(null);
+                showAlert({
+                    title: 'Profile Updated',
+                    message: `Notification profile "${formData.name}" has been updated successfully.`,
+                    type: 'success'
+                });
             } else {
                 await axios.post('/api/notification-channels', formData);
                 setIsCreating(false);
+                showAlert({
+                    title: 'Profile Created',
+                    message: `Notification profile "${formData.name}" has been created successfully.`,
+                    type: 'success'
+                });
             }
             setFormData({ name: '', type: 'TELEGRAM', botToken: '', chatId: '', webhookUrl: '' });
             fetchChannels();
-        } catch (e) {
-            alert('Failed to save channel');
+        } catch (e: any) {
+            showAlert({
+                title: 'Save Failed',
+                message: e.response?.data?.error || e.message || 'Failed to save notification profile.',
+                type: 'error'
+            });
         }
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this profile?')) return;
-        try {
-            await axios.delete(`/api/notification-channels/${id}`);
-            fetchChannels();
-        } catch (e) {
-            alert('Failed to delete channel');
-        }
+    const handleDelete = (id: string, name?: string) => {
+        showAlert({
+            title: 'Delete Notification Profile',
+            message: `Are you sure you want to delete profile "${name || 'selected'}"? This action cannot be undone.`,
+            type: 'error',
+            confirmLabel: 'Delete Profile',
+            cancelLabel: 'Cancel',
+            onConfirm: async () => {
+                try {
+                    await axios.delete(`/api/notification-channels/${id}`);
+                    fetchChannels();
+                    showAlert({
+                        title: 'Profile Deleted',
+                        message: `Notification profile "${name || 'selected'}" was deleted successfully.`,
+                        type: 'success'
+                    });
+                } catch (e: any) {
+                    showAlert({
+                        title: 'Delete Failed',
+                        message: e.response?.data?.error || e.message || 'Failed to delete notification profile.',
+                        type: 'error'
+                    });
+                }
+            }
+        });
     };
 
     return (
@@ -151,7 +182,7 @@ export const NotificationChannelsModal: React.FC<NotificationChannelsModalProps>
                                     <button onClick={() => { setFormData(c); setEditingId(c.id); setIsCreating(false); }} className="p-1.5 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300 rounded transition-colors" title="Edit Profile">
                                         <Edit className="w-4 h-4" />
                                     </button>
-                                    <button onClick={() => handleDelete(c.id)} className="p-1.5 text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded transition-colors" title="Delete Profile">
+                                    <button onClick={() => handleDelete(c.id, c.name)} className="p-1.5 text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded transition-colors" title="Delete Profile">
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>

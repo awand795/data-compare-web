@@ -9,8 +9,10 @@ import {
   ListRestart, Bug, SquareTerminal, CopyPlus, FileCode,
   LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal,
   Folder, FolderOpen, FolderPlus, FolderTree, Shield, AlertTriangle, ChevronRight,
-  CheckSquare, Square
+  CheckSquare, Square, Radio, Bell, Send, MessageCircle, Zap
 } from 'lucide-react';
+import { EndpointTargetsModal, type EndpointTarget } from './EndpointTargetsModal';
+import { NotificationChannelsModal } from './NotificationChannelsModal';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
 
@@ -36,6 +38,16 @@ interface ApiEndpoint {
   ipAllowlist?: string;
   groupName?: string;
   authToken: string;
+  cronEnabled?: boolean;
+  cronExpression?: string;
+  targetEndpointId?: string;
+  targetUrl?: string;
+  targetMethod?: string;
+  targetHeaders?: string;
+  notificationChannelId?: string;
+  lastPushAt?: string;
+  lastPushStatus?: string;
+  lastPushMessage?: string;
 }
 
 type ValidationError = {
@@ -118,6 +130,152 @@ export const ApiBuilderView: React.FC = () => {
   const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
   const [assignSearchQuery, setAssignSearchQuery] = useState('');
   const [isSavingAssignGroup, setIsSavingAssignGroup] = useState(false);
+
+  // Endpoint Targets & Failure Alert Notification Profiles
+  const [endpointTargets, setEndpointTargets] = useState<EndpointTarget[]>([]);
+  const [isEndpointListModalOpen, setIsEndpointListModalOpen] = useState(false);
+  const [channels, setChannels] = useState<any[]>([]);
+  const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
+  const [isTgEnabled, setIsTgEnabled] = useState(false);
+  const [selectedTgChannelId, setSelectedTgChannelId] = useState('');
+  const [isDcEnabled, setIsDcEnabled] = useState(false);
+  const [selectedDcChannelId, setSelectedDcChannelId] = useState('');
+  const [isTestingPush, setIsTestingPush] = useState(false);
+  const [cronTriggers, setCronTriggers] = useState<string[]>(['0 */5 * * * *']);
+
+  const selectedTargetEndpoint = useMemo(() => {
+    if (!currentApi) return null;
+    if (currentApi.targetEndpointId) {
+      const byId = endpointTargets.find(t => t.id === currentApi.targetEndpointId);
+      if (byId) return byId;
+    }
+    if (currentApi.targetUrl) {
+      const byUrl = endpointTargets.find(t => t.url === currentApi.targetUrl);
+      if (byUrl) return byUrl;
+    }
+    return null;
+  }, [currentApi?.targetEndpointId, currentApi?.targetUrl, endpointTargets]);
+
+  const fetchEndpointTargets = async () => {
+    try {
+      const res = await axios.get('/api/endpoint-targets');
+      if (Array.isArray(res.data)) setEndpointTargets(res.data);
+    } catch (e) {
+      console.error('Failed to fetch endpoint targets', e);
+    }
+  };
+
+  const fetchChannels = async () => {
+    try {
+      const res = await axios.get('/api/notification-channels');
+      if (Array.isArray(res.data)) setChannels(res.data);
+    } catch (e) {
+      console.error('Failed to fetch notification channels', e);
+    }
+  };
+
+  const getCompiledNotificationChannelId = () => {
+    const selected: string[] = [];
+    if (isTgEnabled && selectedTgChannelId) selected.push(selectedTgChannelId);
+    if (isDcEnabled && selectedDcChannelId) selected.push(selectedDcChannelId);
+    return selected.join(',');
+  };
+
+  const handleRunCronNow = async (api: ApiEndpoint) => {
+    if (!api.id) return;
+    try {
+      addToast({ type: 'info', title: 'Running Push', message: `Executing scheduled push for ${api.name}...` });
+      const res = await axios.post(`/api/api-builder/${api.id}/run-cron-now`);
+      if (res.data?.success) {
+        addToast({ 
+          type: 'success', 
+          title: 'Push Succeeded', 
+          message: `Pushed ${res.data.rowCount || 0} rows (HTTP ${res.data.statusCode || 200}) in ${res.data.durationMs || 0}ms` 
+        });
+        fetchEndpoints();
+      } else {
+        addToast({ 
+          type: 'error', 
+          title: 'Push Failed', 
+          message: res.data?.error || 'Push execution failed' 
+        });
+        fetchEndpoints();
+      }
+    } catch (err: any) {
+      addToast({ 
+        type: 'error', 
+        title: 'Push Failed', 
+        message: err.response?.data?.message || err.message || 'Push failed' 
+      });
+    }
+  };
+
+  const handleTestPushNow = async () => {
+    if (!currentApi) return;
+    const destUrl = currentApi.targetUrl || selectedTargetEndpoint?.url;
+    if (!destUrl) {
+      showAlert({
+        title: 'Target Endpoint Required',
+        message: 'Please select an endpoint target from the Endpoint List before testing push.',
+        type: 'warning'
+      });
+      return;
+    }
+    setIsTestingPush(true);
+    try {
+      const compiledChanId = getCompiledNotificationChannelId();
+      const payload = {
+        endpointId: currentApi.id,
+        name: currentApi.name,
+        connectionId: currentApi.connectionId,
+        sqlQuery: currentApi.sqlQuery,
+        parameters: JSON.stringify(parameterMeta),
+        targetUrl: destUrl,
+        targetMethod: currentApi.targetMethod || selectedTargetEndpoint?.method || 'POST',
+        targetHeaders: currentApi.targetHeaders || selectedTargetEndpoint?.headers,
+        notificationChannelId: compiledChanId,
+        extraParams: testParams
+      };
+      const res = await axios.post('/api/api-builder/test-push', payload);
+      if (res.data?.success) {
+        showAlert({ 
+          title: 'Push Test Succeeded!', 
+          message: `Successfully executed SQL query and pushed ${res.data.rowCount || 0} rows to target endpoint!\n\nHTTP Status: ${res.data.statusCode || 200}\nLatency: ${res.data.durationMs || 0}ms`,
+          type: 'success',
+          details: res.data.targetResponse ? (typeof res.data.targetResponse === 'object' ? JSON.stringify(res.data.targetResponse, null, 2) : String(res.data.targetResponse)) : undefined
+        });
+        setCurrentApi(prev => prev ? {
+          ...prev,
+          lastPushStatus: 'SUCCESS',
+          lastPushAt: new Date().toISOString(),
+          lastPushMessage: `HTTP ${res.data.statusCode || 200} OK (${res.data.rowCount || 0} rows, ${res.data.durationMs || 0}ms)`
+        } : prev);
+      } else {
+        showAlert({ 
+          title: 'Push Test Failed', 
+          message: `Target endpoint returned error (HTTP ${res.data?.statusCode || 500}).\nLatency: ${res.data?.durationMs || 0}ms`,
+          type: 'error',
+          details: res.data?.error || (typeof res.data?.targetResponse === 'object' ? JSON.stringify(res.data.targetResponse, null, 2) : String(res.data?.targetResponse)) || undefined
+        });
+        setCurrentApi(prev => prev ? {
+          ...prev,
+          lastPushStatus: 'FAILED',
+          lastPushAt: new Date().toISOString(),
+          lastPushMessage: res.data?.error || 'Target endpoint error'
+        } : prev);
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'Push test failed';
+      showAlert({
+        title: 'Push Test Error',
+        message: `Could not complete push test:\n\n${msg}`,
+        type: 'error',
+        details: err.response?.data ? JSON.stringify(err.response?.data, null, 2) : (err.stack || undefined)
+      });
+    } finally {
+      setIsTestingPush(false);
+    }
+  };
   
   // Testing States
   const [testResult, setTestResult] = useState<any>(null);
@@ -145,6 +303,8 @@ export const ApiBuilderView: React.FC = () => {
   useEffect(() => {
     fetchEndpoints();
     fetchGroups();
+    fetchEndpointTargets();
+    fetchChannels();
   }, []);
 
   // Track dirty state
@@ -249,10 +409,28 @@ export const ApiBuilderView: React.FC = () => {
         errors.push({ field: 'endpointPath', message: `Endpoint path "${currentApi.endpointPath}" is already used by another API` });
       }
     }
+    if (currentApi.cronEnabled) {
+      const hasTarget = currentApi.targetEndpointId || currentApi.targetUrl || selectedTargetEndpoint;
+      if (!hasTarget) {
+        errors.push({ field: 'targetEndpointId', message: 'Target Endpoint from Endpoint List is required when Periodic Cron Push is enabled' });
+      }
+      const validCrons = cronTriggers.map(c => c.trim()).filter(Boolean);
+      if (validCrons.length === 0) {
+        errors.push({ field: 'cronExpression', message: 'At least one valid Spring Cron Expression is required when Periodic Cron Push is enabled' });
+      }
+    }
     return errors;
   };
 
   const handleCreateNew = (presetGroup?: string) => {
+    const defaultTg = channels.find(c => c.type === 'TELEGRAM')?.id || '';
+    const defaultDc = channels.find(c => c.type === 'DISCORD')?.id || '';
+    setIsTgEnabled(false);
+    setSelectedTgChannelId(defaultTg);
+    setIsDcEnabled(false);
+    setSelectedDcChannelId(defaultDc);
+    setCronTriggers(['0 */5 * * * *']);
+
     const newApi: ApiEndpoint = {
       name: '',
       method: 'GET',
@@ -265,7 +443,14 @@ export const ApiBuilderView: React.FC = () => {
       allowRawSql: false,
       ipAllowlist: '',
       groupName: presetGroup || (selectedGroup !== 'ALL' ? selectedGroup : 'General'),
-      authToken: generateToken()
+      authToken: generateToken(),
+      cronEnabled: false,
+      cronExpression: '0 */5 * * * *',
+      targetEndpointId: '',
+      targetUrl: '',
+      targetMethod: 'POST',
+      targetHeaders: '{\n  "Content-Type": "application/json"\n}',
+      notificationChannelId: ''
     };
     setCurrentApi(newApi);
     setTestParams({});
@@ -446,6 +631,47 @@ export const ApiBuilderView: React.FC = () => {
     setParameterMeta(parsed);
     setValidationErrors([]);
     setIsDirty(false);
+
+    // Parse notification channels
+    let tgId = '';
+    let dcId = '';
+    let tgOn = false;
+    let dcOn = false;
+    if (api.notificationChannelId) {
+      const ids = api.notificationChannelId.split(/[;,\n]+/).map(i => i.trim()).filter(Boolean);
+      channels.forEach(chan => {
+        if (ids.includes(chan.id)) {
+          if (chan.type === 'TELEGRAM') {
+            tgId = chan.id;
+            tgOn = true;
+          }
+          if (chan.type === 'DISCORD') {
+            dcId = chan.id;
+            dcOn = true;
+          }
+        }
+      });
+    }
+    const defaultTg = channels.find(c => c.type === 'TELEGRAM')?.id || '';
+    const defaultDc = channels.find(c => c.type === 'DISCORD')?.id || '';
+    setIsTgEnabled(tgOn);
+    setSelectedTgChannelId(tgId || defaultTg);
+    setIsDcEnabled(dcOn);
+    setSelectedDcChannelId(dcId || defaultDc);
+    // Resolve targetEndpointId if empty but targetUrl exists
+    let targetEndpointId = api.targetEndpointId || '';
+    if (!targetEndpointId && api.targetUrl) {
+      const match = endpointTargets.find(t => t.url === api.targetUrl);
+      if (match?.id) targetEndpointId = match.id;
+    }
+    if (api.cronExpression) {
+      const list = api.cronExpression.split(/[;,\n]+/).map(c => c.trim()).filter(Boolean);
+      setCronTriggers(list.length > 0 ? list : ['0 */5 * * * *']);
+    } else {
+      setCronTriggers(['0 */5 * * * *']);
+    }
+    setCurrentApi({ ...api, targetEndpointId: targetEndpointId || api.targetEndpointId || '' });
+
     editInitialRef.current = JSON.stringify({ api, params: parsed });
     setViewMode('edit');
   };
@@ -462,6 +688,39 @@ export const ApiBuilderView: React.FC = () => {
       name: `${api.name} (Copy)`,
       endpointPath: api.endpointPath ? `${api.endpointPath}-copy` : '/copy'
     };
+    // Parse notification channels for clone
+    let tgId = '';
+    let dcId = '';
+    let tgOn = false;
+    let dcOn = false;
+    if (api.notificationChannelId) {
+      const ids = api.notificationChannelId.split(/[;,\n]+/).map(i => i.trim()).filter(Boolean);
+      channels.forEach(chan => {
+        if (ids.includes(chan.id)) {
+          if (chan.type === 'TELEGRAM') {
+            tgId = chan.id;
+            tgOn = true;
+          }
+          if (chan.type === 'DISCORD') {
+            dcId = chan.id;
+            dcOn = true;
+          }
+        }
+      });
+    }
+    const defaultTg = channels.find(c => c.type === 'TELEGRAM')?.id || '';
+    const defaultDc = channels.find(c => c.type === 'DISCORD')?.id || '';
+    setIsTgEnabled(tgOn);
+    setSelectedTgChannelId(tgId || defaultTg);
+    setIsDcEnabled(dcOn);
+    setSelectedDcChannelId(dcId || defaultDc);
+    if (api.cronExpression) {
+      const list = api.cronExpression.split(/[;,\n]+/).map(c => c.trim()).filter(Boolean);
+      setCronTriggers(list.length > 0 ? list : ['0 */5 * * * *']);
+    } else {
+      setCronTriggers(['0 */5 * * * *']);
+    }
+
     setCurrentApi(clone);
     setTestParams({});
     setTestResult(null);
@@ -492,11 +751,22 @@ export const ApiBuilderView: React.FC = () => {
     setIsSaving(true);
     try {
       const isPublicVal = Boolean(currentApi.isPublic);
+      const targetEpId = currentApi.targetEndpointId || (selectedTargetEndpoint ? selectedTargetEndpoint.id : '');
+      const targetUrl = currentApi.targetUrl || (selectedTargetEndpoint ? selectedTargetEndpoint.url : '');
+      const targetMethod = currentApi.targetMethod || (selectedTargetEndpoint ? selectedTargetEndpoint.method : 'POST');
+      const validCrons = cronTriggers.map(c => c.trim()).filter(Boolean);
+      const compiledCron = validCrons.length > 0 ? validCrons.join('; ') : (currentApi.cronExpression || '0 */5 * * * *');
       const apiToSave = { 
         ...currentApi, 
         isPublic: isPublicVal,
         public: isPublicVal,
-        parameters: JSON.stringify(parameterMeta) 
+        parameters: JSON.stringify(parameterMeta),
+        notificationChannelId: getCompiledNotificationChannelId(),
+        cronEnabled: Boolean(currentApi.cronEnabled),
+        cronExpression: compiledCron,
+        targetEndpointId: targetEpId,
+        targetUrl: targetUrl,
+        targetMethod: targetMethod || 'POST'
       };
       if (apiToSave.id) {
         const res = await axios.put(`/api/api-builder/${apiToSave.id}`, apiToSave);
@@ -833,6 +1103,18 @@ export const ApiBuilderView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsEndpointListModalOpen(true)}
+              className="px-3 py-1.5 bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-cyan-400 border border-border-main rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all shadow-sm cursor-pointer"
+              title="Manage Saved Endpoints & Hosts"
+            >
+              <Radio className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Endpoint List</span>
+              <span className="px-1.5 py-0.2 text-[10px] bg-cyan-500/20 text-cyan-300 rounded-full font-mono font-bold">
+                {endpointTargets.length}
+              </span>
+            </button>
+
             <button 
               onClick={() => setIsManageGroupsModalOpen(true)}
               className="px-3 py-1.5 bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-indigo-400 border border-border-main rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all shadow-sm cursor-pointer"
@@ -1234,6 +1516,155 @@ export const ApiBuilderView: React.FC = () => {
                                       {JSON.parse(api.parameters || '[]').length} params
                                     </span>
                                   )}
+
+                                  {api.lastPushStatus && (
+                                    <span className={clsx(
+                                      "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-lg font-mono font-bold uppercase border",
+                                      api.lastPushStatus === 'SUCCESS' ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" : "bg-rose-500/15 text-rose-400 border-rose-500/30"
+                                    )} title={api.lastPushMessage || api.lastPushStatus}>
+                                      Push: {api.lastPushStatus}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Spring Cron & Notification Profiles Box (Matching API Scheduler) */}
+                                <div className="mt-3 p-2.5 rounded-xl bg-bg-main/60 border border-border-main space-y-2 text-xs">
+                                  {/* Spring Cron Row */}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1 shrink-0">
+                                      <Clock className="w-3 h-3 text-amber-500" /> Spring Cron:
+                                    </span>
+                                    {api.cronEnabled ? (
+                                      (() => {
+                                        const crons = (api.cronExpression || '0 */5 * * * *')
+                                          .split(/[;,\n]+/)
+                                          .map(c => c.trim())
+                                          .filter(Boolean);
+                                        const count = crons.length;
+                                        if (count === 0) return <span className="text-text-muted text-[10px] font-mono">No Cron</span>;
+                                        const firstCron = crons[0];
+                                        const extraCount = count - 1;
+
+                                        return (
+                                          <div className="relative group/cron inline-block">
+                                            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 max-w-[170px] shadow-sm cursor-pointer hover:bg-amber-500/20 transition-colors">
+                                              <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                                              <span className="truncate">{firstCron}</span>
+                                              {extraCount > 0 && (
+                                                <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-900 dark:text-amber-200 text-[9px] font-extrabold shrink-0">
+                                                  +{extraCount} more
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            {extraCount > 0 && (
+                                              <div className="absolute right-0 top-full mt-1.5 hidden group-hover/cron:flex flex-col z-50 min-w-[210px] p-2.5 bg-slate-900/95 dark:bg-slate-950/95 text-white rounded-xl shadow-2xl border border-amber-500/30 backdrop-blur-md pointer-events-none">
+                                                <div className="text-[10px] font-bold text-amber-400 mb-1 border-b border-amber-500/20 pb-0.5 flex items-center justify-between">
+                                                  <span className="flex items-center gap-1">
+                                                    <Clock className="w-2.5 h-2.5 text-amber-400" />
+                                                    Active Cron Triggers
+                                                  </span>
+                                                  <span className="text-[9px] text-amber-300 font-extrabold">{count} Total</span>
+                                                </div>
+                                                <div className="space-y-1 font-mono text-[10px]">
+                                                  {crons.map((cron, cIdx) => (
+                                                    <div key={cIdx} className="flex items-center gap-1.5 text-amber-100 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/10">
+                                                      <span className="text-[8px] text-amber-400 font-bold shrink-0">#{cIdx + 1}</span>
+                                                      <span className="truncate">{cron}</span>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()
+                                    ) : (
+                                      <span className="text-text-muted text-[10px] font-mono">Disabled</span>
+                                    )}
+                                  </div>
+
+                                  {/* Notification Profiles Row */}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1 shrink-0">
+                                      <Bell className="w-3 h-3 text-purple-500" /> Notifications:
+                                    </span>
+                                    {api.notificationChannelId ? (
+                                      <div className="flex items-center gap-1 flex-wrap justify-end">
+                                        {api.notificationChannelId.split(/[;,\n]+/).map((id, i) => {
+                                          const chan = channels.find(c => String(c.id) === String(id.trim()));
+                                          if (!chan) return null;
+                                          return (
+                                            <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20" title={chan.name}>
+                                              {chan.type === 'DISCORD' ? <Send className="w-2.5 h-2.5 text-indigo-500" /> : <MessageCircle className="w-2.5 h-2.5 text-blue-500" />}
+                                              <span className="max-w-[75px] truncate">{chan.name}</span>
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <span className="text-text-muted text-[10px] font-mono">Disabled</span>
+                                    )}
+                                  </div>
+
+                                  {/* IP Allowlist Row */}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1 shrink-0">
+                                      <Shield className="w-3 h-3 text-emerald-500" /> IP Allowlist:
+                                    </span>
+                                    {(() => {
+                                      const rawIps = (api.ipAllowlist || '')
+                                        .split(/[,;\n\s]+/)
+                                        .map(s => s.trim())
+                                        .filter(Boolean);
+                                      const hasIps = rawIps.length > 0 && !(rawIps.length === 1 && rawIps[0] === '*');
+
+                                      if (!hasIps) {
+                                        return (
+                                          <span className="text-[10px] font-mono text-text-muted bg-bg-editor px-1.5 py-0.2 rounded border border-border-main">
+                                            All IPs Allowed
+                                          </span>
+                                        );
+                                      }
+
+                                      const firstIp = rawIps[0];
+                                      const extraCount = rawIps.length - 1;
+
+                                      return (
+                                        <div className="relative group/ipcard inline-block">
+                                          <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 max-w-[150px] cursor-pointer hover:bg-emerald-500/20 transition-colors">
+                                            <Shield className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                            <span className="truncate">{firstIp}</span>
+                                            {extraCount > 0 && (
+                                              <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 text-[9px] font-extrabold shrink-0">
+                                                +{extraCount} more
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          {extraCount > 0 && (
+                                            <div className="absolute right-0 top-full mt-1.5 hidden group-hover/ipcard:flex flex-col z-50 min-w-[180px] p-2 bg-slate-900/95 dark:bg-slate-950/95 text-white rounded-xl shadow-2xl border border-emerald-500/30 backdrop-blur-md pointer-events-none">
+                                              <div className="text-[10px] font-bold text-emerald-400 mb-1 border-b border-emerald-500/20 pb-0.5 flex items-center justify-between">
+                                                <span className="flex items-center gap-1">
+                                                  <Shield className="w-2.5 h-2.5 text-emerald-400" />
+                                                  Allowed IPs
+                                                </span>
+                                                <span className="text-[9px] text-emerald-300 font-extrabold">{rawIps.length} Total</span>
+                                              </div>
+                                              <div className="space-y-1 font-mono text-[10px]">
+                                                {rawIps.map((ip, ipIdx) => (
+                                                  <div key={ipIdx} className="flex items-center gap-1 text-emerald-100 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/10">
+                                                    <span className="text-[8px] text-emerald-400 font-bold shrink-0">#{ipIdx + 1}</span>
+                                                    <span className="truncate">{ip}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
                                 </div>
                               </div>
 
@@ -1254,6 +1685,15 @@ export const ApiBuilderView: React.FC = () => {
                                   >
                                     <FileJson className="w-3.5 h-3.5" /> View Spec
                                   </button>
+                                  {api.cronEnabled && (
+                                    <button
+                                      onClick={() => handleRunCronNow(api)}
+                                      className="px-2 py-1 bg-cyan-600/10 hover:bg-cyan-600 text-cyan-400 hover:text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer border border-cyan-500/20"
+                                      title="Run Scheduled Push Now"
+                                    >
+                                      <Send className="w-3 h-3" /> Push
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => handleOpenQuickIp(api)}
                                     className={clsx(
@@ -1304,7 +1744,10 @@ export const ApiBuilderView: React.FC = () => {
                                 <th className="p-3 uppercase tracking-wider text-[11px]">Name &amp; Group</th>
                                 <th className="p-3 uppercase tracking-wider text-[11px]">Method &amp; Path</th>
                                 <th className="p-3 uppercase tracking-wider text-[11px]">Database Connection</th>
-                                <th className="p-3 uppercase tracking-wider text-[11px]">Security &amp; IP</th>
+                                <th className="p-3 uppercase tracking-wider text-[11px]">Spring Cron</th>
+                                <th className="p-3 uppercase tracking-wider text-[11px]">Notification Profiles</th>
+                                <th className="p-3 uppercase tracking-wider text-[11px]">IP Allowlist</th>
+                                <th className="p-3 uppercase tracking-wider text-[11px]">Access Security</th>
                                 <th className="p-3 text-right uppercase tracking-wider text-[11px]">Actions</th>
                               </tr>
                             </thead>
@@ -1317,6 +1760,7 @@ export const ApiBuilderView: React.FC = () => {
                                       {api.enablePagination && (
                                         <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded font-mono border border-blue-500/20">Pg</span>
                                       )}
+
                                       <button
                                         onClick={() => handleOpenQuickGroup(api)}
                                         className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all cursor-pointer ml-1"
@@ -1341,47 +1785,196 @@ export const ApiBuilderView: React.FC = () => {
                                       <span>{getConnectionName(api.connectionId)}</span>
                                     </div>
                                   </td>
-                                  <td className="p-3">
-                                    <div className="flex items-center gap-2">
-                                      {api.isPublic ? (
-                                        <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                                          Public
-                                        </span>
-                                      ) : (
-                                        <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
-                                          Protected
-                                        </span>
-                                      )}
-                                      <button
-                                        onClick={() => handleOpenQuickIp(api)}
-                                        className={clsx(
-                                          "p-1.5 rounded-lg transition-all relative cursor-pointer",
-                                          api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
-                                            ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30"
-                                            : "text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10"
-                                        )}
-                                        title={
-                                          api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'
-                                            ? `IP Allowlist: ${api.ipAllowlist}`
-                                            : "Configure IP Allowlist (Open to all IPs)"
-                                        }
-                                      >
-                                        <Shield className="w-3.5 h-3.5" />
-                                        {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' && (
-                                          <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                        )}
-                                      </button>
-                                      <button onClick={() => handleClone(api)} className="p-1.5 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer" title="Clone API">
-                                        <CopyPlus className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button onClick={() => handleEdit(api)} className="p-1.5 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer" title="Edit API">
-                                        <Pencil className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button onClick={() => handleDeleteClick(api)} className="p-1.5 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer" title="Delete API">
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
+
+                                  {/* Spring Cron Push */}
+                                  <td className="p-3 relative">
+                                    {api.cronEnabled ? (
+                                      <div className="flex flex-col gap-1">
+                                        {(() => {
+                                          const crons = (api.cronExpression || '0 */5 * * * *')
+                                            .split(/[;,\n]+/)
+                                            .map(c => c.trim())
+                                            .filter(Boolean);
+                                          const count = crons.length;
+                                          if (count === 0) return <span className="text-text-muted text-[11px] font-mono">No Cron</span>;
+                                          const firstCron = crons[0];
+                                          const extraCount = count - 1;
+
+                                          return (
+                                            <div className="relative group/cron inline-block">
+                                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 max-w-[200px] sm:max-w-[240px] cursor-pointer shadow-sm hover:bg-amber-500/20 transition-colors">
+                                                <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                                <span className="truncate">{firstCron}</span>
+                                                {extraCount > 0 && (
+                                                  <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 dark:bg-amber-500/30 text-amber-900 dark:text-amber-200 text-[10px] font-extrabold shrink-0">
+                                                    +{extraCount} more
+                                                  </span>
+                                                )}
+                                              </div>
+
+                                              {extraCount > 0 && (
+                                                <div className="absolute left-0 top-full mt-1.5 hidden group-hover/cron:flex flex-col z-50 min-w-[230px] p-2.5 bg-slate-900/95 dark:bg-slate-950/95 text-white rounded-xl shadow-2xl border border-amber-500/30 backdrop-blur-md pointer-events-none">
+                                                  <div className="text-[10px] font-bold text-amber-400 mb-1 border-b border-amber-500/20 pb-1 flex items-center justify-between">
+                                                    <span className="flex items-center gap-1">
+                                                      <Clock className="w-3 h-3 text-amber-400" />
+                                                      Active Cron Triggers
+                                                    </span>
+                                                    <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-extrabold">{count} Total</span>
+                                                  </div>
+                                                  <div className="space-y-1 font-mono text-[11px]">
+                                                    {crons.map((cron, cIdx) => (
+                                                      <div key={cIdx} className="flex items-center gap-1.5 text-amber-100 bg-amber-500/10 px-2 py-1 rounded-md border border-amber-500/10">
+                                                        <span className="text-[9px] text-amber-400 font-bold shrink-0">#{cIdx + 1}</span>
+                                                        <span className="truncate">{cron}</span>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
+
+                                        <div className="flex items-center gap-1.5">
+                                          {api.lastPushStatus && (
+                                            <span className={clsx(
+                                              "text-[9px] px-1.5 py-0.2 rounded font-bold uppercase font-mono border",
+                                              api.lastPushStatus === 'SUCCESS' ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30"
+                                            )} title={api.lastPushMessage || api.lastPushStatus}>
+                                              {api.lastPushStatus}
+                                            </span>
+                                          )}
+                                          <button
+                                            onClick={() => handleRunCronNow(api)}
+                                            className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                                            title="Trigger manual push test"
+                                          >
+                                            <Send className="w-2.5 h-2.5" /> Push Now
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className="text-text-muted text-[11px] font-mono">Disabled</span>
+                                    )}
                                   </td>
+
+                                  {/* Failure Alerts */}
+                                  <td className="p-3">
+                                    {api.notificationChannelId ? (
+                                      <div className="flex flex-col gap-1 text-xs font-medium">
+                                        {api.notificationChannelId.split(/[;,\n]+/).map((id, i) => {
+                                          const chan = channels.find(c => String(c.id) === String(id.trim()));
+                                          if (!chan) return null;
+                                          return (
+                                            <div key={i} className="flex items-center gap-1.5 text-purple-700 dark:text-purple-300">
+                                              {chan.type === 'DISCORD' ? <Send className="w-3.5 h-3.5 text-indigo-500" /> : <MessageCircle className="w-3.5 h-3.5 text-blue-500" />}
+                                              <span>{chan.name}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <span className="text-text-muted text-[11px] font-mono">Disabled</span>
+                                    )}
+                                  </td>
+                                   {/* IP Allowlist */}
+                                   <td className="p-3">
+                                     {(() => {
+                                       const rawIps = (api.ipAllowlist || '')
+                                         .split(/[,;\n\s]+/)
+                                         .map(s => s.trim())
+                                         .filter(Boolean);
+                                       const hasIps = rawIps.length > 0 && !(rawIps.length === 1 && rawIps[0] === '*');
+
+                                       if (!hasIps) {
+                                         return (
+                                           <div className="flex items-center gap-1.5">
+                                             <span className="text-[11px] font-mono text-text-muted bg-bg-editor px-2 py-0.5 rounded-lg border border-border-main">
+                                               All IPs Allowed
+                                             </span>
+                                             <button
+                                               onClick={() => handleOpenQuickIp(api)}
+                                               className="p-1 rounded-lg text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer"
+                                               title="Configure IP Allowlist"
+                                             >
+                                               <Shield className="w-3.5 h-3.5" />
+                                             </button>
+                                           </div>
+                                         );
+                                       }
+
+                                       const firstIp = rawIps[0];
+                                       const extraCount = rawIps.length - 1;
+
+                                       return (
+                                         <div className="flex items-center gap-1.5">
+                                           <div className="relative group/iptable inline-block">
+                                             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 max-w-[190px] cursor-pointer shadow-sm hover:bg-emerald-500/20 transition-colors">
+                                               <Shield className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                               <span className="truncate">{firstIp}</span>
+                                               {extraCount > 0 && (
+                                                 <span className="px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 text-[10px] font-extrabold shrink-0">
+                                                   +{extraCount} more
+                                                 </span>
+                                               )}
+                                             </div>
+
+                                             {extraCount > 0 && (
+                                               <div className="absolute left-0 top-full mt-1.5 hidden group-hover/iptable:flex flex-col z-50 min-w-[210px] p-2.5 bg-slate-900/95 dark:bg-slate-950/95 text-white rounded-xl shadow-2xl border border-emerald-500/30 backdrop-blur-md pointer-events-none">
+                                                 <div className="text-[10px] font-bold text-emerald-400 mb-1 border-b border-emerald-500/20 pb-1 flex items-center justify-between">
+                                                   <span className="flex items-center gap-1">
+                                                     <Shield className="w-3 h-3 text-emerald-400" />
+                                                     Allowed IP Addresses
+                                                   </span>
+                                                   <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-extrabold">{rawIps.length} Total</span>
+                                                 </div>
+                                                 <div className="space-y-1 font-mono text-[11px]">
+                                                   {rawIps.map((ip, idx) => (
+                                                     <div key={idx} className="flex items-center gap-1.5 text-emerald-100 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/10">
+                                                       <span className="text-[9px] text-emerald-400 font-bold shrink-0">#{idx + 1}</span>
+                                                       <span className="truncate">{ip}</span>
+                                                     </div>
+                                                   ))}
+                                                 </div>
+                                               </div>
+                                             )}
+                                           </div>
+
+                                           <button
+                                             onClick={() => handleOpenQuickIp(api)}
+                                             className="p-1 rounded-lg text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer"
+                                             title="Edit IP Allowlist"
+                                           >
+                                             <Pencil className="w-3 h-3" />
+                                           </button>
+                                         </div>
+                                       );
+                                     })()}
+                                   </td>
+
+                                   {/* Access Security */}
+                                   <td className="p-3">
+                                     <div className="flex items-center gap-2">
+                                       {api.isPublic ? (
+                                         <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                           Public
+                                         </span>
+                                       ) : (
+                                         <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                                           Protected
+                                         </span>
+                                       )}
+                                       <button onClick={() => handleClone(api)} className="p-1.5 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer" title="Clone API">
+                                         <CopyPlus className="w-3.5 h-3.5" />
+                                       </button>
+                                       <button onClick={() => handleEdit(api)} className="p-1.5 text-text-muted hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer" title="Edit API">
+                                         <Pencil className="w-3.5 h-3.5" />
+                                       </button>
+                                       <button onClick={() => handleDeleteClick(api)} className="p-1.5 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer" title="Delete API">
+                                         <Trash2 className="w-3.5 h-3.5" />
+                                       </button>
+                                     </div>
+                                   </td>
                                   <td className="p-3 text-right">
                                     <div className="flex items-center justify-end gap-1.5">
                                       <button
@@ -1397,6 +1990,15 @@ export const ApiBuilderView: React.FC = () => {
                                       >
                                         <FileJson className="w-3.5 h-3.5" /> View Spec
                                       </button>
+                                      {api.cronEnabled && (
+                                        <button
+                                          onClick={() => handleRunCronNow(api)}
+                                          className="px-2 py-1 bg-cyan-600/10 hover:bg-cyan-600 text-cyan-400 hover:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-cyan-500/20"
+                                          title="Run Scheduled Push to Target Now"
+                                        >
+                                          <Send className="w-3 h-3" /> Push
+                                        </button>
+                                      )}
                                     </div>
                                   </td>
                                 </tr>
@@ -1985,6 +2587,24 @@ export const ApiBuilderView: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Modals in List Mode */}
+        {isEndpointListModalOpen && (
+          <EndpointTargetsModal
+            onClose={() => {
+              setIsEndpointListModalOpen(false);
+              fetchEndpointTargets();
+            }}
+          />
+        )}
+        {isChannelModalOpen && (
+          <NotificationChannelsModal
+            onClose={() => {
+              setIsChannelModalOpen(false);
+              fetchChannels();
+            }}
+          />
         )}
       </div>
     );
@@ -2928,10 +3548,566 @@ export const ApiBuilderView: React.FC = () => {
                   </div>
                 </div>
 
+                {/* SECTION 4: SCHEDULED PUSH (SPRING CRON & FAILURE ALERTS) */}
+                <div id="sec-cron-push" className="bg-bg-panel border border-border-main hover:border-cyan-500/30 rounded-2xl p-5 space-y-4 transition-all shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-500">
+                        <Send className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-text-main flex items-center gap-2">
+                          4. Scheduled Push (Spring Cron & Failure Alerts)
+                          {currentApi.cronEnabled && (
+                            <span className="text-[10px] font-bold text-cyan-700 dark:text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-full font-mono">
+                              active
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-[11px] text-text-muted">
+                          Periodically execute this SQL query and push JSON data (POST/PUT) to an external target (e.g. Apache APISIX, webhook) with Telegram/Discord alerts on failure.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsEndpointListModalOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20 text-xs font-bold transition-all border border-cyan-500/20 cursor-pointer shadow-sm"
+                      title="Manage Saved Endpoints"
+                    >
+                      <Radio className="w-3.5 h-3.5 text-cyan-500" />
+                      <span>Endpoint List ({endpointTargets.length})</span>
+                    </button>
+                  </div>
+
+                  {/* Toggle Enable Cron Push */}
+                  <div className={clsx(
+                    "border rounded-xl p-4 transition-all shadow-sm",
+                    currentApi.cronEnabled ? "bg-cyan-500/10 border-cyan-500/30" : "bg-bg-main border-border-main"
+                  )}>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-1 w-4 h-4 rounded border-border-main text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                        checked={Boolean(currentApi.cronEnabled)}
+                        onChange={e => setCurrentApi({...currentApi, cronEnabled: e.target.checked})}
+                      />
+                      <div>
+                        <span className={clsx("text-xs font-bold block", currentApi.cronEnabled ? "text-cyan-700 dark:text-cyan-300" : "text-text-main")}>
+                          Enable Periodic Spring Cron Push
+                        </span>
+                        <span className="text-[11px] text-text-muted block mt-0.5 leading-relaxed">
+                          When active, the backend Spring TaskScheduler will run this query automatically according to the cron schedule and HTTP POST/PUT the results to the target URL.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
+                  {currentApi.cronEnabled && (
+                    <div className="space-y-5 pt-2 animate-fadeIn">
+                      {/* TARGET SELECTION EXCLUSIVELY FROM ENDPOINT LIST */}
+                      <div className="bg-bg-main border border-cyan-500/25 rounded-xl p-4 space-y-3 shadow-inner">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-extrabold text-cyan-700 dark:text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                            <Radio className="w-3.5 h-3.5 text-cyan-500" /> Select Target from Endpoint List
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setIsEndpointListModalOpen(true)}
+                            className="text-[11px] text-cyan-700 dark:text-cyan-300 hover:text-cyan-600 dark:hover:text-cyan-200 font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" /> Add / Manage in Endpoint List
+                          </button>
+                        </div>
+
+                        {endpointTargets.length === 0 ? (
+                          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-start gap-2.5">
+                              <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                                  No Saved Endpoints Found in Endpoint List
+                                </p>
+                                <p className="text-[11px] text-text-muted mt-0.5">
+                                  Push target must be selected from the Endpoint List. Please register your APISIX gateway or webhook endpoint first.
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsEndpointListModalOpen(true)}
+                              className="px-3.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer shrink-0"
+                            >
+                              + Open Endpoint List
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <select
+                              value={currentApi.targetEndpointId || (selectedTargetEndpoint ? selectedTargetEndpoint.id : '')}
+                              onChange={(e) => {
+                                const epId = e.target.value;
+                                const found = endpointTargets.find(t => t.id === epId);
+                                if (found) {
+                                  setCurrentApi({
+                                    ...currentApi,
+                                    targetEndpointId: found.id,
+                                    targetUrl: found.url,
+                                    targetMethod: found.method || 'POST',
+                                    targetHeaders: found.headers || currentApi.targetHeaders || '{\n  "Content-Type": "application/json"\n}'
+                                  });
+                                } else {
+                                  setCurrentApi({
+                                    ...currentApi,
+                                    targetEndpointId: '',
+                                    targetUrl: ''
+                                  });
+                                }
+                              }}
+                              className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl px-3.5 py-2.5 text-xs text-text-main font-semibold focus:outline-none cursor-pointer shadow-sm"
+                            >
+                              <option value="">-- Choose Target Endpoint from List ({endpointTargets.length} available) --</option>
+                              {endpointTargets.map(ep => (
+                                <option key={ep.id} value={ep.id}>
+                                  [{ep.method || 'POST'}] {ep.name} &mdash; {ep.url} {ep.groupName ? `(${ep.groupName})` : ''}
+                                </option>
+                              ))}
+                            </select>
+
+                            {/* Selected Target Preview Card */}
+                            {selectedTargetEndpoint ? (
+                              <div className="p-3.5 bg-bg-panel border border-cyan-500/30 rounded-xl space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className={clsx(
+                                      "px-2 py-0.5 rounded text-[10px] font-extrabold uppercase font-mono border",
+                                      (selectedTargetEndpoint.method || 'POST') === 'POST' ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30" :
+                                      (selectedTargetEndpoint.method || 'POST') === 'PUT' ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" :
+                                      "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                    )}>
+                                      {selectedTargetEndpoint.method || 'POST'}
+                                    </span>
+                                    <span className="font-bold text-xs text-text-main">{selectedTargetEndpoint.name}</span>
+                                    {selectedTargetEndpoint.groupName && (
+                                      <span className="text-[10px] font-mono px-2 py-0.2 rounded-md bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20">
+                                        {selectedTargetEndpoint.groupName}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsEndpointListModalOpen(true)}
+                                    className="text-[11px] text-cyan-700 dark:text-cyan-300 hover:underline font-bold cursor-pointer"
+                                  >
+                                    Manage in Endpoint List &rarr;
+                                  </button>
+                                </div>
+
+                                <div className="font-mono text-[11px] text-cyan-700 dark:text-cyan-300 bg-bg-main px-3 py-2 rounded-lg border border-border-main flex items-center justify-between gap-2 overflow-hidden">
+                                  <span className="truncate">{selectedTargetEndpoint.url}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard?.writeText(selectedTargetEndpoint.url);
+                                      addToast({ type: 'info', title: 'Copied', message: 'Target URL copied to clipboard' });
+                                    }}
+                                    className="p-1 hover:text-cyan-600 text-text-muted transition-colors shrink-0 cursor-pointer"
+                                    title="Copy URL"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                {selectedTargetEndpoint.description && (
+                                  <p className="text-[11px] text-text-muted italic">
+                                    {selectedTargetEndpoint.description}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5 font-medium">
+                                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                Please select a target endpoint from the list above. Push cannot run without a selected endpoint.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* HTTP Method & Target Headers */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* HTTP Method */}
+                        <div className="space-y-2">
+                          <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
+                            HTTP Method
+                          </label>
+                          <select
+                            value={currentApi.targetMethod || selectedTargetEndpoint?.method || 'POST'}
+                            onChange={e => setCurrentApi({...currentApi, targetMethod: e.target.value})}
+                            className="w-full bg-bg-main border border-border-main focus:border-cyan-500/60 rounded-xl px-3 py-2 text-xs text-text-main font-semibold focus:outline-none cursor-pointer shadow-sm"
+                          >
+                            <option value="POST">POST (Default)</option>
+                            <option value="PUT">PUT</option>
+                          </select>
+                          <p className="text-[10px] text-text-muted">
+                            Payload format: application/json list of records.
+                          </p>
+                        </div>
+
+                        {/* Target Headers */}
+                        <div className="md:col-span-2 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
+                              HTTP Headers (JSON)
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setCurrentApi({
+                                  ...currentApi,
+                                  targetHeaders: JSON.stringify({ "Content-Type": "application/json", "Authorization": "Bearer YOUR_TOKEN" }, null, 2)
+                                })}
+                                className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
+                              >
+                                + Bearer Auth Template
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCurrentApi({
+                                  ...currentApi,
+                                  targetHeaders: JSON.stringify({ "Content-Type": "application/json", "X-API-KEY": "secret" }, null, 2)
+                                })}
+                                className="text-[10px] text-cyan-600 dark:text-cyan-400 hover:underline font-bold cursor-pointer"
+                              >
+                                + API Key Template
+                              </button>
+                            </div>
+                          </div>
+                          <textarea
+                            rows={3}
+                            value={currentApi.targetHeaders || ''}
+                            onChange={e => setCurrentApi({...currentApi, targetHeaders: e.target.value})}
+                            placeholder={`{\n  "Content-Type": "application/json",\n  "apikey": "xyz"\n}`}
+                            className="w-full bg-bg-main border border-border-main focus:border-cyan-500/60 rounded-xl p-3 font-mono text-xs text-text-main focus:outline-none focus:ring-0 placeholder:text-text-muted resize-none shadow-sm"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Spring Cron Schedule Triggers (Multiple Triggers Supported) */}
+                      <div className="space-y-3 pt-3 border-t border-border-main/50">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-xs font-bold text-text-main flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                              Spring Cron Schedule Triggers
+                            </h4>
+                            <p className="text-[11px] text-text-muted">Standard 6-field Spring Cron (sec min hr day month weekday). Add multiple rules to schedule multiple periodic triggers.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCronTriggers([...cronTriggers, '0 0 12 * * *'])}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-colors border border-amber-500/30 shadow-sm cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Cron Trigger</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {cronTriggers.map((cron, cIdx) => (
+                            <div key={cIdx} className="flex items-center gap-2.5 group">
+                              <div className="flex-1 bg-bg-main p-3 border border-border-main rounded-xl shadow-inner flex items-center gap-2 focus-within:border-amber-500/60">
+                                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                                <input
+                                  type="text"
+                                  placeholder="e.g. 0 */5 * * * * or 0 0 12 * * *"
+                                  value={cron}
+                                  onChange={(e) => {
+                                    const copy = [...cronTriggers];
+                                    copy[cIdx] = e.target.value;
+                                    setCronTriggers(copy);
+                                  }}
+                                  className="w-full bg-transparent border-0 text-xs font-mono font-bold text-amber-700 dark:text-amber-300 focus:outline-none focus:ring-0 placeholder:text-text-muted"
+                                />
+                              </div>
+                              {cronTriggers.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCronTriggers(cronTriggers.filter((_, i) => i !== cIdx))}
+                                  className="p-2.5 text-text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer"
+                                  title="Remove Cron Trigger"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Presets */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-text-muted mr-1 font-semibold">Quick Presets:</span>
+                          {[
+                            { label: 'Every 1m', expr: '0 */1 * * * *' },
+                            { label: 'Every 5m', expr: '0 */5 * * * *' },
+                            { label: 'Every 15m', expr: '0 */15 * * * *' },
+                            { label: 'Every 1h', expr: '0 0 */1 * * *' },
+                            { label: 'Daily Midnight', expr: '0 0 0 * * *' },
+                            { label: 'Daily 12:00', expr: '0 0 12 * * *' },
+                          ].map((p, pIdx) => (
+                            <button
+                              key={pIdx}
+                              type="button"
+                              onClick={() => {
+                                if (cronTriggers.length === 1 && (!cronTriggers[0] || cronTriggers[0] === '0 */5 * * * *')) {
+                                  setCronTriggers([p.expr]);
+                                } else {
+                                  setCronTriggers([...cronTriggers, p.expr]);
+                                }
+                              }}
+                              className={clsx(
+                                "px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all cursor-pointer",
+                                cronTriggers.includes(p.expr)
+                                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40"
+                                  : "bg-bg-panel text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
+                              )}
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2.5">
+                          <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                          <span className="leading-relaxed font-medium">
+                            Setiap aturan Spring Cron di atas akan mengeksekusi SQL query secara mandiri dan melakukan HTTP POST/PUT hasil JSON ke Target Endpoint, serta mengirim notifikasi jika terjadi kegagalan.
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Failure Notification Channels (Telegram & Discord) */}
+                      <div className="space-y-3 pt-3 border-t border-border-main/50">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Bell className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                            <div>
+                              <h4 className="text-xs font-bold text-text-main">Failure Alert Notification Channels</h4>
+                              <p className="text-[11px] text-text-muted">Sends failure alert to Telegram, Discord, or BOTH simultaneously</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsChannelModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-700 dark:text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold transition-all cursor-pointer shadow-sm"
+                          >
+                            <Settings2 className="w-3.5 h-3.5" />
+                            <span>Manage Channels</span>
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Telegram Channel Card */}
+                          <div className={clsx(
+                            "p-4 rounded-2xl border transition-all space-y-3",
+                            isTgEnabled
+                              ? "bg-blue-500/10 border-blue-500/40 shadow-sm"
+                              : "bg-bg-main border-border-main hover:border-blue-500/30"
+                          )}>
+                            <div 
+                              onClick={() => {
+                                const next = !isTgEnabled;
+                                setIsTgEnabled(next);
+                                if (next && !selectedTgChannelId && channels.filter(c => c.type === 'TELEGRAM').length > 0) {
+                                  setSelectedTgChannelId(channels.filter(c => c.type === 'TELEGRAM')[0].id);
+                                }
+                              }}
+                              className="flex items-center justify-between cursor-pointer select-none"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Send className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                <div>
+                                  <span className="text-xs font-bold text-text-main block">Telegram Alerts</span>
+                                  <span className="text-[10px] text-text-muted">
+                                    {isTgEnabled ? 'Enabled for this API' : 'Click to enable Telegram alerts'}
+                                  </span>
+                                </div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={isTgEnabled}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  const next = e.target.checked;
+                                  setIsTgEnabled(next);
+                                  if (next && !selectedTgChannelId && channels.filter(c => c.type === 'TELEGRAM').length > 0) {
+                                    setSelectedTgChannelId(channels.filter(c => c.type === 'TELEGRAM')[0].id);
+                                  }
+                                }}
+                                className="w-4 h-4 rounded border-border-main text-blue-600 focus:ring-0 cursor-pointer"
+                              />
+                            </div>
+
+                            {isTgEnabled && (
+                              <div className="space-y-2 pt-2 border-t border-blue-500/20">
+                                {channels.filter(c => c.type === 'TELEGRAM').length === 0 ? (
+                                  <div className="p-3 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs text-blue-700 dark:text-blue-300 space-y-2">
+                                    <p className="font-medium">No Telegram channels saved.</p>
+                                    <button 
+                                      type="button" 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsChannelModalOpen(true);
+                                      }} 
+                                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600 text-white font-bold text-xs cursor-pointer"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>Add Telegram Channel</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <select
+                                    value={selectedTgChannelId}
+                                    onChange={(e) => setSelectedTgChannelId(e.target.value)}
+                                    className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-semibold text-text-main focus:outline-none focus:border-blue-500 cursor-pointer shadow-inner"
+                                  >
+                                    {channels.filter(c => c.type === 'TELEGRAM').map(chan => (
+                                      <option key={chan.id} value={chan.id}>
+                                        {chan.name} (Chat ID: {chan.chatId || '-'})
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Discord Channel Card */}
+                          <div className={clsx(
+                            "p-4 rounded-2xl border transition-all space-y-3",
+                            isDcEnabled
+                              ? "bg-indigo-500/10 border-indigo-500/40 shadow-sm"
+                              : "bg-bg-main border-border-main hover:border-indigo-500/30"
+                          )}>
+                            <div 
+                              onClick={() => {
+                                const next = !isDcEnabled;
+                                setIsDcEnabled(next);
+                                if (next && !selectedDcChannelId && channels.filter(c => c.type === 'DISCORD').length > 0) {
+                                  setSelectedDcChannelId(channels.filter(c => c.type === 'DISCORD')[0].id);
+                                }
+                              }}
+                              className="flex items-center justify-between cursor-pointer select-none"
+                            >
+                              <div className="flex items-center gap-2">
+                                <MessageCircle className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                <div>
+                                  <span className="text-xs font-bold text-text-main block">Discord Alerts</span>
+                                  <span className="text-[10px] text-text-muted">
+                                    {isDcEnabled ? 'Enabled for this API' : 'Click to enable Discord alerts'}
+                                  </span>
+                                </div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={isDcEnabled}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  const next = e.target.checked;
+                                  setIsDcEnabled(next);
+                                  if (next && !selectedDcChannelId && channels.filter(c => c.type === 'DISCORD').length > 0) {
+                                    setSelectedDcChannelId(channels.filter(c => c.type === 'DISCORD')[0].id);
+                                  }
+                                }}
+                                className="w-4 h-4 rounded border-border-main text-indigo-600 focus:ring-0 cursor-pointer"
+                              />
+                            </div>
+
+                            {isDcEnabled && (
+                              <div className="space-y-2 pt-2 border-t border-indigo-500/20">
+                                {channels.filter(c => c.type === 'DISCORD').length === 0 ? (
+                                  <div className="p-3 bg-indigo-500/10 border border-indigo-500/25 rounded-xl text-xs text-indigo-700 dark:text-indigo-300 space-y-2">
+                                    <p className="font-medium">No Discord channels saved.</p>
+                                    <button 
+                                      type="button" 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsChannelModalOpen(true);
+                                      }} 
+                                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600 text-white font-bold text-xs cursor-pointer"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>Add Discord Channel</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <select
+                                    value={selectedDcChannelId}
+                                    onChange={(e) => setSelectedDcChannelId(e.target.value)}
+                                    className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-semibold text-text-main focus:outline-none focus:border-indigo-500 cursor-pointer shadow-inner"
+                                  >
+                                    {channels.filter(c => c.type === 'DISCORD').map(chan => (
+                                      <option key={chan.id} value={chan.id}>
+                                        {chan.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Manual Push Test & Status Display */}
+                      <div className="p-4 bg-bg-main border border-border-main rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-inner">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-text-main">Push Diagnostics &amp; Status:</span>
+                            {currentApi.lastPushStatus ? (
+                              <span className={clsx(
+                                "px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono",
+                                currentApi.lastPushStatus === 'SUCCESS' ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" : "bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                              )}>
+                                {currentApi.lastPushStatus}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-text-muted font-mono">Not executed yet</span>
+                            )}
+                            {currentApi.lastPushAt && (
+                              <span className="text-[10px] text-text-muted font-mono">
+                                Last: {new Date(currentApi.lastPushAt).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                          {currentApi.lastPushMessage && (
+                            <p className="text-[11px] text-text-muted font-mono truncate max-w-xl">
+                              {currentApi.lastPushMessage}
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isTestingPush || (!currentApi.targetEndpointId && !currentApi.targetUrl)}
+                          onClick={handleTestPushNow}
+                          className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer shrink-0"
+                        >
+                          {isTestingPush ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Send className="w-4 h-4" />
+                          )}
+                          <span>{isTestingPush ? 'Pushing Data...' : 'Test Push Now'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
               </div>
             </div>
           </div>
-          
           {/* FLOATING TEST CONSOLE DRAWER */}
           <div className={clsx(
             "border-t border-border-main bg-[#0b0f19] shadow-2xl transition-all duration-300 ease-in-out flex flex-col shrink-0 z-20",
@@ -3112,6 +4288,24 @@ export const ApiBuilderView: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Modals in Edit Studio */}
+        {isEndpointListModalOpen && (
+          <EndpointTargetsModal
+            onClose={() => {
+              setIsEndpointListModalOpen(false);
+              fetchEndpointTargets();
+            }}
+          />
+        )}
+        {isChannelModalOpen && (
+          <NotificationChannelsModal
+            onClose={() => {
+              setIsChannelModalOpen(false);
+              fetchChannels();
+            }}
+          />
+        )}
       </div>
     );
   }

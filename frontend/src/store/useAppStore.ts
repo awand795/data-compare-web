@@ -162,7 +162,7 @@ export type NotificationChannel = {
   createdAt?: string;
 };
 
-export type AppMode = 'data' | 'schema' | 'query' | 'explorer' | 'file_upload' | 'schedule' | 'dwh' | 'api_builder' | 'api_scheduler' | 'system_monitor';
+export type AppMode = 'data' | 'schema' | 'query' | 'explorer' | 'file_upload' | 'schedule' | 'dwh' | 'api_builder' | 'api_scheduler' | 'system_monitor' | 'webhooks';
 
 export type AlertType = 'error' | 'success' | 'warning' | 'info';
 

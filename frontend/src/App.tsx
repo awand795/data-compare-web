@@ -13,8 +13,9 @@ import { ApiBuilderView } from './components/ApiBuilderView';
 import { ApiSchedulerView } from './components/ApiSchedulerView';
 import { ApiShareDocView } from './components/ApiShareDocView';
 import { SystemMonitoringView } from './components/SystemMonitoringView';
+import { WebhooksView } from './components/WebhooksView';
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2, Database, Webhook, Globe, Activity } from 'lucide-react';
+import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2, Database, Webhook, Globe, Activity, Code } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
 import { AlertModal } from './components/AlertModal';
@@ -111,8 +112,9 @@ function App() {
     { id: 'schedule' as const, label: 'Scheduled Jobs', icon: CalendarClock, desc: 'Automated data comparison tasks' },
     { id: 'dwh' as const, label: 'Data Warehouse', icon: Database, desc: 'Configure ClickHouse replication via Debezium & Kafka' },
     { id: 'system_monitor' as const, label: 'Sistem Monitoring', icon: Activity, desc: 'Monitor server CPU, RAM, disk usage & set critical alerts' },
-    { id: 'api_builder' as const, label: 'API Builder', icon: Webhook, desc: 'Build and deploy dynamic APIs from SQL queries' },
+    { id: 'api_builder' as const, label: 'API Builder', icon: Code, desc: 'Build and deploy dynamic APIs from SQL queries' },
     { id: 'api_scheduler' as const, label: 'API Scheduler', icon: Globe, desc: 'Automate HTTP API requests & ingest JSON into ClickHouse/PostgreSQL' },
+    { id: 'webhooks' as const, label: 'Webhooks', icon: Webhook, desc: 'Inbound Webhook receiver & JSON ingestion for Ginee, e-commerce, and external events' },
   ];
 
   if (!isAuthenticated) {
@@ -263,6 +265,9 @@ function App() {
             <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'api_scheduler' && "hidden")}>
               <ApiSchedulerView />
             </div>
+            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'webhooks' && "hidden")}>
+              <WebhooksView />
+            </div>
           </div>
         ) : (
           <Group orientation="horizontal">
@@ -307,6 +312,9 @@ function App() {
                 </div>
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'api_scheduler' && "hidden")}>
                   <ApiSchedulerView />
+                </div>
+                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'webhooks' && "hidden")}>
+                  <WebhooksView />
                 </div>
               </div>
             </Panel>

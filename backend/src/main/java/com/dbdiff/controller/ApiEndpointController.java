@@ -43,6 +43,9 @@ public class ApiEndpointController {
     @Autowired
     private ConnectionManagerService connectionManagerService;
 
+    @Autowired
+    private com.dbdiff.service.ApiCronPushService apiCronPushService;
+
     public static class TestRequest {
         public ApiEndpoint api;
         public Map<String, Object> params;
@@ -426,6 +429,9 @@ public class ApiEndpointController {
         
         try {
             apiEndpointRepository.insert(apiEndpoint);
+            if (apiEndpoint.isCronEnabled()) {
+                apiCronPushService.refreshSchedule(apiEndpoint.getId());
+            }
             return ResponseEntity.ok(apiEndpoint);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to create endpoint"));
@@ -441,6 +447,7 @@ public class ApiEndpointController {
         
         try {
             apiEndpointRepository.update(apiEndpoint);
+            apiCronPushService.refreshSchedule(id);
             return ResponseEntity.ok(apiEndpoint);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to update endpoint"));
@@ -450,6 +457,7 @@ public class ApiEndpointController {
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable String id) {
         try {
+            apiCronPushService.cancelSchedule(id);
             apiEndpointRepository.deleteById(id);
             return ResponseEntity.ok().build();
         } catch (Exception e) {
@@ -536,5 +544,20 @@ public class ApiEndpointController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    @PostMapping("/{id}/run-cron-now")
+    public ResponseEntity<?> runCronNow(@PathVariable String id) {
+        Map<String, Object> result = apiCronPushService.executePush(id);
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/test-push")
+    public ResponseEntity<?> testPush(@RequestBody TestRequest request) {
+        if (request.api == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "API endpoint configuration is required"));
+        }
+        Map<String, Object> result = apiCronPushService.executePushInternal(request.api, request.params);
+        return ResponseEntity.ok(result);
     }
 }

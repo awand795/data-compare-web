@@ -163,7 +163,8 @@ public class ApiSchedulerController {
         try {
             return ResponseEntity.ok(service.getExistingTables(connectionId));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
+            logger.warn("Could not fetch existing tables for MV (ClickHouse offline): {}", e.getMessage());
+            return ResponseEntity.ok(List.of());
         }
     }
 
@@ -193,7 +194,8 @@ public class ApiSchedulerController {
         try {
             return ResponseEntity.ok(service.getAllAutoMvPipelines(connectionId));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
+            logger.warn("Could not fetch Auto MV Pipelines (ClickHouse offline): {}", e.getMessage());
+            return ResponseEntity.ok(List.of());
         }
     }
 

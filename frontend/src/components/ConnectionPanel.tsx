@@ -91,9 +91,13 @@ export const ConnectionPanel: React.FC = () => {
         setIsOpen(false);
         setTestStatus('idle');
         setFormData({ type: 'postgresql', port: 5432 });
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to save connection:', err);
-        alert('Failed to save connection');
+        showAlert({
+          type: 'error',
+          title: 'Save Failed',
+          message: err.response?.data?.error || err.message || 'Failed to save connection'
+        });
       }
     }
   };

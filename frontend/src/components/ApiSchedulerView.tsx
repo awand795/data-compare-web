@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
 import { 
-  Globe, Plus, Save, Play, Pencil, Trash2, Check, Copy, 
+  Globe, Plus, Radio, Save, Play, Pencil, Trash2, Check, Copy, 
   Search, Clock, Database, Loader2, ArrowLeft,
   RefreshCw, FileText, Code2, ShieldCheck,
   Zap, CheckCircle2, AlertCircle, Bell, MessageCircle, Send, Settings, X,
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
+import { EndpointTargetsModal, type EndpointTarget } from './EndpointTargetsModal';
 
 interface ApiSchedulerConfig {
   id?: string;
@@ -79,6 +80,18 @@ export const ApiSchedulerView: React.FC = () => {
   // Group Management & Quick Group Modals
   const [isManageGroupsModalOpen, setIsManageGroupsModalOpen] = useState(false);
   const [newGroupInputName, setNewGroupInputName] = useState('');
+  const [isEndpointListModalOpen, setIsEndpointListModalOpen] = useState(false);
+  const [endpointTargets, setEndpointTargets] = useState<EndpointTarget[]>([]);
+
+  const fetchEndpointTargets = async () => {
+    try {
+      const res = await axios.get('/api/endpoint-targets');
+      if (Array.isArray(res.data)) setEndpointTargets(res.data);
+    } catch (e) {
+      console.error('Failed to fetch endpoint targets', e);
+    }
+  };
+
   const [editingGroupName, setEditingGroupName] = useState<string | null>(null);
   const [editingGroupNewName, setEditingGroupNewName] = useState('');
   const [deletingGroupName, setDeletingGroupName] = useState<string | null>(null);
@@ -117,6 +130,9 @@ export const ApiSchedulerView: React.FC = () => {
   const [isDcEnabled, setIsDcEnabled] = useState<boolean>(false);
   const [selectedTgChannelId, setSelectedTgChannelId] = useState<string>('');
   const [selectedDcChannelId, setSelectedDcChannelId] = useState<string>('');
+
+  // URL Input Mode: 'manual' | 'endpoint-list'
+  const [urlMode, setUrlMode] = useState<'manual' | 'endpoint-list'>('manual');
 
   // Multiple Spring Cron Triggers State
   const [cronTriggers, setCronTriggers] = useState<string[]>(['0 */5 * * * *']);
@@ -386,6 +402,7 @@ export const ApiSchedulerView: React.FC = () => {
     fetchSchedulers();
     fetchMvPipelines();
     fetchGroups();
+    fetchEndpointTargets();
   }, []);
 
   const openNewEditor = (presetGroup?: string) => {
@@ -415,6 +432,7 @@ export const ApiSchedulerView: React.FC = () => {
     ]);
     setTestResponse(null);
     setActiveReqTab('params');
+    setUrlMode('manual');
     setViewMode('editor');
   };
 
@@ -483,6 +501,11 @@ export const ApiSchedulerView: React.FC = () => {
 
     setTestResponse(null);
     setActiveReqTab('params');
+    if (cfg.url && endpointTargets.some(t => t.url === cfg.url)) {
+      setUrlMode('endpoint-list');
+    } else {
+      setUrlMode('manual');
+    }
     setViewMode('editor');
   };
 
@@ -1047,47 +1070,222 @@ export const ApiSchedulerView: React.FC = () => {
               </div>
             </div>
 
-            {/* Row 2: Unified Insomnia HTTP Omnibar (Method + URL) */}
-            <div className="flex items-center bg-bg-main border border-border-main rounded-xl p-1.5 shadow-inner focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/30 transition-all">
-              
-              {/* HTTP Method Dropdown Pill */}
-              <div className="relative shrink-0">
-                <select
-                  value={currentConfig.method || 'GET'}
-                  onChange={(e) => setCurrentConfig({ ...currentConfig, method: e.target.value })}
+            {/* Row 2: URL Mode Switcher & Management Bar */}
+            <div className="flex items-center justify-between gap-2 px-0.5">
+              <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-xl border border-border-main shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setUrlMode('manual')}
                   className={clsx(
-                    "px-4 py-2 rounded-lg text-xs font-black tracking-wider focus:outline-none cursor-pointer appearance-none transition-all shadow-sm pr-7",
-                    getMethodBadgeClass(currentConfig.method || 'GET')
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    urlMode === 'manual'
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-text-muted hover:text-text-main hover:bg-bg-hover"
                   )}
                 >
-                  <option value="GET" className="bg-bg-panel text-emerald-600 dark:text-emerald-400 font-bold">GET</option>
-                  <option value="POST" className="bg-bg-panel text-blue-600 dark:text-blue-400 font-bold">POST</option>
-                  <option value="PUT" className="bg-bg-panel text-amber-600 dark:text-amber-400 font-bold">PUT</option>
-                  <option value="DELETE" className="bg-bg-panel text-rose-600 dark:text-rose-400 font-bold">DELETE</option>
-                  <option value="PATCH" className="bg-bg-panel text-purple-600 dark:text-purple-400 font-bold">PATCH</option>
-                </select>
-                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-current opacity-70 text-[9px]">
-                  ▼
-                </div>
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Manual URL</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUrlMode('endpoint-list')}
+                  className={clsx(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    urlMode === 'endpoint-list'
+                      ? "bg-cyan-600 text-white shadow-sm"
+                      : "text-text-muted hover:text-text-main hover:bg-bg-hover"
+                  )}
+                >
+                  <Radio className="w-3.5 h-3.5" />
+                  <span>Choose from Endpoint List ({endpointTargets.length})</span>
+                </button>
               </div>
 
-              {/* Vertical Divider */}
-              <div className="h-6 w-px bg-border-main mx-2 shrink-0" />
-
-              {/* Endpoint URL Field */}
-              <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
-                <Globe className="w-4 h-4 text-cyan-500 shrink-0 ml-1 opacity-80" />
-                <input
-                  type="text"
-                  placeholder="https://api.example.com/v1/data..."
-                  value={currentConfig.url || ''}
-                  onChange={(e) => setCurrentConfig({ ...currentConfig, url: e.target.value })}
-                  className="w-full bg-transparent border-0 text-xs font-mono font-bold text-text-main dark:text-emerald-300 placeholder:text-text-muted focus:outline-none focus:ring-0 selection:bg-blue-500/40"
-                />
-              </div>
-
+              <button
+                type="button"
+                onClick={() => setIsEndpointListModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/20 text-xs font-bold border border-cyan-500/20 transition-all cursor-pointer shadow-sm"
+                title="Manage Saved Endpoints"
+              >
+                <Radio className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">+ Manage Endpoint List</span>
+              </button>
             </div>
 
+            {/* Row 3: URL Bar according to urlMode */}
+            {urlMode === 'manual' ? (
+              <div className="flex items-center bg-bg-main border border-border-main rounded-xl p-1.5 shadow-inner focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/30 transition-all">
+                {/* HTTP Method Dropdown Pill */}
+                <div className="relative shrink-0">
+                  <select
+                    value={currentConfig.method || 'GET'}
+                    onChange={(e) => setCurrentConfig({ ...currentConfig, method: e.target.value })}
+                    className={clsx(
+                      "px-4 py-2 rounded-lg text-xs font-black tracking-wider focus:outline-none cursor-pointer appearance-none transition-all shadow-sm pr-7",
+                      getMethodBadgeClass(currentConfig.method || 'GET')
+                    )}
+                  >
+                    <option value="GET" className="bg-bg-panel text-emerald-600 dark:text-emerald-400 font-bold">GET</option>
+                    <option value="POST" className="bg-bg-panel text-blue-600 dark:text-blue-400 font-bold">POST</option>
+                    <option value="PUT" className="bg-bg-panel text-amber-600 dark:text-amber-400 font-bold">PUT</option>
+                    <option value="DELETE" className="bg-bg-panel text-rose-600 dark:text-rose-400 font-bold">DELETE</option>
+                    <option value="PATCH" className="bg-bg-panel text-purple-600 dark:text-purple-400 font-bold">PATCH</option>
+                  </select>
+                  <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-current opacity-70 text-[9px]">
+                    ▼
+                  </div>
+                </div>
+
+                {/* Vertical Divider */}
+                <div className="h-6 w-px bg-border-main mx-2 shrink-0" />
+
+                {/* Manual URL Input */}
+                <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
+                  <Globe className="w-4 h-4 text-blue-500 shrink-0 ml-1 opacity-80" />
+                  <input
+                    type="text"
+                    placeholder="https://api.example.com/v1/endpoint"
+                    value={currentConfig.url || ''}
+                    onChange={(e) => setCurrentConfig({ ...currentConfig, url: e.target.value })}
+                    className="w-full bg-transparent border-0 text-xs font-mono font-bold text-text-main dark:text-emerald-300 placeholder:text-text-muted focus:outline-none focus:ring-0 selection:bg-blue-500/40"
+                    title="Enter URL manually"
+                  />
+                  {currentConfig.url && (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentConfig({ ...currentConfig, url: '' })}
+                      className="p-1 text-text-muted hover:text-text-main cursor-pointer"
+                      title="Clear URL"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center bg-bg-main border border-cyan-500/40 rounded-xl p-1.5 shadow-inner focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-500/30 transition-all">
+                  {/* HTTP Method Dropdown Pill */}
+                  <div className="relative shrink-0">
+                    <select
+                      value={currentConfig.method || 'GET'}
+                      onChange={(e) => setCurrentConfig({ ...currentConfig, method: e.target.value as any })}
+                      className={clsx(
+                        "px-4 py-2 rounded-lg text-xs font-black tracking-wider focus:outline-none cursor-pointer appearance-none transition-all shadow-sm pr-7",
+                        getMethodBadgeClass(currentConfig.method || 'GET')
+                      )}
+                    >
+                      <option value="GET" className="bg-bg-panel text-emerald-600 dark:text-emerald-400 font-bold">GET</option>
+                      <option value="POST" className="bg-bg-panel text-blue-600 dark:text-blue-400 font-bold">POST</option>
+                      <option value="PUT" className="bg-bg-panel text-amber-600 dark:text-amber-400 font-bold">PUT</option>
+                      <option value="DELETE" className="bg-bg-panel text-rose-600 dark:text-rose-400 font-bold">DELETE</option>
+                      <option value="PATCH" className="bg-bg-panel text-purple-600 dark:text-purple-400 font-bold">PATCH</option>
+                    </select>
+                    <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-current opacity-70 text-[9px]">
+                      ▼
+                    </div>
+                  </div>
+
+                  {/* Vertical Divider */}
+                  <div className="h-6 w-px bg-border-main mx-2 shrink-0" />
+
+                  {/* Endpoint Select Dropdown */}
+                  <div className="flex-1 min-w-0 pr-2">
+                    {endpointTargets.length === 0 ? (
+                      <div className="flex items-center justify-between px-2 py-1 text-xs text-amber-600 dark:text-amber-400">
+                        <span>No endpoints saved in Endpoint List yet.</span>
+                        <button
+                          type="button"
+                          onClick={() => setIsEndpointListModalOpen(true)}
+                          className="font-bold underline cursor-pointer"
+                        >
+                          + Add Endpoint
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={endpointTargets.find(t => t.url === currentConfig.url)?.id || ''}
+                          onChange={(e) => {
+                            const ep = endpointTargets.find(t => t.id === e.target.value);
+                            if (ep) {
+                              setCurrentConfig(prev => ({
+                                ...prev,
+                                url: ep.url,
+                                method: (ep.method || prev.method || 'GET') as any,
+                              }));
+                              if (ep.headers) {
+                                try {
+                                  const parsed = JSON.parse(ep.headers);
+                                  const list: KeyValuePair[] = Object.entries(parsed).map(([k, v]) => ({
+                                    key: k,
+                                    value: String(v),
+                                    enabled: true
+                                  }));
+                                  if (list.length > 0) setHeadersList(list);
+                                } catch (ignored) {}
+                              }
+                              addToast({
+                                type: 'info',
+                                title: 'Endpoint Selected',
+                                message: `Loaded URL & headers from "${ep.name}"`
+                              });
+                            }
+                          }}
+                          className="w-full bg-transparent border-0 text-xs font-mono font-bold text-cyan-700 dark:text-cyan-300 focus:outline-none focus:ring-0 cursor-pointer"
+                        >
+                          <option value="" className="bg-bg-panel text-text-muted">-- Choose Endpoint Target ({endpointTargets.length} available) --</option>
+                          {endpointTargets.map(t => (
+                            <option key={t.id} value={t.id} className="bg-bg-panel text-text-main font-semibold">
+                              [{t.method || 'GET'}] {t.name} &mdash; {t.url} {t.groupName ? `(${t.groupName})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setIsEndpointListModalOpen(true)}
+                          className="px-2.5 py-1 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-500 dark:text-cyan-400 text-[11px] font-bold rounded-lg border border-cyan-500/30 whitespace-nowrap shrink-0 transition-colors cursor-pointer flex items-center gap-1"
+                          title="Open Endpoint Target Picker Modal"
+                        >
+                          <Radio className="w-3 h-3" />
+                          <span>Browse / Manage</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Selected Endpoint Preview Card */}
+                {(() => {
+                  const selectedEp = endpointTargets.find(t => t.url === currentConfig.url);
+                  if (!selectedEp) return null;
+                  return (
+                    <div className="px-3.5 py-2 bg-cyan-500/10 border border-cyan-500/25 rounded-xl flex items-center justify-between text-xs animate-in fade-in">
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="font-bold text-text-main">{selectedEp.name}</span>
+                        <span className="text-text-muted font-mono truncate text-[11px]">{selectedEp.url}</span>
+                        {selectedEp.groupName && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/25">
+                            {selectedEp.groupName}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(selectedEp.url);
+                          addToast({ type: 'info', title: 'Copied', message: 'Endpoint URL copied to clipboard' });
+                        }}
+                        className="p-1 hover:text-cyan-600 text-text-muted transition-colors shrink-0 cursor-pointer"
+                        title="Copy URL"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
 
           {/* Main Split Insomnia Workspace (Left: Request Config Tabs | Right: Live Response Console) */}
@@ -1785,6 +1983,37 @@ export const ApiSchedulerView: React.FC = () => {
           />
         )}
 
+        {/* Modal for Endpoint Targets in Editor Mode */}
+        {isEndpointListModalOpen && (
+          <EndpointTargetsModal
+            selectedUrl={currentConfig.url}
+            onClose={() => {
+              setIsEndpointListModalOpen(false);
+              fetchEndpointTargets();
+            }}
+            onSelect={(ep) => {
+              setUrlMode('endpoint-list');
+              setCurrentConfig(prev => ({
+                ...prev,
+                url: ep.url,
+                method: (ep.method || prev.method || 'GET') as any,
+              }));
+              if (ep.headers) {
+                try {
+                  const parsed = JSON.parse(ep.headers);
+                  const list: KeyValuePair[] = Object.entries(parsed).map(([k, v]) => ({
+                    key: k,
+                    value: String(v),
+                    enabled: true
+                  }));
+                  if (list.length > 0) setHeadersList(list);
+                } catch (ignored) {}
+              }
+              setIsEndpointListModalOpen(false);
+            }}
+          />
+        )}
+
       </div>
     );
   }
@@ -1826,6 +2055,18 @@ export const ApiSchedulerView: React.FC = () => {
             title="Refresh List"
           >
             <RefreshCw className={clsx("w-4 h-4", (loading || loadingMvPipelines) && "animate-spin")} />
+          </button>
+
+          <button
+            onClick={() => setIsEndpointListModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-cyan-400 border border-border-main transition-all text-xs font-bold shadow-sm cursor-pointer"
+            title="Manage Saved Endpoints & Hosts"
+          >
+            <Radio className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Endpoint List</span>
+            <span className="px-1.5 py-0.2 text-[10px] bg-cyan-500/20 text-cyan-300 rounded-full font-mono font-bold">
+              {endpointTargets.length}
+            </span>
           </button>
 
           <button
@@ -3208,6 +3449,16 @@ export const ApiSchedulerView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Endpoint Targets Modal */}
+      {isEndpointListModalOpen && (
+        <EndpointTargetsModal
+          onClose={() => {
+            setIsEndpointListModalOpen(false);
+            fetchEndpointTargets();
+          }}
+        />
       )}
     </div>
   );

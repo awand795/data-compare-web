@@ -4,6 +4,7 @@ import axios from 'axios';
 import { X, Clock, Calendar, CheckCircle, AlertTriangle, Info, Database, Eye, Plus, Trash2 } from 'lucide-react';
 import { ScheduleDataViewer } from './ScheduleDataViewer';
 import clsx from 'clsx';
+import { useAppStore } from '../store/useAppStore';
 
 interface ScheduleResult {
   id: string;
@@ -24,6 +25,7 @@ interface ScheduleResultsModalProps {
 }
 
 export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ scheduleId, scheduleName, onClose }) => {
+  const { showAlert } = useAppStore();
   const [results, setResults] = useState<ScheduleResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedResultIds, setExpandedResultIds] = useState<string[]>([]);
@@ -216,15 +218,31 @@ export const ScheduleResultsModal: React.FC<ScheduleResultsModalProps> = ({ sche
 
         <div className="p-4 border-t border-border-main flex justify-between bg-bg-header rounded-b-xl">
           <button
-            onClick={async () => {
-              if (confirm('Are you sure you want to clear all execution history for this job?')) {
-                try {
-                  await axios.delete(`/api/schedules/${scheduleId}/results`);
-                  setResults([]);
-                } catch (e) {
-                  alert('Failed to clear execution history.');
+            onClick={() => {
+              showAlert({
+                title: 'Clear Execution History',
+                message: `Are you sure you want to clear all execution history for "${scheduleName}"? This action cannot be undone.`,
+                type: 'error',
+                confirmLabel: 'Clear History',
+                cancelLabel: 'Cancel',
+                onConfirm: async () => {
+                  try {
+                    await axios.delete(`/api/schedules/${scheduleId}/results`);
+                    setResults([]);
+                    showAlert({
+                      title: 'History Cleared',
+                      message: 'Execution history has been cleared successfully.',
+                      type: 'success'
+                    });
+                  } catch (e: any) {
+                    showAlert({
+                      title: 'Clear History Failed',
+                      message: e.response?.data?.error || e.message || 'Failed to clear execution history.',
+                      type: 'error'
+                    });
+                  }
                 }
-              }
+              });
             }}
             className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg text-sm font-semibold hover:bg-red-500/20 transition-colors flex items-center gap-2"
           >

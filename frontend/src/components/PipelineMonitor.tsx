@@ -217,15 +217,31 @@ export const PipelineMonitor: React.FC = () => {
     }
   };
 
-  const handleDeleteWalSchedule = async (id: string, name: string) => {
-    if (!confirm(`Delete WAL alert rule "${name}"?`)) return;
-    try {
-      await fetch(`/api/wal-alert-schedules/${id}`, { method: 'DELETE' });
-      setWalSchedules(prev => prev.filter(s => s.id !== id));
-      addToast({ type: 'success', title: 'Deleted', message: `Rule "${name}" removed.` });
-    } catch (err) {
-      addToast({ type: 'error', title: 'Error', message: 'Failed to delete rule.' });
-    }
+  const handleDeleteWalSchedule = (id: string, name: string) => {
+    showAlert({
+      title: 'Delete WAL Alert Rule',
+      message: `Are you sure you want to delete WAL alert rule "${name}"?`,
+      type: 'error',
+      confirmLabel: 'Delete Rule',
+      cancelLabel: 'Cancel',
+      onConfirm: async () => {
+        try {
+          await fetch(`/api/wal-alert-schedules/${id}`, { method: 'DELETE' });
+          setWalSchedules(prev => prev.filter(s => s.id !== id));
+          showAlert({
+            title: 'Rule Deleted',
+            message: `Rule "${name}" has been removed.`,
+            type: 'success'
+          });
+        } catch (err: any) {
+          showAlert({
+            title: 'Delete Failed',
+            message: err.message || 'Failed to delete rule.',
+            type: 'error'
+          });
+        }
+      }
+    });
   };
 
   const handleTestWalAlert = async (id: string, name: string) => {
