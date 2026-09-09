@@ -739,11 +739,14 @@ public class WebhookService {
             }
 
             JsonNode dataNode = respJson.path("data");
-            JsonNode ordersNode = dataNode.path("orders");
-
             List<String> detailRecords = new ArrayList<>();
-            if (ordersNode.isArray() && ordersNode.size() > 0) {
-                for (JsonNode order : ordersNode) {
+
+            if (dataNode.isArray()) {
+                for (JsonNode order : dataNode) {
+                    detailRecords.add(objectMapper.writeValueAsString(order));
+                }
+            } else if (dataNode.has("orders") && dataNode.path("orders").isArray()) {
+                for (JsonNode order : dataNode.path("orders")) {
                     detailRecords.add(objectMapper.writeValueAsString(order));
                 }
             } else if (dataNode.isObject() && !dataNode.isEmpty()) {
