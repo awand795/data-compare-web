@@ -39,6 +39,13 @@ public class WebhookRepository {
                     target_connection_id VARCHAR(255),
                     target_table VARCHAR(255),
                     kode_data VARCHAR(255) DEFAULT 'WEBHOOK',
+                    enable_enrichment BOOLEAN DEFAULT FALSE,
+                    enrichment_filter_status VARCHAR(100) DEFAULT 'READY_TO_SHIP',
+                    enrichment_target_connection_id VARCHAR(255),
+                    enrichment_target_table VARCHAR(255),
+                    enrichment_kode_data VARCHAR(255) DEFAULT 'GINEE_READY_TO_SHIP',
+                    enrichment_ginee_access_key VARCHAR(255),
+                    enrichment_ginee_secret_key VARCHAR(255),
                     notification_channel_id TEXT,
                     is_active BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -81,7 +88,14 @@ public class WebhookRepository {
                 "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS group_name VARCHAR(100) DEFAULT 'General'",
                 "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS total_requests BIGINT DEFAULT 0",
                 "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS success_count BIGINT DEFAULT 0",
-                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS failure_count BIGINT DEFAULT 0"
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS failure_count BIGINT DEFAULT 0",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enable_enrichment BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_filter_status VARCHAR(100) DEFAULT 'READY_TO_SHIP'",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_target_connection_id VARCHAR(255)",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_target_table VARCHAR(255)",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_kode_data VARCHAR(255) DEFAULT 'GINEE_READY_TO_SHIP'",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_ginee_access_key VARCHAR(255)",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_ginee_secret_key VARCHAR(255)"
             };
             for (String alter : alterSqls) {
                 try {
@@ -113,6 +127,17 @@ public class WebhookRepository {
             cfg.setTargetConnectionId(rs.getString("target_connection_id"));
             cfg.setTargetTable(rs.getString("target_table"));
             cfg.setKodeData(rs.getString("kode_data"));
+
+            try {
+                cfg.setEnableEnrichment(rs.getBoolean("enable_enrichment"));
+                cfg.setEnrichmentFilterStatus(rs.getString("enrichment_filter_status"));
+                cfg.setEnrichmentTargetConnectionId(rs.getString("enrichment_target_connection_id"));
+                cfg.setEnrichmentTargetTable(rs.getString("enrichment_target_table"));
+                cfg.setEnrichmentKodeData(rs.getString("enrichment_kode_data"));
+                cfg.setEnrichmentGineeAccessKey(rs.getString("enrichment_ginee_access_key"));
+                cfg.setEnrichmentGineeSecretKey(rs.getString("enrichment_ginee_secret_key"));
+            } catch (SQLException ignored) {}
+
             cfg.setNotificationChannelId(rs.getString("notification_channel_id"));
             cfg.setActive(rs.getBoolean("is_active"));
 
@@ -176,30 +201,46 @@ public class WebhookRepository {
     public int insert(WebhookConfig cfg) {
         String groupName = (cfg.getGroupName() != null && !cfg.getGroupName().trim().isEmpty()) ? cfg.getGroupName().trim() : "General";
         String kodeData = (cfg.getKodeData() != null && !cfg.getKodeData().trim().isEmpty()) ? cfg.getKodeData().trim() : "WEBHOOK";
+        String filterStatus = (cfg.getEnrichmentFilterStatus() != null && !cfg.getEnrichmentFilterStatus().trim().isEmpty())
+                ? cfg.getEnrichmentFilterStatus().trim() : "READY_TO_SHIP";
+        String enrichKode = (cfg.getEnrichmentKodeData() != null && !cfg.getEnrichmentKodeData().trim().isEmpty())
+                ? cfg.getEnrichmentKodeData().trim() : "GINEE_READY_TO_SHIP";
+
         String sql = """
             INSERT INTO webhook_configs (
                 id, name, slug, description, group_name,
                 secret_header_name, secret_header_value, ip_allowlist,
                 target_connection_id, target_table, kode_data,
+                enable_enrichment, enrichment_filter_status, enrichment_target_connection_id,
+                enrichment_target_table, enrichment_kode_data, enrichment_ginee_access_key, enrichment_ginee_secret_key,
                 notification_channel_id, is_active,
                 created_at, updated_at, total_requests, success_count, failure_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 0, 0)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 0, 0)
         """;
         return jdbcTemplate.update(sql,
                 cfg.getId(), cfg.getName(), cfg.getSlug().trim(), cfg.getDescription(), groupName,
                 cfg.getSecretHeaderName(), cfg.getSecretHeaderValue(), cfg.getIpAllowlist(),
                 cfg.getTargetConnectionId(), cfg.getTargetTable(), kodeData,
+                cfg.isEnableEnrichment(), filterStatus, cfg.getEnrichmentTargetConnectionId(),
+                cfg.getEnrichmentTargetTable(), enrichKode, cfg.getEnrichmentGineeAccessKey(), cfg.getEnrichmentGineeSecretKey(),
                 cfg.getNotificationChannelId(), cfg.isActive());
     }
 
     public int update(WebhookConfig cfg) {
         String groupName = (cfg.getGroupName() != null && !cfg.getGroupName().trim().isEmpty()) ? cfg.getGroupName().trim() : "General";
         String kodeData = (cfg.getKodeData() != null && !cfg.getKodeData().trim().isEmpty()) ? cfg.getKodeData().trim() : "WEBHOOK";
+        String filterStatus = (cfg.getEnrichmentFilterStatus() != null && !cfg.getEnrichmentFilterStatus().trim().isEmpty())
+                ? cfg.getEnrichmentFilterStatus().trim() : "READY_TO_SHIP";
+        String enrichKode = (cfg.getEnrichmentKodeData() != null && !cfg.getEnrichmentKodeData().trim().isEmpty())
+                ? cfg.getEnrichmentKodeData().trim() : "GINEE_READY_TO_SHIP";
+
         String sql = """
             UPDATE webhook_configs SET
                 name = ?, slug = ?, description = ?, group_name = ?,
                 secret_header_name = ?, secret_header_value = ?, ip_allowlist = ?,
                 target_connection_id = ?, target_table = ?, kode_data = ?,
+                enable_enrichment = ?, enrichment_filter_status = ?, enrichment_target_connection_id = ?,
+                enrichment_target_table = ?, enrichment_kode_data = ?, enrichment_ginee_access_key = ?, enrichment_ginee_secret_key = ?,
                 notification_channel_id = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """;
@@ -207,6 +248,8 @@ public class WebhookRepository {
                 cfg.getName(), cfg.getSlug().trim(), cfg.getDescription(), groupName,
                 cfg.getSecretHeaderName(), cfg.getSecretHeaderValue(), cfg.getIpAllowlist(),
                 cfg.getTargetConnectionId(), cfg.getTargetTable(), kodeData,
+                cfg.isEnableEnrichment(), filterStatus, cfg.getEnrichmentTargetConnectionId(),
+                cfg.getEnrichmentTargetTable(), enrichKode, cfg.getEnrichmentGineeAccessKey(), cfg.getEnrichmentGineeSecretKey(),
                 cfg.getNotificationChannelId(), cfg.isActive(), cfg.getId());
     }
 

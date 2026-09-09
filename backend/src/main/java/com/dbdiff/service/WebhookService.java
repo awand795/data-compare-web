@@ -29,6 +29,9 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 @Service
 public class WebhookService {
@@ -165,6 +168,12 @@ public class WebhookService {
             recordLog(webhookId, slug, clientIp, httpMethod, headersJson, payload, "SUCCESS", 200, null, duration, config.getTargetTable(), inserted);
 
             logger.info("Webhook [{}] processed successfully: {} records inserted into '{}'", config.getName(), inserted, config.getTargetTable());
+
+            // 6. Asynchronous Detail Enrichment (Fetch Full Order Details from Ginee API)
+            if (config.isEnableEnrichment()) {
+                triggerAsyncEnrichment(config, recordsToInsert, payload);
+            }
+
             return new WebhookProcessResult(true, 200, "Webhook received and ingested successfully", inserted, duration);
 
         } catch (Exception ex) {
@@ -186,15 +195,15 @@ public class WebhookService {
     }
 
     private int insertIntoTargetDatabase(WebhookConfig config, List<String> recordsToInsert) throws Exception {
-        String connectionId = config.getTargetConnectionId();
-        String targetTable = config.getTargetTable();
-        String kodeData = config.getKodeData();
+        return insertIntoStorage(config.getTargetConnectionId(), config.getTargetTable(), config.getKodeData(), recordsToInsert);
+    }
 
+    public int insertIntoStorage(String connectionId, String targetTable, String kodeData, List<String> recordsToInsert) throws Exception {
         if (connectionId == null || connectionId.trim().isEmpty()) {
-            throw new RuntimeException("Target connection ID is not configured for this webhook");
+            throw new RuntimeException("Target connection ID is not configured");
         }
         if (targetTable == null || targetTable.trim().isEmpty()) {
-            throw new RuntimeException("Target table is not configured for this webhook");
+            throw new RuntimeException("Target table is not configured");
         }
 
         ConnectionDetails connDetails = connectionRepository.findById(connectionId);
@@ -537,5 +546,228 @@ public class WebhookService {
         return input.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;");
+    }
+
+    // ========================================================
+    // Detail Data Enrichment (Ginee REST API Integration)
+    // ========================================================
+
+    /**
+     * Trigger asynchronous detail enrichment in background thread
+     */
+    private void triggerAsyncEnrichment(WebhookConfig config, List<String> records, String rawPayload) {
+        if (!config.isEnableEnrichment()) return;
+        if (config.getEnrichmentTargetConnectionId() == null || config.getEnrichmentTargetConnectionId().trim().isEmpty()) {
+            logger.warn("Enrichment skipped for webhook [{}]: Target Connection ID for detail data is empty", config.getName());
+            return;
+        }
+        if (config.getEnrichmentTargetTable() == null || config.getEnrichmentTargetTable().trim().isEmpty()) {
+            logger.warn("Enrichment skipped for webhook [{}]: Target Table for detail data is empty", config.getName());
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                processGineeEnrichment(config, records, rawPayload);
+            } catch (Exception e) {
+                logger.error("Error in Ginee enrichment background task for webhook [{}]: {}", config.getName(), e.getMessage(), e);
+            }
+        });
+    }
+
+    /**
+     * Process Ginee enrichment: parse orderIds matching filter status and fetch full details
+     */
+    private void processGineeEnrichment(WebhookConfig config, List<String> records, String rawPayload) {
+        String filterStatus = config.getEnrichmentFilterStatus();
+        Set<String> orderIds = new LinkedHashSet<>();
+
+        List<String> itemsToInspect = new ArrayList<>(records);
+        if (rawPayload != null && !rawPayload.trim().isEmpty() && !itemsToInspect.contains(rawPayload)) {
+            itemsToInspect.add(rawPayload);
+        }
+
+        for (String itemStr : itemsToInspect) {
+            try {
+                JsonNode root = objectMapper.readTree(itemStr);
+                inspectJsonForOrders(root, filterStatus, orderIds);
+            } catch (Exception e) {
+                logger.debug("Failed parsing record as JSON for enrichment: {}", e.getMessage());
+            }
+        }
+
+        if (orderIds.isEmpty()) {
+            logger.info("Webhook [{}]: No orders matched enrichment filter '{}'", config.getName(), filterStatus);
+            return;
+        }
+
+        logger.info("Webhook [{}]: Found {} order(s) matching filter '{}' for Ginee detail enrichment: {}",
+                config.getName(), orderIds.size(), filterStatus, orderIds);
+
+        // Resolve credentials
+        String accessKey = (config.getEnrichmentGineeAccessKey() != null && !config.getEnrichmentGineeAccessKey().trim().isEmpty())
+                ? config.getEnrichmentGineeAccessKey().trim()
+                : System.getenv("GINEE_ACCESS_KEY");
+
+        String secretKey = (config.getEnrichmentGineeSecretKey() != null && !config.getEnrichmentGineeSecretKey().trim().isEmpty())
+                ? config.getEnrichmentGineeSecretKey().trim()
+                : System.getenv("GINEE_SECRET_KEY");
+
+        String baseUrl = System.getenv("GINEE_BASE_URL");
+        if (baseUrl == null || baseUrl.trim().isEmpty()) {
+            baseUrl = "https://api.ginee.com";
+        }
+        baseUrl = baseUrl.replaceAll("/+$", "");
+
+        String country = System.getenv("GINEE_COUNTRY");
+        if (country == null || country.trim().isEmpty()) {
+            country = "ID";
+        }
+
+        if (accessKey == null || accessKey.trim().isEmpty() || secretKey == null || secretKey.trim().isEmpty()) {
+            logger.warn("Webhook [{}]: Ginee credentials (accessKey or secretKey) missing. Cannot fetch order details.", config.getName());
+            return;
+        }
+
+        List<String> orderIdList = new ArrayList<>(orderIds);
+        // Batch in chunks of 50
+        for (int i = 0; i < orderIdList.size(); i += 50) {
+            List<String> chunk = orderIdList.subList(i, Math.min(i + 50, orderIdList.size()));
+            fetchAndStoreGineeChunk(config, baseUrl, country, accessKey, secretKey, chunk);
+        }
+    }
+
+    private void inspectJsonForOrders(JsonNode node, String filterStatus, Set<String> collectedOrderIds) {
+        if (node == null) return;
+
+        if (node.isArray()) {
+            for (JsonNode child : node) {
+                inspectJsonForOrders(child, filterStatus, collectedOrderIds);
+            }
+            return;
+        }
+
+        // Check if there is an inner payload object
+        JsonNode payloadObj = node.has("payload") && node.get("payload").isObject() ? node.get("payload") : node;
+
+        String orderStatus = "";
+        if (payloadObj.hasNonNull("orderStatus")) {
+            orderStatus = payloadObj.get("orderStatus").asText();
+        } else if (payloadObj.hasNonNull("status")) {
+            orderStatus = payloadObj.get("status").asText();
+        } else if (payloadObj.hasNonNull("order_status")) {
+            orderStatus = payloadObj.get("order_status").asText();
+        } else if (node.hasNonNull("orderStatus")) {
+            orderStatus = node.get("orderStatus").asText();
+        }
+
+        String orderId = "";
+        if (payloadObj.hasNonNull("orderId")) {
+            orderId = payloadObj.get("orderId").asText();
+        } else if (payloadObj.hasNonNull("order_id")) {
+            orderId = payloadObj.get("order_id").asText();
+        } else if (node.hasNonNull("orderId")) {
+            orderId = node.get("orderId").asText();
+        } else if (node.hasNonNull("order_id")) {
+            orderId = node.get("order_id").asText();
+        }
+
+        if (!orderId.trim().isEmpty() && isStatusMatched(orderStatus, filterStatus)) {
+            collectedOrderIds.add(orderId.trim());
+        }
+
+        // In case of nested lists like 'orders' or 'data'
+        if (node.has("data")) {
+            inspectJsonForOrders(node.get("data"), filterStatus, collectedOrderIds);
+        }
+        if (node.has("orders")) {
+            inspectJsonForOrders(node.get("orders"), filterStatus, collectedOrderIds);
+        }
+    }
+
+    private boolean isStatusMatched(String actualStatus, String filterConfig) {
+        if (filterConfig == null || filterConfig.trim().isEmpty() || "*".equals(filterConfig.trim())) {
+            return true;
+        }
+        if (actualStatus == null || actualStatus.trim().isEmpty()) {
+            return false;
+        }
+        String cleanActual = actualStatus.trim();
+        String[] filters = filterConfig.split(",");
+        for (String f : filters) {
+            if (f.trim().equalsIgnoreCase(cleanActual)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void fetchAndStoreGineeChunk(WebhookConfig config, String baseUrl, String country,
+                                         String accessKey, String secretKey, List<String> orderIds) {
+        try {
+            String path = "/openapi/order/v1/batch-get";
+            String signStr = "POST$" + path + "$";
+
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secretKey.trim().getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] hmac = mac.doFinal(signStr.getBytes(StandardCharsets.UTF_8));
+            String signature = Base64.getEncoder().encodeToString(hmac);
+
+            Map<String, Object> reqMap = Map.of("orderIds", orderIds);
+            String reqBody = objectMapper.writeValueAsString(reqMap);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + path))
+                    .header("Authorization", accessKey.trim() + ":" + signature)
+                    .header("X-Advai-Country", country.trim())
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
+                    .POST(HttpRequest.BodyPublishers.ofString(reqBody, StandardCharsets.UTF_8))
+                    .build();
+
+            HttpResponse<String> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                logger.error("Webhook [{}] Ginee order/v1/batch-get returned HTTP {}: {}", config.getName(), resp.statusCode(), resp.body());
+                return;
+            }
+
+            JsonNode respJson = objectMapper.readTree(resp.body());
+            String code = respJson.path("code").asText();
+            if (!"SUCCESS".equalsIgnoreCase(code)) {
+                logger.warn("Webhook [{}] Ginee API code was not SUCCESS: {}", config.getName(), resp.body());
+                return;
+            }
+
+            JsonNode dataNode = respJson.path("data");
+            JsonNode ordersNode = dataNode.path("orders");
+
+            List<String> detailRecords = new ArrayList<>();
+            if (ordersNode.isArray() && ordersNode.size() > 0) {
+                for (JsonNode order : ordersNode) {
+                    detailRecords.add(objectMapper.writeValueAsString(order));
+                }
+            } else if (dataNode.isObject() && !dataNode.isEmpty()) {
+                detailRecords.add(objectMapper.writeValueAsString(dataNode));
+            }
+
+            if (!detailRecords.isEmpty()) {
+                String effectiveKode = (config.getEnrichmentKodeData() != null && !config.getEnrichmentKodeData().trim().isEmpty())
+                        ? config.getEnrichmentKodeData().trim() : "GINEE_READY_TO_SHIP";
+
+                int inserted = insertIntoStorage(
+                        config.getEnrichmentTargetConnectionId(),
+                        config.getEnrichmentTargetTable(),
+                        effectiveKode,
+                        detailRecords
+                );
+                logger.info("Webhook [{}] successfully enriched and stored {} order details into '{}' ({})",
+                        config.getName(), inserted, config.getEnrichmentTargetTable(), config.getEnrichmentTargetConnectionId());
+            } else {
+                logger.warn("Webhook [{}] Ginee API returned SUCCESS but no order details found in response for orderIds: {}", config.getName(), orderIds);
+            }
+
+        } catch (Exception e) {
+            logger.error("Webhook [{}] failed during Ginee order fetch chunk: {}", config.getName(), e.getMessage(), e);
+        }
     }
 }

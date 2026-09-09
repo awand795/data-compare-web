@@ -19,6 +19,15 @@ public class WebhookConfig {
     private String targetTable;
     private String kodeData = "WEBHOOK";
 
+    // Detail Data Enrichment (Ginee API Fetcher)
+    private boolean enableEnrichment = false;
+    private String enrichmentFilterStatus = "READY_TO_SHIP";
+    private String enrichmentTargetConnectionId;
+    private String enrichmentTargetTable;
+    private String enrichmentKodeData = "GINEE_READY_TO_SHIP";
+    private String enrichmentGineeAccessKey;
+    private String enrichmentGineeSecretKey;
+
     // Alerts
     private String notificationChannelId; // Comma-separated channel IDs (Telegram/Discord)
 
@@ -200,5 +209,61 @@ public class WebhookConfig {
 
     public void setFailureCount(long failureCount) {
         this.failureCount = failureCount;
+    }
+
+    public boolean isEnableEnrichment() {
+        return enableEnrichment;
+    }
+
+    public void setEnableEnrichment(boolean enableEnrichment) {
+        this.enableEnrichment = enableEnrichment;
+    }
+
+    public String getEnrichmentFilterStatus() {
+        return enrichmentFilterStatus;
+    }
+
+    public void setEnrichmentFilterStatus(String enrichmentFilterStatus) {
+        this.enrichmentFilterStatus = enrichmentFilterStatus;
+    }
+
+    public String getEnrichmentTargetConnectionId() {
+        return enrichmentTargetConnectionId;
+    }
+
+    public void setEnrichmentTargetConnectionId(String enrichmentTargetConnectionId) {
+        this.enrichmentTargetConnectionId = enrichmentTargetConnectionId;
+    }
+
+    public String getEnrichmentTargetTable() {
+        return enrichmentTargetTable;
+    }
+
+    public void setEnrichmentTargetTable(String enrichmentTargetTable) {
+        this.enrichmentTargetTable = enrichmentTargetTable;
+    }
+
+    public String getEnrichmentKodeData() {
+        return enrichmentKodeData;
+    }
+
+    public void setEnrichmentKodeData(String enrichmentKodeData) {
+        this.enrichmentKodeData = enrichmentKodeData;
+    }
+
+    public String getEnrichmentGineeAccessKey() {
+        return enrichmentGineeAccessKey;
+    }
+
+    public void setEnrichmentGineeAccessKey(String enrichmentGineeAccessKey) {
+        this.enrichmentGineeAccessKey = enrichmentGineeAccessKey;
+    }
+
+    public String getEnrichmentGineeSecretKey() {
+        return enrichmentGineeSecretKey;
+    }
+
+    public void setEnrichmentGineeSecretKey(String enrichmentGineeSecretKey) {
+        this.enrichmentGineeSecretKey = enrichmentGineeSecretKey;
     }
 }

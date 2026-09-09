@@ -5,7 +5,7 @@ import {
   Webhook, Plus, RefreshCw, Trash2, Edit3, Check, Copy,
   ShieldCheck, Database, ArrowLeft, Search,
   List, Grid, AlertTriangle,
-  Eye, EyeOff, Activity, Send, Bell, Key, X
+  Eye, EyeOff, Activity, Send, Bell, Key, X, Sparkles
 } from 'lucide-react';
 import clsx from 'clsx';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
@@ -22,6 +22,13 @@ export interface WebhookConfig {
   targetConnectionId: string;
   targetTable: string;
   kodeData?: string;
+  enableEnrichment?: boolean;
+  enrichmentFilterStatus?: string;
+  enrichmentTargetConnectionId?: string;
+  enrichmentTargetTable?: string;
+  enrichmentKodeData?: string;
+  enrichmentGineeAccessKey?: string;
+  enrichmentGineeSecretKey?: string;
   notificationChannelId?: string;
   active?: boolean;
   createdAt?: string;
@@ -87,6 +94,13 @@ export const WebhooksView: React.FC = () => {
     targetConnectionId: '',
     targetTable: '',
     kodeData: 'GINEE_WEBHOOK',
+    enableEnrichment: false,
+    enrichmentFilterStatus: 'READY_TO_SHIP',
+    enrichmentTargetConnectionId: '',
+    enrichmentTargetTable: '',
+    enrichmentKodeData: 'GINEE_READY_TO_SHIP',
+    enrichmentGineeAccessKey: '',
+    enrichmentGineeSecretKey: '',
     notificationChannelId: '',
     active: true,
   });
@@ -293,7 +307,16 @@ export const WebhooksView: React.FC = () => {
   // Open Editor for New or Existing
   const handleOpenEditor = (webhook?: WebhookConfig) => {
     if (webhook) {
-      setEditingConfig({ ...webhook });
+      setEditingConfig({
+        ...webhook,
+        enableEnrichment: webhook.enableEnrichment ?? false,
+        enrichmentFilterStatus: webhook.enrichmentFilterStatus || 'READY_TO_SHIP',
+        enrichmentTargetConnectionId: webhook.enrichmentTargetConnectionId || connections[0]?.id || '',
+        enrichmentTargetTable: webhook.enrichmentTargetTable || '',
+        enrichmentKodeData: webhook.enrichmentKodeData || 'GINEE_READY_TO_SHIP',
+        enrichmentGineeAccessKey: webhook.enrichmentGineeAccessKey || '',
+        enrichmentGineeSecretKey: webhook.enrichmentGineeSecretKey || '',
+      });
     } else {
       const firstConn = connections[0]?.id || '';
       setEditingConfig({
@@ -307,6 +330,13 @@ export const WebhooksView: React.FC = () => {
         targetConnectionId: firstConn,
         targetTable: '',
         kodeData: 'GINEE_WEBHOOK',
+        enableEnrichment: false,
+        enrichmentFilterStatus: 'READY_TO_SHIP',
+        enrichmentTargetConnectionId: firstConn,
+        enrichmentTargetTable: '',
+        enrichmentKodeData: 'GINEE_READY_TO_SHIP',
+        enrichmentGineeAccessKey: '',
+        enrichmentGineeSecretKey: '',
         notificationChannelId: channels.length > 0 ? channels[0].id : '',
         active: true,
       });
@@ -337,12 +367,22 @@ export const WebhooksView: React.FC = () => {
       return;
     }
     if (!editingConfig.targetConnectionId) {
-      showAlert({ title: 'Validation Error', message: 'Please select a Target Database Connection.', type: 'warning' });
+      showAlert({ title: 'Validation Error', message: 'Please select a Target Database Connection for Raw Ingestion.', type: 'warning' });
       return;
     }
     if (!editingConfig.targetTable || !editingConfig.targetTable.trim()) {
-      showAlert({ title: 'Validation Error', message: 'Target table name is required.', type: 'warning' });
+      showAlert({ title: 'Validation Error', message: 'Target table name for Raw Ingestion is required.', type: 'warning' });
       return;
+    }
+    if (editingConfig.enableEnrichment) {
+      if (!editingConfig.enrichmentTargetConnectionId) {
+        showAlert({ title: 'Validation Error', message: 'Please select a Target Connection for Enriched Detail Data.', type: 'warning' });
+        return;
+      }
+      if (!editingConfig.enrichmentTargetTable || !editingConfig.enrichmentTargetTable.trim()) {
+        showAlert({ title: 'Validation Error', message: 'Target table name for Enriched Detail Data is required.', type: 'warning' });
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -719,7 +759,7 @@ export const WebhooksView: React.FC = () => {
                           <div className="flex items-center justify-between gap-2">
                             <span className="flex items-center gap-1.5">
                               <Database className="w-3.5 h-3.5 text-blue-400" />
-                              <span>Target:</span>
+                              <span>Target Mentah:</span>
                             </span>
                             <div className="text-right truncate">
                               <span className="font-semibold text-text-main">{conn?.name || 'N/A'}</span>
@@ -729,6 +769,19 @@ export const WebhooksView: React.FC = () => {
                               </code>
                             </div>
                           </div>
+
+                          {/* Enriched Detail Target */}
+                          {w.enableEnrichment && (
+                            <div className="flex items-center justify-between gap-2 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded">
+                              <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
+                                <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
+                                <span>Detail ({w.enrichmentFilterStatus || 'READY_TO_SHIP'}):</span>
+                              </span>
+                              <div className="text-right truncate text-[11px] font-mono text-emerald-300">
+                                {w.enrichmentTargetTable || 'N/A'}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Kode Data */}
                           <div className="flex items-center justify-between gap-2">
@@ -906,6 +959,12 @@ export const WebhooksView: React.FC = () => {
                             <td className="p-3">
                               <div className="text-text-main font-medium">{conn?.name || 'N/A'}</div>
                               <div className="text-indigo-400 font-mono text-[11px]">{w.targetTable}</div>
+                              {w.enableEnrichment && (
+                                <div className="text-emerald-400 font-mono text-[10px] mt-0.5 flex items-center gap-1">
+                                  <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                                  <span>Detail: {w.enrichmentTargetTable || 'N/A'}</span>
+                                </div>
+                              )}
                             </td>
                             <td className="p-3">
                               {w.secretHeaderName ? (
@@ -1342,12 +1401,209 @@ export const WebhooksView: React.FC = () => {
               </div>
             </div>
 
-            {/* Card 4: Failure Alerts & Telegram/Discord Integration */}
+            {/* Card 4: Detail Data Enrichment (Ginee OMS REST API Fetcher) */}
+            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border-main">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center font-bold text-xs">
+                    4
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-text-main">Automatic Order Detail Enrichment</h3>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        Ginee REST API
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-muted">
+                      Automatically fetch complete order items, SKU details, buyer address, courier & tracking number.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Toggle Switch */}
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={editingConfig.enableEnrichment || false}
+                    onChange={e => setEditingConfig(prev => ({ ...prev, enableEnrichment: e.target.checked }))}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-bg-hover peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border-main after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  <span className="ml-2 text-xs font-semibold text-text-main">
+                    {editingConfig.enableEnrichment ? 'Enrichment Active' : 'Disabled'}
+                  </span>
+                </label>
+              </div>
+
+              {editingConfig.enableEnrichment ? (
+                <div className="space-y-4 pt-1">
+                  {/* Notice */}
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                      <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Two-Target Architecture: Separate Detail Table</span>
+                    </div>
+                    <p className="text-xs text-text-main leading-relaxed">
+                      Ketika status order di webhook mentah cocok dengan filter di bawah (contoh: <b>READY_TO_SHIP</b>), DarkoSync akan memanggil REST API Ginee secara background async dan menyimpan detail lengkapnya ke tabel detail berikut (format 5 kolom standar: <code>seq, kode_data, detail_data, input_by, input_dt</code>).
+                    </p>
+
+                    {/* DDL Quick Copy for Detail Table */}
+                    <div className="pt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tbl = editingConfig.enrichmentTargetTable?.trim() || 'dw_erp.ginee_test2';
+                          const ddl = `-- ClickHouse DDL (Detail Table)\nCREATE TABLE IF NOT EXISTS ${tbl} (\n    seq UInt64,\n    kode_data String,\n    detail_data String,\n    input_by String DEFAULT 'darkosync',\n    input_dt DateTime DEFAULT now()\n) ENGINE = ReplacingMergeTree(input_dt)\nORDER BY seq;`;
+                          copyToClipboard(ddl);
+                        }}
+                        className="px-2.5 py-1 text-xs rounded bg-bg-main hover:bg-bg-hover text-text-main border border-border-main flex items-center gap-1.5 transition-colors"
+                      >
+                        <Copy className="w-3 h-3 text-amber-400" />
+                        <span>Copy Detail ClickHouse DDL</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tbl = editingConfig.enrichmentTargetTable?.trim() || 'ginee_orders_detail';
+                          const ddl = `-- PostgreSQL DDL (Detail Table)\nCREATE TABLE IF NOT EXISTS ${tbl} (\n    seq BIGSERIAL PRIMARY KEY,\n    kode_data VARCHAR(255) NOT NULL,\n    detail_data JSONB NOT NULL,\n    input_by VARCHAR(100) DEFAULT 'darkosync',\n    input_dt TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);`;
+                          copyToClipboard(ddl);
+                        }}
+                        className="px-2.5 py-1 text-xs rounded bg-bg-main hover:bg-bg-hover text-text-main border border-border-main flex items-center gap-1.5 transition-colors"
+                      >
+                        <Copy className="w-3 h-3 text-blue-400" />
+                        <span>Copy Detail PostgreSQL DDL</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Detail Target Inputs */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-text-main mb-1.5">
+                        Trigger Status Filter <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="READY_TO_SHIP"
+                        value={editingConfig.enrichmentFilterStatus || ''}
+                        onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentFilterStatus: e.target.value }))}
+                        className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                      <span className="text-[10px] text-text-muted mt-1 block">
+                        Default: READY_TO_SHIP (* for all)
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-text-main mb-1.5">
+                        Detail Target Connection <span className="text-rose-400">*</span>
+                      </label>
+                      <select
+                        value={editingConfig.enrichmentTargetConnectionId || ''}
+                        onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentTargetConnectionId: e.target.value }))}
+                        className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="">-- Select Connection --</option>
+                        {connections.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.type.toUpperCase()})
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-text-muted mt-1 block">
+                        ClickHouse / PostgreSQL
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-text-main mb-1.5">
+                        Detail Target Table Name <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. dw_erp.ginee_test2"
+                        value={editingConfig.enrichmentTargetTable || ''}
+                        onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentTargetTable: e.target.value }))}
+                        className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                      <span className="text-[10px] text-text-muted mt-1 block">
+                        Target table for full JSON
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-text-main mb-1.5">
+                        Detail Identifier (kode_data)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="GINEE_READY_TO_SHIP"
+                        value={editingConfig.enrichmentKodeData || ''}
+                        onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentKodeData: e.target.value }))}
+                        className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                      <span className="text-[10px] text-text-muted mt-1 block">
+                        Tag for detail records
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Optional Custom Credentials */}
+                  <div className="pt-2 border-t border-border-main">
+                    <div className="text-xs font-semibold text-text-main mb-1 flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Custom Ginee API Credentials (Optional Override)</span>
+                    </div>
+                    <p className="text-[11px] text-text-muted mb-3">
+                      Jika dikosongkan, sistem otomatis menggunakan <code>GINEE_ACCESS_KEY</code> dan <code>GINEE_SECRET_KEY</code> yang tersimpan di server <code>.env</code>.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-medium text-text-muted mb-1">
+                          Ginee Access Key
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Leave blank to use server .env"
+                          value={editingConfig.enrichmentGineeAccessKey || ''}
+                          onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentGineeAccessKey: e.target.value }))}
+                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-text-muted mb-1">
+                          Ginee Secret Key
+                        </label>
+                        <input
+                          type="password"
+                          placeholder="Leave blank to use server .env"
+                          value={editingConfig.enrichmentGineeSecretKey || ''}
+                          onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentGineeSecretKey: e.target.value }))}
+                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-bg-main/50 rounded-lg border border-dashed border-border-main text-center">
+                  <p className="text-xs text-text-muted">
+                    Detail enrichment is currently inactive. Turn on the toggle above to automatically fetch full order lines and items from Ginee REST API.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Card 5: Failure Alerts & Telegram/Discord Integration */}
             <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-border-main">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center font-bold text-xs">
-                    4
+                    5
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-text-main">Telegram & Discord Failure Alerts</h3>
