@@ -90,3 +90,4 @@ data-compare-web.tar
 auto_reconciler.py
 *.pem
 *.sh
+!backend/docker-entrypoint.sh
