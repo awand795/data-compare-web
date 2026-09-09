@@ -553,11 +553,33 @@ public class ApiEndpointController {
     }
 
     @PostMapping("/test-push")
-    public ResponseEntity<?> testPush(@RequestBody TestRequest request) {
-        if (request.api == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "API endpoint configuration is required"));
+    public ResponseEntity<?> testPush(@RequestBody Map<String, Object> body) {
+        try {
+            ApiEndpoint ep;
+            Map<String, Object> params = new HashMap<>();
+
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            om.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+            if (body.containsKey("api") && body.get("api") != null) {
+                ep = om.convertValue(body.get("api"), ApiEndpoint.class);
+                if (body.get("params") instanceof Map) {
+                    params.putAll((Map<String, Object>) body.get("params"));
+                }
+            } else {
+                ep = om.convertValue(body, ApiEndpoint.class);
+                if (body.get("extraParams") instanceof Map) {
+                    params.putAll((Map<String, Object>) body.get("extraParams"));
+                }
+            }
+
+            if (ep == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "API endpoint configuration is required"));
+            }
+            Map<String, Object> result = apiCronPushService.executePushInternal(ep, params);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Execution test failed: " + e.getMessage()));
         }
-        Map<String, Object> result = apiCronPushService.executePushInternal(request.api, request.params);
-        return ResponseEntity.ok(result);
     }
 }

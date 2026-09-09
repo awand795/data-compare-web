@@ -34,6 +34,8 @@ public class ApiEndpoint {
     private String targetMethod = "POST";
     private String targetHeaders;
     private String notificationChannelId; // Telegram / Discord channel IDs (separated by ;)
+    private boolean notifyOnSuccess = false;
+    private boolean notifyOnFailure = true;
     private LocalDateTime lastPushAt;
     private String lastPushStatus; // SUCCESS or FAILED
     private String lastPushMessage;
@@ -106,6 +108,12 @@ public class ApiEndpoint {
 
     public String getNotificationChannelId() { return notificationChannelId; }
     public void setNotificationChannelId(String notificationChannelId) { this.notificationChannelId = notificationChannelId; }
+
+    public boolean isNotifyOnSuccess() { return notifyOnSuccess; }
+    public void setNotifyOnSuccess(boolean notifyOnSuccess) { this.notifyOnSuccess = notifyOnSuccess; }
+
+    public boolean isNotifyOnFailure() { return notifyOnFailure; }
+    public void setNotifyOnFailure(boolean notifyOnFailure) { this.notifyOnFailure = notifyOnFailure; }
 
     public LocalDateTime getLastPushAt() { return lastPushAt; }
     public void setLastPushAt(LocalDateTime lastPushAt) { this.lastPushAt = lastPushAt; }

@@ -131,18 +131,14 @@ public class ApiCronPushService {
 
     public Map<String, Object> executePushInternal(ApiEndpoint ep, Map<String, Object> extraParams) {
         String targetUrl = ep.getTargetUrl();
-        if (targetUrl == null || targetUrl.trim().isEmpty()) {
-            String err = "Target URL is not configured for API Endpoint: " + ep.getName();
-            endpointRepository.updatePushResult(ep.getId(), "FAILED", err);
-            sendFailureNotification(ep, targetUrl, 0, err);
-            return Map.of("success", false, "error", err);
-        }
 
         ConnectionDetails conn = connectionRepository.findById(ep.getConnectionId());
         if (conn == null) {
             String err = "Database connection not found (ID: " + ep.getConnectionId() + ") for " + ep.getName();
             endpointRepository.updatePushResult(ep.getId(), "FAILED", err);
-            sendFailureNotification(ep, targetUrl, 0, err);
+            if (ep.isNotifyOnFailure()) {
+                sendFailureNotification(ep, targetUrl, 0, err);
+            }
             return Map.of("success", false, "error", err);
         }
 
@@ -173,7 +169,28 @@ public class ApiCronPushService {
 
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(ep.getSqlQuery(), paramMap);
             rowCount = rows.size();
+            long duration = System.currentTimeMillis() - start;
 
+            // ── CASE A: Direct SQL Schedule (No Target Endpoint URL) ─────────────
+            if (targetUrl == null || targetUrl.trim().isEmpty()) {
+                String successMsg = "SQL Query executed successfully: " + rowCount + " rows returned (" + duration + "ms)";
+                endpointRepository.updatePushResult(ep.getId(), "SUCCESS", successMsg);
+                logger.info("API Builder Scheduled SQL SUCCESS for [{}] ({}): {}", ep.getName(), ep.getEndpointPath(), successMsg);
+
+                if (ep.isNotifyOnSuccess()) {
+                    sendSuccessNotification(ep, null, rowCount, duration, rows);
+                }
+
+                Map<String, Object> res = new HashMap<>();
+                res.put("success", true);
+                res.put("durationMs", duration);
+                res.put("rowCount", rowCount);
+                res.put("message", successMsg);
+                res.put("data", rows.size() > 50 ? rows.subList(0, 50) : rows);
+                return res;
+            }
+
+            // ── CASE B: HTTP Push to Target Endpoint ─────────────────────────────
             String jsonPayload = objectMapper.writeValueAsString(rows);
 
             // Build HTTP Request
@@ -202,12 +219,17 @@ public class ApiCronPushService {
             }
 
             HttpResponse<String> resp = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
-            long duration = System.currentTimeMillis() - start;
+            duration = System.currentTimeMillis() - start;
 
             if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
                 String successMsg = "HTTP " + resp.statusCode() + " OK - Sent " + rowCount + " rows successfully (" + duration + "ms)";
                 endpointRepository.updatePushResult(ep.getId(), "SUCCESS", successMsg);
                 logger.info("API Builder Push SUCCESS for [{}] to [{}]: {}", ep.getName(), targetUrl, successMsg);
+
+                if (ep.isNotifyOnSuccess()) {
+                    sendSuccessNotification(ep, targetUrl, rowCount, duration, rows);
+                }
+
                 return Map.of(
                         "success", true,
                         "statusCode", resp.statusCode(),
@@ -220,7 +242,11 @@ public class ApiCronPushService {
                 String errorMsg = "HTTP " + resp.statusCode() + " - " + (resp.body() != null && resp.body().length() > 200 ? resp.body().substring(0, 200) + "..." : resp.body());
                 endpointRepository.updatePushResult(ep.getId(), "FAILED", errorMsg);
                 logger.warn("API Builder Push FAILED for [{}] to [{}]: {}", ep.getName(), targetUrl, errorMsg);
-                sendFailureNotification(ep, targetUrl, rowCount, errorMsg);
+
+                if (ep.isNotifyOnFailure()) {
+                    sendFailureNotification(ep, targetUrl, rowCount, errorMsg);
+                }
+
                 return Map.of(
                         "success", false,
                         "statusCode", resp.statusCode(),
@@ -236,13 +262,73 @@ public class ApiCronPushService {
             String errorMsg = "Execution Error: " + (e.getMessage() != null ? e.getMessage() : e.toString());
             endpointRepository.updatePushResult(ep.getId(), "FAILED", errorMsg);
             logger.error("API Builder Push EXCEPTION for [{}] to [{}]: {}", ep.getName(), targetUrl, errorMsg, e);
-            sendFailureNotification(ep, targetUrl, rowCount, errorMsg);
+
+            if (ep.isNotifyOnFailure()) {
+                sendFailureNotification(ep, targetUrl, rowCount, errorMsg);
+            }
+
             return Map.of(
                     "success", false,
                     "durationMs", duration,
                     "rowCount", rowCount,
                     "error", errorMsg
             );
+        }
+    }
+
+    public void sendSuccessNotification(ApiEndpoint ep, String targetUrl, int rowCount, long durationMs, List<Map<String, Object>> rows) {
+        String channelIds = ep.getNotificationChannelId();
+        if (channelIds == null || channelIds.trim().isEmpty()) {
+            return;
+        }
+
+        String nowStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String targetInfo = (targetUrl != null && !targetUrl.trim().isEmpty())
+                ? "• <b>Target Webhook:</b> " + targetUrl + " [" + (ep.getTargetMethod() != null ? ep.getTargetMethod().toUpperCase() : "POST") + "]\n"
+                : "• <b>Mode:</b> Direct SQL Schedule (Eksekusi Database)\n";
+
+        // Generate small preview
+        StringBuilder preview = new StringBuilder();
+        if (rows != null && !rows.isEmpty()) {
+            int limit = Math.min(rows.size(), 3);
+            for (int i = 0; i < limit; i++) {
+                try {
+                    preview.append(objectMapper.writeValueAsString(rows.get(i))).append("\n");
+                } catch (Exception ignored) {}
+            }
+            if (rows.size() > 3) {
+                preview.append("... (+").append(rows.size() - 3).append(" baris lainnya)\n");
+            }
+        } else {
+            preview.append("(0 baris returned / query executed)");
+        }
+
+        String message = String.format(
+                "✅ <b>[API Builder] Jadwal Eksekusi Berhasil</b>\n\n" +
+                "• <b>API Endpoint:</b> %s (<code>%s</code>)\n" +
+                "%s" +
+                "• <b>Jumlah Baris:</b> %d baris\n" +
+                "• <b>Durasi:</b> %d ms\n" +
+                "• <b>Waktu:</b> %s\n\n" +
+                "<b>Preview Hasil:</b>\n<pre>%s</pre>",
+                ep.getName(), ep.getEndpointPath(),
+                targetInfo,
+                rowCount,
+                durationMs,
+                nowStr,
+                preview.toString().trim()
+        );
+
+        String[] channels = channelIds.split("[;,]+");
+        for (String chan : channels) {
+            String clean = chan.trim();
+            if (!clean.isEmpty()) {
+                try {
+                    notificationService.sendToChannel(clean, message);
+                } catch (Exception e) {
+                    logger.error("Failed to send success alert to channel [{}]: {}", clean, e.getMessage());
+                }
+            }
         }
     }
 
@@ -253,17 +339,20 @@ public class ApiCronPushService {
         }
 
         String nowStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        String method = ep.getTargetMethod() != null ? ep.getTargetMethod().toUpperCase() : "POST";
+        String targetInfo = (targetUrl != null && !targetUrl.trim().isEmpty())
+                ? "• <b>Target Webhook:</b> " + targetUrl + " [" + (ep.getTargetMethod() != null ? ep.getTargetMethod().toUpperCase() : "POST") + "]\n"
+                : "• <b>Mode:</b> Direct SQL Schedule\n";
+
         String message = String.format(
-                "🚨 <b>[API Builder Alert] Push Data Gagal</b>\n\n" +
+                "🚨 <b>[API Builder Alert] Jadwal Eksekusi Gagal</b>\n\n" +
                 "• <b>API Endpoint:</b> %s (<code>%s</code>)\n" +
-                "• <b>Target Endpoint:</b> %s [%s]\n" +
-                "• <b>Baris Terkirim:</b> %d baris\n" +
+                "%s" +
+                "• <b>Baris:</b> %d baris\n" +
                 "• <b>Waktu:</b> %s\n" +
                 "• <b>Status / Error:</b> <pre>%s</pre>\n\n" +
-                "<i>Mohon periksa status target endpoint atau koneksi server Anda.</i>",
+                "<i>Mohon periksa sintaks SQL atau status target endpoint Anda.</i>",
                 ep.getName(), ep.getEndpointPath(),
-                targetUrl != null ? targetUrl : "-", method,
+                targetInfo,
                 rowCount,
                 nowStr,
                 error
