@@ -2903,15 +2903,19 @@ public class DataWarehouseService {
             // Target table becomes the new FROM table
             plain.setFromItem(targetJoin.getRightItem());
 
-            List<Join> newJoins = new ArrayList<>();
+            // Collect all available ON conditions from original query
+            List<net.sf.jsqlparser.expression.Expression> availableConditions = new ArrayList<>();
+            if (targetJoin.getOnExpression() != null) {
+                availableConditions.add(targetJoin.getOnExpression());
+            }
 
-            // 1. Convert old FROM into a proper INNER JOIN
+            // Prepare candidate joins: old FROM table + other joins
+            List<Join> candidateJoins = new ArrayList<>();
             Join fromJoin = new Join();
             fromJoin.setRightItem(currentFrom);
             fromJoin.setInner(true);
-            newJoins.add(fromJoin);
+            candidateJoins.add(fromJoin);
 
-            // 2. Add all other joins except targetJoin, preserving type and ON expressions
             if (joins != null) {
                 for (int i = 0; i < joins.size(); i++) {
                     if (i == targetIdx) continue;
@@ -2924,9 +2928,97 @@ public class DataWarehouseService {
                     else if (j.isCross()) jCopy.setCross(true);
                     else jCopy.setInner(true);
                     if (j.getOnExpression() != null) {
-                        jCopy.setOnExpression(j.getOnExpression());
+                        availableConditions.add(j.getOnExpression());
                     }
-                    newJoins.add(jCopy);
+                    candidateJoins.add(jCopy);
+                }
+            }
+
+            java.util.Set<String> availableAliases = new java.util.LinkedHashSet<>(getAllAliasesOrNames(plain.getFromItem()));
+            List<Join> newJoins = new ArrayList<>();
+
+            while (!candidateJoins.isEmpty()) {
+                boolean matched = false;
+                for (int ci = 0; ci < candidateJoins.size(); ci++) {
+                    Join cand = candidateJoins.get(ci);
+                    java.util.Set<String> candNames = getAllAliasesOrNames(cand.getRightItem());
+
+                    // Find a condition that connects cand to availableAliases
+                    for (int ei = 0; ei < availableConditions.size(); ei++) {
+                        net.sf.jsqlparser.expression.Expression expr = availableConditions.get(ei);
+                        java.util.Set<String> exprAliases = extractTableAliasesFromExpr(expr);
+
+                        boolean connectsCand = false;
+                        for (String cn : candNames) {
+                            if (exprAliases.contains(cn)) {
+                                connectsCand = true;
+                                break;
+                            }
+                        }
+
+                        boolean connectsAvailable = false;
+                        for (String av : availableAliases) {
+                            if (exprAliases.contains(av)) {
+                                connectsAvailable = true;
+                                break;
+                            }
+                        }
+
+                        if (connectsCand && connectsAvailable) {
+                            cand.setOnExpression(expr);
+                            newJoins.add(cand);
+                            availableAliases.addAll(candNames);
+                            candidateJoins.remove(ci);
+                            availableConditions.remove(ei);
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (matched) break;
+                }
+
+                if (!matched) {
+                    // Fallback: match any candidate with any condition that mentions it
+                    Join cand = candidateJoins.remove(0);
+                    java.util.Set<String> candNames = getAllAliasesOrNames(cand.getRightItem());
+                    net.sf.jsqlparser.expression.Expression chosenExpr = null;
+
+                    for (int ei = 0; ei < availableConditions.size(); ei++) {
+                        net.sf.jsqlparser.expression.Expression expr = availableConditions.get(ei);
+                        java.util.Set<String> exprAliases = extractTableAliasesFromExpr(expr);
+                        for (String cn : candNames) {
+                            if (exprAliases.contains(cn)) {
+                                chosenExpr = availableConditions.remove(ei);
+                                break;
+                            }
+                        }
+                        if (chosenExpr != null) break;
+                    }
+
+                    if (chosenExpr == null && !availableConditions.isEmpty()) {
+                        chosenExpr = availableConditions.remove(0);
+                    }
+
+                    if (chosenExpr != null) {
+                        cand.setOnExpression(chosenExpr);
+                    } else {
+                        cand.setCross(true);
+                        cand.setInner(false);
+                        cand.setOnExpression(null);
+                    }
+                    newJoins.add(cand);
+                    availableAliases.addAll(candNames);
+                }
+            }
+
+            // ClickHouse safety check: any non-CROSS join without ON expression MUST be marked CROSS
+            for (Join j : newJoins) {
+                if (j.getOnExpression() == null && !j.isCross()) {
+                    j.setInner(false);
+                    j.setLeft(false);
+                    j.setRight(false);
+                    j.setFull(false);
+                    j.setCross(true);
                 }
             }
 
@@ -2937,6 +3029,24 @@ public class DataWarehouseService {
             logger.warn("Failed to rotate query for trigger table " + triggerTable + ": " + e.getMessage(), e);
             return sql;
         }
+    }
+
+    private java.util.Set<String> getAllAliasesOrNames(FromItem item) {
+        java.util.Set<String> names = new java.util.HashSet<>();
+        if (item == null) return names;
+        if (item.getAlias() != null && item.getAlias().getName() != null) {
+            names.add(item.getAlias().getName().replaceAll("[\"``]", "").toLowerCase());
+        }
+        if (item instanceof Table) {
+            Table t = (Table) item;
+            if (t.getName() != null) {
+                names.add(t.getName().replaceAll("[\"``]", "").toLowerCase());
+            }
+            if (t.getFullyQualifiedName() != null) {
+                names.add(t.getFullyQualifiedName().replaceAll("[\"``]", "").toLowerCase());
+            }
+        }
+        return names;
     }
 
     private void reorderJoinsByDependency(PlainSelect plain) {

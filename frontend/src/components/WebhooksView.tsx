@@ -5,7 +5,8 @@ import {
   Webhook, Plus, RefreshCw, Trash2, Edit3, Check, Copy,
   ShieldCheck, Database, ArrowLeft, Search,
   List, Grid, AlertTriangle,
-  Eye, EyeOff, Activity, Send, Bell, Key, X, Sparkles
+  Eye, EyeOff, Activity, Send, Bell, Key, X, Sparkles,
+  Zap, CheckSquare, Square, Code2
 } from 'lucide-react';
 import clsx from 'clsx';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
@@ -23,6 +24,11 @@ export interface WebhookConfig {
   targetTable: string;
   kodeData?: string;
   enableEnrichment?: boolean;
+  triggerApiSchedulerId?: string;
+  triggerFilterKey?: string;
+  triggerFilterValue?: string;
+  triggerParamKey?: string;
+  triggerParamTarget?: string;
   enrichmentFilterStatus?: string;
   enrichmentTargetConnectionId?: string;
   enrichmentTargetTable?: string;
@@ -95,6 +101,11 @@ export const WebhooksView: React.FC = () => {
     targetTable: '',
     kodeData: 'GINEE_WEBHOOK',
     enableEnrichment: false,
+    triggerApiSchedulerId: '',
+    triggerFilterKey: 'orderStatus',
+    triggerFilterValue: 'READY_TO_SHIP',
+    triggerParamKey: 'orderId',
+    triggerParamTarget: '{{orderId}}',
     enrichmentFilterStatus: 'READY_TO_SHIP',
     enrichmentTargetConnectionId: '',
     enrichmentTargetTable: '',
@@ -107,6 +118,10 @@ export const WebhooksView: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [showSecretValue, setShowSecretValue] = useState(false);
 
+  // API Schedulers available for Trigger Webhook
+  const [apiSchedulers, setApiSchedulers] = useState<any[]>([]);
+  const [triggerSchedulerSearch, setTriggerSchedulerSearch] = useState('');
+
   // Logs Modal State
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
   const [activeLogWebhook, setActiveLogWebhook] = useState<WebhookConfig | null>(null);
@@ -117,7 +132,7 @@ export const WebhooksView: React.FC = () => {
   // Copied State Tracker
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
-  // 1. Fetch Webhooks & Channels
+  // 1. Fetch Webhooks, Channels, and API Schedulers
   const fetchWebhooks = async () => {
     setLoading(true);
     try {
@@ -137,6 +152,17 @@ export const WebhooksView: React.FC = () => {
     }
   };
 
+  const fetchApiSchedulers = async () => {
+    try {
+      const res = await axios.get('/api/api-schedulers');
+      if (Array.isArray(res.data)) {
+        setApiSchedulers(res.data);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch API Schedulers for Webhooks', err);
+    }
+  };
+
   const fetchChannels = async () => {
     try {
       const res = await axios.get('/api/notification-channels');
@@ -151,6 +177,7 @@ export const WebhooksView: React.FC = () => {
   useEffect(() => {
     fetchWebhooks();
     fetchChannels();
+    fetchApiSchedulers();
   }, []);
 
   // Compute unique groups
@@ -1401,22 +1428,23 @@ export const WebhooksView: React.FC = () => {
               </div>
             </div>
 
-            {/* Card 4: Detail Data Enrichment (Ginee OMS REST API Fetcher) */}
-            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
+            {/* Card 4: Trigger Webhooks (Execute API Schedulers on Inbound Webhook) */}
+            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border-main">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center font-bold text-xs">
                     4
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold text-text-main">Automatic Order Detail Enrichment</h3>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        Ginee REST API
+                      <h3 className="text-sm font-bold text-text-main">Trigger Webhooks</h3>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-emerald-400" />
+                        API Scheduler Engine
                       </span>
                     </div>
                     <p className="text-xs text-text-muted">
-                      Automatically fetch complete order items, SKU details, buyer address, courier & tracking number.
+                      Trigger satu atau beberapa REST API Scheduler secara dinamis menggunakan parameter dari payload webhook yang masuk.
                     </p>
                   </div>
                 </div>
@@ -1431,168 +1459,371 @@ export const WebhooksView: React.FC = () => {
                   />
                   <div className="w-11 h-6 bg-bg-hover peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border-main after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
                   <span className="ml-2 text-xs font-semibold text-text-main">
-                    {editingConfig.enableEnrichment ? 'Enrichment Active' : 'Disabled'}
+                    {editingConfig.enableEnrichment ? 'Trigger Active' : 'Disabled'}
                   </span>
                 </label>
               </div>
 
               {editingConfig.enableEnrichment ? (
-                <div className="space-y-4 pt-1">
-                  {/* Notice */}
+                <div className="space-y-5 pt-1">
+                  {/* Informative Banner */}
                   <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 space-y-2">
                     <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
                       <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Two-Target Architecture: Separate Detail Table</span>
+                      <span>Flexible Dynamic Trigger Architecture</span>
                     </div>
                     <p className="text-xs text-text-main leading-relaxed">
-                      Ketika status order di webhook mentah cocok dengan filter di bawah (contoh: <b>READY_TO_SHIP</b>), DarkoSync akan memanggil REST API Ginee secara background async dan menyimpan detail lengkapnya ke tabel detail berikut (format 5 kolom standar: <code>seq, kode_data, detail_data, input_by, input_dt</code>).
+                      Ketika payload webhook masuk dan cocok dengan kondisi filter (misal: <b>orderStatus == READY_TO_SHIP</b>), DarkoSync akan mengekstrak Primary Key (misal: <b>orderId</b>), menyuntikkannya ke placeholder (<code>{'{{orderId}}'}</code> / <code>{'{{pk}}'}</code>), lalu mengeksekusi <b>API Scheduler</b> yang dicentang secara background async dan menyimpan responsnya ke target database masing-masing.
                     </p>
-
-                    {/* DDL Quick Copy for Detail Table */}
-                    <div className="pt-2 flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const tbl = editingConfig.enrichmentTargetTable?.trim() || 'dw_erp.ginee_test2';
-                          const ddl = `-- ClickHouse DDL (Detail Table)\nCREATE TABLE IF NOT EXISTS ${tbl} (\n    seq UInt64,\n    kode_data String,\n    detail_data String,\n    input_by String DEFAULT 'darkosync',\n    input_dt DateTime DEFAULT now()\n) ENGINE = ReplacingMergeTree(input_dt)\nORDER BY seq;`;
-                          copyToClipboard(ddl);
-                        }}
-                        className="px-2.5 py-1 text-xs rounded bg-bg-main hover:bg-bg-hover text-text-main border border-border-main flex items-center gap-1.5 transition-colors"
-                      >
-                        <Copy className="w-3 h-3 text-amber-400" />
-                        <span>Copy Detail ClickHouse DDL</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const tbl = editingConfig.enrichmentTargetTable?.trim() || 'ginee_orders_detail';
-                          const ddl = `-- PostgreSQL DDL (Detail Table)\nCREATE TABLE IF NOT EXISTS ${tbl} (\n    seq BIGSERIAL PRIMARY KEY,\n    kode_data VARCHAR(255) NOT NULL,\n    detail_data JSONB NOT NULL,\n    input_by VARCHAR(100) DEFAULT 'darkosync',\n    input_dt TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);`;
-                          copyToClipboard(ddl);
-                        }}
-                        className="px-2.5 py-1 text-xs rounded bg-bg-main hover:bg-bg-hover text-text-main border border-border-main flex items-center gap-1.5 transition-colors"
-                      >
-                        <Copy className="w-3 h-3 text-blue-400" />
-                        <span>Copy Detail PostgreSQL DDL</span>
-                      </button>
-                    </div>
                   </div>
 
-                  {/* Detail Target Inputs */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-text-main mb-1.5">
-                        Trigger Status Filter <span className="text-rose-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="READY_TO_SHIP"
-                        value={editingConfig.enrichmentFilterStatus || ''}
-                        onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentFilterStatus: e.target.value }))}
-                        className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
-                      />
-                      <span className="text-[10px] text-text-muted mt-1 block">
-                        Default: READY_TO_SHIP (* for all)
-                      </span>
+                  {/* Section A: Trigger Condition & PK Parameter Mapping */}
+                  <div className="bg-bg-main p-4 border border-border-main rounded-xl space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-text-main pb-2 border-b border-border-main">
+                      <Code2 className="w-4 h-4 text-indigo-400" />
+                      <span>1. Kondisi Evaluasi Webhook & Parameter PK Dinamis</span>
                     </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-text-main mb-1.5">
-                        Detail Target Connection <span className="text-rose-400">*</span>
-                      </label>
-                      <select
-                        value={editingConfig.enrichmentTargetConnectionId || ''}
-                        onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentTargetConnectionId: e.target.value }))}
-                        className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main focus:outline-none focus:border-emerald-500"
-                      >
-                        <option value="">-- Select Connection --</option>
-                        {connections.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.type.toUpperCase()})
-                          </option>
-                        ))}
-                      </select>
-                      <span className="text-[10px] text-text-muted mt-1 block">
-                        ClickHouse / PostgreSQL
-                      </span>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-text-main mb-1.5">
-                        Detail Target Table Name <span className="text-rose-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. dw_erp.ginee_test2"
-                        value={editingConfig.enrichmentTargetTable || ''}
-                        onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentTargetTable: e.target.value }))}
-                        className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
-                      />
-                      <span className="text-[10px] text-text-muted mt-1 block">
-                        Target table for full JSON
-                      </span>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-text-main mb-1.5">
-                        Detail Identifier (kode_data)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="GINEE_READY_TO_SHIP"
-                        value={editingConfig.enrichmentKodeData || ''}
-                        onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentKodeData: e.target.value }))}
-                        className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
-                      />
-                      <span className="text-[10px] text-text-muted mt-1 block">
-                        Tag for detail records
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Optional Custom Credentials */}
-                  <div className="pt-2 border-t border-border-main">
-                    <div className="text-xs font-semibold text-text-main mb-1 flex items-center gap-1.5">
-                      <Key className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Custom Ginee API Credentials (Optional Override)</span>
-                    </div>
-                    <p className="text-[11px] text-text-muted mb-3">
-                      Jika dikosongkan, sistem otomatis menggunakan <code>GINEE_ACCESS_KEY</code> dan <code>GINEE_SECRET_KEY</code> yang tersimpan di server <code>.env</code>.
-                    </p>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       <div>
-                        <label className="block text-[11px] font-medium text-text-muted mb-1">
-                          Ginee Access Key
+                        <label className="block text-xs font-semibold text-text-main mb-1.5">
+                          Trigger Filter Key <span className="text-rose-400">*</span>
                         </label>
                         <input
                           type="text"
-                          placeholder="Leave blank to use server .env"
-                          value={editingConfig.enrichmentGineeAccessKey || ''}
-                          onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentGineeAccessKey: e.target.value }))}
-                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
+                          placeholder="e.g. orderStatus"
+                          value={editingConfig.triggerFilterKey || 'orderStatus'}
+                          onChange={e => setEditingConfig(prev => ({ ...prev, triggerFilterKey: e.target.value }))}
+                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-panel border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
                         />
+                        <span className="text-[10px] text-text-muted mt-1 block">
+                          Key JSON yang dievaluasi (misal: orderStatus, status)
+                        </span>
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-medium text-text-muted mb-1">
-                          Ginee Secret Key
+                        <label className="block text-xs font-semibold text-text-main mb-1.5">
+                          Trigger Expected Value <span className="text-rose-400">*</span>
                         </label>
                         <input
-                          type="password"
-                          placeholder="Leave blank to use server .env"
-                          value={editingConfig.enrichmentGineeSecretKey || ''}
-                          onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentGineeSecretKey: e.target.value }))}
-                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
+                          type="text"
+                          placeholder="e.g. READY_TO_SHIP"
+                          value={editingConfig.triggerFilterValue || 'READY_TO_SHIP'}
+                          onChange={e => setEditingConfig(prev => ({
+                            ...prev,
+                            triggerFilterValue: e.target.value,
+                            enrichmentFilterStatus: e.target.value
+                          }))}
+                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-panel border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
                         />
+                        <span className="text-[10px] text-text-muted mt-1 block">
+                          Nilai pemicu (bisa koma atau * untuk semua)
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-text-main mb-1.5">
+                          Payload PK / Parameter Key <span className="text-rose-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. orderId"
+                          value={editingConfig.triggerParamKey || 'orderId'}
+                          onChange={e => setEditingConfig(prev => ({ ...prev, triggerParamKey: e.target.value }))}
+                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-panel border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
+                        />
+                        <span className="text-[10px] text-text-muted mt-1 block">
+                          Key dari webhook untuk diekstrak (misal: orderId)
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-text-main mb-1.5">
+                          Template Placeholder Tag
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. {{orderId}}"
+                          value={editingConfig.triggerParamTarget || '{{orderId}}'}
+                          onChange={e => setEditingConfig(prev => ({ ...prev, triggerParamTarget: e.target.value }))}
+                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-panel border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
+                        />
+                        <span className="text-[10px] text-text-muted mt-1 block">
+                          Placeholder di URL/Body API Scheduler
+                        </span>
                       </div>
                     </div>
                   </div>
+
+                  {/* Section B: Multiple API Scheduler Selection */}
+                  <div className="bg-bg-main p-4 border border-border-main rounded-xl space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-border-main">
+                      <div className="flex items-center gap-2 text-xs font-bold text-text-main">
+                        <Database className="w-4 h-4 text-emerald-400" />
+                        <span>2. Pilih Target API Scheduler (Bisa Multiple / Beberapa Sekaligus)</span>
+                      </div>
+
+                      {/* Search Bar for Schedulers */}
+                      <div className="relative w-full sm:w-64">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                        <input
+                          type="text"
+                          placeholder="Cari API Scheduler..."
+                          value={triggerSchedulerSearch}
+                          onChange={e => setTriggerSchedulerSearch(e.target.value)}
+                          className="w-full pl-8 pr-3 py-1.5 text-xs bg-bg-panel border border-border-main rounded-lg text-text-main focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Checkbox Multi-Select List of API Schedulers */}
+                    {(() => {
+                      const selectedIds = (editingConfig.triggerApiSchedulerId || '')
+                        .split('[,;\\s]+')
+                        .map(s => s.trim())
+                        .filter(Boolean);
+
+                      const filteredSchedulers = apiSchedulers.filter(s => {
+                        if (!triggerSchedulerSearch.trim()) return true;
+                        const q = triggerSchedulerSearch.toLowerCase();
+                        return (
+                          (s.name && s.name.toLowerCase().includes(q)) ||
+                          (s.url && s.url.toLowerCase().includes(q)) ||
+                          (s.targetTable && s.targetTable.toLowerCase().includes(q)) ||
+                          (s.method && s.method.toLowerCase().includes(q))
+                        );
+                      });
+
+                      const toggleSchedulerId = (id: string) => {
+                        const raw = editingConfig.triggerApiSchedulerId || '';
+                        const currentList = raw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+                        let nextList: string[];
+                        if (currentList.includes(id)) {
+                          nextList = currentList.filter(x => x !== id);
+                        } else {
+                          nextList = [...currentList, id];
+                        }
+                        const newTriggerId = nextList.join(',');
+                        
+                        // Auto-populate target storage preview from first selected scheduler
+                        const firstSelected = apiSchedulers.find(s => s.id === (nextList[0] || ''));
+                        setEditingConfig(prev => ({
+                          ...prev,
+                          triggerApiSchedulerId: newTriggerId,
+                          enrichmentTargetConnectionId: firstSelected ? firstSelected.targetConnectionId : prev.enrichmentTargetConnectionId,
+                          enrichmentTargetTable: firstSelected ? firstSelected.targetTable : prev.enrichmentTargetTable,
+                          enrichmentKodeData: firstSelected ? firstSelected.kodeData : prev.enrichmentKodeData,
+                        }));
+                      };
+
+                      return (
+                        <div className="space-y-3">
+                          <div className="max-h-56 overflow-y-auto pr-1 space-y-2 border border-border-main/60 rounded-xl p-2 bg-bg-panel/50">
+                            {filteredSchedulers.length === 0 ? (
+                              <div className="p-4 text-center text-xs text-text-muted">
+                                Tidak ada API Scheduler yang ditemukan. Silakan buat endpoint API baru di menu API Builder / Scheduler.
+                              </div>
+                            ) : (
+                              filteredSchedulers.map(sched => {
+                                const isChecked = selectedIds.includes(sched.id);
+                                return (
+                                  <div
+                                    key={sched.id}
+                                    onClick={() => toggleSchedulerId(sched.id)}
+                                    className={clsx(
+                                      "flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-all",
+                                      isChecked
+                                        ? "bg-emerald-500/10 border-emerald-500/30 text-text-main shadow-sm"
+                                        : "bg-bg-panel border-border-main text-text-muted hover:text-text-main hover:bg-bg-hover"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <div className="shrink-0 text-emerald-400">
+                                        {isChecked ? (
+                                          <CheckSquare className="w-4 h-4 text-emerald-500" />
+                                        ) : (
+                                          <Square className="w-4 h-4 text-text-muted" />
+                                        )}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                          <span className={clsx(
+                                            "px-1.5 py-0.5 text-[10px] font-bold rounded",
+                                            sched.method === 'POST' ? 'bg-blue-500/20 text-blue-400' :
+                                            sched.method === 'GET' ? 'bg-emerald-500/20 text-emerald-400' :
+                                            'bg-purple-500/20 text-purple-400'
+                                          )}>
+                                            {sched.method}
+                                          </span>
+                                          <span className="text-xs font-semibold text-text-main truncate">
+                                            {sched.name}
+                                          </span>
+                                          {sched.cronExpression ? (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                              Cron + Webhook
+                                            </span>
+                                          ) : (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                              Trigger Standby Only
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="text-[11px] text-text-muted truncate mt-0.5 font-mono">
+                                          {sched.url} &rarr; <span className="text-text-main font-bold">{sched.targetTable || 'No table'}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="text-[10px] text-text-muted shrink-0 text-right">
+                                      <span className="font-mono bg-bg-main px-2 py-0.5 rounded border border-border-main">
+                                        {sched.targetTable || '-'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          {/* Cards for currently selected schedulers */}
+                          {selectedIds.length > 0 && (
+                            <div className="space-y-3 pt-2">
+                              <div className="flex items-center justify-between text-xs font-bold text-text-main">
+                                <span>Detail API Scheduler Terpilih ({selectedIds.length} Aktif)</span>
+                                <span className="text-[11px] text-emerald-400 font-normal">
+                                  Semua endpoint ini akan otomatis dijalankan saat webhook trigger cocok.
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {selectedIds.map(id => {
+                                  const sched = apiSchedulers.find(s => s.id === id);
+                                  if (!sched) return null;
+                                  return (
+                                    <div key={id} className="p-3.5 rounded-xl bg-bg-panel border border-border-main space-y-2.5">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-blue-500/20 text-blue-400">
+                                            {sched.method}
+                                          </span>
+                                          <span className="text-xs font-bold text-text-main truncate">
+                                            {sched.name}
+                                          </span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleSchedulerId(id)}
+                                          className="text-text-muted hover:text-rose-400 text-xs transition-colors"
+                                          title="Remove from trigger"
+                                        >
+                                          &times;
+                                        </button>
+                                      </div>
+
+                                      <div className="text-[11px] font-mono bg-bg-main p-2 rounded-lg border border-border-main text-text-muted truncate">
+                                        {sched.url}
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                        <div className="bg-bg-main p-2 rounded-lg border border-border-main">
+                                          <span className="text-text-muted block text-[10px]">Target Storage:</span>
+                                          <span className="font-bold text-text-main font-mono truncate block">
+                                            {sched.targetTable || '-'}
+                                          </span>
+                                        </div>
+                                        <div className="bg-bg-main p-2 rounded-lg border border-border-main">
+                                          <span className="text-text-muted block text-[10px]">Identifier:</span>
+                                          <span className="font-bold text-emerald-400 font-mono truncate block">
+                                            {sched.kodeData || 'GINEE_READY_TO_SHIP'}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {/* DDL Quick Copy for this table */}
+                                      <div className="flex items-center gap-2 pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const tbl = sched.targetTable?.trim() || 'dw_erp.ginee_test3';
+                                            const ddl = `-- ClickHouse DDL (Detail Table)\nCREATE TABLE IF NOT EXISTS ${tbl} (\n    seq UInt64,\n    kode_data String,\n    detail_data String,\n    input_by String DEFAULT 'darkosync',\n    input_dt DateTime DEFAULT now()\n) ENGINE = ReplacingMergeTree(input_dt)\nORDER BY seq;`;
+                                            copyToClipboard(ddl);
+                                          }}
+                                          className="px-2 py-1 text-[10px] rounded bg-bg-main hover:bg-bg-hover text-text-main border border-border-main flex items-center gap-1 transition-colors"
+                                        >
+                                          <Copy className="w-3 h-3 text-amber-400" />
+                                          <span>Copy ClickHouse DDL</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const tbl = sched.targetTable?.trim() || 'ginee_orders_detail';
+                                            const ddl = `-- PostgreSQL DDL (Detail Table)\nCREATE TABLE IF NOT EXISTS ${tbl} (\n    seq BIGSERIAL PRIMARY KEY,\n    kode_data VARCHAR(255) NOT NULL,\n    detail_data JSONB NOT NULL,\n    input_by VARCHAR(100) DEFAULT 'darkosync',\n    input_dt TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);`;
+                                            copyToClipboard(ddl);
+                                          }}
+                                          className="px-2 py-1 text-[10px] rounded bg-bg-main hover:bg-bg-hover text-text-main border border-border-main flex items-center gap-1 transition-colors"
+                                        >
+                                          <Copy className="w-3 h-3 text-blue-400" />
+                                          <span>Copy PostgreSQL DDL</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Optional Fallback Ginee Direct Inputs for Backward Compatibility */}
+                  <div className="pt-2 border-t border-border-main">
+                    <details className="group text-xs text-text-muted">
+                      <summary className="cursor-pointer font-semibold text-text-main hover:text-emerald-400 transition-colors flex items-center gap-2">
+                        <Key className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Opsi Lanjutan: Override Kredensial Ginee API Langsung (Optional)</span>
+                      </summary>
+                      <div className="pt-3 space-y-3">
+                        <p className="text-[11px] text-text-muted">
+                          Jika tidak menggunakan API Scheduler, sistem dapat menggunakan kredensial Ginee langsung di bawah ini atau otomatis membaca dari <code>.env</code> server.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[11px] font-medium text-text-muted mb-1">
+                              Ginee Access Key
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Leave blank to use server .env"
+                              value={editingConfig.enrichmentGineeAccessKey || ''}
+                              onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentGineeAccessKey: e.target.value }))}
+                              className="w-full px-3 py-2 text-xs rounded-lg bg-bg-panel border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-medium text-text-muted mb-1">
+                              Ginee Secret Key
+                            </label>
+                            <input
+                              type="password"
+                              placeholder="Leave blank to use server .env"
+                              value={editingConfig.enrichmentGineeSecretKey || ''}
+                              onChange={e => setEditingConfig(prev => ({ ...prev, enrichmentGineeSecretKey: e.target.value }))}
+                              className="w-full px-3 py-2 text-xs rounded-lg bg-bg-panel border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
                 </div>
               ) : (
-                <div className="p-3 bg-bg-main/50 rounded-lg border border-dashed border-border-main text-center">
+                <div className="p-4 bg-bg-main/50 rounded-xl border border-dashed border-border-main text-center">
                   <p className="text-xs text-text-muted">
-                    Detail enrichment is currently inactive. Turn on the toggle above to automatically fetch full order lines and items from Ginee REST API.
+                    Trigger Webhooks nonaktif. Aktifkan toggle di atas untuk mengeksekusi satu atau beberapa API Scheduler secara otomatis ketika event webhook tiba.
                   </p>
                 </div>
               )}

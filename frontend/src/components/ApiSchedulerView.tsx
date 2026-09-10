@@ -442,9 +442,9 @@ export const ApiSchedulerView: React.FC = () => {
     // Parse Cron Triggers
     if (cfg.cronExpression) {
       const list = cfg.cronExpression.split(/[;,\n]+/).map(c => c.trim()).filter(Boolean);
-      setCronTriggers(list.length > 0 ? list : ['0 */5 * * * *']);
+      setCronTriggers(list);
     } else {
-      setCronTriggers(['0 */5 * * * *']);
+      setCronTriggers([]);
     }
 
     // Parse Notification Channel IDs (Detect both Telegram and Discord)
@@ -1459,20 +1459,20 @@ export const ApiSchedulerView: React.FC = () => {
                   <div className="space-y-5 max-w-lg">
                     <div>
                       <label className="block text-xs font-bold text-text-main mb-2">Authentication Mechanism</label>
-                      <div className="grid grid-cols-3 gap-2.5">
-                        {['none', 'basic', 'bearer'].map(auth => (
+                      <div className="grid grid-cols-4 gap-2.5">
+                        {['none', 'basic', 'bearer', 'ginee'].map(auth => (
                           <button
                             key={auth}
                             type="button"
                             onClick={() => setCurrentConfig({ ...currentConfig, authType: auth })}
                             className={clsx(
-                              "py-2.5 px-4 rounded-xl text-xs font-bold capitalize transition-all border text-center",
+                              "py-2.5 px-3 rounded-xl text-xs font-bold capitalize transition-all border text-center truncate",
                               currentConfig.authType === auth
                                 ? "bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/40 shadow-sm"
                                 : "bg-bg-main text-text-muted border-border-main hover:text-text-main hover:bg-bg-hover"
                             )}
                           >
-                            {auth}
+                            {auth === 'ginee' ? 'Ginee Open API' : auth}
                           </button>
                         ))}
                       </div>
@@ -1511,6 +1511,48 @@ export const ApiSchedulerView: React.FC = () => {
                           onChange={(e) => setCurrentConfig({ ...currentConfig, authToken: e.target.value })}
                           className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
                         />
+                      </div>
+                    )}
+
+                    {currentConfig.authType === 'ginee' && (
+                      <div className="space-y-3.5 bg-bg-main p-4 border border-border-main rounded-2xl shadow-inner">
+                        <div className="flex items-center gap-2 pb-2 border-b border-border-main text-xs text-blue-600 dark:text-blue-400 font-semibold">
+                          <ShieldCheck className="w-4 h-4" />
+                          <span>Ginee Open API HMAC-SHA256 Signature Auth</span>
+                        </div>
+                        <p className="text-[11px] text-text-muted leading-relaxed">
+                          Otomatis mengkalkulasi signature HMAC-SHA256 (<code className="text-blue-500 font-mono">METHOD$path$</code>) serta menginjeksi header <code className="text-blue-500 font-mono">Authorization: {'{accessKey}'}:{'{signature}'}</code> dan <code className="text-blue-500 font-mono">X-Advai-Country: {'{country}'}</code>. Biarkan kosong jika ingin memakai default dari environment server (<code className="font-mono">GINEE_ACCESS_KEY</code>, <code className="font-mono">GINEE_SECRET_KEY</code>).
+                        </p>
+                        <div>
+                          <label className="block text-xs font-semibold text-text-muted mb-1">Ginee Access Key</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 923301c775aebcd9 (kosongkan untuk default server .env)"
+                            value={currentConfig.authUsername || ''}
+                            onChange={(e) => setCurrentConfig({ ...currentConfig, authUsername: e.target.value })}
+                            className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-text-muted mb-1">Ginee Secret Key</label>
+                          <input
+                            type="password"
+                            placeholder="•••••••••••• (kosongkan untuk default server .env)"
+                            value={currentConfig.authPassword || ''}
+                            onChange={(e) => setCurrentConfig({ ...currentConfig, authPassword: e.target.value })}
+                            className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-text-muted mb-1">Country Code (X-Advai-Country)</label>
+                          <input
+                            type="text"
+                            placeholder="ID (default: ID)"
+                            value={currentConfig.authToken || ''}
+                            onChange={(e) => setCurrentConfig({ ...currentConfig, authToken: e.target.value })}
+                            className="w-full bg-bg-panel border border-border-main rounded-xl px-3.5 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1619,41 +1661,71 @@ export const ApiSchedulerView: React.FC = () => {
                 {activeReqTab === 'schedule' && (
                   <div className="space-y-6 max-w-2xl">
                     
-                    {/* Spring Cron Expression Section (Multiple Triggers Supported) */}
+                    {/* Spring Cron Expression Section (Multiple Triggers Supported or Standby Mode) */}
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <div>
                           <h4 className="text-xs font-bold text-text-main">Spring Cron Schedule Triggers</h4>
-                          <p className="text-[11px] text-text-muted">Standard 6-field Spring Cron (sec min hr day month weekday). Add multiple rules to schedule multiple periodic triggers.</p>
+                          <p className="text-[11px] text-text-muted">Standard 6-field Spring Cron (sec min hr day month weekday). Schedule is optional — leave empty for on-demand / Webhook Trigger mode.</p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setCronTriggers([...cronTriggers, '0 0 12 * * *'])}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-colors border border-amber-500/30 shadow-sm"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Cron Trigger</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {cronTriggers.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setCronTriggers([])}
+                              className="px-2.5 py-1.5 rounded-xl text-text-muted hover:text-rose-500 hover:bg-rose-500/10 text-xs font-medium transition-colors border border-border-main"
+                              title="Set to Standby (No recurring timer)"
+                            >
+                              Clear (Standby)
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCronTriggers([...cronTriggers, '0 0 12 * * *'])}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-colors border border-amber-500/30 shadow-sm"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Cron Trigger</span>
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="space-y-2.5">
-                        {cronTriggers.map((cron, idx) => (
-                          <div key={idx} className="flex items-center gap-2.5 group">
-                            <div className="flex-1 bg-bg-main p-3 border border-border-main rounded-xl shadow-inner flex items-center gap-2">
-                              <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                              <input
-                                type="text"
-                                placeholder="e.g. 0 */5 * * * * or 0 0 12 * * *"
-                                value={cron}
-                                onChange={(e) => {
-                                  const copy = [...cronTriggers];
-                                  copy[idx] = e.target.value;
-                                  setCronTriggers(copy);
-                                }}
-                                className="w-full bg-transparent border-0 text-xs font-mono font-bold text-amber-700 dark:text-amber-300 focus:outline-none focus:ring-0 placeholder:text-text-muted"
-                              />
-                            </div>
-                            {cronTriggers.length > 1 && (
+                      {cronTriggers.length === 0 ? (
+                        <div className="p-4 rounded-xl border border-dashed border-border-main bg-bg-main/50 text-center space-y-2">
+                          <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-500/10 text-slate-400 mb-1">
+                            <Clock className="w-4 h-4" />
+                          </div>
+                          <p className="text-xs font-semibold text-text-main">Standby Mode (Tidak Ada Jadwal Otomatis)</p>
+                          <p className="text-[11px] text-text-muted max-w-md mx-auto leading-relaxed">
+                            Konfigurasi API ini berada dalam mode standby tanpa timer berkala. Endpoint ini hanya akan berjalan jika dipanggil oleh <strong>Trigger Webhooks</strong> atau saat tombol <strong>Run Now</strong> diklik manual.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setCronTriggers(['0 */5 * * * *'])}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-colors border border-amber-500/30"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Aktifkan Jadwal Cron</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {cronTriggers.map((cron, idx) => (
+                            <div key={idx} className="flex items-center gap-2.5 group">
+                              <div className="flex-1 bg-bg-main p-3 border border-border-main rounded-xl shadow-inner flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                                <input
+                                  type="text"
+                                  placeholder="e.g. 0 */5 * * * * or 0 0 12 * * *"
+                                  value={cron}
+                                  onChange={(e) => {
+                                    const copy = [...cronTriggers];
+                                    copy[idx] = e.target.value;
+                                    setCronTriggers(copy);
+                                  }}
+                                  className="w-full bg-transparent border-0 text-xs font-mono font-bold text-amber-700 dark:text-amber-300 focus:outline-none focus:ring-0 placeholder:text-text-muted"
+                                />
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => setCronTriggers(cronTriggers.filter((_, i) => i !== idx))}
@@ -1662,15 +1734,17 @@ export const ApiSchedulerView: React.FC = () => {
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2.5">
                         <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                         <span className="leading-relaxed font-medium">
-                          Setiap aturan Spring Cron di atas akan mengeksekusi fetch API secara mandiri, memasukkan data ke tabel target, dan mengirim notifikasi jika terjadi kegagalan.
+                          {cronTriggers.length === 0 
+                            ? 'Mode Standby aktif. Tidak ada beban periodic query ke API sumber selama belum ada trigger webhook yang masuk.'
+                            : 'Setiap aturan Spring Cron di atas akan mengeksekusi fetch API secara mandiri, memasukkan data ke tabel target, dan mengirim notifikasi jika terjadi kegagalan.'}
                         </span>
                       </div>
                     </div>
@@ -2437,13 +2511,18 @@ export const ApiSchedulerView: React.FC = () => {
                                     {/* Spring Cron */}
                                     <td className="py-3 px-4 relative">
                                       {(() => {
-                                        const crons = (cfg.cronExpression || '0 */5 * * * *')
+                                        const crons = (cfg.cronExpression || '')
                                           .split(/[;,\n]+/)
                                           .map(c => c.trim())
                                           .filter(Boolean);
                                         const count = crons.length;
                                         if (count === 0) {
-                                          return <span className="text-text-muted text-[11px] font-mono">No Cron</span>;
+                                          return (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-medium bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-500/20">
+                                              <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                                              Standby / Trigger
+                                            </span>
+                                          );
                                         }
                                         const firstCron = crons[0];
                                         const extraCount = count - 1;

@@ -16,6 +16,8 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import javax.sql.DataSource;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -168,24 +170,71 @@ public class ApiSchedulerService {
             String fullUrl = buildFullUrl(config.getUrl(), config.getQueryParams());
             HttpRequest.Builder reqBuilder = HttpRequest.newBuilder().uri(URI.create(fullUrl));
 
-            // Set Headers
+            // Set Headers & Extract Ginee HMAC headers if configured in Headers tab
+            String headerAccessKey = null;
+            String headerSecretKey = null;
+            String headerCountry = null;
+
             if (config.getHeaders() != null && !config.getHeaders().trim().isEmpty()) {
                 try {
                     ObjectMapper mapper = new ObjectMapper();
                     Map<String, String> headersMap = mapper.readValue(config.getHeaders(), new TypeReference<Map<String, String>>() {});
-                    headersMap.forEach(reqBuilder::header);
+                    for (Map.Entry<String, String> entry : headersMap.entrySet()) {
+                        String k = entry.getKey() != null ? entry.getKey().trim() : "";
+                        String v = entry.getValue() != null ? entry.getValue().trim() : "";
+                        if (k.equalsIgnoreCase("X-Ginee-Access-Key") || k.equalsIgnoreCase("Ginee-Access-Key") || k.equalsIgnoreCase("X-Advai-Access-Key")) {
+                            headerAccessKey = v;
+                        } else if (k.equalsIgnoreCase("X-Ginee-Secret-Key") || k.equalsIgnoreCase("Ginee-Secret-Key") || k.equalsIgnoreCase("X-Advai-Secret-Key")) {
+                            headerSecretKey = v;
+                        } else if (k.equalsIgnoreCase("X-Advai-Country") || k.equalsIgnoreCase("Country")) {
+                            headerCountry = v;
+                            reqBuilder.header(k, v);
+                        } else {
+                            reqBuilder.header(k, v);
+                        }
+                    }
                 } catch (Exception e) {
                     logger.warn("Failed to parse request headers JSON: {}", e.getMessage());
                 }
             }
 
-            // Set Auth
+            // Set Auth (Basic, Bearer, or Ginee Open API HMAC-SHA256 from Auth tab or Headers tab or URL domain)
             if ("basic".equalsIgnoreCase(config.getAuthType()) && config.getAuthUsername() != null && config.getAuthPassword() != null) {
                 String authStr = config.getAuthUsername() + ":" + config.getAuthPassword();
                 String encodedAuth = Base64.getEncoder().encodeToString(authStr.getBytes(StandardCharsets.UTF_8));
                 reqBuilder.header("Authorization", "Basic " + encodedAuth);
             } else if ("bearer".equalsIgnoreCase(config.getAuthType()) && config.getAuthToken() != null) {
                 reqBuilder.header("Authorization", "Bearer " + config.getAuthToken().trim());
+            } else if ("ginee".equalsIgnoreCase(config.getAuthType()) || headerSecretKey != null || (fullUrl != null && fullUrl.contains("api.ginee.com"))) {
+                String accessKey = (headerAccessKey != null && !headerAccessKey.isEmpty()) ? headerAccessKey :
+                        ((config.getAuthUsername() != null && !config.getAuthUsername().trim().isEmpty())
+                                ? config.getAuthUsername().trim() : System.getenv("GINEE_ACCESS_KEY"));
+                String secretKey = (headerSecretKey != null && !headerSecretKey.isEmpty()) ? headerSecretKey :
+                        ((config.getAuthPassword() != null && !config.getAuthPassword().trim().isEmpty())
+                                ? config.getAuthPassword().trim() : System.getenv("GINEE_SECRET_KEY"));
+                String country = (headerCountry != null && !headerCountry.isEmpty()) ? headerCountry :
+                        ((config.getAuthToken() != null && !config.getAuthToken().trim().isEmpty())
+                                ? config.getAuthToken().trim() : (System.getenv("GINEE_COUNTRY") != null ? System.getenv("GINEE_COUNTRY") : "ID"));
+
+                if (accessKey != null && !accessKey.isEmpty() && secretKey != null && !secretKey.isEmpty()) {
+                    try {
+                        String method = config.getMethod() != null ? config.getMethod().toUpperCase() : "POST";
+                        URI u = URI.create(fullUrl);
+                        String path = u.getRawPath();
+                        if (path == null || path.isEmpty()) path = "/";
+                        String signStr = method + "$" + path + "$";
+
+                        Mac mac = Mac.getInstance("HmacSHA256");
+                        mac.init(new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+                        byte[] hmac = mac.doFinal(signStr.getBytes(StandardCharsets.UTF_8));
+                        String signature = Base64.getEncoder().encodeToString(hmac);
+
+                        reqBuilder.header("Authorization", accessKey + ":" + signature);
+                        reqBuilder.header("X-Advai-Country", country);
+                    } catch (Exception e) {
+                        logger.warn("Failed generating Ginee HMAC signature: {}", e.getMessage());
+                    }
+                }
             }
 
             // Set Method & Body
@@ -259,6 +308,100 @@ public class ApiSchedulerService {
             repository.updateLastRun(id, "FAILED", errMsg);
             sendNotificationIfConfigured(config, "FAILED", errMsg);
         }
+    }
+
+    /**
+     * Execute an API Scheduler on demand with dynamic parameters (e.g. from Webhook Trigger)
+     */
+    public void executeTriggerWithParams(String id, Map<String, String> dynamicParams, String rawPayload) {
+        Optional<ApiSchedulerConfig> opt = repository.findById(id);
+        if (opt.isEmpty()) {
+            logger.error("Webhook Trigger failed: API Scheduler ID [{}] not found", id);
+            return;
+        }
+        ApiSchedulerConfig original = opt.get();
+        ApiSchedulerConfig config = cloneWithParams(original, dynamicParams);
+
+        logger.info("Executing Webhook Trigger for API Scheduler [{}] - {} {} with params: {}",
+                config.getName(), config.getMethod(), config.getUrl(), dynamicParams);
+
+        try {
+            Map<String, Object> testRes = testHttpEndpoint(config);
+            int statusCode = (int) testRes.get("statusCode");
+            String responseBody = (String) testRes.get("body");
+
+            if (statusCode < 200 || statusCode >= 300) {
+                String errMsg = "HTTP Request failed with status code " + statusCode + ": " + (responseBody != null ? responseBody : "");
+                logger.error("Webhook Trigger [{}] failed: {}", config.getName(), errMsg);
+                repository.updateLastRun(id, "FAILED", errMsg);
+                sendNotificationIfConfigured(config, "FAILED", errMsg);
+                return;
+            }
+
+            // Ingest Response JSON to Target Database
+            if (config.getTargetConnectionId() != null && config.getTargetTable() != null && !config.getTargetTable().trim().isEmpty()) {
+                saveResponseToTargetDatabase(config.getTargetConnectionId(), config.getTargetTable().trim(), config.getKodeData(), responseBody);
+            }
+
+            String successMsg = "Webhook Trigger successfully ingested API response (HTTP " + statusCode + ", " + testRes.get("durationMs") + "ms)";
+            logger.info("Webhook Trigger [{}] completed successfully for params: {}", config.getName(), dynamicParams);
+            repository.updateLastRun(id, "SUCCESS", successMsg);
+
+        } catch (Exception e) {
+            String errMsg = "Webhook Trigger error: " + e.getMessage();
+            logger.error("Error executing Webhook Trigger for [{}] : {}", config.getName(), e.getMessage(), e);
+            repository.updateLastRun(id, "FAILED", errMsg);
+            sendNotificationIfConfigured(config, "FAILED", errMsg);
+        }
+    }
+
+    private ApiSchedulerConfig cloneWithParams(ApiSchedulerConfig src, Map<String, String> dynamicParams) {
+        ApiSchedulerConfig target = new ApiSchedulerConfig();
+        target.setId(src.getId());
+        target.setName(src.getName());
+        target.setGroupName(src.getGroupName());
+        target.setMethod(src.getMethod());
+        target.setAuthType(src.getAuthType());
+        target.setAuthUsername(src.getAuthUsername());
+        target.setAuthPassword(src.getAuthPassword());
+        target.setAuthToken(src.getAuthToken());
+        target.setBodyType(src.getBodyType());
+        target.setTargetConnectionId(src.getTargetConnectionId());
+        target.setTargetTable(src.getTargetTable());
+        target.setKodeData(src.getKodeData());
+        target.setCronExpression(src.getCronExpression());
+        target.setNotificationChannelId(src.getNotificationChannelId());
+        target.setActive(src.isActive());
+
+        String url = src.getUrl();
+        String queryParams = src.getQueryParams();
+        String headers = src.getHeaders();
+        String bodyContent = src.getBodyContent();
+
+        if (dynamicParams != null && !dynamicParams.isEmpty()) {
+            for (Map.Entry<String, String> entry : dynamicParams.entrySet()) {
+                String k = entry.getKey();
+                String v = entry.getValue() != null ? entry.getValue() : "";
+                if (url != null) {
+                    url = url.replace("{{" + k + "}}", v).replace("{" + k + "}", v);
+                }
+                if (queryParams != null) {
+                    queryParams = queryParams.replace("{{" + k + "}}", v).replace("{" + k + "}", v);
+                }
+                if (headers != null) {
+                    headers = headers.replace("{{" + k + "}}", v).replace("{" + k + "}", v);
+                }
+                if (bodyContent != null) {
+                    bodyContent = bodyContent.replace("{{" + k + "}}", v).replace("{" + k + "}", v);
+                }
+            }
+        }
+
+        target.setUrl(url);
+        target.setQueryParams(queryParams);
+        target.setHeaders(headers);
+        target.setBodyContent(bodyContent);
+        return target;
     }
 
     private void sendNotificationIfConfigured(ApiSchedulerConfig config, String status, String message) {
@@ -519,6 +662,40 @@ public class ApiSchedulerService {
                     trimmed = unwrapped.asText().trim();
                 }
             } catch (Exception ignored) {}
+        }
+
+        // Check if response contains array or data array (e.g. Ginee Open API: {"data": [...]})
+        try {
+            JsonNode root = objectMapper.readTree(trimmed);
+            if (root.has("data")) {
+                JsonNode dataNode = root.get("data");
+                if (dataNode.isArray() && !dataNode.isEmpty()) {
+                    for (JsonNode elem : dataNode) {
+                        recordsToInsert.add(objectMapper.writeValueAsString(elem));
+                    }
+                    logger.info("Extracted {} items from response 'data' array for detail_data", recordsToInsert.size());
+                    return recordsToInsert;
+                } else if (dataNode.isObject() && !dataNode.isEmpty()) {
+                    if (dataNode.has("orders") && dataNode.get("orders").isArray()) {
+                        for (JsonNode elem : dataNode.get("orders")) {
+                            recordsToInsert.add(objectMapper.writeValueAsString(elem));
+                        }
+                        logger.info("Extracted {} orders from response 'data.orders' array", recordsToInsert.size());
+                        return recordsToInsert;
+                    } else {
+                        recordsToInsert.add(objectMapper.writeValueAsString(dataNode));
+                        return recordsToInsert;
+                    }
+                }
+            } else if (root.isArray() && !root.isEmpty()) {
+                for (JsonNode elem : root) {
+                    recordsToInsert.add(objectMapper.writeValueAsString(elem));
+                }
+                logger.info("Extracted {} items from root JSON array for detail_data", recordsToInsert.size());
+                return recordsToInsert;
+            }
+        } catch (Exception e) {
+            logger.debug("Parsing response JSON in extractRecordsToInsert: {}", e.getMessage());
         }
 
         // Bundle complete API response into JSON array format [{...}]

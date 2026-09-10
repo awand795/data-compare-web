@@ -42,6 +42,8 @@ public class WebhookService {
     private final ConnectionRepository connectionRepository;
     private final ConnectionManagerService connectionManagerService;
     private final NotificationService notificationService;
+    private final ApiSchedulerService apiSchedulerService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -51,11 +53,13 @@ public class WebhookService {
     public WebhookService(WebhookRepository webhookRepository,
                           ConnectionRepository connectionRepository,
                           ConnectionManagerService connectionManagerService,
-                          NotificationService notificationService) {
+                          NotificationService notificationService,
+                          @org.springframework.context.annotation.Lazy ApiSchedulerService apiSchedulerService) {
         this.webhookRepository = webhookRepository;
         this.connectionRepository = connectionRepository;
         this.connectionManagerService = connectionManagerService;
         this.notificationService = notificationService;
+        this.apiSchedulerService = apiSchedulerService;
     }
 
     public static class WebhookProcessResult {
@@ -553,10 +557,24 @@ public class WebhookService {
     // ========================================================
 
     /**
-     * Trigger asynchronous detail enrichment in background thread
+     * Trigger asynchronous detail enrichment / API Scheduler trigger in background thread
      */
     private void triggerAsyncEnrichment(WebhookConfig config, List<String> records, String rawPayload) {
         if (!config.isEnableEnrichment()) return;
+
+        // 1. Check if linked API Scheduler is configured (New Flexible Architecture)
+        if (config.getTriggerApiSchedulerId() != null && !config.getTriggerApiSchedulerId().trim().isEmpty()) {
+            CompletableFuture.runAsync(() -> {
+                try {
+                    processApiSchedulerTrigger(config, records, rawPayload);
+                } catch (Exception e) {
+                    logger.error("Error in Webhook Trigger background task for [{}]: {}", config.getName(), e.getMessage(), e);
+                }
+            });
+            return;
+        }
+
+        // 2. Legacy fallback: Process direct Ginee Enrichment
         if (config.getEnrichmentTargetConnectionId() == null || config.getEnrichmentTargetConnectionId().trim().isEmpty()) {
             logger.warn("Enrichment skipped for webhook [{}]: Target Connection ID for detail data is empty", config.getName());
             return;
@@ -573,6 +591,159 @@ public class WebhookService {
                 logger.error("Error in Ginee enrichment background task for webhook [{}]: {}", config.getName(), e.getMessage(), e);
             }
         });
+    }
+
+    /**
+     * Process generic API Scheduler Trigger: inspects incoming JSON matching triggerFilterKey/triggerFilterValue,
+     * extracts PK/parameter via triggerParamKey, and calls ApiSchedulerService with dynamic parameter substitution.
+     */
+    private void processApiSchedulerTrigger(WebhookConfig config, List<String> records, String rawPayload) {
+        String filterKey = (config.getTriggerFilterKey() != null && !config.getTriggerFilterKey().trim().isEmpty())
+                ? config.getTriggerFilterKey().trim() : "orderStatus";
+        String filterVal = (config.getTriggerFilterValue() != null && !config.getTriggerFilterValue().trim().isEmpty())
+                ? config.getTriggerFilterValue().trim() : "READY_TO_SHIP";
+        String paramKey = (config.getTriggerParamKey() != null && !config.getTriggerParamKey().trim().isEmpty())
+                ? config.getTriggerParamKey().trim() : "orderId";
+
+        Set<String> extractedPks = new LinkedHashSet<>();
+
+        List<String> itemsToInspect = new ArrayList<>(records);
+        if (rawPayload != null && !rawPayload.trim().isEmpty() && !itemsToInspect.contains(rawPayload)) {
+            itemsToInspect.add(rawPayload);
+        }
+
+        for (String itemStr : itemsToInspect) {
+            try {
+                JsonNode root = objectMapper.readTree(itemStr);
+                inspectJsonForDynamicTrigger(root, filterKey, filterVal, paramKey, extractedPks);
+            } catch (Exception e) {
+                logger.debug("Failed parsing record as JSON for trigger: {}", e.getMessage());
+            }
+        }
+
+        if (extractedPks.isEmpty()) {
+            logger.info("Webhook [{}]: No records matched trigger condition [{}={}]", config.getName(), filterKey, filterVal);
+            return;
+        }
+
+        logger.info("Webhook [{}]: Found {} item(s) matching trigger condition [{}={}] with {}: {}",
+                config.getName(), extractedPks.size(), filterKey, filterVal, paramKey, extractedPks);
+
+        if (apiSchedulerService == null) {
+            logger.error("Webhook [{}]: ApiSchedulerService not available to execute trigger", config.getName());
+            return;
+        }
+
+        List<String> schedulerIds = config.getTriggerApiSchedulerIdList();
+        if (schedulerIds.isEmpty()) {
+            logger.warn("Webhook [{}]: Trigger active but no API Schedulers selected", config.getName());
+            return;
+        }
+
+        for (String pk : extractedPks) {
+            Map<String, String> dynamicParams = new HashMap<>();
+            dynamicParams.put(paramKey, pk);
+            dynamicParams.put("pk", pk);
+            dynamicParams.put("value", pk);
+            dynamicParams.put("orderId", pk);
+
+            for (String schedId : schedulerIds) {
+                try {
+                    apiSchedulerService.executeTriggerWithParams(schedId, dynamicParams, rawPayload);
+                } catch (Exception ex) {
+                    logger.error("Error executing triggered API Scheduler [{}] for PK {}: {}",
+                            schedId, pk, ex.getMessage(), ex);
+                }
+            }
+        }
+    }
+
+    private void inspectJsonForDynamicTrigger(JsonNode node, String filterKey, String filterVal, String paramKey, Set<String> collectedPks) {
+        if (node == null) return;
+
+        if (node.isArray()) {
+            for (JsonNode child : node) {
+                inspectJsonForDynamicTrigger(child, filterKey, filterVal, paramKey, collectedPks);
+            }
+            return;
+        }
+
+        // Check if payload or data is embedded stringified JSON
+        if (node.hasNonNull("payload") && node.get("payload").isTextual()) {
+            try {
+                JsonNode inner = objectMapper.readTree(node.get("payload").asText());
+                inspectJsonForDynamicTrigger(inner, filterKey, filterVal, paramKey, collectedPks);
+            } catch (Exception ignored) {}
+        }
+        if (node.hasNonNull("data") && node.get("data").isTextual()) {
+            try {
+                JsonNode inner = objectMapper.readTree(node.get("data").asText());
+                inspectJsonForDynamicTrigger(inner, filterKey, filterVal, paramKey, collectedPks);
+            } catch (Exception ignored) {}
+        }
+
+        JsonNode payloadObj = node.has("payload") && node.get("payload").isObject() ? node.get("payload") : node;
+
+        String actualVal = findValueInNode(payloadObj, node, filterKey);
+        String extractedPk = findValueInNode(payloadObj, node, paramKey);
+
+        if (!extractedPk.isEmpty() && isStatusMatched(actualVal, filterVal)) {
+            collectedPks.add(extractedPk.trim());
+        }
+
+        if (node.has("data") && node.get("data").isObject()) {
+            inspectJsonForDynamicTrigger(node.get("data"), filterKey, filterVal, paramKey, collectedPks);
+        }
+        if (node.has("orders") && node.get("orders").isArray()) {
+            inspectJsonForDynamicTrigger(node.get("orders"), filterKey, filterVal, paramKey, collectedPks);
+        }
+    }
+
+    private String findValueInNode(JsonNode primary, JsonNode secondary, String key) {
+        String[] candidateKeys = {
+            key,
+            toSnakeCase(key),
+            toCamelCase(key),
+            "order_" + key,
+            "order" + capitalize(key)
+        };
+
+        for (String k : candidateKeys) {
+            if (primary != null && primary.hasNonNull(k)) {
+                return primary.get(k).asText();
+            }
+            if (secondary != null && secondary.hasNonNull(k)) {
+                return secondary.get(k).asText();
+            }
+        }
+        return "";
+    }
+
+    private String toSnakeCase(String str) {
+        if (str == null) return "";
+        return str.replaceAll("([a-z])([A-Z]+)", "$1_$2").toLowerCase();
+    }
+
+    private String toCamelCase(String str) {
+        if (str == null || !str.contains("_")) return str != null ? str : "";
+        StringBuilder sb = new StringBuilder();
+        boolean nextUpper = false;
+        for (char c : str.toCharArray()) {
+            if (c == '_') {
+                nextUpper = true;
+            } else if (nextUpper) {
+                sb.append(Character.toUpperCase(c));
+                nextUpper = false;
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    private String capitalize(String str) {
+        if (str == null || str.isEmpty()) return "";
+        return Character.toUpperCase(str.charAt(0)) + str.substring(1);
     }
 
     /**

@@ -95,7 +95,12 @@ public class WebhookRepository {
                 "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_target_table VARCHAR(255)",
                 "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_kode_data VARCHAR(255) DEFAULT 'GINEE_READY_TO_SHIP'",
                 "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_ginee_access_key VARCHAR(255)",
-                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_ginee_secret_key VARCHAR(255)"
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS enrichment_ginee_secret_key VARCHAR(255)",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_api_scheduler_id VARCHAR(255)",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_filter_key VARCHAR(255) DEFAULT 'orderStatus'",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_filter_value VARCHAR(255) DEFAULT 'READY_TO_SHIP'",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_param_key VARCHAR(255) DEFAULT 'orderId'",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_param_target VARCHAR(255) DEFAULT '{{orderId}}'"
             };
             for (String alter : alterSqls) {
                 try {
@@ -136,6 +141,11 @@ public class WebhookRepository {
                 cfg.setEnrichmentKodeData(rs.getString("enrichment_kode_data"));
                 cfg.setEnrichmentGineeAccessKey(rs.getString("enrichment_ginee_access_key"));
                 cfg.setEnrichmentGineeSecretKey(rs.getString("enrichment_ginee_secret_key"));
+                cfg.setTriggerApiSchedulerId(rs.getString("trigger_api_scheduler_id"));
+                cfg.setTriggerFilterKey(rs.getString("trigger_filter_key"));
+                cfg.setTriggerFilterValue(rs.getString("trigger_filter_value"));
+                cfg.setTriggerParamKey(rs.getString("trigger_param_key"));
+                cfg.setTriggerParamTarget(rs.getString("trigger_param_target"));
             } catch (SQLException ignored) {}
 
             cfg.setNotificationChannelId(rs.getString("notification_channel_id"));
@@ -205,6 +215,14 @@ public class WebhookRepository {
                 ? cfg.getEnrichmentFilterStatus().trim() : "READY_TO_SHIP";
         String enrichKode = (cfg.getEnrichmentKodeData() != null && !cfg.getEnrichmentKodeData().trim().isEmpty())
                 ? cfg.getEnrichmentKodeData().trim() : "GINEE_READY_TO_SHIP";
+        String triggerFilterKey = (cfg.getTriggerFilterKey() != null && !cfg.getTriggerFilterKey().trim().isEmpty())
+                ? cfg.getTriggerFilterKey().trim() : "orderStatus";
+        String triggerFilterValue = (cfg.getTriggerFilterValue() != null && !cfg.getTriggerFilterValue().trim().isEmpty())
+                ? cfg.getTriggerFilterValue().trim() : "READY_TO_SHIP";
+        String triggerParamKey = (cfg.getTriggerParamKey() != null && !cfg.getTriggerParamKey().trim().isEmpty())
+                ? cfg.getTriggerParamKey().trim() : "orderId";
+        String triggerParamTarget = (cfg.getTriggerParamTarget() != null && !cfg.getTriggerParamTarget().trim().isEmpty())
+                ? cfg.getTriggerParamTarget().trim() : "{{orderId}}";
 
         String sql = """
             INSERT INTO webhook_configs (
@@ -213,9 +231,10 @@ public class WebhookRepository {
                 target_connection_id, target_table, kode_data,
                 enable_enrichment, enrichment_filter_status, enrichment_target_connection_id,
                 enrichment_target_table, enrichment_kode_data, enrichment_ginee_access_key, enrichment_ginee_secret_key,
+                trigger_api_scheduler_id, trigger_filter_key, trigger_filter_value, trigger_param_key, trigger_param_target,
                 notification_channel_id, is_active,
                 created_at, updated_at, total_requests, success_count, failure_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 0, 0)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 0, 0)
         """;
         return jdbcTemplate.update(sql,
                 cfg.getId(), cfg.getName(), cfg.getSlug().trim(), cfg.getDescription(), groupName,
@@ -223,6 +242,7 @@ public class WebhookRepository {
                 cfg.getTargetConnectionId(), cfg.getTargetTable(), kodeData,
                 cfg.isEnableEnrichment(), filterStatus, cfg.getEnrichmentTargetConnectionId(),
                 cfg.getEnrichmentTargetTable(), enrichKode, cfg.getEnrichmentGineeAccessKey(), cfg.getEnrichmentGineeSecretKey(),
+                cfg.getTriggerApiSchedulerId(), triggerFilterKey, triggerFilterValue, triggerParamKey, triggerParamTarget,
                 cfg.getNotificationChannelId(), cfg.isActive());
     }
 
@@ -233,6 +253,14 @@ public class WebhookRepository {
                 ? cfg.getEnrichmentFilterStatus().trim() : "READY_TO_SHIP";
         String enrichKode = (cfg.getEnrichmentKodeData() != null && !cfg.getEnrichmentKodeData().trim().isEmpty())
                 ? cfg.getEnrichmentKodeData().trim() : "GINEE_READY_TO_SHIP";
+        String triggerFilterKey = (cfg.getTriggerFilterKey() != null && !cfg.getTriggerFilterKey().trim().isEmpty())
+                ? cfg.getTriggerFilterKey().trim() : "orderStatus";
+        String triggerFilterValue = (cfg.getTriggerFilterValue() != null && !cfg.getTriggerFilterValue().trim().isEmpty())
+                ? cfg.getTriggerFilterValue().trim() : "READY_TO_SHIP";
+        String triggerParamKey = (cfg.getTriggerParamKey() != null && !cfg.getTriggerParamKey().trim().isEmpty())
+                ? cfg.getTriggerParamKey().trim() : "orderId";
+        String triggerParamTarget = (cfg.getTriggerParamTarget() != null && !cfg.getTriggerParamTarget().trim().isEmpty())
+                ? cfg.getTriggerParamTarget().trim() : "{{orderId}}";
 
         String sql = """
             UPDATE webhook_configs SET
@@ -241,6 +269,7 @@ public class WebhookRepository {
                 target_connection_id = ?, target_table = ?, kode_data = ?,
                 enable_enrichment = ?, enrichment_filter_status = ?, enrichment_target_connection_id = ?,
                 enrichment_target_table = ?, enrichment_kode_data = ?, enrichment_ginee_access_key = ?, enrichment_ginee_secret_key = ?,
+                trigger_api_scheduler_id = ?, trigger_filter_key = ?, trigger_filter_value = ?, trigger_param_key = ?, trigger_param_target = ?,
                 notification_channel_id = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """;
@@ -250,6 +279,7 @@ public class WebhookRepository {
                 cfg.getTargetConnectionId(), cfg.getTargetTable(), kodeData,
                 cfg.isEnableEnrichment(), filterStatus, cfg.getEnrichmentTargetConnectionId(),
                 cfg.getEnrichmentTargetTable(), enrichKode, cfg.getEnrichmentGineeAccessKey(), cfg.getEnrichmentGineeSecretKey(),
+                cfg.getTriggerApiSchedulerId(), triggerFilterKey, triggerFilterValue, triggerParamKey, triggerParamTarget,
                 cfg.getNotificationChannelId(), cfg.isActive(), cfg.getId());
     }
 

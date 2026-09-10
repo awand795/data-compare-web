@@ -19,8 +19,15 @@ public class WebhookConfig {
     private String targetTable;
     private String kodeData = "WEBHOOK";
 
-    // Detail Data Enrichment (Ginee API Fetcher)
+    // Detail Data Enrichment / Webhook Trigger (API Scheduler Integration)
     private boolean enableEnrichment = false;
+    private String triggerApiSchedulerId;
+    private String triggerFilterKey = "orderStatus";
+    private String triggerFilterValue = "READY_TO_SHIP";
+    private String triggerParamKey = "orderId";
+    private String triggerParamTarget = "{{orderId}}";
+
+    // Legacy fields kept for backward compatibility
     private String enrichmentFilterStatus = "READY_TO_SHIP";
     private String enrichmentTargetConnectionId;
     private String enrichmentTargetTable;
@@ -265,5 +272,59 @@ public class WebhookConfig {
 
     public void setEnrichmentGineeSecretKey(String enrichmentGineeSecretKey) {
         this.enrichmentGineeSecretKey = enrichmentGineeSecretKey;
+    }
+
+    public String getTriggerApiSchedulerId() {
+        return triggerApiSchedulerId;
+    }
+
+    public void setTriggerApiSchedulerId(String triggerApiSchedulerId) {
+        this.triggerApiSchedulerId = triggerApiSchedulerId;
+    }
+
+    public java.util.List<String> getTriggerApiSchedulerIdList() {
+        if (triggerApiSchedulerId == null || triggerApiSchedulerId.trim().isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        String[] parts = triggerApiSchedulerId.split("[,;\\s]+");
+        java.util.List<String> list = new java.util.ArrayList<>();
+        for (String p : parts) {
+            if (!p.trim().isEmpty() && !list.contains(p.trim())) {
+                list.add(p.trim());
+            }
+        }
+        return list;
+    }
+
+    public String getTriggerFilterKey() {
+        return triggerFilterKey;
+    }
+
+    public void setTriggerFilterKey(String triggerFilterKey) {
+        this.triggerFilterKey = triggerFilterKey;
+    }
+
+    public String getTriggerFilterValue() {
+        return triggerFilterValue;
+    }
+
+    public void setTriggerFilterValue(String triggerFilterValue) {
+        this.triggerFilterValue = triggerFilterValue;
+    }
+
+    public String getTriggerParamKey() {
+        return triggerParamKey;
+    }
+
+    public void setTriggerParamKey(String triggerParamKey) {
+        this.triggerParamKey = triggerParamKey;
+    }
+
+    public String getTriggerParamTarget() {
+        return triggerParamTarget;
+    }
+
+    public void setTriggerParamTarget(String triggerParamTarget) {
+        this.triggerParamTarget = triggerParamTarget;
     }
 }
