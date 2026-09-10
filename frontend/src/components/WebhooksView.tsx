@@ -608,7 +608,7 @@ export const WebhooksView: React.FC = () => {
       }
     }
 
-    // Auto-fill target storage from first selected scheduler if missing
+    // Auto-fill target storage from first selected scheduler
     let effTargetConn = editingConfig.enrichmentTargetConnectionId;
     let effTargetTable = editingConfig.enrichmentTargetTable;
     let effKodeData = editingConfig.enrichmentKodeData;
@@ -616,9 +616,9 @@ export const WebhooksView: React.FC = () => {
       const firstId = editingConfig.triggerApiSchedulerId.split(/[,;\s]+/)[0]?.trim();
       const sched = apiSchedulers.find(s => s.id === firstId);
       if (sched) {
-        if (!effTargetConn) effTargetConn = sched.targetConnectionId;
-        if (!effTargetTable) effTargetTable = sched.targetTable;
-        if (!effKodeData) effKodeData = sched.kodeData;
+        effTargetConn = sched.targetConnectionId || effTargetConn;
+        effTargetTable = sched.targetTable || effTargetTable;
+        effKodeData = sched.kodeData || effKodeData;
       }
     }
 
@@ -1022,17 +1022,30 @@ export const WebhooksView: React.FC = () => {
                           </div>
 
                           {/* Enriched Detail Target */}
-                          {w.enableEnrichment && (
-                            <div className="flex items-center justify-between gap-2 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded">
-                              <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
-                                <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
-                                <span>Detail ({w.enrichmentFilterStatus || 'READY_TO_SHIP'}):</span>
-                              </span>
-                              <div className="text-right truncate text-[11px] font-mono text-emerald-300">
-                                {w.enrichmentTargetTable || 'N/A'}
+                          {w.enableEnrichment && (() => {
+                            const linkedScheds = (w.triggerApiSchedulerId || '')
+                              .split(/[,;\s]+/)
+                              .map(id => apiSchedulers.find(s => s.id === id))
+                              .filter(Boolean);
+                            const targetTableDisplay = linkedScheds.length > 0
+                              ? linkedScheds.map(s => s?.targetTable).filter(Boolean).join(', ')
+                              : (w.enrichmentTargetTable || 'N/A');
+                            const labelDisplay = linkedScheds.length > 1
+                              ? `Detail (${linkedScheds.length} APIs)`
+                              : `Detail (${w.enrichmentFilterStatus || 'READY_TO_SHIP'})`;
+
+                            return (
+                              <div className="flex items-center justify-between gap-2 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded">
+                                <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
+                                  <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
+                                  <span>{labelDisplay}:</span>
+                                </span>
+                                <div className="text-right truncate text-[11px] font-mono text-emerald-300" title={targetTableDisplay}>
+                                  {targetTableDisplay}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
 
                           {/* Kode Data */}
                           <div className="flex items-center justify-between gap-2">
@@ -1210,12 +1223,21 @@ export const WebhooksView: React.FC = () => {
                             <td className="p-3">
                               <div className="text-text-main font-medium">{conn?.name || 'N/A'}</div>
                               <div className="text-indigo-400 font-mono text-[11px]">{w.targetTable}</div>
-                              {w.enableEnrichment && (
-                                <div className="text-emerald-400 font-mono text-[10px] mt-0.5 flex items-center gap-1">
-                                  <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
-                                  <span>Detail: {w.enrichmentTargetTable || 'N/A'}</span>
-                                </div>
-                              )}
+                              {w.enableEnrichment && (() => {
+                                const linkedScheds = (w.triggerApiSchedulerId || '')
+                                  .split(/[,;\s]+/)
+                                  .map(id => apiSchedulers.find(s => s.id === id))
+                                  .filter(Boolean);
+                                const targetTableDisplay = linkedScheds.length > 0
+                                  ? linkedScheds.map(s => s?.targetTable).filter(Boolean).join(', ')
+                                  : (w.enrichmentTargetTable || 'N/A');
+                                return (
+                                  <div className="text-emerald-400 font-mono text-[10px] mt-0.5 flex items-center gap-1" title={targetTableDisplay}>
+                                    <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                                    <span>Detail: {targetTableDisplay}</span>
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className="p-3">
                               {w.secretHeaderName ? (
