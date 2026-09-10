@@ -3552,39 +3552,27 @@ export const ApiBuilderView: React.FC = () => {
                 {/* SECTION 4: SCHEDULED TASK & NOTIFICATIONS (SPRING CRON, OPTIONAL WEBHOOK TARGET & ALERTS) */}
                 <div id="sec-cron-push" className="bg-bg-panel border border-border-main hover:border-cyan-500/30 rounded-2xl p-5 space-y-6 transition-all shadow-sm">
                   {/* Section Title Header */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-500">
-                        <Clock className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h3 className="text-xs font-black uppercase tracking-wider text-text-main flex items-center gap-2">
-                          4. Scheduled Task &amp; Webhook Push (Spring Cron, Target Endpoint &amp; Notifikasi)
-                          {currentApi.cronEnabled ? (
-                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">
-                              Schedule Active
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold text-text-muted bg-bg-main border border-border-main px-2 py-0.5 rounded-full font-mono">
-                              Schedule Inactive
-                            </span>
-                          )}
-                        </h3>
-                        <p className="text-[11px] text-text-muted">
-                          Jadwalkan eksekusi query SQL berkala via Spring Cron. Pengiriman data ke Webhook Target bersifat opsional &mdash; scheduler dapat berjalan mandiri di database atau mem-push JSON ke target luar.
-                        </p>
-                      </div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-500">
+                      <Clock className="w-4 h-4" />
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsEndpointListModalOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20 text-xs font-bold transition-all border border-cyan-500/20 cursor-pointer shadow-sm shrink-0"
-                      title="Manage Saved Endpoints"
-                    >
-                      <Radio className="w-3.5 h-3.5 text-cyan-500" />
-                      <span>Endpoint List ({endpointTargets.length})</span>
-                    </button>
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-wider text-text-main flex items-center gap-2">
+                        4. Scheduled Task &amp; Webhook Push (Spring Cron, Target Endpoint &amp; Notifikasi)
+                        {currentApi.cronEnabled ? (
+                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">
+                            Schedule Active
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-text-muted bg-bg-main border border-border-main px-2 py-0.5 rounded-full font-mono">
+                            Schedule Inactive
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-[11px] text-text-muted">
+                        Jadwalkan eksekusi query SQL berkala via Spring Cron. Pengiriman data ke Webhook Target bersifat opsional &mdash; scheduler dapat berjalan mandiri di database atau mem-push JSON ke target luar.
+                      </p>
+                    </div>
                   </div>
 
                   {/* ── 4.1 SPRING CRON SCHEDULER (DEFAULT MUNCUL) ────────────────── */}
@@ -3723,9 +3711,13 @@ export const ApiBuilderView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setIsEndpointListModalOpen(true)}
-                        className="text-[11px] text-cyan-700 dark:text-cyan-300 hover:text-cyan-600 dark:hover:text-cyan-200 font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                        className="text-[11px] text-cyan-700 dark:text-cyan-300 hover:text-cyan-600 dark:hover:text-cyan-200 font-bold flex items-center gap-1.5 cursor-pointer shrink-0 bg-cyan-500/10 hover:bg-cyan-500/20 px-2.5 py-1 rounded-lg border border-cyan-500/20 transition-all"
                       >
-                        <Plus className="w-3 h-3" /> Manage Endpoint List
+                        <Radio className="w-3 h-3 text-cyan-500" />
+                        <span>Manage Endpoint List</span>
+                        <span className="px-1.5 py-0.2 text-[10px] bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 rounded-full font-mono font-bold">
+                          {endpointTargets.length}
+                        </span>
                       </button>
                     </div>
 
