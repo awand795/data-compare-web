@@ -18,7 +18,7 @@ RUN apk add --no-cache openssh-client autossh sshpass
 RUN mkdir -p /app/logs
 
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8081
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
