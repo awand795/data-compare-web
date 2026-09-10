@@ -146,23 +146,32 @@ public class WebhookService {
             trimmedPayload = "{}";
         }
 
-        // Handle JSON array vs JSON object
-        if (trimmedPayload.startsWith("[") && trimmedPayload.endsWith("]")) {
+        // Unwrap double-encoded JSON string if needed
+        if (trimmedPayload.startsWith("\"") && trimmedPayload.endsWith("\"")) {
             try {
-                JsonNode arr = objectMapper.readTree(trimmedPayload);
-                if (arr.isArray() && arr.size() > 1) {
-                    for (JsonNode item : arr) {
-                        recordsToInsert.add(objectMapper.writeValueAsString(item));
-                    }
-                } else {
-                    recordsToInsert.add(trimmedPayload);
+                JsonNode unwrapped = objectMapper.readTree(trimmedPayload);
+                if (unwrapped != null && unwrapped.isTextual()) {
+                    trimmedPayload = unwrapped.asText().trim();
                 }
-            } catch (Exception e) {
-                recordsToInsert.add(trimmedPayload);
-            }
-        } else {
-            recordsToInsert.add(trimmedPayload);
+            } catch (Exception ignored) {}
         }
+
+        // Bundle complete webhook payload into JSON array format [{...}]
+        String bundledPayload;
+        if (trimmedPayload.startsWith("[") && trimmedPayload.endsWith("]")) {
+            bundledPayload = trimmedPayload;
+        } else if (trimmedPayload.startsWith("{") && trimmedPayload.endsWith("}")) {
+            bundledPayload = "[" + trimmedPayload + "]";
+        } else {
+            try {
+                JsonNode parsed = objectMapper.readTree(trimmedPayload);
+                bundledPayload = "[" + objectMapper.writeValueAsString(parsed) + "]";
+            } catch (Exception e) {
+                bundledPayload = "[\"" + trimmedPayload.replace("\"", "\\\"") + "\"]";
+            }
+        }
+
+        recordsToInsert.add(bundledPayload);
 
         // 5. Ingest into Target Database with Strict Schema Validation
         try {
