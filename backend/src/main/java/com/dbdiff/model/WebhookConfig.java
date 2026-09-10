@@ -26,6 +26,8 @@ public class WebhookConfig {
     private String triggerFilterValue = "READY_TO_SHIP";
     private String triggerParamKey = "orderId";
     private String triggerParamTarget = "{{orderId}}";
+    private String triggerFilterRules; // JSON array: [{"key": "orderStatus", "value": "READY_TO_SHIP"}, ...]
+    private String triggerParamMapping; // JSON array: [{"targetParam": "orderId", "sourceJsonPath": "orderId"}, ...]
 
     // Legacy fields kept for backward compatibility
     private String enrichmentFilterStatus = "READY_TO_SHIP";
@@ -326,5 +328,21 @@ public class WebhookConfig {
 
     public void setTriggerParamTarget(String triggerParamTarget) {
         this.triggerParamTarget = triggerParamTarget;
+    }
+
+    public String getTriggerFilterRules() {
+        return triggerFilterRules;
+    }
+
+    public void setTriggerFilterRules(String triggerFilterRules) {
+        this.triggerFilterRules = triggerFilterRules;
+    }
+
+    public String getTriggerParamMapping() {
+        return triggerParamMapping;
+    }
+
+    public void setTriggerParamMapping(String triggerParamMapping) {
+        this.triggerParamMapping = triggerParamMapping;
     }
 }

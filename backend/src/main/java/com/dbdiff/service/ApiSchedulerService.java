@@ -7,6 +7,8 @@ import com.dbdiff.repository.ConnectionRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -394,6 +396,65 @@ public class ApiSchedulerService {
                 if (bodyContent != null) {
                     bodyContent = bodyContent.replace("{{" + k + "}}", v).replace("{" + k + "}", v);
                 }
+            }
+
+            // Also check queryParams JSON keys directly if present
+            if (queryParams != null && queryParams.trim().startsWith("{")) {
+                try {
+                    JsonNode qNode = objectMapper.readTree(queryParams);
+                    if (qNode.isObject()) {
+                        ObjectNode objNode = (ObjectNode) qNode;
+                        for (Map.Entry<String, String> entry : dynamicParams.entrySet()) {
+                            String k = entry.getKey();
+                            String v = entry.getValue() != null ? entry.getValue() : "";
+                            if (objNode.has(k)) {
+                                String cur = objNode.get(k).asText();
+                                if (cur.isEmpty() || cur.equals(k) || cur.equals("{{" + k + "}}") || cur.equals("{" + k + "}")) {
+                                    objNode.put(k, v);
+                                }
+                            }
+                        }
+                        queryParams = objectMapper.writeValueAsString(objNode);
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // Also check bodyContent JSON keys directly if present
+            if (bodyContent != null && bodyContent.trim().startsWith("{")) {
+                try {
+                    JsonNode bNode = objectMapper.readTree(bodyContent);
+                    if (bNode.isObject()) {
+                        ObjectNode objNode = (ObjectNode) bNode;
+                        for (Map.Entry<String, String> entry : dynamicParams.entrySet()) {
+                            String k = entry.getKey();
+                            String v = entry.getValue() != null ? entry.getValue() : "";
+                            if (objNode.has(k)) {
+                                JsonNode cur = objNode.get(k);
+                                if (cur.isArray()) {
+                                    ArrayNode arr = (ArrayNode) cur;
+                                    if (arr.size() == 0 || (arr.size() == 1 && (arr.get(0).asText().isEmpty() || arr.get(0).asText().equals("{{" + k + "}}") || arr.get(0).asText().equals("{" + k + "}") || arr.get(0).asText().equals(k)))) {
+                                        arr.removeAll();
+                                        arr.add(v);
+                                    }
+                                } else if (cur.isTextual() && (cur.asText().isEmpty() || cur.asText().equals("{{" + k + "}}") || cur.asText().equals("{" + k + "}") || cur.asText().equals(k))) {
+                                    objNode.put(k, v);
+                                }
+                            }
+                            // Also check if field is pluralized (e.g. key is orderId, but body has orderIds)
+                            if (objNode.has(k + "s")) {
+                                JsonNode cur = objNode.get(k + "s");
+                                if (cur.isArray()) {
+                                    ArrayNode arr = (ArrayNode) cur;
+                                    if (arr.size() == 0 || (arr.size() == 1 && (arr.get(0).asText().isEmpty() || arr.get(0).asText().equals("{{" + k + "}}") || arr.get(0).asText().equals("{" + k + "}") || arr.get(0).asText().equals(k)))) {
+                                        arr.removeAll();
+                                        arr.add(v);
+                                    }
+                                }
+                            }
+                        }
+                        bodyContent = objectMapper.writeValueAsString(objNode);
+                    }
+                } catch (Exception ignored) {}
             }
         }
 

@@ -100,7 +100,9 @@ public class WebhookRepository {
                 "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_filter_key VARCHAR(255) DEFAULT 'orderStatus'",
                 "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_filter_value VARCHAR(255) DEFAULT 'READY_TO_SHIP'",
                 "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_param_key VARCHAR(255) DEFAULT 'orderId'",
-                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_param_target VARCHAR(255) DEFAULT '{{orderId}}'"
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_param_target VARCHAR(255) DEFAULT '{{orderId}}'",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_filter_rules TEXT",
+                "ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS trigger_param_mapping TEXT"
             };
             for (String alter : alterSqls) {
                 try {
@@ -146,6 +148,8 @@ public class WebhookRepository {
                 cfg.setTriggerFilterValue(rs.getString("trigger_filter_value"));
                 cfg.setTriggerParamKey(rs.getString("trigger_param_key"));
                 cfg.setTriggerParamTarget(rs.getString("trigger_param_target"));
+                cfg.setTriggerFilterRules(rs.getString("trigger_filter_rules"));
+                cfg.setTriggerParamMapping(rs.getString("trigger_param_mapping"));
             } catch (SQLException ignored) {}
 
             cfg.setNotificationChannelId(rs.getString("notification_channel_id"));
@@ -223,6 +227,8 @@ public class WebhookRepository {
                 ? cfg.getTriggerParamKey().trim() : "orderId";
         String triggerParamTarget = (cfg.getTriggerParamTarget() != null && !cfg.getTriggerParamTarget().trim().isEmpty())
                 ? cfg.getTriggerParamTarget().trim() : "{{orderId}}";
+        String triggerFilterRules = cfg.getTriggerFilterRules();
+        String triggerParamMapping = cfg.getTriggerParamMapping();
 
         String sql = """
             INSERT INTO webhook_configs (
@@ -232,9 +238,10 @@ public class WebhookRepository {
                 enable_enrichment, enrichment_filter_status, enrichment_target_connection_id,
                 enrichment_target_table, enrichment_kode_data, enrichment_ginee_access_key, enrichment_ginee_secret_key,
                 trigger_api_scheduler_id, trigger_filter_key, trigger_filter_value, trigger_param_key, trigger_param_target,
+                trigger_filter_rules, trigger_param_mapping,
                 notification_channel_id, is_active,
                 created_at, updated_at, total_requests, success_count, failure_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 0, 0)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 0, 0)
         """;
         return jdbcTemplate.update(sql,
                 cfg.getId(), cfg.getName(), cfg.getSlug().trim(), cfg.getDescription(), groupName,
@@ -243,6 +250,7 @@ public class WebhookRepository {
                 cfg.isEnableEnrichment(), filterStatus, cfg.getEnrichmentTargetConnectionId(),
                 cfg.getEnrichmentTargetTable(), enrichKode, cfg.getEnrichmentGineeAccessKey(), cfg.getEnrichmentGineeSecretKey(),
                 cfg.getTriggerApiSchedulerId(), triggerFilterKey, triggerFilterValue, triggerParamKey, triggerParamTarget,
+                triggerFilterRules, triggerParamMapping,
                 cfg.getNotificationChannelId(), cfg.isActive());
     }
 
@@ -261,6 +269,8 @@ public class WebhookRepository {
                 ? cfg.getTriggerParamKey().trim() : "orderId";
         String triggerParamTarget = (cfg.getTriggerParamTarget() != null && !cfg.getTriggerParamTarget().trim().isEmpty())
                 ? cfg.getTriggerParamTarget().trim() : "{{orderId}}";
+        String triggerFilterRules = cfg.getTriggerFilterRules();
+        String triggerParamMapping = cfg.getTriggerParamMapping();
 
         String sql = """
             UPDATE webhook_configs SET
@@ -270,6 +280,7 @@ public class WebhookRepository {
                 enable_enrichment = ?, enrichment_filter_status = ?, enrichment_target_connection_id = ?,
                 enrichment_target_table = ?, enrichment_kode_data = ?, enrichment_ginee_access_key = ?, enrichment_ginee_secret_key = ?,
                 trigger_api_scheduler_id = ?, trigger_filter_key = ?, trigger_filter_value = ?, trigger_param_key = ?, trigger_param_target = ?,
+                trigger_filter_rules = ?, trigger_param_mapping = ?,
                 notification_channel_id = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """;
@@ -280,6 +291,7 @@ public class WebhookRepository {
                 cfg.isEnableEnrichment(), filterStatus, cfg.getEnrichmentTargetConnectionId(),
                 cfg.getEnrichmentTargetTable(), enrichKode, cfg.getEnrichmentGineeAccessKey(), cfg.getEnrichmentGineeSecretKey(),
                 cfg.getTriggerApiSchedulerId(), triggerFilterKey, triggerFilterValue, triggerParamKey, triggerParamTarget,
+                triggerFilterRules, triggerParamMapping,
                 cfg.getNotificationChannelId(), cfg.isActive(), cfg.getId());
     }
 

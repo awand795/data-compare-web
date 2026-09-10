@@ -5,6 +5,7 @@ import com.dbdiff.model.WebhookConfig;
 import com.dbdiff.model.WebhookLog;
 import com.dbdiff.repository.ConnectionRepository;
 import com.dbdiff.repository.WebhookRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -593,19 +594,89 @@ public class WebhookService {
         });
     }
 
+    public static class FilterRule {
+        private String key;
+        private String value;
+        public FilterRule() {}
+        public FilterRule(String key, String value) {
+            this.key = key;
+            this.value = value;
+        }
+        public String getKey() { return key; }
+        public void setKey(String key) { this.key = key; }
+        public String getValue() { return value; }
+        public void setValue(String value) { this.value = value; }
+    }
+
+    public static class ParamMapping {
+        private String targetParam;
+        private String sourceJsonPath;
+        private String sourceType;
+        public ParamMapping() {}
+        public ParamMapping(String targetParam, String sourceJsonPath) {
+            this.targetParam = targetParam;
+            this.sourceJsonPath = sourceJsonPath;
+        }
+        public String getTargetParam() { return targetParam; }
+        public void setTargetParam(String targetParam) { this.targetParam = targetParam; }
+        public String getSourceJsonPath() { return sourceJsonPath; }
+        public void setSourceJsonPath(String sourceJsonPath) { this.sourceJsonPath = sourceJsonPath; }
+        public String getSourceType() { return sourceType; }
+        public void setSourceType(String sourceType) { this.sourceType = sourceType; }
+    }
+
+    private List<FilterRule> parseFilterRules(WebhookConfig config) {
+        List<FilterRule> rules = new ArrayList<>();
+        if (config.getTriggerFilterRules() != null && !config.getTriggerFilterRules().trim().isEmpty()) {
+            try {
+                rules = objectMapper.readValue(config.getTriggerFilterRules(), new TypeReference<List<FilterRule>>() {});
+            } catch (Exception e) {
+                logger.warn("Failed parsing triggerFilterRules JSON: {}", e.getMessage());
+            }
+        }
+        if (rules.isEmpty()) {
+            String filterKey = config.getTriggerFilterKey();
+            String filterVal = config.getTriggerFilterValue();
+            if (filterKey != null && !filterKey.trim().isEmpty()) {
+                rules.add(new FilterRule(filterKey.trim(), filterVal != null ? filterVal.trim() : "*"));
+            }
+        }
+        rules.removeIf(r -> r.getKey() == null || r.getKey().trim().isEmpty());
+        return rules;
+    }
+
+    private List<ParamMapping> parseParamMappings(WebhookConfig config) {
+        List<ParamMapping> mappings = new ArrayList<>();
+        if (config.getTriggerParamMapping() != null && !config.getTriggerParamMapping().trim().isEmpty()) {
+            try {
+                mappings = objectMapper.readValue(config.getTriggerParamMapping(), new TypeReference<List<ParamMapping>>() {});
+            } catch (Exception e) {
+                logger.warn("Failed parsing triggerParamMapping JSON: {}", e.getMessage());
+            }
+        }
+        if (mappings.isEmpty()) {
+            String paramKey = config.getTriggerParamKey();
+            String paramTarget = config.getTriggerParamTarget();
+            String target = (paramTarget != null && !paramTarget.trim().isEmpty())
+                    ? paramTarget.replace("{", "").replace("}", "").trim()
+                    : "orderId";
+            String src = (paramKey != null && !paramKey.trim().isEmpty()) ? paramKey.trim() : "orderId";
+            mappings.add(new ParamMapping(target, src));
+        }
+        mappings.removeIf(m -> m.getTargetParam() == null || m.getTargetParam().trim().isEmpty());
+        return mappings;
+    }
+
     /**
-     * Process generic API Scheduler Trigger: inspects incoming JSON matching triggerFilterKey/triggerFilterValue,
-     * extracts PK/parameter via triggerParamKey, and calls ApiSchedulerService with dynamic parameter substitution.
+     * Process generic API Scheduler Trigger: inspects incoming JSON matching multiple trigger filter rules (key=value),
+     * extracts mapped parameters via dynamic JSON paths, and calls ApiSchedulerService with parameter substitution.
      */
     private void processApiSchedulerTrigger(WebhookConfig config, List<String> records, String rawPayload) {
-        String filterKey = (config.getTriggerFilterKey() != null && !config.getTriggerFilterKey().trim().isEmpty())
-                ? config.getTriggerFilterKey().trim() : "orderStatus";
-        String filterVal = (config.getTriggerFilterValue() != null && !config.getTriggerFilterValue().trim().isEmpty())
-                ? config.getTriggerFilterValue().trim() : "READY_TO_SHIP";
-        String paramKey = (config.getTriggerParamKey() != null && !config.getTriggerParamKey().trim().isEmpty())
-                ? config.getTriggerParamKey().trim() : "orderId";
+        List<FilterRule> filterRules = parseFilterRules(config);
+        List<ParamMapping> paramMappings = parseParamMappings(config);
 
-        Set<String> extractedPks = new LinkedHashSet<>();
+        List<Map<String, String>> matchedDynamicParamsList = new ArrayList<>();
+        Set<String> seenSignatures = new HashSet<>();
 
         List<String> itemsToInspect = new ArrayList<>(records);
         if (rawPayload != null && !rawPayload.trim().isEmpty() && !itemsToInspect.contains(rawPayload)) {
@@ -615,19 +686,19 @@ public class WebhookService {
         for (String itemStr : itemsToInspect) {
             try {
                 JsonNode root = objectMapper.readTree(itemStr);
-                inspectJsonForDynamicTrigger(root, filterKey, filterVal, paramKey, extractedPks);
+                collectMatchingParams(root, filterRules, paramMappings, matchedDynamicParamsList, seenSignatures);
             } catch (Exception e) {
                 logger.debug("Failed parsing record as JSON for trigger: {}", e.getMessage());
             }
         }
 
-        if (extractedPks.isEmpty()) {
-            logger.info("Webhook [{}]: No records matched trigger condition [{}={}]", config.getName(), filterKey, filterVal);
+        if (matchedDynamicParamsList.isEmpty()) {
+            logger.info("Webhook [{}]: No records matched trigger condition rules (rules count: {})", config.getName(), filterRules.size());
             return;
         }
 
-        logger.info("Webhook [{}]: Found {} item(s) matching trigger condition [{}={}] with {}: {}",
-                config.getName(), extractedPks.size(), filterKey, filterVal, paramKey, extractedPks);
+        logger.info("Webhook [{}]: Found {} matching item(s) to trigger API Schedulers",
+                config.getName(), matchedDynamicParamsList.size());
 
         if (apiSchedulerService == null) {
             logger.error("Webhook [{}]: ApiSchedulerService not available to execute trigger", config.getName());
@@ -640,30 +711,25 @@ public class WebhookService {
             return;
         }
 
-        for (String pk : extractedPks) {
-            Map<String, String> dynamicParams = new HashMap<>();
-            dynamicParams.put(paramKey, pk);
-            dynamicParams.put("pk", pk);
-            dynamicParams.put("value", pk);
-            dynamicParams.put("orderId", pk);
-
+        for (Map<String, String> dynamicParams : matchedDynamicParamsList) {
             for (String schedId : schedulerIds) {
                 try {
                     apiSchedulerService.executeTriggerWithParams(schedId, dynamicParams, rawPayload);
                 } catch (Exception ex) {
-                    logger.error("Error executing triggered API Scheduler [{}] for PK {}: {}",
-                            schedId, pk, ex.getMessage(), ex);
+                    logger.error("Error executing triggered API Scheduler [{}] with params {}: {}",
+                            schedId, dynamicParams, ex.getMessage(), ex);
                 }
             }
         }
     }
 
-    private void inspectJsonForDynamicTrigger(JsonNode node, String filterKey, String filterVal, String paramKey, Set<String> collectedPks) {
+    private void collectMatchingParams(JsonNode node, List<FilterRule> filterRules, List<ParamMapping> paramMappings,
+                                       List<Map<String, String>> matchedList, Set<String> signatures) {
         if (node == null) return;
 
         if (node.isArray()) {
             for (JsonNode child : node) {
-                inspectJsonForDynamicTrigger(child, filterKey, filterVal, paramKey, collectedPks);
+                collectMatchingParams(child, filterRules, paramMappings, matchedList, signatures);
             }
             return;
         }
@@ -672,49 +738,189 @@ public class WebhookService {
         if (node.hasNonNull("payload") && node.get("payload").isTextual()) {
             try {
                 JsonNode inner = objectMapper.readTree(node.get("payload").asText());
-                inspectJsonForDynamicTrigger(inner, filterKey, filterVal, paramKey, collectedPks);
+                collectMatchingParams(inner, filterRules, paramMappings, matchedList, signatures);
             } catch (Exception ignored) {}
         }
         if (node.hasNonNull("data") && node.get("data").isTextual()) {
             try {
                 JsonNode inner = objectMapper.readTree(node.get("data").asText());
-                inspectJsonForDynamicTrigger(inner, filterKey, filterVal, paramKey, collectedPks);
+                collectMatchingParams(inner, filterRules, paramMappings, matchedList, signatures);
             } catch (Exception ignored) {}
         }
 
-        JsonNode payloadObj = node.has("payload") && node.get("payload").isObject() ? node.get("payload") : node;
-
-        String actualVal = findValueInNode(payloadObj, node, filterKey);
-        String extractedPk = findValueInNode(payloadObj, node, paramKey);
-
-        if (!extractedPk.isEmpty() && isStatusMatched(actualVal, filterVal)) {
-            collectedPks.add(extractedPk.trim());
+        // Check if current node satisfies ALL filter rules
+        boolean allMatched = true;
+        for (FilterRule rule : filterRules) {
+            String actualVal = extractValueByPath(node, rule.getKey());
+            if (!isStatusMatched(actualVal, rule.getValue())) {
+                allMatched = false;
+                break;
+            }
         }
 
+        if (allMatched) {
+            Map<String, String> dynamicParams = new LinkedHashMap<>();
+            for (ParamMapping m : paramMappings) {
+                String val = extractValueByPath(node, m.getSourceJsonPath());
+                if (!val.isEmpty()) {
+                    dynamicParams.put(m.getTargetParam(), val.trim());
+                }
+            }
+
+            if (!dynamicParams.isEmpty()) {
+                // Ensure common aliases are available
+                String primaryVal = dynamicParams.values().iterator().next();
+                if (!dynamicParams.containsKey("pk")) dynamicParams.put("pk", primaryVal);
+                if (!dynamicParams.containsKey("value")) dynamicParams.put("value", primaryVal);
+                if (!dynamicParams.containsKey("orderId") && (dynamicParams.containsKey("order_id") || dynamicParams.containsKey("orderIds"))) {
+                    dynamicParams.put("orderId", primaryVal);
+                }
+
+                String signature = dynamicParams.toString();
+                if (!signatures.contains(signature)) {
+                    signatures.add(signature);
+                    matchedList.add(dynamicParams);
+                }
+            }
+        }
+
+        // Check nested containers
         if (node.has("data") && node.get("data").isObject()) {
-            inspectJsonForDynamicTrigger(node.get("data"), filterKey, filterVal, paramKey, collectedPks);
+            collectMatchingParams(node.get("data"), filterRules, paramMappings, matchedList, signatures);
+        } else if (node.has("data") && node.get("data").isArray()) {
+            collectMatchingParams(node.get("data"), filterRules, paramMappings, matchedList, signatures);
         }
         if (node.has("orders") && node.get("orders").isArray()) {
-            inspectJsonForDynamicTrigger(node.get("orders"), filterKey, filterVal, paramKey, collectedPks);
+            collectMatchingParams(node.get("orders"), filterRules, paramMappings, matchedList, signatures);
         }
     }
 
-    private String findValueInNode(JsonNode primary, JsonNode secondary, String key) {
-        String[] candidateKeys = {
-            key,
-            toSnakeCase(key),
-            toCamelCase(key),
-            "order_" + key,
-            "order" + capitalize(key)
-        };
+    private String extractValueByPath(JsonNode root, String path) {
+        if (root == null || path == null || path.trim().isEmpty()) return "";
+        String cleanPath = path.trim();
 
-        for (String k : candidateKeys) {
-            if (primary != null && primary.hasNonNull(k)) {
-                return primary.get(k).asText();
+        // Direct field check
+        String direct = findDirectValue(root, cleanPath);
+        if (!direct.isEmpty()) return direct;
+
+        // Check inside payload or data if present as object
+        if (root.has("payload") && root.get("payload").isObject()) {
+            String val = findDirectValue(root.get("payload"), cleanPath);
+            if (!val.isEmpty()) return val;
+        }
+        if (root.has("data") && root.get("data").isObject()) {
+            String val = findDirectValue(root.get("data"), cleanPath);
+            if (!val.isEmpty()) return val;
+        }
+
+        // Unpack stringified JSON
+        if (root.hasNonNull("payload") && root.get("payload").isTextual()) {
+            try {
+                JsonNode inner = objectMapper.readTree(root.get("payload").asText());
+                String res = extractValueByPath(inner, cleanPath);
+                if (!res.isEmpty()) return res;
+            } catch (Exception ignored) {}
+        }
+        if (root.hasNonNull("data") && root.get("data").isTextual()) {
+            try {
+                JsonNode inner = objectMapper.readTree(root.get("data").asText());
+                String res = extractValueByPath(inner, cleanPath);
+                if (!res.isEmpty()) return res;
+            } catch (Exception ignored) {}
+        }
+
+        // Dot notation or array traversal
+        String normalizedPath = cleanPath.replace("[", ".").replace("]", "");
+        String[] tokens = normalizedPath.split("\\.");
+        JsonNode curr = root;
+
+        for (int i = 0; i < tokens.length; i++) {
+            String token = tokens[i].trim();
+            if (token.isEmpty()) continue;
+            if (curr == null || curr.isMissingNode() || curr.isNull()) {
+                return "";
             }
-            if (secondary != null && secondary.hasNonNull(k)) {
-                return secondary.get(k).asText();
+
+            if (curr.hasNonNull("payload") && curr.get("payload").isTextual()) {
+                try {
+                    curr = objectMapper.readTree(curr.get("payload").asText());
+                } catch (Exception ignored) {}
             }
+
+            if (curr.isArray()) {
+                try {
+                    int idx = Integer.parseInt(token);
+                    if (idx >= 0 && idx < curr.size()) {
+                        curr = curr.get(idx);
+                        continue;
+                    }
+                } catch (NumberFormatException ignored) {}
+                if (curr.size() > 0) {
+                    curr = curr.get(0);
+                    i--; // re-eval on first element
+                    continue;
+                } else {
+                    return "";
+                }
+            }
+
+            JsonNode next = findChildNode(curr, token);
+            if (next != null && !next.isMissingNode() && !next.isNull()) {
+                curr = next;
+            } else if (curr.has("payload") && curr.get("payload").isObject()) {
+                next = findChildNode(curr.get("payload"), token);
+                if (next != null && !next.isMissingNode() && !next.isNull()) {
+                    curr = next;
+                } else {
+                    return "";
+                }
+            } else if (curr.has("data") && curr.get("data").isObject()) {
+                next = findChildNode(curr.get("data"), token);
+                if (next != null && !next.isMissingNode() && !next.isNull()) {
+                    curr = next;
+                } else {
+                    return "";
+                }
+            } else {
+                return "";
+            }
+        }
+
+        if (curr != null && !curr.isMissingNode() && !curr.isNull()) {
+            if (curr.isValueNode()) {
+                return curr.asText();
+            } else if (curr.isArray() && curr.size() > 0) {
+                return curr.get(0).asText();
+            } else {
+                return curr.toString();
+            }
+        }
+
+        return "";
+    }
+
+    private JsonNode findChildNode(JsonNode node, String key) {
+        if (node == null || !node.isObject()) return null;
+        if (node.hasNonNull(key)) return node.get(key);
+        String snake = toSnakeCase(key);
+        if (node.hasNonNull(snake)) return node.get(snake);
+        String camel = toCamelCase(key);
+        if (node.hasNonNull(camel)) return node.get(camel);
+
+        Iterator<String> it = node.fieldNames();
+        while (it.hasNext()) {
+            String f = it.next();
+            if (f.equalsIgnoreCase(key) || f.equalsIgnoreCase(snake) || f.equalsIgnoreCase(camel)) {
+                return node.get(f);
+            }
+        }
+        return null;
+    }
+
+    private String findDirectValue(JsonNode node, String key) {
+        JsonNode child = findChildNode(node, key);
+        if (child != null && child.isValueNode()) {
+            return child.asText();
         }
         return "";
     }

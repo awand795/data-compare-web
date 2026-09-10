@@ -6,10 +6,21 @@ import {
   ShieldCheck, Database, ArrowLeft, Search,
   List, Grid, AlertTriangle,
   Eye, EyeOff, Activity, Send, Bell, Key, X, Sparkles,
-  Zap, CheckSquare, Square, Code2
+  Zap, CheckSquare, Square, Filter, Layers
 } from 'lucide-react';
 import clsx from 'clsx';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
+
+export interface TriggerFilterRule {
+  key: string;
+  value: string;
+}
+
+export interface TriggerParamMapping {
+  targetParam: string;
+  sourceJsonPath: string;
+  sourceType?: 'param' | 'body' | 'placeholder' | 'custom';
+}
 
 export interface WebhookConfig {
   id?: string;
@@ -29,6 +40,8 @@ export interface WebhookConfig {
   triggerFilterValue?: string;
   triggerParamKey?: string;
   triggerParamTarget?: string;
+  triggerFilterRules?: string;
+  triggerParamMapping?: string;
   enrichmentFilterStatus?: string;
   enrichmentTargetConnectionId?: string;
   enrichmentTargetTable?: string;
@@ -117,6 +130,14 @@ export const WebhooksView: React.FC = () => {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [showSecretValue, setShowSecretValue] = useState(false);
+
+  // Filter rules and param mappings state for active editor
+  const [filterRules, setFilterRules] = useState<TriggerFilterRule[]>([
+    { key: 'orderStatus', value: 'READY_TO_SHIP' }
+  ]);
+  const [paramMappings, setParamMappings] = useState<TriggerParamMapping[]>([
+    { targetParam: 'orderId', sourceJsonPath: 'orderId', sourceType: 'placeholder' }
+  ]);
 
   // API Schedulers available for Trigger Webhook
   const [apiSchedulers, setApiSchedulers] = useState<any[]>([]);
@@ -331,6 +352,122 @@ export const WebhooksView: React.FC = () => {
     }
   };
 
+  // Auto-detect parameters and body keys from selected API Schedulers
+  const detectedSchedulerParams = useMemo(() => {
+    const raw = editingConfig.triggerApiSchedulerId || '';
+    const selectedIds = raw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+
+    const detected: { targetParam: string; sourceType: 'param' | 'body' | 'placeholder'; schedulerName: string }[] = [];
+    const seen = new Set<string>();
+
+    selectedIds.forEach(id => {
+      const sched = apiSchedulers.find(s => s.id === id);
+      if (!sched) return;
+      const schedName = sched.name || 'Scheduler';
+
+      // 1. Query Params
+      if (sched.queryParams) {
+        try {
+          const parsed = JSON.parse(sched.queryParams);
+          if (typeof parsed === 'object' && parsed !== null) {
+            Object.keys(parsed).forEach(k => {
+              const cleanK = k.trim();
+              if (cleanK && !seen.has(cleanK)) {
+                seen.add(cleanK);
+                detected.push({ targetParam: cleanK, sourceType: 'param', schedulerName: schedName });
+              }
+            });
+          }
+        } catch (_) {}
+      }
+
+      // 2. Placeholders {{xxx}} or {xxx}
+      const scanPlaceholders = (text?: string) => {
+        if (!text) return;
+        const regex = /\{\{([a-zA-Z0-9_-]+)\}\}|\{([a-zA-Z0-9_-]+)\}/g;
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+          const ph = match[1] || match[2];
+          if (ph && !seen.has(ph)) {
+            seen.add(ph);
+            detected.push({ targetParam: ph, sourceType: 'placeholder', schedulerName: schedName });
+          }
+        }
+      };
+
+      scanPlaceholders(sched.url);
+      scanPlaceholders(sched.queryParams);
+      scanPlaceholders(sched.headers);
+      scanPlaceholders(sched.bodyContent);
+
+      // 3. Body Content JSON Keys
+      if (sched.bodyContent) {
+        try {
+          const parsed = JSON.parse(sched.bodyContent);
+          if (typeof parsed === 'object' && parsed !== null) {
+            const scanKeys = (obj: any) => {
+              if (Array.isArray(obj)) {
+                if (obj.length > 0 && typeof obj[0] === 'object') scanKeys(obj[0]);
+              } else if (typeof obj === 'object' && obj !== null) {
+                Object.keys(obj).forEach(k => {
+                  const cleanK = k.trim();
+                  if (cleanK && !seen.has(cleanK)) {
+                    seen.add(cleanK);
+                    detected.push({ targetParam: cleanK, sourceType: 'body', schedulerName: schedName });
+                  }
+                  if (typeof obj[k] === 'object' && obj[k] !== null && !Array.isArray(obj[k])) {
+                    scanKeys(obj[k]);
+                  }
+                });
+              }
+            };
+            scanKeys(parsed);
+          }
+        } catch (_) {}
+      }
+    });
+
+    return detected;
+  }, [editingConfig.triggerApiSchedulerId, apiSchedulers]);
+
+  const handleSyncDetectedParams = () => {
+    setParamMappings(prev => {
+      const currentMap = new Map(prev.map(p => [p.targetParam, p]));
+      const next = [...prev];
+      let added = 0;
+
+      detectedSchedulerParams.forEach(dp => {
+        if (!currentMap.has(dp.targetParam)) {
+          let defaultSource = dp.targetParam;
+          if (defaultSource.endsWith('s') && defaultSource.length > 2) {
+            defaultSource = defaultSource.slice(0, -1);
+          }
+          next.push({
+            targetParam: dp.targetParam,
+            sourceJsonPath: defaultSource,
+            sourceType: dp.sourceType,
+          });
+          added++;
+        }
+      });
+
+      if (added > 0) {
+        addToast({
+          type: 'success',
+          title: 'Parameter Disinkronkan',
+          message: `${added} parameter baru dari API Scheduler ditambahkan ke mapping.`,
+        });
+      } else {
+        addToast({
+          type: 'info',
+          title: 'Sudah Sesuai',
+          message: 'Semua parameter dari API Scheduler sudah ada dalam mapping.',
+        });
+      }
+      return next;
+    });
+  };
+
   // Open Editor for New or Existing
   const handleOpenEditor = (webhook?: WebhookConfig) => {
     if (webhook) {
@@ -344,6 +481,41 @@ export const WebhooksView: React.FC = () => {
         enrichmentGineeAccessKey: webhook.enrichmentGineeAccessKey || '',
         enrichmentGineeSecretKey: webhook.enrichmentGineeSecretKey || '',
       });
+
+      // Parse filter rules
+      if (webhook.triggerFilterRules && webhook.triggerFilterRules.trim()) {
+        try {
+          const parsed = JSON.parse(webhook.triggerFilterRules);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setFilterRules(parsed);
+          } else {
+            setFilterRules([{ key: webhook.triggerFilterKey || 'orderStatus', value: webhook.triggerFilterValue || 'READY_TO_SHIP' }]);
+          }
+        } catch (_) {
+          setFilterRules([{ key: webhook.triggerFilterKey || 'orderStatus', value: webhook.triggerFilterValue || 'READY_TO_SHIP' }]);
+        }
+      } else {
+        setFilterRules([{ key: webhook.triggerFilterKey || 'orderStatus', value: webhook.triggerFilterValue || 'READY_TO_SHIP' }]);
+      }
+
+      // Parse param mappings
+      if (webhook.triggerParamMapping && webhook.triggerParamMapping.trim()) {
+        try {
+          const parsed = JSON.parse(webhook.triggerParamMapping);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setParamMappings(parsed);
+          } else {
+            const tgt = webhook.triggerParamTarget ? webhook.triggerParamTarget.replace(/[{}]/g, '').trim() : 'orderId';
+            setParamMappings([{ targetParam: tgt, sourceJsonPath: webhook.triggerParamKey || 'orderId', sourceType: 'placeholder' }]);
+          }
+        } catch (_) {
+          const tgt = webhook.triggerParamTarget ? webhook.triggerParamTarget.replace(/[{}]/g, '').trim() : 'orderId';
+          setParamMappings([{ targetParam: tgt, sourceJsonPath: webhook.triggerParamKey || 'orderId', sourceType: 'placeholder' }]);
+        }
+      } else {
+        const tgt = webhook.triggerParamTarget ? webhook.triggerParamTarget.replace(/[{}]/g, '').trim() : 'orderId';
+        setParamMappings([{ targetParam: tgt, sourceJsonPath: webhook.triggerParamKey || 'orderId', sourceType: 'placeholder' }]);
+      }
     } else {
       const firstConn = connections[0]?.id || '';
       setEditingConfig({
@@ -358,6 +530,11 @@ export const WebhooksView: React.FC = () => {
         targetTable: '',
         kodeData: 'GINEE_WEBHOOK',
         enableEnrichment: false,
+        triggerApiSchedulerId: '',
+        triggerFilterKey: 'orderStatus',
+        triggerFilterValue: 'READY_TO_SHIP',
+        triggerParamKey: 'orderId',
+        triggerParamTarget: '{{orderId}}',
         enrichmentFilterStatus: 'READY_TO_SHIP',
         enrichmentTargetConnectionId: firstConn,
         enrichmentTargetTable: '',
@@ -367,6 +544,8 @@ export const WebhooksView: React.FC = () => {
         notificationChannelId: channels.length > 0 ? channels[0].id : '',
         active: true,
       });
+      setFilterRules([{ key: 'orderStatus', value: 'READY_TO_SHIP' }]);
+      setParamMappings([{ targetParam: 'orderId', sourceJsonPath: 'orderId', sourceType: 'placeholder' }]);
     }
     setViewMode('editor');
   };
@@ -401,21 +580,66 @@ export const WebhooksView: React.FC = () => {
       showAlert({ title: 'Validation Error', message: 'Target table name for Raw Ingestion is required.', type: 'warning' });
       return;
     }
+
+    const cleanFilterRules = filterRules.filter(r => r.key && r.key.trim());
+    const cleanParamMappings = paramMappings.filter(p => p.targetParam && p.targetParam.trim());
+
     if (editingConfig.enableEnrichment) {
-      if (!editingConfig.enrichmentTargetConnectionId) {
-        showAlert({ title: 'Validation Error', message: 'Please select a Target Connection for Enriched Detail Data.', type: 'warning' });
+      const selectedSchedIds = (editingConfig.triggerApiSchedulerId || '')
+        .split(/[,;\s]+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      if (selectedSchedIds.length === 0 && !editingConfig.enrichmentTargetConnectionId) {
+        showAlert({
+          title: 'Validation Error',
+          message: 'Pilih minimal satu API Scheduler yang akan di-trigger pada Bagian 4.',
+          type: 'warning',
+        });
         return;
       }
-      if (!editingConfig.enrichmentTargetTable || !editingConfig.enrichmentTargetTable.trim()) {
-        showAlert({ title: 'Validation Error', message: 'Target table name for Enriched Detail Data is required.', type: 'warning' });
+      if (cleanParamMappings.length === 0) {
+        showAlert({
+          title: 'Validation Error',
+          message: 'Tentukan minimal satu mapping parameter untuk menyuplai parameter ke API Scheduler.',
+          type: 'warning',
+        });
         return;
       }
     }
 
+    // Auto-fill target storage from first selected scheduler if missing
+    let effTargetConn = editingConfig.enrichmentTargetConnectionId;
+    let effTargetTable = editingConfig.enrichmentTargetTable;
+    let effKodeData = editingConfig.enrichmentKodeData;
+    if (editingConfig.triggerApiSchedulerId) {
+      const firstId = editingConfig.triggerApiSchedulerId.split(/[,;\s]+/)[0]?.trim();
+      const sched = apiSchedulers.find(s => s.id === firstId);
+      if (sched) {
+        if (!effTargetConn) effTargetConn = sched.targetConnectionId;
+        if (!effTargetTable) effTargetTable = sched.targetTable;
+        if (!effKodeData) effKodeData = sched.kodeData;
+      }
+    }
+
+    const payloadToSave: Partial<WebhookConfig> = {
+      ...editingConfig,
+      enrichmentTargetConnectionId: effTargetConn,
+      enrichmentTargetTable: effTargetTable,
+      enrichmentKodeData: effKodeData,
+      triggerFilterRules: JSON.stringify(cleanFilterRules),
+      triggerParamMapping: JSON.stringify(cleanParamMappings),
+      triggerFilterKey: cleanFilterRules[0]?.key || 'orderStatus',
+      triggerFilterValue: cleanFilterRules[0]?.value || 'READY_TO_SHIP',
+      triggerParamKey: cleanParamMappings[0]?.sourceJsonPath || 'orderId',
+      triggerParamTarget: cleanParamMappings[0]?.targetParam ? `{{${cleanParamMappings[0].targetParam}}}` : '{{orderId}}',
+      enrichmentFilterStatus: cleanFilterRules[0]?.value || 'READY_TO_SHIP',
+    };
+
     setIsSaving(true);
     try {
       if (editingConfig.id) {
-        const res = await axios.put(`/api/webhooks/${editingConfig.id}`, editingConfig);
+        const res = await axios.put(`/api/webhooks/${editingConfig.id}`, payloadToSave);
         setWebhooks(prev => prev.map(w => (w.id === editingConfig.id ? res.data : w)));
         addToast({
           type: 'success',
@@ -423,7 +647,7 @@ export const WebhooksView: React.FC = () => {
           message: `Webhook "${editingConfig.name}" updated successfully.`,
         });
       } else {
-        const res = await axios.post('/api/webhooks', editingConfig);
+        const res = await axios.post('/api/webhooks', payloadToSave);
         setWebhooks(prev => [res.data, ...prev]);
         addToast({
           type: 'success',
@@ -1477,81 +1701,86 @@ export const WebhooksView: React.FC = () => {
                     </p>
                   </div>
 
-                  {/* Section A: Trigger Condition & PK Parameter Mapping */}
+                  {/* Section 1: Trigger Filter Rules (Multiple Key = Value) */}
                   <div className="bg-bg-main p-4 border border-border-main rounded-xl space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-text-main pb-2 border-b border-border-main">
-                      <Code2 className="w-4 h-4 text-indigo-400" />
-                      <span>1. Kondisi Evaluasi Webhook & Parameter PK Dinamis</span>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-border-main">
+                      <div className="flex items-center gap-2 text-xs font-bold text-text-main">
+                        <Filter className="w-4 h-4 text-indigo-400" />
+                        <span>1. Filter Kondisi Webhook (Key = Value)</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFilterRules(prev => [...prev, { key: '', value: '' }])}
+                        className="px-2.5 py-1 text-xs rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center gap-1.5 transition-colors self-start sm:self-auto font-medium"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Tambah Filter Rule</span>
+                      </button>
                     </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-text-main mb-1.5">
-                          Trigger Filter Key <span className="text-rose-400">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. orderStatus"
-                          value={editingConfig.triggerFilterKey || 'orderStatus'}
-                          onChange={e => setEditingConfig(prev => ({ ...prev, triggerFilterKey: e.target.value }))}
-                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-panel border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
-                        />
-                        <span className="text-[10px] text-text-muted mt-1 block">
-                          Key JSON yang dievaluasi (misal: orderStatus, status)
-                        </span>
-                      </div>
 
-                      <div>
-                        <label className="block text-xs font-semibold text-text-main mb-1.5">
-                          Trigger Expected Value <span className="text-rose-400">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. READY_TO_SHIP"
-                          value={editingConfig.triggerFilterValue || 'READY_TO_SHIP'}
-                          onChange={e => setEditingConfig(prev => ({
-                            ...prev,
-                            triggerFilterValue: e.target.value,
-                            enrichmentFilterStatus: e.target.value
-                          }))}
-                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-panel border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
-                        />
-                        <span className="text-[10px] text-text-muted mt-1 block">
-                          Nilai pemicu (bisa koma atau * untuk semua)
-                        </span>
-                      </div>
+                    <p className="text-[11px] text-text-muted">
+                      DarkoSync akan mengevaluasi setiap item/payload webhook. Hanya item yang memenuhi <b>SEMUA</b> kondisi filter (Key = Value) di bawah ini yang akan men-trigger eksekusi API Scheduler.
+                    </p>
 
-                      <div>
-                        <label className="block text-xs font-semibold text-text-main mb-1.5">
-                          Payload PK / Parameter Key <span className="text-rose-400">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. orderId"
-                          value={editingConfig.triggerParamKey || 'orderId'}
-                          onChange={e => setEditingConfig(prev => ({ ...prev, triggerParamKey: e.target.value }))}
-                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-panel border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
-                        />
-                        <span className="text-[10px] text-text-muted mt-1 block">
-                          Key dari webhook untuk diekstrak (misal: orderId)
-                        </span>
-                      </div>
+                    <div className="space-y-2.5">
+                      {filterRules.map((rule, idx) => (
+                        <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-2.5 p-3 rounded-lg bg-bg-panel border border-border-main">
+                          <div className="flex-1">
+                            <label className="block text-[10px] font-semibold text-text-muted mb-1">
+                              JSON Key di Webhook <span className="text-rose-400">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. orderStatus, channel, action"
+                              value={rule.key}
+                              onChange={e => {
+                                const next = [...filterRules];
+                                next[idx].key = e.target.value;
+                                setFilterRules(next);
+                              }}
+                              className="w-full px-3 py-1.5 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
 
-                      <div>
-                        <label className="block text-xs font-semibold text-text-main mb-1.5">
-                          Template Placeholder Tag
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. {{orderId}}"
-                          value={editingConfig.triggerParamTarget || '{{orderId}}'}
-                          onChange={e => setEditingConfig(prev => ({ ...prev, triggerParamTarget: e.target.value }))}
-                          className="w-full px-3 py-2 text-xs rounded-lg bg-bg-panel border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
-                        />
-                        <span className="text-[10px] text-text-muted mt-1 block">
-                          Placeholder di URL/Body API Scheduler
-                        </span>
-                      </div>
+                          <div className="hidden sm:flex items-center justify-center pt-4 text-text-muted font-bold text-xs">
+                            =
+                          </div>
+
+                          <div className="flex-1">
+                            <label className="block text-[10px] font-semibold text-text-muted mb-1">
+                              Expected Value <span className="text-rose-400">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. READY_TO_SHIP, SHOPEE, * (semua)"
+                              value={rule.value}
+                              onChange={e => {
+                                const next = [...filterRules];
+                                next[idx].value = e.target.value;
+                                setFilterRules(next);
+                              }}
+                              className="w-full px-3 py-1.5 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+
+                          <div className="flex sm:flex-col justify-end pt-1 sm:pt-4">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (filterRules.length <= 1) {
+                                  setFilterRules([{ key: '', value: '' }]);
+                                } else {
+                                  setFilterRules(filterRules.filter((_, i) => i !== idx));
+                                }
+                              }}
+                              className="p-1.5 rounded text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                              title="Hapus Filter Rule"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
@@ -1579,7 +1808,7 @@ export const WebhooksView: React.FC = () => {
                     {/* Checkbox Multi-Select List of API Schedulers */}
                     {(() => {
                       const selectedIds = (editingConfig.triggerApiSchedulerId || '')
-                        .split('[,;\\s]+')
+                        .split(/[,;\s]+/)
                         .map(s => s.trim())
                         .filter(Boolean);
 
@@ -1776,6 +2005,140 @@ export const WebhooksView: React.FC = () => {
                         </div>
                       );
                     })()}
+                  </div>
+
+                  {/* Section 3: Mapping Parameter & Request Body API Scheduler */}
+                  <div className="bg-bg-main p-4 border border-border-main rounded-xl space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-border-main">
+                      <div className="flex items-center gap-2 text-xs font-bold text-text-main">
+                        <Layers className="w-4 h-4 text-emerald-400" />
+                        <span>3. Mapping Parameter & Request Body API Scheduler</span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {detectedSchedulerParams.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleSyncDetectedParams}
+                            className="px-2.5 py-1 text-xs rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 transition-colors font-medium"
+                            title="Deteksi ulang parameter dari API Scheduler terpilih"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Sinkronkan Parameter ({detectedSchedulerParams.length})</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => setParamMappings(prev => [...prev, { targetParam: '', sourceJsonPath: '', sourceType: 'custom' }])}
+                          className="px-2.5 py-1 text-xs rounded bg-bg-panel hover:bg-bg-hover text-text-main border border-border-main flex items-center gap-1.5 transition-colors font-medium"
+                        >
+                          <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Tambah Mapping Parameter</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-text-muted">
+                      Tentukan sumber data dari JSON payload webhook untuk setiap parameter atau body key yang dibutuhkan oleh API Scheduler.
+                    </p>
+
+                    {paramMappings.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-text-muted border border-dashed border-border-main rounded-lg">
+                        Belum ada mapping parameter. Klik <b>+ Tambah Mapping Parameter</b> atau <b>Sinkronkan Parameter</b>.
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {paramMappings.map((pm, idx) => (
+                          <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg bg-bg-panel border border-border-main">
+                            {/* Target Param in API Scheduler */}
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] font-semibold text-text-muted">
+                                  Parameter / Body Key di API Scheduler <span className="text-rose-400">*</span>
+                                </label>
+                                {pm.sourceType && (
+                                  <span className={clsx(
+                                    "px-1.5 py-0.2 text-[9px] font-bold rounded",
+                                    pm.sourceType === 'placeholder' ? 'bg-amber-500/20 text-amber-400' :
+                                    pm.sourceType === 'body' ? 'bg-purple-500/20 text-purple-400' :
+                                    pm.sourceType === 'param' ? 'bg-blue-500/20 text-blue-400' :
+                                    'bg-emerald-500/20 text-emerald-400'
+                                  )}>
+                                    {pm.sourceType === 'placeholder' ? 'Tag {{...}}' :
+                                     pm.sourceType === 'body' ? 'JSON Body' :
+                                     pm.sourceType === 'param' ? 'Query Param' : 'Custom'}
+                                  </span>
+                                )}
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="e.g. orderId, orderIds, shopId"
+                                value={pm.targetParam}
+                                onChange={e => {
+                                  const next = [...paramMappings];
+                                  next[idx].targetParam = e.target.value;
+                                  setParamMappings(next);
+                                }}
+                                className="w-full px-3 py-1.5 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
+                              />
+                            </div>
+
+                            <div className="hidden sm:flex items-center justify-center pt-4 text-emerald-400">
+                              <ArrowLeft className="w-4 h-4 text-text-muted" />
+                            </div>
+
+                            {/* Source JSON Key/Path in incoming Webhook Payload */}
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] font-semibold text-text-muted">
+                                  Ambil dari Webhook JSON Key / Path <span className="text-rose-400">*</span>
+                                </label>
+                                <span className="text-[9px] text-text-muted font-mono">Dot notation OK</span>
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="e.g. orderId atau order_id atau data.order_sn"
+                                value={pm.sourceJsonPath}
+                                onChange={e => {
+                                  const next = [...paramMappings];
+                                  next[idx].sourceJsonPath = e.target.value;
+                                  setParamMappings(next);
+                                }}
+                                className="w-full px-3 py-1.5 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-emerald-500"
+                              />
+                            </div>
+
+                            {/* Action Delete */}
+                            <div className="flex sm:flex-col justify-end pt-1 sm:pt-4">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (paramMappings.length <= 1) {
+                                    setParamMappings([{ targetParam: '', sourceJsonPath: '', sourceType: 'custom' }]);
+                                  } else {
+                                    setParamMappings(paramMappings.filter((_, i) => i !== idx));
+                                  }
+                                }}
+                                className="p-1.5 rounded text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                title="Hapus Mapping Parameter"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Informative tips */}
+                    <div className="p-3 bg-bg-panel/70 rounded-lg border border-border-main/60 flex items-start gap-2.5">
+                      <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <div className="text-[11px] text-text-muted leading-relaxed">
+                        <span className="font-semibold text-text-main">Mendukung Format JSON Berbeda: </span>
+                        Format JSON dari tiap marketplace / platform webhook bisa berbeda (misal: <code>orderId</code> di Ginee, <code>data.order_id</code> di TikTok, <code>ordersn</code> di Shopee). Tentukan path JSON di kolom kanan. DarkoSync mendukung pencarian langsung (e.g. <code>orderId</code>), dot notation bertingkat (e.g. <code>data.order.id</code>), dan array indexing (e.g. <code>orders[0].id</code>).
+                      </div>
+                    </div>
                   </div>
 
                   {/* Optional Fallback Ginee Direct Inputs for Backward Compatibility */}
