@@ -725,40 +725,6 @@ public class ApiSchedulerService {
             } catch (Exception ignored) {}
         }
 
-        // Check if response contains array or data array (e.g. Ginee Open API: {"data": [...]})
-        try {
-            JsonNode root = objectMapper.readTree(trimmed);
-            if (root.has("data")) {
-                JsonNode dataNode = root.get("data");
-                if (dataNode.isArray() && !dataNode.isEmpty()) {
-                    for (JsonNode elem : dataNode) {
-                        recordsToInsert.add(objectMapper.writeValueAsString(elem));
-                    }
-                    logger.info("Extracted {} items from response 'data' array for detail_data", recordsToInsert.size());
-                    return recordsToInsert;
-                } else if (dataNode.isObject() && !dataNode.isEmpty()) {
-                    if (dataNode.has("orders") && dataNode.get("orders").isArray()) {
-                        for (JsonNode elem : dataNode.get("orders")) {
-                            recordsToInsert.add(objectMapper.writeValueAsString(elem));
-                        }
-                        logger.info("Extracted {} orders from response 'data.orders' array", recordsToInsert.size());
-                        return recordsToInsert;
-                    } else {
-                        recordsToInsert.add(objectMapper.writeValueAsString(dataNode));
-                        return recordsToInsert;
-                    }
-                }
-            } else if (root.isArray() && !root.isEmpty()) {
-                for (JsonNode elem : root) {
-                    recordsToInsert.add(objectMapper.writeValueAsString(elem));
-                }
-                logger.info("Extracted {} items from root JSON array for detail_data", recordsToInsert.size());
-                return recordsToInsert;
-            }
-        } catch (Exception e) {
-            logger.debug("Parsing response JSON in extractRecordsToInsert: {}", e.getMessage());
-        }
-
         // Bundle complete API response into JSON array format [{...}]
         String bundledJson;
         if (trimmed.startsWith("[") && trimmed.endsWith("]")) {

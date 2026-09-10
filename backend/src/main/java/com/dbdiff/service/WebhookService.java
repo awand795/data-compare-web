@@ -1115,20 +1115,10 @@ public class WebhookService {
                 return;
             }
 
-            JsonNode dataNode = respJson.path("data");
+            String rawBody = resp.body().trim();
+            String bundled = (rawBody.startsWith("[") && rawBody.endsWith("]")) ? rawBody : ("[" + rawBody + "]");
             List<String> detailRecords = new ArrayList<>();
-
-            if (dataNode.isArray()) {
-                for (JsonNode order : dataNode) {
-                    detailRecords.add(objectMapper.writeValueAsString(order));
-                }
-            } else if (dataNode.has("orders") && dataNode.path("orders").isArray()) {
-                for (JsonNode order : dataNode.path("orders")) {
-                    detailRecords.add(objectMapper.writeValueAsString(order));
-                }
-            } else if (dataNode.isObject() && !dataNode.isEmpty()) {
-                detailRecords.add(objectMapper.writeValueAsString(dataNode));
-            }
+            detailRecords.add(bundled);
 
             if (!detailRecords.isEmpty()) {
                 String effectiveKode = (config.getEnrichmentKodeData() != null && !config.getEnrichmentKodeData().trim().isEmpty())
