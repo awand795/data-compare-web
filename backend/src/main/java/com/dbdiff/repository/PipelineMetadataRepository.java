@@ -132,8 +132,8 @@ public class PipelineMetadataRepository {
     public int countPipelinesBySourceConnectionId(String sourceConnectionId) {
         if (sourceConnectionId == null) return 0;
         Integer count = jdbcTemplate.queryForObject(
-            "SELECT count(*) FROM data_warehouse_pipelines WHERE source_connection_id = ?",
-            new Object[]{sourceConnectionId}, Integer.class
+            "SELECT count(*) FROM data_warehouse_pipelines WHERE source_connection_id = ? OR ? = ANY(string_to_array(COALESCE(source_connection_ids, ''), ','))",
+            new Object[]{sourceConnectionId, sourceConnectionId}, Integer.class
         );
         return count != null ? count : 0;
     }
@@ -141,8 +141,8 @@ public class PipelineMetadataRepository {
     public java.util.List<java.util.Map<String, Object>> getPipelinesBySourceConnectionId(String sourceConnectionId) {
         if (sourceConnectionId == null) return java.util.Collections.emptyList();
         return jdbcTemplate.queryForList(
-            "SELECT deploy_id, query, target_table FROM data_warehouse_pipelines WHERE source_connection_id = ?",
-            sourceConnectionId
+            "SELECT deploy_id, query, target_table FROM data_warehouse_pipelines WHERE source_connection_id = ? OR ? = ANY(string_to_array(COALESCE(source_connection_ids, ''), ','))",
+            sourceConnectionId, sourceConnectionId
         );
     }
 }

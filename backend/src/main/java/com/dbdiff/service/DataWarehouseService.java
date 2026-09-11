@@ -1364,6 +1364,12 @@ public class DataWarehouseService {
                                 } catch (Exception ex) {
                                     logger.warn("Could not set REPLICA IDENTITY FULL on table " + tbl + ": " + ex.getMessage());
                                 }
+                                try {
+                                    pgStmt.execute("ALTER PUBLICATION pub_" + safeSlotName + " ADD TABLE " + tbl);
+                                    sendLog(emitter, "Added table " + tbl + " to PostgreSQL publication pub_" + safeSlotName);
+                                } catch (Exception ex) {
+                                    logger.debug("Could not add table " + tbl + " to publication (may already exist): " + ex.getMessage());
+                                }
                             }
                         }
                     } catch (Exception ex) {
@@ -3231,7 +3237,7 @@ public class DataWarehouseService {
         if (lowerName.contains("bool") || jdbcType == java.sql.Types.BOOLEAN || jdbcType == java.sql.Types.BIT) return "Bool";
         if (lowerName.contains("date") || jdbcType == java.sql.Types.DATE) return "Date32";
         if (lowerName.contains("timestamp") || lowerName.contains("datetime") || lowerName.contains("time") || jdbcType == java.sql.Types.TIMESTAMP || jdbcType == java.sql.Types.TIMESTAMP_WITH_TIMEZONE) {
-            return "DateTime64(3)";
+            return "DateTime64(3, 'UTC')";
         }
         return "String";
     }
@@ -3553,10 +3559,23 @@ public class DataWarehouseService {
             } catch (Exception ignored) {}
             
             // Reference Counting Cleanup for Shared Source Connector & Replication Slot
-            if (sourceConnectionId != null) {
+            java.util.Set<String> affectedConnIds = new java.util.LinkedHashSet<>();
+            if (sourceConnectionId != null && !sourceConnectionId.trim().isEmpty()) {
+                affectedConnIds.add(sourceConnectionId.trim());
+            }
+            String multiConnIds = meta != null ? (String) meta.get("source_connection_ids") : null;
+            if (multiConnIds != null && !multiConnIds.trim().isEmpty()) {
+                for (String cid : multiConnIds.split(",")) {
+                    if (!cid.trim().isEmpty()) {
+                        affectedConnIds.add(cid.trim());
+                    }
+                }
+            }
+
+            for (String connIdToClean : affectedConnIds) {
                 try {
-                    int remainingCount = pipelineMetadataRepository.countPipelinesBySourceConnectionId(sourceConnectionId);
-                    com.dbdiff.model.ConnectionDetails sourceConn = connectionRepository.findById(sourceConnectionId);
+                    int remainingCount = pipelineMetadataRepository.countPipelinesBySourceConnectionId(connIdToClean);
+                    com.dbdiff.model.ConnectionDetails sourceConn = connectionRepository.findById(connIdToClean);
                     if (sourceConn != null) {
                         String baseName = sourceConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
                         String sharedSourceConnectorName = "source-" + baseName + "-shared";
@@ -3585,7 +3604,7 @@ public class DataWarehouseService {
                         } else {
                             logger.info(remainingCount + " pipeline(s) still remain for source connection " + sourceConn.getName() + ". Updating shared connector table list.");
                             try {
-                                java.util.List<java.util.Map<String, Object>> remainingMetas = pipelineMetadataRepository.getPipelinesBySourceConnectionId(sourceConnectionId);
+                                java.util.List<java.util.Map<String, Object>> remainingMetas = pipelineMetadataRepository.getPipelinesBySourceConnectionId(connIdToClean);
                                 java.util.Set<String> activeTables = new java.util.LinkedHashSet<>();
                                 for (java.util.Map<String, Object> rMeta : remainingMetas) {
                                     String q = (String) rMeta.get("query");
@@ -3617,7 +3636,7 @@ public class DataWarehouseService {
                         }
                     }
                 } catch (Exception ex) {
-                    logger.warn("Failed reference counting cleanup for sourceConnectionId " + sourceConnectionId, ex);
+                    logger.warn("Failed reference counting cleanup for sourceConnectionId " + connIdToClean, ex);
                 }
             }
             
