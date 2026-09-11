@@ -2822,11 +2822,10 @@ public class DataWarehouseService {
                                             java.time.LocalDateTime ldt = ts.toLocalDateTime();
                                             if (ldt.getYear() < 1900) {
                                                 ldt = java.time.LocalDateTime.of(1900, 1, 1, 0, 0, 0);
-                                                val = java.sql.Timestamp.valueOf(ldt);
                                             } else if (ldt.getYear() > 2299) {
                                                 ldt = java.time.LocalDateTime.of(2299, 12, 31, 23, 59, 59);
-                                                val = java.sql.Timestamp.valueOf(ldt);
                                             }
+                                            val = ldt;
                                         }
                                         targetPs.setObject(i, val);
                                     }
