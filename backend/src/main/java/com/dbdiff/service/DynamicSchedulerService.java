@@ -3,6 +3,7 @@ package com.dbdiff.service;
 import com.dbdiff.model.*;
 import com.dbdiff.repository.ConnectionRepository;
 import com.dbdiff.repository.NotificationChannelRepository;
+import com.dbdiff.repository.TemplateRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +49,9 @@ public class DynamicSchedulerService {
 
     @Autowired
     private ConnectionManagerService connectionManagerService;
+
+    @Autowired
+    private TemplateRepository templateRepository;
 
     @Autowired
     private org.springframework.core.task.TaskExecutor taskExecutor;
@@ -231,6 +235,43 @@ public class DynamicSchedulerService {
                         String targetTable = (String) mapping.get("targetTable");
                         String cqSource = (String) mapping.get("customQuerySource");
                         String cqTarget = (String) mapping.get("customQueryTarget");
+
+                        // Dynamically resolve template queries if mapping was created from a template
+                        String mappingId = (String) mapping.get("id");
+                        if (mappingId != null && templateRepository != null) {
+                            String templateId = null;
+                            if (mappingId.startsWith("template-")) {
+                                templateId = mappingId.substring("template-".length());
+                            } else if (mappingId.startsWith("tpl_")) {
+                                templateId = mappingId;
+                            }
+                            if (templateId != null && !templateId.isEmpty()) {
+                                try {
+                                    Template tpl = templateRepository.findById(templateId);
+                                    if (tpl != null) {
+                                        logger.info("Schedule [{}] mapping [{}]: using latest queries from template [{}] ({})", 
+                                                scheduleId, mappingId, templateId, tpl.getName());
+                                        if (tpl.getCustomQuerySource() != null && !tpl.getCustomQuerySource().trim().isEmpty()) {
+                                            cqSource = tpl.getCustomQuerySource();
+                                        }
+                                        if (tpl.getCustomQueryTarget() != null && !tpl.getCustomQueryTarget().trim().isEmpty()) {
+                                            cqTarget = tpl.getCustomQueryTarget();
+                                        }
+                                        if (tpl.getQueryPrimaryKeys() != null && !tpl.getQueryPrimaryKeys().trim().isEmpty()) {
+                                            List<String> tplPks = java.util.Arrays.stream(tpl.getQueryPrimaryKeys().split(","))
+                                                    .map(String::trim)
+                                                    .filter(s -> !s.isEmpty())
+                                                    .collect(java.util.stream.Collectors.toList());
+                                            if (!tplPks.isEmpty()) {
+                                                mapping.put("primaryKeys", tplPks);
+                                            }
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    logger.warn("Could not load linked template [{}] dynamically: {}", templateId, e.getMessage());
+                                }
+                            }
+                        }
 
                         if ((cqSource != null && !cqSource.isEmpty()) || (cqTarget != null && !cqTarget.isEmpty())) {
                             request.setCustomQuerySource(cqSource);

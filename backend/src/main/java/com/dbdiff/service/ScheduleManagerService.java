@@ -3,6 +3,11 @@ package com.dbdiff.service;
 import com.dbdiff.model.ScheduleConfig;
 import com.dbdiff.model.ScheduleResult;
 import com.dbdiff.model.ScheduleResultRow;
+import com.dbdiff.model.Template;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -15,12 +20,17 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class ScheduleManagerService {
 
+    private static final Logger logger = LoggerFactory.getLogger(ScheduleManagerService.class);
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -129,6 +139,61 @@ public class ScheduleManagerService {
                 config.getMappings(), config.isSaveFullData(), config.isNotifyOnlyOnDiff(), config.isDisableOnError(), config.isActive(), config.getGroupName(), id);
                 
         return getSchedule(id);
+    }
+
+    /**
+     * Synchronizes updated template queries and primary keys to all schedules referencing the template.
+     */
+    public int syncTemplateUpdates(Template template) {
+        if (template == null || template.getId() == null) return 0;
+        String templateKey = "template-" + template.getId();
+        int updatedCount = 0;
+        try {
+            List<ScheduleConfig> schedules = getAllSchedules();
+            for (ScheduleConfig schedule : schedules) {
+                boolean modified = false;
+                String mappingsJson = schedule.getMappings();
+                if (mappingsJson != null && (mappingsJson.contains(templateKey) || mappingsJson.contains(template.getId()))) {
+                    try {
+                        List<Map<String, Object>> mappings = objectMapper.readValue(
+                                mappingsJson, new TypeReference<List<Map<String, Object>>>(){}
+                        );
+                        for (Map<String, Object> m : mappings) {
+                            String mId = (String) m.get("id");
+                            if (templateKey.equals(mId) || template.getId().equals(mId)) {
+                                m.put("customQuerySource", template.getCustomQuerySource());
+                                m.put("customQueryTarget", template.getCustomQueryTarget());
+                                if (template.getQueryPrimaryKeys() != null) {
+                                    List<String> pks = Arrays.stream(template.getQueryPrimaryKeys().split(","))
+                                            .map(String::trim)
+                                            .filter(s -> !s.isEmpty())
+                                            .collect(Collectors.toList());
+                                    m.put("primaryKeys", pks);
+                                }
+                                modified = true;
+                            }
+                        }
+                        if (modified) {
+                            schedule.setMappings(objectMapper.writeValueAsString(mappings));
+                            if (mappings.size() == 1) {
+                                schedule.setCustomQuerySource(template.getCustomQuerySource());
+                                schedule.setCustomQueryTarget(template.getCustomQueryTarget());
+                                schedule.setPrimaryKeys(template.getQueryPrimaryKeys());
+                            }
+                            updateSchedule(schedule.getId(), schedule);
+                            updatedCount++;
+                            logger.info("Auto-synced updated query from template [{}] to schedule [{}] ({})", 
+                                    template.getId(), schedule.getId(), schedule.getName());
+                        }
+                    } catch (Exception e) {
+                        logger.error("Failed to parse mappings for schedule [{}] during template sync: {}", schedule.getId(), e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error during syncTemplateUpdates for template {}: {}", template.getId(), e.getMessage());
+        }
+        return updatedCount;
     }
 
     public void updateGroupName(String id, String groupName) {
