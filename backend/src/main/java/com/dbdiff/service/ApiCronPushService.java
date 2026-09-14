@@ -47,6 +47,9 @@ public class ApiCronPushService {
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
 
+    @org.springframework.beans.factory.annotation.Value("${app.scheduling.enabled:true}")
+    private boolean schedulingEnabled;
+
     @Autowired
     public ApiCronPushService(ApiEndpointRepository endpointRepository,
                               ConnectionRepository connectionRepository,
@@ -62,6 +65,10 @@ public class ApiCronPushService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void initAllCronPushes() {
+        if (!schedulingEnabled) {
+            logger.info("[SCHEDULING DISABLED] ApiCronPushService is disabled (app.scheduling.enabled=false). Local mode active.");
+            return;
+        }
         logger.info("Initializing API Builder Scheduled Pushes (Spring Cron)...");
         List<ApiEndpoint> all = endpointRepository.findAll();
         for (ApiEndpoint ep : all) {

@@ -17,6 +17,7 @@ services:
       SSH_PORT: 8822
       SSH_USER: awanda
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      APP_SCHEDULING_ENABLED: "false"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

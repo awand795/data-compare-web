@@ -28,6 +28,9 @@ public class SystemAlertSchedulerService {
     @Autowired
     private TaskScheduler taskScheduler;
 
+    @org.springframework.beans.factory.annotation.Value("${app.scheduling.enabled:true}")
+    private boolean schedulingEnabled;
+
     @Autowired
     private SystemAlertScheduleRepository systemScheduleRepo;
 
@@ -45,6 +48,10 @@ public class SystemAlertSchedulerService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void initSchedulers() {
+        if (!schedulingEnabled) {
+            logger.info("[SCHEDULING DISABLED] SystemAlertSchedulerService is disabled (app.scheduling.enabled=false). Local mode active.");
+            return;
+        }
         logger.info("Initializing System & WAL Alert Schedulers...");
         refreshAllSystemSchedules();
         refreshAllWalSchedules();

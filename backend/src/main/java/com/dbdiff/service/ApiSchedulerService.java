@@ -56,6 +56,9 @@ public class ApiSchedulerService {
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
 
+    @org.springframework.beans.factory.annotation.Value("${app.scheduling.enabled:true}")
+    private boolean schedulingEnabled;
+
     @Autowired
     public ApiSchedulerService(ApiSchedulerRepository repository,
                                ConnectionRepository connectionRepository,
@@ -71,6 +74,10 @@ public class ApiSchedulerService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void initAllSchedulers() {
+        if (!schedulingEnabled) {
+            logger.info("[SCHEDULING DISABLED] ApiSchedulerService is disabled (app.scheduling.enabled=false). Local mode active.");
+            return;
+        }
         logger.info("Initializing API Ingestion Schedulers...");
         List<ApiSchedulerConfig> all = repository.findAll();
         for (ApiSchedulerConfig config : all) {

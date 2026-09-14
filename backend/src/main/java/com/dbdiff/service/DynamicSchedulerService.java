@@ -56,6 +56,9 @@ public class DynamicSchedulerService {
     @Autowired
     private org.springframework.core.task.TaskExecutor taskExecutor;
 
+    @org.springframework.beans.factory.annotation.Value("${app.scheduling.enabled:true}")
+    private boolean schedulingEnabled;
+
     @Autowired
     public DynamicSchedulerService(TaskScheduler taskScheduler,
                                    ScheduleManagerService scheduleManagerService,
@@ -73,6 +76,10 @@ public class DynamicSchedulerService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void init() {
+        if (!schedulingEnabled) {
+            logger.info("[SCHEDULING DISABLED] DynamicSchedulerService is disabled (app.scheduling.enabled=false). Local mode active.");
+            return;
+        }
         try {
             logger.info("Initializing Dynamic Scheduler...");
             List<ScheduleConfig> schedules = scheduleManagerService.getAllSchedules();

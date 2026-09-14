@@ -27,9 +27,13 @@ public class DebeziumAutoHealService {
             
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    @org.springframework.beans.factory.annotation.Value("${app.scheduling.enabled:true}")
+    private boolean schedulingEnabled;
+
     // Runs every 60 seconds
     @Scheduled(fixedDelay = 60000)
     public void checkAndHealConnectors() {
+        if (!schedulingEnabled) return;
         try {
             HttpRequest getRequest = HttpRequest.newBuilder()
                     .uri(URI.create(DEBEZIUM_BASE_URL + "/connectors"))
