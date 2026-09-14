@@ -486,16 +486,18 @@ export const WebhooksView: React.FC = () => {
       if (webhook.triggerFilterRules && webhook.triggerFilterRules.trim()) {
         try {
           const parsed = JSON.parse(webhook.triggerFilterRules);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             setFilterRules(parsed);
           } else {
-            setFilterRules([{ key: webhook.triggerFilterKey || 'orderStatus', value: webhook.triggerFilterValue || 'READY_TO_SHIP' }]);
+            setFilterRules([]);
           }
         } catch (_) {
-          setFilterRules([{ key: webhook.triggerFilterKey || 'orderStatus', value: webhook.triggerFilterValue || 'READY_TO_SHIP' }]);
+          setFilterRules([]);
         }
+      } else if (webhook.triggerFilterKey && webhook.triggerFilterKey.trim() && webhook.triggerFilterKey.trim() !== '*') {
+        setFilterRules([{ key: webhook.triggerFilterKey.trim(), value: webhook.triggerFilterValue || '*' }]);
       } else {
-        setFilterRules([{ key: webhook.triggerFilterKey || 'orderStatus', value: webhook.triggerFilterValue || 'READY_TO_SHIP' }]);
+        setFilterRules([]);
       }
 
       // Parse param mappings
@@ -629,11 +631,11 @@ export const WebhooksView: React.FC = () => {
       enrichmentKodeData: effKodeData,
       triggerFilterRules: JSON.stringify(cleanFilterRules),
       triggerParamMapping: JSON.stringify(cleanParamMappings),
-      triggerFilterKey: cleanFilterRules[0]?.key || 'orderStatus',
-      triggerFilterValue: cleanFilterRules[0]?.value || 'READY_TO_SHIP',
+      triggerFilterKey: cleanFilterRules[0]?.key || '',
+      triggerFilterValue: cleanFilterRules[0]?.value || '*',
       triggerParamKey: cleanParamMappings[0]?.sourceJsonPath || 'orderId',
       triggerParamTarget: cleanParamMappings[0]?.targetParam ? `{{${cleanParamMappings[0].targetParam}}}` : '{{orderId}}',
-      enrichmentFilterStatus: cleanFilterRules[0]?.value || 'READY_TO_SHIP',
+      enrichmentFilterStatus: cleanFilterRules[0]?.value || '*',
     };
 
     setIsSaving(true);
@@ -1741,68 +1743,83 @@ export const WebhooksView: React.FC = () => {
                     </div>
 
                     <p className="text-[11px] text-text-muted">
-                      DarkoSync akan mengevaluasi setiap item/payload webhook. Hanya item yang memenuhi <b>SEMUA</b> kondisi filter (Key = Value) di bawah ini yang akan men-trigger eksekusi API Scheduler.
+                      DarkoSync akan mengevaluasi setiap item/payload webhook. Hanya item yang memenuhi <b>SEMUA</b> kondisi filter (Key = Value) di bawah ini yang akan men-trigger eksekusi API Scheduler. Jika dikosongkan (tanpa filter), maka <b>SEMUA</b> data/item yang masuk akan otomatis men-trigger API Scheduler.
                     </p>
 
                     <div className="space-y-2.5">
-                      {filterRules.map((rule, idx) => (
-                        <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-2.5 p-3 rounded-lg bg-bg-panel border border-border-main">
-                          <div className="flex-1">
-                            <label className="block text-[10px] font-semibold text-text-muted mb-1">
-                              JSON Key di Webhook <span className="text-rose-400">*</span>
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g. orderStatus, channel, action"
-                              value={rule.key}
-                              onChange={e => {
-                                const next = [...filterRules];
-                                next[idx].key = e.target.value;
-                                setFilterRules(next);
-                              }}
-                              className="w-full px-3 py-1.5 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
-                            />
+                      {filterRules.length === 0 ? (
+                        <div className="p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-base">💡</span>
+                            <div>
+                              <p className="text-xs font-bold text-text-main">Mode: Tanpa Filter (Semua Data Diloloskan)</p>
+                              <p className="text-[11px] text-text-muted">Semua item / payload webhook yang masuk akan langsung men-trigger eksekusi API Scheduler tanpa kondisi filter.</p>
+                            </div>
                           </div>
-
-                          <div className="hidden sm:flex items-center justify-center pt-4 text-text-muted font-bold text-xs">
-                            =
-                          </div>
-
-                          <div className="flex-1">
-                            <label className="block text-[10px] font-semibold text-text-muted mb-1">
-                              Expected Value <span className="text-rose-400">*</span>
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g. READY_TO_SHIP, SHOPEE, * (semua)"
-                              value={rule.value}
-                              onChange={e => {
-                                const next = [...filterRules];
-                                next[idx].value = e.target.value;
-                                setFilterRules(next);
-                              }}
-                              className="w-full px-3 py-1.5 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-
-                          <div className="flex sm:flex-col justify-end pt-1 sm:pt-4">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (filterRules.length <= 1) {
-                                  setFilterRules([{ key: '', value: '' }]);
-                                } else {
-                                  setFilterRules(filterRules.filter((_, i) => i !== idx));
-                                }
-                              }}
-                              className="p-1.5 rounded text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                              title="Hapus Filter Rule"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setFilterRules([{ key: '', value: '' }])}
+                            className="px-2.5 py-1.5 text-xs rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 font-semibold transition-colors cursor-pointer shrink-0"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Tambah Filter
+                          </button>
                         </div>
-                      ))}
+                      ) : (
+                        filterRules.map((rule, idx) => (
+                          <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-2.5 p-3 rounded-lg bg-bg-panel border border-border-main">
+                            <div className="flex-1">
+                              <label className="block text-[10px] font-semibold text-text-muted mb-1">
+                                JSON Key di Webhook <span className="text-rose-400">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. orderStatus, channel, action"
+                                value={rule.key}
+                                onChange={e => {
+                                  const next = [...filterRules];
+                                  next[idx].key = e.target.value;
+                                  setFilterRules(next);
+                                }}
+                                className="w-full px-3 py-1.5 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+
+                            <div className="hidden sm:flex items-center justify-center pt-4 text-text-muted font-bold text-xs">
+                              =
+                            </div>
+
+                            <div className="flex-1">
+                              <label className="block text-[10px] font-semibold text-text-muted mb-1">
+                                Expected Value <span className="text-rose-400">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. READY_TO_SHIP, SHOPEE, * (semua)"
+                                value={rule.value}
+                                onChange={e => {
+                                  const next = [...filterRules];
+                                  next[idx].value = e.target.value;
+                                  setFilterRules(next);
+                                }}
+                                className="w-full px-3 py-1.5 text-xs rounded-lg bg-bg-main border border-border-main text-text-main font-mono focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+
+                            <div className="flex sm:flex-col justify-end pt-1 sm:pt-4">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFilterRules(filterRules.filter((_, i) => i !== idx));
+                                }}
+                                className="p-1.5 rounded text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                title="Hapus Filter Rule (Bila semua dihapus, menjadi mode Tanpa Filter)"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
 

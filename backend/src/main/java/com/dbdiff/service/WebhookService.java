@@ -636,19 +636,23 @@ public class WebhookService {
 
     private List<FilterRule> parseFilterRules(WebhookConfig config) {
         List<FilterRule> rules = new ArrayList<>();
-        if (config.getTriggerFilterRules() != null && !config.getTriggerFilterRules().trim().isEmpty()) {
-            try {
-                rules = objectMapper.readValue(config.getTriggerFilterRules(), new TypeReference<List<FilterRule>>() {});
-            } catch (Exception e) {
-                logger.warn("Failed parsing triggerFilterRules JSON: {}", e.getMessage());
+        if (config.getTriggerFilterRules() != null) {
+            String trimmed = config.getTriggerFilterRules().trim();
+            if (!trimmed.isEmpty()) {
+                try {
+                    rules = objectMapper.readValue(trimmed, new TypeReference<List<FilterRule>>() {});
+                    rules.removeIf(r -> r.getKey() == null || r.getKey().trim().isEmpty());
+                    return rules; // Explicit JSON rules array configured. If empty [], user explicitly wants NO FILTER (pass all).
+                } catch (Exception e) {
+                    logger.warn("Failed parsing triggerFilterRules JSON: {}", e.getMessage());
+                }
             }
         }
-        if (rules.isEmpty()) {
-            String filterKey = config.getTriggerFilterKey();
-            String filterVal = config.getTriggerFilterValue();
-            if (filterKey != null && !filterKey.trim().isEmpty()) {
-                rules.add(new FilterRule(filterKey.trim(), filterVal != null ? filterVal.trim() : "*"));
-            }
+        // Legacy fallback only for old records where triggerFilterRules is null
+        String filterKey = config.getTriggerFilterKey();
+        String filterVal = config.getTriggerFilterValue();
+        if (filterKey != null && !filterKey.trim().isEmpty()) {
+            rules.add(new FilterRule(filterKey.trim(), filterVal != null ? filterVal.trim() : "*"));
         }
         rules.removeIf(r -> r.getKey() == null || r.getKey().trim().isEmpty());
         return rules;
@@ -789,6 +793,11 @@ public class WebhookService {
                 if (!signatures.contains(signature)) {
                     signatures.add(signature);
                     matchedList.add(dynamicParams);
+                }
+            } else if (paramMappings.isEmpty()) {
+                if (!signatures.contains("{}")) {
+                    signatures.add("{}");
+                    matchedList.add(new LinkedHashMap<>());
                 }
             }
         }
