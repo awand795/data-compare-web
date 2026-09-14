@@ -3183,10 +3183,10 @@ export const ApiBuilderView: React.FC = () => {
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
             
             {/* LEFT PANE: SQL Studio & Target Database Connection */}
-            <div className="flex-1 lg:w-3/5 flex flex-col border-r border-border-main min-w-0 bg-[#080e1a] relative z-20">
+            <div className="flex-1 lg:w-3/5 flex flex-col border-r border-border-main min-w-0 bg-[#080e1a] relative z-30">
               
               {/* COMPACT INTEGRATED TOOLBAR (IDE-STYLE) */}
-              <div className="bg-bg-panel/95 backdrop-blur border-b border-border-main px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm relative z-30">
+              <div className="bg-bg-panel/95 backdrop-blur border-b border-border-main px-4 py-2.5 flex items-center justify-between gap-2 shrink-0 shadow-sm relative z-40 overflow-visible">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="flex items-center gap-2 text-xs font-black text-text-main shrink-0 uppercase tracking-wider">
                     <div className="w-6 h-6 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
@@ -3260,32 +3260,34 @@ export const ApiBuilderView: React.FC = () => {
                       <Sparkles className="w-3 h-3 text-cyan-400" />
                       <span>:sys_vars</span>
                     </span>
-                    <div className="absolute right-0 top-full mt-2 hidden group-hover:block z-50 w-80 p-3.5 bg-slate-900/98 dark:bg-slate-950/98 border border-cyan-500/30 rounded-xl shadow-2xl text-[11px] space-y-2 text-text-muted backdrop-blur-md pointer-events-none ring-1 ring-white/10">
-                      <div className="font-bold text-text-main flex items-center gap-1.5 text-xs pb-1.5 border-b border-border-main/60">
-                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>Auto-Injected System Variables</span>
+                    <div className="absolute left-1/2 -translate-x-1/2 top-full pt-1.5 hidden group-hover:block z-50 w-72">
+                      <div className="p-3 bg-slate-900/98 dark:bg-slate-950/98 border border-cyan-500/40 rounded-xl shadow-2xl text-[11px] space-y-2 text-text-muted backdrop-blur-md ring-1 ring-white/10">
+                        <div className="font-bold text-text-main flex items-center gap-1.5 text-xs pb-1.5 border-b border-border-main/60">
+                          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Auto-Injected System Variables</span>
+                        </div>
+                        <div className="space-y-1.5 font-mono text-[11px]">
+                          <div className="flex items-center justify-between gap-2 bg-white/5 px-2 py-1 rounded-lg">
+                            <span className="text-cyan-300 font-bold">:sys_now</span>
+                            <span className="text-text-muted text-[10px] font-sans">Timestamp (YYYY-MM-DD HH:mm:ss)</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 bg-white/5 px-2 py-1 rounded-lg">
+                            <span className="text-cyan-300 font-bold">:sys_today</span>
+                            <span className="text-text-muted text-[10px] font-sans">Tanggal hari ini (YYYY-MM-DD)</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 bg-white/5 px-2 py-1 rounded-lg">
+                            <span className="text-cyan-300 font-bold">:sys_user</span>
+                            <span className="text-text-muted text-[10px] font-sans">Identitas Token / User</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 bg-white/5 px-2 py-1 rounded-lg">
+                            <span className="text-cyan-300 font-bold">:sys_client_ip</span>
+                            <span className="text-text-muted text-[10px] font-sans">IP Caller Client</span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-cyan-400/80 pt-1 border-t border-border-main/50 font-sans italic">
+                          * Otomatis di-inject oleh backend, tidak perlu dikirim oleh client caller.
+                        </p>
                       </div>
-                      <div className="space-y-1.5 font-mono text-[11px]">
-                        <div className="flex items-center justify-between gap-2 bg-white/5 px-2 py-1 rounded-lg">
-                          <span className="text-cyan-300 font-bold">:sys_now</span>
-                          <span className="text-text-muted text-[10px] font-sans">Timestamp (YYYY-MM-DD HH:mm:ss)</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 bg-white/5 px-2 py-1 rounded-lg">
-                          <span className="text-cyan-300 font-bold">:sys_today</span>
-                          <span className="text-text-muted text-[10px] font-sans">Tanggal hari ini (YYYY-MM-DD)</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 bg-white/5 px-2 py-1 rounded-lg">
-                          <span className="text-cyan-300 font-bold">:sys_user</span>
-                          <span className="text-text-muted text-[10px] font-sans">Identitas Token / User</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 bg-white/5 px-2 py-1 rounded-lg">
-                          <span className="text-cyan-300 font-bold">:sys_client_ip</span>
-                          <span className="text-text-muted text-[10px] font-sans">IP Caller Client</span>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-cyan-400/80 pt-1 border-t border-border-main/50 font-sans italic">
-                        * Otomatis di-inject oleh backend, tidak perlu dikirim oleh client caller.
-                      </p>
                     </div>
                   </div>
 
@@ -3310,7 +3312,7 @@ export const ApiBuilderView: React.FC = () => {
             <div className="flex-1 lg:w-2/5 flex flex-col bg-bg-panel overflow-y-auto min-w-0">
               
               {/* STICKY HEADER & SEGMENT CONTROL */}
-              <div className="sticky top-0 z-20 border-b border-border-main bg-bg-editor/90 backdrop-blur-md px-4 py-2.5 flex items-center justify-between shrink-0 shadow-sm">
+              <div className="sticky top-0 z-10 border-b border-border-main bg-bg-editor/90 backdrop-blur-md px-4 py-2.5 flex items-center justify-between shrink-0 shadow-sm">
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal className="w-4 h-4 text-blue-400" />
                   <span className="text-xs font-extrabold uppercase tracking-wider text-text-main">API Settings</span>
