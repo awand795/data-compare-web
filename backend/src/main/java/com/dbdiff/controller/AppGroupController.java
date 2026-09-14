@@ -17,7 +17,7 @@ public class AppGroupController {
     private AppGroupRepository appGroupRepository;
 
     @GetMapping
-    public ResponseEntity<List<String>> getGroups(@RequestParam String module) {
+    public ResponseEntity<List<String>> getGroups(@RequestParam(required = false, defaultValue = "ALL") String module) {
         return ResponseEntity.ok(appGroupRepository.getGroups(module));
     }
 

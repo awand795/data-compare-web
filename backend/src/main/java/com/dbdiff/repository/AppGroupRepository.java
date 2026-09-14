@@ -47,10 +47,6 @@ public class AppGroupRepository {
             String sql = "SELECT DISTINCT name FROM app_groups ORDER BY name ASC";
             return jdbcTemplate.queryForList(sql, String.class);
         }
-        if ("API_SCHEDULER".equalsIgnoreCase(module.trim()) || "API_BUILDER".equalsIgnoreCase(module.trim()) || "SCHEDULE_JOB".equalsIgnoreCase(module.trim()) || "WEBHOOK".equalsIgnoreCase(module.trim())) {
-            String sql = "SELECT DISTINCT name FROM app_groups WHERE module IN ('API_SCHEDULER', 'API_BUILDER', 'SCHEDULE_JOB', 'WEBHOOK') ORDER BY name ASC";
-            return jdbcTemplate.queryForList(sql, String.class);
-        }
         String sql = "SELECT DISTINCT name FROM app_groups WHERE module = ? ORDER BY name ASC";
         return jdbcTemplate.queryForList(sql, String.class, module.trim());
     }
