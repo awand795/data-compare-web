@@ -9,12 +9,15 @@ import {
   ListRestart, Bug, SquareTerminal, CopyPlus, FileCode,
   LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal,
   Folder, FolderOpen, FolderPlus, FolderTree, Shield, AlertTriangle, ChevronRight,
-  CheckSquare, Square, Radio, Bell, Send, MessageCircle, Zap, Sparkles
+  CheckSquare, Square, Radio, Bell, Send, MessageCircle, Zap, Sparkles,
+  Hash, HardDrive
 } from 'lucide-react';
 import { EndpointTargetsModal, type EndpointTarget } from './EndpointTargetsModal';
 import { ParameterRulesModal } from './ParameterRulesModal';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
 import { SQLEditor } from './SQLEditor';
+import { SequenceView } from './SequenceView';
+import { StorageManagerView } from './StorageManagerView';
 import clsx from 'clsx';
 
 export interface ApiParameter {
@@ -118,6 +121,7 @@ export const ApiBuilderView: React.FC = () => {
   
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'edit' | 'spec'>('list');
+  const [backendlessTab, setBackendlessTab] = useState<'endpoints' | 'sequence' | 'storage'>('endpoints');
   const [currentApi, setCurrentApi] = useState<ApiEndpoint | null>(null);
   const [parameterMeta, setParameterMeta] = useState<ApiParameter[]>([]);
   const [selectedParamForRules, setSelectedParamForRules] = useState<ApiParameter | null>(null);
@@ -1110,8 +1114,103 @@ export const ApiBuilderView: React.FC = () => {
   // 1. DASHBOARD & LIST VIEW
   // ─────────────────────────────────────────────
   if (viewMode === 'list') {
+    if (backendlessTab === 'sequence') {
+      return (
+        <div className="h-full flex flex-col overflow-hidden bg-bg-main">
+          <div className="border-b border-border-main bg-bg-panel px-4 py-2.5 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-1.5 p-1 bg-bg-editor rounded-xl border border-border-main">
+              <button
+                onClick={() => setBackendlessTab('endpoints')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                <span>API Endpoints</span>
+              </button>
+              <button
+                onClick={() => setBackendlessTab('sequence')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white shadow-sm transition-all cursor-pointer"
+              >
+                <Hash className="w-3.5 h-3.5" />
+                <span>Auto-Number (Sequence)</span>
+              </button>
+              <button
+                onClick={() => setBackendlessTab('storage')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+              >
+                <HardDrive className="w-3.5 h-3.5" />
+                <span>Storage &amp; Buckets</span>
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <SequenceView />
+          </div>
+        </div>
+      );
+    }
+
+    if (backendlessTab === 'storage') {
+      return (
+        <div className="h-full flex flex-col overflow-hidden bg-bg-main">
+          <div className="border-b border-border-main bg-bg-panel px-4 py-2.5 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-1.5 p-1 bg-bg-editor rounded-xl border border-border-main">
+              <button
+                onClick={() => setBackendlessTab('endpoints')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                <span>API Endpoints</span>
+              </button>
+              <button
+                onClick={() => setBackendlessTab('sequence')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+              >
+                <Hash className="w-3.5 h-3.5" />
+                <span>Auto-Number (Sequence)</span>
+              </button>
+              <button
+                onClick={() => setBackendlessTab('storage')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow-sm transition-all cursor-pointer"
+              >
+                <HardDrive className="w-3.5 h-3.5" />
+                <span>Storage &amp; Buckets</span>
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <StorageManagerView />
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="h-full flex flex-col p-4 md:p-6 overflow-hidden bg-bg-main">
+        {/* BACKENDLESS STUDIO SUB-TABS */}
+        <div className="flex items-center gap-1.5 p-1 bg-bg-editor rounded-xl border border-border-main self-start mb-4 shrink-0">
+          <button
+            onClick={() => setBackendlessTab('endpoints')}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-sm transition-all cursor-pointer"
+          >
+            <Code2 className="w-3.5 h-3.5" />
+            <span>API Endpoints</span>
+          </button>
+          <button
+            onClick={() => setBackendlessTab('sequence')}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+          >
+            <Hash className="w-3.5 h-3.5" />
+            <span>Auto-Number (Sequence)</span>
+          </button>
+          <button
+            onClick={() => setBackendlessTab('storage')}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+          >
+            <HardDrive className="w-3.5 h-3.5" />
+            <span>Storage &amp; Buckets</span>
+          </button>
+        </div>
+
         {/* HEADER & METRIC BANNER */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 shrink-0">
           <div>
@@ -1123,11 +1222,11 @@ export const ApiBuilderView: React.FC = () => {
                 <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-indigo-500 via-cyan-400 to-blue-500 bg-clip-text text-transparent flex items-center gap-2.5">
                   API Builder Studio
                   <span className="text-[10px] md:text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                    v2.0 Realtime
+                    v2.0 Backendless
                   </span>
                 </h1>
                 <p className="text-xs md:text-sm text-text-muted">
-                  Design, test, and expose instant database-backed HTTP endpoints with automated security &amp; pagination.
+                  Backendless Studio: Endpoints DML, Auto-Sequence Number, File Storage &amp; Validasi Bisnis.
                 </p>
               </div>
             </div>
