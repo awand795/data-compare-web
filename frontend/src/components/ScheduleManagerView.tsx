@@ -62,6 +62,7 @@ export const ScheduleManagerView: React.FC = () => {
     // Form state
     const [jobPrefix, setJobPrefix] = useState('');
     const [jobGroupName, setJobGroupName] = useState('General');
+    const [isCustomGroupInput, setIsCustomGroupInput] = useState<boolean>(false);
     const [selectedTemplateId, setSelectedTemplateId] = useState('');
     const [cronExpression, setCronExpression] = useState('0 0 * * * *');
     const [telegramChannelId, setTelegramChannelId] = useState('');
@@ -419,7 +420,9 @@ export const ScheduleManagerView: React.FC = () => {
     const handleEditSchedule = (job: ScheduleConfig) => {
         setEditingScheduleId(job.id);
         setJobPrefix(job.name);
-        setJobGroupName(getJobGroupName(job.groupName));
+        const grp = getJobGroupName(job.groupName);
+        setJobGroupName(grp);
+        setIsCustomGroupInput(Boolean(grp && !allGroups.includes(grp)));
         setCronExpression(job.cronExpression);
         setTelegramChannelId(job.telegramChannelId || '');
         setDiscordChannelId(job.discordChannelId || '');
@@ -441,6 +444,7 @@ export const ScheduleManagerView: React.FC = () => {
         setEditingScheduleId(null);
         setJobPrefix('');
         setJobGroupName(presetGroup ? getJobGroupName(presetGroup) : (selectedGroup !== 'ALL' ? getJobGroupName(selectedGroup) : 'General'));
+        setIsCustomGroupInput(false);
         setSelectedTemplateId('');
         setCronExpression('0 0 * * * *');
         setTelegramChannelId('');
@@ -876,20 +880,70 @@ export const ScheduleManagerView: React.FC = () => {
                                         <input required type="text" value={jobPrefix} onChange={e => setJobPrefix(e.target.value)} className="w-full bg-bg-input border border-border-input rounded-xl px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" placeholder="e.g. Daily Sync Sales" />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-widest">Group / Category</label>
-                                        <input
-                                            list="scheduler-job-group-suggestions"
-                                            type="text"
-                                            value={jobGroupName}
-                                            onChange={e => setJobGroupName(e.target.value)}
-                                            className="w-full bg-bg-input border border-border-input rounded-xl px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
-                                            placeholder="e.g. General, Sales, Finance..."
-                                        />
-                                        <datalist id="scheduler-job-group-suggestions">
-                                            {allGroups.map(g => (
-                                                <option key={g} value={g} />
-                                            ))}
-                                        </datalist>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-semibold text-text-muted uppercase tracking-widest">Group / Category</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const next = !isCustomGroupInput;
+                                                    setIsCustomGroupInput(next);
+                                                    if (!next && (!jobGroupName || !allGroups.includes(jobGroupName))) {
+                                                        setJobGroupName('General');
+                                                    }
+                                                }}
+                                                className="text-[11px] text-purple-400 hover:text-purple-300 font-medium transition-colors cursor-pointer"
+                                            >
+                                                {isCustomGroupInput ? '← Select Existing' : '➕ Create New'}
+                                            </button>
+                                        </div>
+
+                                        {!isCustomGroupInput ? (
+                                            <div className="relative">
+                                                <select
+                                                    value={allGroups.includes(jobGroupName || 'General') ? (jobGroupName || 'General') : '__NEW__'}
+                                                    onChange={(e) => {
+                                                        if (e.target.value === '__NEW__') {
+                                                            setIsCustomGroupInput(true);
+                                                            setJobGroupName('');
+                                                        } else {
+                                                            setJobGroupName(e.target.value);
+                                                        }
+                                                    }}
+                                                    className="w-full bg-bg-input border border-border-input hover:border-purple-500/50 rounded-xl pl-3 pr-8 py-2 text-sm font-semibold text-text-main focus:border-purple-500 focus:outline-none cursor-pointer appearance-none"
+                                                >
+                                                    {allGroups.map(g => (
+                                                        <option key={g} value={g} className="bg-bg-panel text-text-main py-1">
+                                                            📁 {g}
+                                                        </option>
+                                                    ))}
+                                                    <option value="__NEW__" className="bg-bg-panel text-purple-400 font-bold py-1">
+                                                        ➕ Add New Group...
+                                                    </option>
+                                                </select>
+                                                <ChevronDown className="w-4 h-4 text-text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-1.5">
+                                                <input
+                                                    type="text"
+                                                    autoFocus
+                                                    placeholder="e.g. Sales, Finance..."
+                                                    value={jobGroupName}
+                                                    onChange={e => setJobGroupName(e.target.value)}
+                                                    className="flex-1 bg-bg-input border border-purple-500 rounded-xl px-3 py-2 text-sm font-semibold text-purple-300 placeholder:text-text-muted focus:outline-none"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setIsCustomGroupInput(false);
+                                                        setJobGroupName('General');
+                                                    }}
+                                                    className="px-2.5 py-2 rounded-xl bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main text-xs font-bold shrink-0 transition-colors cursor-pointer"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div>

@@ -51,6 +51,9 @@ public class ApiSchedulerController {
                 config.setId(UUID.randomUUID().toString());
             }
             repository.insert(config);
+            if (appGroupRepository != null && config.getGroupName() != null) {
+                appGroupRepository.addGroup("API_SCHEDULER", config.getGroupName());
+            }
             if (config.isActive()) {
                 service.refreshSchedule(config.getId());
             }
@@ -66,6 +69,9 @@ public class ApiSchedulerController {
         try {
             config.setId(id);
             repository.update(config);
+            if (appGroupRepository != null && config.getGroupName() != null) {
+                appGroupRepository.addGroup("API_SCHEDULER", config.getGroupName());
+            }
             service.refreshSchedule(id);
             return ResponseEntity.ok(config);
         } catch (Exception e) {
@@ -79,6 +85,9 @@ public class ApiSchedulerController {
         String groupName = body.get("groupName");
         try {
             repository.updateGroupName(id, groupName);
+            if (appGroupRepository != null && groupName != null) {
+                appGroupRepository.addGroup("API_SCHEDULER", groupName);
+            }
             Optional<ApiSchedulerConfig> updated = repository.findById(id);
             return ResponseEntity.ok(updated.orElse(null));
         } catch (Exception e) {

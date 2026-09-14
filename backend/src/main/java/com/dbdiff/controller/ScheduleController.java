@@ -45,6 +45,9 @@ public class ScheduleController {
             if (created.isActive()) {
                 dynamicSchedulerService.refreshSchedule(created.getId());
             }
+            if (appGroupRepository != null && created.getGroupName() != null && !created.getGroupName().trim().isEmpty()) {
+                appGroupRepository.addGroup("SCHEDULE_JOB", created.getGroupName().trim());
+            }
             return ResponseEntity.ok(created);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
@@ -57,6 +60,9 @@ public class ScheduleController {
             logger.info("Updating schedule {}, isActive: {}", id, config.isActive());
             ScheduleConfig updated = scheduleManagerService.updateSchedule(id, config);
             dynamicSchedulerService.refreshSchedule(updated.getId());
+            if (appGroupRepository != null && updated.getGroupName() != null && !updated.getGroupName().trim().isEmpty()) {
+                appGroupRepository.addGroup("SCHEDULE_JOB", updated.getGroupName().trim());
+            }
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             logger.error("Error updating schedule {}: {}", id, e.getMessage(), e);
@@ -80,6 +86,9 @@ public class ScheduleController {
         try {
             String groupName = body.getOrDefault("groupName", "General");
             scheduleManagerService.updateGroupName(id, groupName);
+            if (appGroupRepository != null && groupName != null && !groupName.trim().isEmpty()) {
+                appGroupRepository.addGroup("SCHEDULE_JOB", groupName.trim());
+            }
             return ResponseEntity.ok(Map.of("success", true, "message", "Group updated successfully", "groupName", groupName));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));

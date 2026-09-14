@@ -133,6 +133,7 @@ export const ApiSchedulerView: React.FC = () => {
 
   // URL Input Mode: 'manual' | 'endpoint-list'
   const [urlMode, setUrlMode] = useState<'manual' | 'endpoint-list'>('manual');
+  const [isCustomGroupInput, setIsCustomGroupInput] = useState<boolean>(false);
 
   // Multiple Spring Cron Triggers State
   const [cronTriggers, setCronTriggers] = useState<string[]>(['0 */5 * * * *']);
@@ -433,11 +434,13 @@ export const ApiSchedulerView: React.FC = () => {
     setTestResponse(null);
     setActiveReqTab('params');
     setUrlMode('manual');
+    setIsCustomGroupInput(false);
     setViewMode('editor');
   };
 
   const openEditEditor = (cfg: ApiSchedulerConfig) => {
     setCurrentConfig(cfg);
+    setIsCustomGroupInput(Boolean(cfg.groupName && !allGroups.includes(cfg.groupName)));
 
     // Parse Cron Triggers
     if (cfg.cronExpression) {
@@ -1024,20 +1027,55 @@ export const ApiSchedulerView: React.FC = () => {
                 />
 
                 {/* Group Selector */}
-                <div className="relative w-44 shrink-0">
-                  <input
-                    list="scheduler-group-list"
-                    type="text"
-                    placeholder="Group (e.g. General)"
-                    value={currentConfig.groupName || 'General'}
-                    onChange={(e) => setCurrentConfig({ ...currentConfig, groupName: e.target.value })}
-                    className="w-full bg-bg-main border border-border-main rounded-xl px-3 py-2 text-xs font-bold text-indigo-400 placeholder:text-text-muted focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner"
-                  />
-                  <datalist id="scheduler-group-list">
-                    {allGroups.map(g => (
-                      <option key={g} value={g} />
-                    ))}
-                  </datalist>
+                <div className="relative shrink-0">
+                  {!isCustomGroupInput ? (
+                    <div className="relative w-48 flex items-center">
+                      <select
+                        value={allGroups.includes(currentConfig.groupName || 'General') ? (currentConfig.groupName || 'General') : '__NEW__'}
+                        onChange={(e) => {
+                          if (e.target.value === '__NEW__') {
+                            setIsCustomGroupInput(true);
+                            setCurrentConfig({ ...currentConfig, groupName: '' });
+                          } else {
+                            setCurrentConfig({ ...currentConfig, groupName: e.target.value });
+                          }
+                        }}
+                        className="w-full bg-bg-main border border-border-main hover:border-indigo-500/50 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-indigo-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner cursor-pointer appearance-none"
+                      >
+                        {allGroups.map(g => (
+                          <option key={g} value={g} className="bg-bg-panel text-text-main py-1">
+                            📁 {g}
+                          </option>
+                        ))}
+                        <option value="__NEW__" className="bg-bg-panel text-purple-400 font-bold py-1">
+                          ➕ Add New Group...
+                        </option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  ) : (
+                    <div className="relative w-56 flex items-center gap-1.5 animate-in fade-in">
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="New Group Name..."
+                        value={currentConfig.groupName || ''}
+                        onChange={(e) => setCurrentConfig({ ...currentConfig, groupName: e.target.value })}
+                        className="flex-1 bg-bg-main border border-purple-500 rounded-xl px-3 py-2 text-xs font-bold text-purple-400 placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all shadow-inner"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomGroupInput(false);
+                          setCurrentConfig({ ...currentConfig, groupName: 'General' });
+                        }}
+                        title="Select from existing groups"
+                        className="px-2.5 py-2 rounded-xl bg-bg-main hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main text-[11px] font-bold shrink-0 transition-colors cursor-pointer"
+                      >
+                        List
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

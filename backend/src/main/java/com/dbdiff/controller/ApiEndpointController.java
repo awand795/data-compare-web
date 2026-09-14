@@ -429,6 +429,9 @@ public class ApiEndpointController {
         
         try {
             apiEndpointRepository.insert(apiEndpoint);
+            if (appGroupRepository != null && apiEndpoint.getGroupName() != null) {
+                appGroupRepository.addGroup("API_BUILDER", apiEndpoint.getGroupName());
+            }
             if (apiEndpoint.isCronEnabled()) {
                 apiCronPushService.refreshSchedule(apiEndpoint.getId());
             }
@@ -447,6 +450,9 @@ public class ApiEndpointController {
         
         try {
             apiEndpointRepository.update(apiEndpoint);
+            if (appGroupRepository != null && apiEndpoint.getGroupName() != null) {
+                appGroupRepository.addGroup("API_BUILDER", apiEndpoint.getGroupName());
+            }
             apiCronPushService.refreshSchedule(id);
             return ResponseEntity.ok(apiEndpoint);
         } catch (Exception e) {
@@ -482,6 +488,9 @@ public class ApiEndpointController {
         String groupName = body.get("groupName");
         try {
             apiEndpointRepository.updateGroupName(id, groupName);
+            if (appGroupRepository != null && groupName != null) {
+                appGroupRepository.addGroup("API_BUILDER", groupName);
+            }
             Optional<ApiEndpoint> updated = apiEndpointRepository.findById(id);
             return ResponseEntity.ok(updated.orElse(null));
         } catch (Exception e) {

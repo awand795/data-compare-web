@@ -29,14 +29,30 @@ public class AppGroupRepository {
                 );
             """);
             logger.info("Initialized app_groups table in database.");
+
+            // Seed existing groups from tables if any
+            try {
+                jdbcTemplate.execute("INSERT INTO app_groups (module, name) SELECT DISTINCT 'API_BUILDER', TRIM(group_name) FROM api_endpoints WHERE group_name IS NOT NULL AND TRIM(group_name) != '' AND LOWER(TRIM(group_name)) != 'general' ON CONFLICT DO NOTHING");
+                jdbcTemplate.execute("INSERT INTO app_groups (module, name) SELECT DISTINCT 'API_SCHEDULER', TRIM(group_name) FROM api_schedulers WHERE group_name IS NOT NULL AND TRIM(group_name) != '' AND LOWER(TRIM(group_name)) != 'general' ON CONFLICT DO NOTHING");
+                jdbcTemplate.execute("INSERT INTO app_groups (module, name) SELECT DISTINCT 'SCHEDULE_JOB', TRIM(group_name) FROM schedules WHERE group_name IS NOT NULL AND TRIM(group_name) != '' AND LOWER(TRIM(group_name)) != 'general' ON CONFLICT DO NOTHING");
+                jdbcTemplate.execute("INSERT INTO app_groups (module, name) SELECT DISTINCT 'WEBHOOK', TRIM(group_name) FROM webhooks WHERE group_name IS NOT NULL AND TRIM(group_name) != '' AND LOWER(TRIM(group_name)) != 'general' ON CONFLICT DO NOTHING");
+            } catch (Exception ignored) {}
         } catch (Exception e) {
             logger.warn("Could not create app_groups table: {}", e.getMessage());
         }
     }
 
     public List<String> getGroups(String module) {
-        String sql = "SELECT name FROM app_groups WHERE module = ? ORDER BY name ASC";
-        return jdbcTemplate.queryForList(sql, String.class, module);
+        if (module == null || module.trim().isEmpty() || "ALL".equalsIgnoreCase(module.trim())) {
+            String sql = "SELECT DISTINCT name FROM app_groups ORDER BY name ASC";
+            return jdbcTemplate.queryForList(sql, String.class);
+        }
+        if ("API_SCHEDULER".equalsIgnoreCase(module.trim()) || "API_BUILDER".equalsIgnoreCase(module.trim()) || "SCHEDULE_JOB".equalsIgnoreCase(module.trim()) || "WEBHOOK".equalsIgnoreCase(module.trim())) {
+            String sql = "SELECT DISTINCT name FROM app_groups WHERE module IN ('API_SCHEDULER', 'API_BUILDER', 'SCHEDULE_JOB', 'WEBHOOK') ORDER BY name ASC";
+            return jdbcTemplate.queryForList(sql, String.class);
+        }
+        String sql = "SELECT DISTINCT name FROM app_groups WHERE module = ? ORDER BY name ASC";
+        return jdbcTemplate.queryForList(sql, String.class, module.trim());
     }
 
     public void addGroup(String module, String name) {

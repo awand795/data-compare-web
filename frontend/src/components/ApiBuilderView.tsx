@@ -132,6 +132,7 @@ export const ApiBuilderView: React.FC = () => {
   const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
   const [assignSearchQuery, setAssignSearchQuery] = useState('');
   const [isSavingAssignGroup, setIsSavingAssignGroup] = useState(false);
+  const [isCustomGroupInput, setIsCustomGroupInput] = useState<boolean>(false);
 
   // Endpoint Targets & Failure Alert Notification Profiles
   const [endpointTargets, setEndpointTargets] = useState<EndpointTarget[]>([]);
@@ -450,6 +451,7 @@ export const ApiBuilderView: React.FC = () => {
     setParameterMeta([]);
     setValidationErrors([]);
     setIsDirty(false);
+    setIsCustomGroupInput(false);
     editInitialRef.current = JSON.stringify({ api: newApi, params: [] });
     setViewMode('edit');
   };
@@ -668,6 +670,7 @@ export const ApiBuilderView: React.FC = () => {
       notifyOnSuccess: Boolean(api.notifyOnSuccess),
       notifyOnFailure: api.notifyOnFailure !== false
     });
+    setIsCustomGroupInput(Boolean(api.groupName && !allGroups.includes(api.groupName)));
 
     editInitialRef.current = JSON.stringify({ api, params: parsed });
     setViewMode('edit');
@@ -732,6 +735,7 @@ export const ApiBuilderView: React.FC = () => {
     setParameterMeta(parsed);
     setValidationErrors([]);
     setIsDirty(false);
+    setIsCustomGroupInput(Boolean(clone.groupName && !allGroups.includes(clone.groupName)));
     editInitialRef.current = JSON.stringify({ api: clone, params: parsed });
     setViewMode('edit');
     addToast({ type: 'info', title: 'API Cloned', message: `Duplicated "${api.name}" into temporary workspace.` });
@@ -3256,26 +3260,103 @@ export const ApiBuilderView: React.FC = () => {
 
                   {/* Group / Category */}
                   <div>
-                    <label className="block text-[11px] font-extrabold text-text-muted uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                      <span>Group / Category</span>
-                      <span className="text-[10px] text-indigo-400 font-normal">Optional</span>
-                    </label>
-                    <div className="relative">
-                      <input 
-                        list="builder-group-list"
-                        className="w-full bg-bg-editor border border-border-main focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl p-3 text-sm outline-none text-text-main transition-all shadow-inner font-medium"
-                        value={currentApi.groupName || 'General'}
-                        onChange={e => setCurrentApi({...currentApi, groupName: e.target.value})}
-                        placeholder="e.g. Sales Module, Inventory, Master Data..."
-                      />
-                      <datalist id="builder-group-list">
-                        {allGroups.map(g => (
-                          <option key={g} value={g} />
-                        ))}
-                      </datalist>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
+                        Group / Category
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !isCustomGroupInput;
+                          setIsCustomGroupInput(next);
+                          if (!next && (!currentApi.groupName || !allGroups.includes(currentApi.groupName))) {
+                            setCurrentApi({ ...currentApi, groupName: 'General' });
+                          }
+                        }}
+                        className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium transition-colors cursor-pointer"
+                      >
+                        {isCustomGroupInput ? '← Select Existing Group' : '➕ Create New Group'}
+                      </button>
                     </div>
-                    <span className="text-[10px] text-text-muted mt-1 block">
-                      Assign to an existing group or type a new group name.
+
+                    {!isCustomGroupInput ? (
+                      <div className="relative">
+                        <select
+                          value={allGroups.includes(currentApi.groupName || 'General') ? (currentApi.groupName || 'General') : '__NEW__'}
+                          onChange={(e) => {
+                            if (e.target.value === '__NEW__') {
+                              setIsCustomGroupInput(true);
+                              setCurrentApi({ ...currentApi, groupName: '' });
+                            } else {
+                              setCurrentApi({ ...currentApi, groupName: e.target.value });
+                            }
+                          }}
+                          className="w-full bg-bg-editor border border-border-main hover:border-indigo-500/50 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl px-3 py-2.5 text-sm font-semibold text-text-main outline-none transition-all shadow-inner cursor-pointer appearance-none pr-9"
+                        >
+                          {allGroups.map(g => (
+                            <option key={g} value={g} className="bg-bg-panel text-text-main py-1">
+                              📁 {g}
+                            </option>
+                          ))}
+                          <option value="__NEW__" className="bg-bg-panel text-indigo-400 font-bold py-1">
+                            ➕ Add New Group...
+                          </option>
+                        </select>
+                        <ChevronDown className="w-4 h-4 text-text-muted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="e.g. Sales Module, Inventory, Master Data..."
+                          value={currentApi.groupName || ''}
+                          onChange={e => setCurrentApi({ ...currentApi, groupName: e.target.value })}
+                          className="flex-1 bg-bg-editor border border-indigo-500 rounded-xl px-3 py-2.5 text-sm font-semibold text-indigo-300 placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomGroupInput(false);
+                            setCurrentApi({ ...currentApi, groupName: 'General' });
+                          }}
+                          title="Cancel and choose existing group"
+                          className="px-3 py-2.5 rounded-xl bg-bg-main hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main text-xs font-bold shrink-0 transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Quick Group Selection Pills */}
+                    {allGroups.length > 1 && (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span className="text-[10px] text-text-muted font-bold mr-1">Quick:</span>
+                        {allGroups.slice(0, 8).map(g => {
+                          const isSelected = (currentApi.groupName || 'General') === g && !isCustomGroupInput;
+                          return (
+                            <button
+                              key={g}
+                              type="button"
+                              onClick={() => {
+                                setIsCustomGroupInput(false);
+                                setCurrentApi({ ...currentApi, groupName: g });
+                              }}
+                              className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-indigo-600 text-white shadow-sm'
+                                  : 'bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main border border-border-main/60'
+                              }`}
+                            >
+                              {g}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <span className="text-[10px] text-text-muted mt-1.5 block">
+                      Assign to an existing group or create a new group name.
                     </span>
                   </div>
                 </div>
