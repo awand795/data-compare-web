@@ -36,8 +36,10 @@ export interface ApiParameter {
 export interface PreValidationRule {
   id: string;
   name: string;
-  sqlQuery: string;
-  condition: 'EQ_0' | 'GT_0' | 'EQ_1';
+  type?: 'SQL' | 'EXPRESSION';
+  sqlQuery?: string;
+  condition?: 'EQ_0' | 'GT_0' | 'EQ_1';
+  expression?: string;
   customErrorMessage?: string;
 }
 
@@ -3640,9 +3642,11 @@ export const ApiBuilderView: React.FC = () => {
                       onClick={() => {
                         const newRule: PreValidationRule = {
                           id: 'rule_' + Date.now(),
-                          name: 'Check ' + (preValidationRules.length + 1),
+                          name: 'Rule ' + (preValidationRules.length + 1),
+                          type: 'SQL',
                           sqlQuery: 'SELECT COUNT(*) FROM my_table WHERE some_field = :some_param',
                           condition: 'EQ_0',
+                          expression: '',
                           customErrorMessage: ''
                         };
                         setPreValidationRules(prev => [...prev, newRule]);
@@ -3705,21 +3709,94 @@ export const ApiBuilderView: React.FC = () => {
                             </div>
                           </div>
 
-                          <div>
-                            <label className="text-[10px] font-mono font-bold text-text-muted uppercase block mb-1">
-                              SQL Assertion Query (Mengekstrak angka hasil query)
-                            </label>
-                            <textarea
-                              rows={2}
-                              value={rule.sqlQuery}
-                              onChange={e => {
-                                const sql = e.target.value;
-                                setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, sqlQuery: sql } : r));
-                              }}
-                              placeholder="SELECT COUNT(*) FROM master_fleet WHERE no_lambung = :no_lambung"
-                              className="w-full bg-bg-editor border border-border-main focus:border-amber-500/60 rounded-lg p-2 font-mono text-xs text-amber-200 outline-none resize-none shadow-inner"
-                            />
+                          {/* Rule Type Selector */}
+                          <div className="flex items-center gap-2 border-b border-border-main/40 pb-2">
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-text-muted">Tipe Rule:</span>
+                            <div className="flex items-center gap-1 bg-bg-editor p-0.5 rounded-lg border border-border-main">
+                              <button
+                                type="button"
+                                onClick={() => setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, type: 'SQL' } : r))}
+                                className={clsx(
+                                  "px-2 py-0.5 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                                  (!rule.type || rule.type === 'SQL')
+                                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                    : "text-text-muted hover:text-text-main"
+                                )}
+                              >
+                                SQL DB Assertion
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, type: 'EXPRESSION' } : r))}
+                                className={clsx(
+                                  "px-2 py-0.5 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                                  rule.type === 'EXPRESSION'
+                                    ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                                    : "text-text-muted hover:text-text-main"
+                                )}
+                              >
+                                SpEL Logic Formula
+                              </button>
+                            </div>
                           </div>
+
+                          {(!rule.type || rule.type === 'SQL') ? (
+                            <div>
+                              <label className="text-[10px] font-mono font-bold text-text-muted uppercase block mb-1">
+                                SQL Assertion Query (Mengekstrak angka hasil query)
+                              </label>
+                              <textarea
+                                rows={2}
+                                value={rule.sqlQuery || ''}
+                                onChange={e => {
+                                  const sql = e.target.value;
+                                  setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, sqlQuery: sql } : r));
+                                }}
+                                placeholder="SELECT COUNT(*) FROM master_fleet WHERE no_lambung = :no_lambung"
+                                className="w-full bg-bg-editor border border-border-main focus:border-amber-500/60 rounded-lg p-2 font-mono text-xs text-amber-200 outline-none resize-none shadow-inner"
+                              />
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-mono font-bold text-purple-400 uppercase block">
+                                SpEL Expression Formula (Evaluasi logika true/false)
+                              </label>
+                              <input
+                                type="text"
+                                value={rule.expression || ''}
+                                onChange={e => {
+                                  const expr = e.target.value;
+                                  setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, expression: expr } : r));
+                                }}
+                                placeholder="e.g. #km_keluar > #km_masuk or #liter <= 200"
+                                className="w-full bg-bg-editor border border-purple-500/40 focus:border-purple-500 rounded-lg px-2.5 py-1.5 font-mono text-xs text-purple-300 outline-none shadow-inner"
+                              />
+                              <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                <span className="text-text-muted font-bold">Preset:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, expression: '#km_keluar > #km_masuk' } : r))}
+                                  className="px-2 py-0.5 rounded bg-bg-panel hover:bg-purple-500/20 text-purple-300 border border-border-main cursor-pointer"
+                                >
+                                  km_out &gt; km_in
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, expression: '#liter <= 200' } : r))}
+                                  className="px-2 py-0.5 rounded bg-bg-panel hover:bg-purple-500/20 text-purple-300 border border-border-main cursor-pointer"
+                                >
+                                  liter &le; 200
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, expression: "#status == 'SELESAI' ? #catatan != null && #catatan != '' : true" } : r))}
+                                  className="px-2 py-0.5 rounded bg-bg-panel hover:bg-purple-500/20 text-purple-300 border border-border-main cursor-pointer"
+                                >
+                                  required_if selesai
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
                           <div>
                             <input

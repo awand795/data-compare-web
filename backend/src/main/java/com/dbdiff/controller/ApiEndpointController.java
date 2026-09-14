@@ -94,6 +94,35 @@ public class ApiEndpointController {
                         String condition = (String) rule.getOrDefault("condition", "EQ_0");
                         String customErr = (String) rule.get("customErrorMessage");
 
+                        // 1. SpEL Expression Validation
+                        String expr = (String) rule.get("expression");
+                        if (expr != null && !expr.trim().isEmpty()) {
+                            try {
+                                org.springframework.expression.ExpressionParser spelParser = new org.springframework.expression.spel.standard.SpelExpressionParser();
+                                org.springframework.expression.spel.support.StandardEvaluationContext spelCtx = new org.springframework.expression.spel.support.StandardEvaluationContext();
+                                spelCtx.setVariable("p", params);
+                                for (Map.Entry<String, Object> entry : params.entrySet()) {
+                                    spelCtx.setVariable(entry.getKey(), entry.getValue());
+                                }
+                                Boolean passed = spelParser.parseExpression(expr).getValue(spelCtx, Boolean.class);
+                                if (passed == null || !passed) {
+                                    String errMsg = (customErr != null && !customErr.trim().isEmpty())
+                                            ? customErr
+                                            : "Validasi logika bisnis '" + ruleName + "' tidak terpenuhi.";
+                                    sendJsonError(response, 400, Map.of(
+                                        "success", false,
+                                        "error", "Bad Request",
+                                        "message", errMsg,
+                                        "errors", List.of(errMsg)
+                                    ));
+                                    return;
+                                }
+                            } catch (Exception spex) {
+                                org.slf4j.LoggerFactory.getLogger(ApiEndpointController.class).warn("SpEL rule error: {}", spex.getMessage());
+                            }
+                        }
+
+                        // 2. SQL Query Assertion
                         if (ruleSql != null && !ruleSql.trim().isEmpty()) {
                             try {
                                 Long count = jdbcTemplate.queryForObject(ruleSql, params, Long.class);
@@ -189,7 +218,36 @@ public class ApiEndpointController {
                     || (!upperSql.startsWith("SELECT") && !upperSql.startsWith("WITH") && !upperSql.startsWith("EXPLAIN") && (method.equals("POST") || method.equals("PUT") || method.equals("PATCH") || method.equals("DELETE")));
 
             if (isMutation) {
-                int rowsAffected = jdbcTemplate.update(sql, params);
+                String[] rawStatements = sql.split(";(?=(?:[^']*'[^']*')*[^']*$)");
+                List<String> statements = new ArrayList<>();
+                for (String s : rawStatements) {
+                    if (s != null && !s.trim().isEmpty()) {
+                        statements.add(s.trim());
+                    }
+                }
+
+                int rowsAffected = 0;
+                if (statements.size() > 1) {
+                    org.springframework.jdbc.datasource.DataSourceTransactionManager txManager = 
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource);
+                    org.springframework.transaction.support.DefaultTransactionDefinition def = 
+                        new org.springframework.transaction.support.DefaultTransactionDefinition();
+                    def.setName("AtomicTestTx_" + System.currentTimeMillis());
+                    def.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRED);
+                    org.springframework.transaction.TransactionStatus txStatus = txManager.getTransaction(def);
+                    try {
+                        for (String singleStmt : statements) {
+                            rowsAffected += jdbcTemplate.update(singleStmt, params);
+                        }
+                        txManager.commit(txStatus);
+                    } catch (Exception ex) {
+                        txManager.rollback(txStatus);
+                        throw ex;
+                    }
+                } else {
+                    rowsAffected = jdbcTemplate.update(sql, params);
+                }
+
                 String operation = "MUTATION";
                 if (upperSql.startsWith("INSERT")) operation = "INSERT";
                 else if (upperSql.startsWith("UPDATE")) operation = "UPDATE";

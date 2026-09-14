@@ -158,6 +158,35 @@ public class DynamicApiController {
                         String condition = (String) rule.getOrDefault("condition", "EQ_0");
                         String customErr = (String) rule.get("customErrorMessage");
 
+                        // 1. SpEL Expression Validation
+                        String expr = (String) rule.get("expression");
+                        if (expr != null && !expr.trim().isEmpty()) {
+                            try {
+                                org.springframework.expression.ExpressionParser spelParser = new org.springframework.expression.spel.standard.SpelExpressionParser();
+                                org.springframework.expression.spel.support.StandardEvaluationContext spelCtx = new org.springframework.expression.spel.support.StandardEvaluationContext();
+                                spelCtx.setVariable("p", allParams);
+                                for (Map.Entry<String, Object> entry : allParams.entrySet()) {
+                                    spelCtx.setVariable(entry.getKey(), entry.getValue());
+                                }
+                                Boolean passed = spelParser.parseExpression(expr).getValue(spelCtx, Boolean.class);
+                                if (passed == null || !passed) {
+                                    String errMsg = (customErr != null && !customErr.trim().isEmpty())
+                                            ? customErr
+                                            : "Validasi logika bisnis '" + ruleName + "' tidak terpenuhi.";
+                                    sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of(
+                                        "success", false,
+                                        "error", "Bad Request",
+                                        "message", errMsg,
+                                        "errors", List.of(errMsg)
+                                    ));
+                                    return;
+                                }
+                            } catch (Exception spex) {
+                                org.slf4j.LoggerFactory.getLogger(DynamicApiController.class).warn("SpEL rule error: {}", spex.getMessage());
+                            }
+                        }
+
+                        // 2. SQL Query Assertion
                         if (ruleSql != null && !ruleSql.trim().isEmpty()) {
                             try {
                                 Long count = jdbcTemplate.queryForObject(ruleSql, allParams, Long.class);
@@ -252,7 +281,36 @@ public class DynamicApiController {
                     || (!upperSql.startsWith("SELECT") && !upperSql.startsWith("WITH") && !upperSql.startsWith("EXPLAIN") && (method.equals("POST") || method.equals("PUT") || method.equals("PATCH") || method.equals("DELETE")));
 
             if (isMutation) {
-                int rowsAffected = jdbcTemplate.update(sql, allParams);
+                String[] rawStatements = sql.split(";(?=(?:[^']*'[^']*')*[^']*$)");
+                List<String> statements = new ArrayList<>();
+                for (String s : rawStatements) {
+                    if (s != null && !s.trim().isEmpty()) {
+                        statements.add(s.trim());
+                    }
+                }
+
+                int rowsAffected = 0;
+                if (statements.size() > 1) {
+                    org.springframework.jdbc.datasource.DataSourceTransactionManager txManager = 
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource);
+                    org.springframework.transaction.support.DefaultTransactionDefinition def = 
+                        new org.springframework.transaction.support.DefaultTransactionDefinition();
+                    def.setName("AtomicTx_" + System.currentTimeMillis());
+                    def.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRED);
+                    org.springframework.transaction.TransactionStatus txStatus = txManager.getTransaction(def);
+                    try {
+                        for (String singleStmt : statements) {
+                            rowsAffected += jdbcTemplate.update(singleStmt, allParams);
+                        }
+                        txManager.commit(txStatus);
+                    } catch (Exception ex) {
+                        txManager.rollback(txStatus);
+                        throw ex;
+                    }
+                } else {
+                    rowsAffected = jdbcTemplate.update(sql, allParams);
+                }
+
                 String operation = "MUTATION";
                 if (upperSql.startsWith("INSERT")) operation = "INSERT";
                 else if (upperSql.startsWith("UPDATE")) operation = "UPDATE";
@@ -267,6 +325,27 @@ public class DynamicApiController {
                         case "DELETE": successMsg = "Data berhasil dihapus."; break;
                         default: successMsg = "Operasi berhasil dieksekusi."; break;
                     }
+                }
+
+                // Broadcast live event via SSE
+                try {
+                    RealtimeController.broadcastToTopic(endpoint.getEndpointPath(), "DATA_MUTATION", Map.of(
+                        "operation", operation,
+                        "path", endpoint.getEndpointPath(),
+                        "name", endpoint.getName(),
+                        "rows_affected", rowsAffected,
+                        "timestamp", nowTimestamp
+                    ));
+                    // Also broadcast to general channel
+                    RealtimeController.broadcastToTopic("general", "DATA_MUTATION", Map.of(
+                        "operation", operation,
+                        "path", endpoint.getEndpointPath(),
+                        "name", endpoint.getName(),
+                        "rows_affected", rowsAffected,
+                        "timestamp", nowTimestamp
+                    ));
+                } catch (Exception bEx) {
+                    // Ignore broadcast error
                 }
 
                 response.setStatus(HttpStatus.OK.value());
