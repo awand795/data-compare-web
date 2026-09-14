@@ -4,7 +4,7 @@ services:
     image: darkosync-backend-local:latest
     build:
       context: ./backend
-      dockerfile: Dockerfile.local
+      dockerfile: Dockerfile
     container_name: darkosync-backend
     environment:
       TZ: Asia/Jakarta
