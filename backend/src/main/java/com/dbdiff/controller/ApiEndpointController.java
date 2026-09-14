@@ -227,6 +227,9 @@ public class ApiEndpointController {
                 }
 
                 int rowsAffected = 0;
+                List<Map<String, Object>> returningRows = new ArrayList<>();
+                boolean hasReturning = false;
+
                 if (statements.size() > 1) {
                     org.springframework.jdbc.datasource.DataSourceTransactionManager txManager = 
                         new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource);
@@ -237,7 +240,15 @@ public class ApiEndpointController {
                     org.springframework.transaction.TransactionStatus txStatus = txManager.getTransaction(def);
                     try {
                         for (String singleStmt : statements) {
-                            rowsAffected += jdbcTemplate.update(singleStmt, params);
+                            boolean isRet = singleStmt.toUpperCase().matches("(?s).*\\bRETURNING\\b.*");
+                            if (isRet) {
+                                hasReturning = true;
+                                List<Map<String, Object>> ret = jdbcTemplate.queryForList(singleStmt, params);
+                                returningRows = ret;
+                                rowsAffected += ret.size();
+                            } else {
+                                rowsAffected += jdbcTemplate.update(singleStmt, params);
+                            }
                         }
                         txManager.commit(txStatus);
                     } catch (Exception ex) {
@@ -245,7 +256,15 @@ public class ApiEndpointController {
                         throw ex;
                     }
                 } else {
-                    rowsAffected = jdbcTemplate.update(sql, params);
+                    boolean isRet = sql.toUpperCase().matches("(?s).*\\bRETURNING\\b.*");
+                    if (isRet) {
+                        hasReturning = true;
+                        List<Map<String, Object>> ret = jdbcTemplate.queryForList(sql, params);
+                        returningRows = ret;
+                        rowsAffected = ret.size();
+                    } else {
+                        rowsAffected = jdbcTemplate.update(sql, params);
+                    }
                 }
 
                 String operation = "MUTATION";
@@ -273,6 +292,13 @@ public class ApiEndpointController {
                 respMap.put("rows_affected", rowsAffected);
                 respMap.put("message", successMsg);
                 respMap.put("timestamp", nowTimestamp);
+                if (hasReturning) {
+                    if (returningRows.size() == 1) {
+                        respMap.put("data", returningRows.get(0));
+                    } else {
+                        respMap.put("data", returningRows);
+                    }
+                }
                 response.getWriter().write(mapper.writeValueAsString(respMap));
                 response.getWriter().flush();
                 return;
