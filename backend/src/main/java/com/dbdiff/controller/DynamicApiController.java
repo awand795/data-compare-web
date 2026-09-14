@@ -87,18 +87,23 @@ public class DynamicApiController {
         // ────────────────────────────────────────────────────────────────────────
 
         // Check authentication
+        String providedToken = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            providedToken = authHeader.substring(7);
+        } else if (xApiKey != null) {
+            providedToken = xApiKey;
+        }
+
         if (endpoint.isPublic() == false) {
             String token = endpoint.getAuthToken();
             if (token != null && !token.isEmpty()) {
-                String providedToken = null;
-                if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                    providedToken = authHeader.substring(7);
-                } else if (xApiKey != null) {
-                    providedToken = xApiKey;
-                }
-
                 if (providedToken == null || !providedToken.equals(token)) {
-                    sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of("error", "Unauthorized. Invalid or missing token."));
+                    sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of(
+                        "success", false,
+                        "error", "Unauthorized",
+                        "message", "Unauthorized. Invalid or missing token.",
+                        "errors", List.of("Unauthorized. Invalid or missing token.")
+                    ));
                     return;
                 }
             }
@@ -111,10 +116,25 @@ public class DynamicApiController {
 
         ApiParameterValidator.ValidationResult validationResult = apiParameterValidator.validate(endpoint.getParameters(), allParams);
         if (!validationResult.isValid()) {
-            sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of("errors", validationResult.getErrors()));
+            sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of(
+                "success", false,
+                "error", "Bad Request",
+                "message", "Validasi parameter gagal.",
+                "errors", validationResult.getErrors()
+            ));
             return;
         }
         allParams = validationResult.getParams();
+
+        // ── Auto-Inject System Variables ───────────────────────────────────────
+        String nowTimestamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String todayDate = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        allParams.putIfAbsent("sys_now", nowTimestamp);
+        allParams.putIfAbsent("sys_today", todayDate);
+        allParams.putIfAbsent("current_timestamp", nowTimestamp);
+        allParams.putIfAbsent("current_date", todayDate);
+        allParams.putIfAbsent("sys_client_ip", clientIp);
+        allParams.putIfAbsent("sys_user", providedToken != null ? providedToken : "anonymous");
 
         // Fetch Connection
         ConnectionDetails optConn = connectionRepository.findById(endpoint.getConnectionId());
@@ -126,6 +146,53 @@ public class DynamicApiController {
         try {
             DataSource dataSource = connectionManagerService.getDataSource(optConn);
             NamedParameterJdbcTemplate jdbcTemplate = new NamedParameterJdbcTemplate(dataSource);
+
+            // ── Pre-Validation Business Rules Check ────────────────────────────────
+            if (endpoint.getValidationRules() != null && !endpoint.getValidationRules().trim().isEmpty() && !endpoint.getValidationRules().equals("[]")) {
+                com.fasterxml.jackson.databind.ObjectMapper ruleMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                try {
+                    List<Map<String, Object>> rules = ruleMapper.readValue(endpoint.getValidationRules(), new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+                    for (Map<String, Object> rule : rules) {
+                        String ruleName = (String) rule.getOrDefault("name", "Business Rule");
+                        String ruleSql = (String) rule.get("sqlQuery");
+                        String condition = (String) rule.getOrDefault("condition", "EQ_0");
+                        String customErr = (String) rule.get("customErrorMessage");
+
+                        if (ruleSql != null && !ruleSql.trim().isEmpty()) {
+                            try {
+                                Long count = jdbcTemplate.queryForObject(ruleSql, allParams, Long.class);
+                                if (count == null) count = 0L;
+
+                                boolean passed = true;
+                                if ("EQ_0".equalsIgnoreCase(condition)) {
+                                    passed = (count == 0);
+                                } else if ("GT_0".equalsIgnoreCase(condition)) {
+                                    passed = (count > 0);
+                                } else if ("EQ_1".equalsIgnoreCase(condition)) {
+                                    passed = (count == 1);
+                                }
+
+                                if (!passed) {
+                                    String errMsg = (customErr != null && !customErr.trim().isEmpty())
+                                            ? customErr
+                                            : "Validasi bisnis '" + ruleName + "' tidak terpenuhi.";
+                                    sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of(
+                                        "success", false,
+                                        "error", "Bad Request",
+                                        "message", errMsg,
+                                        "errors", List.of(errMsg)
+                                    ));
+                                    return;
+                                }
+                            } catch (Exception rex) {
+                                org.slf4j.LoggerFactory.getLogger(DynamicApiController.class).warn("Pre-validation rule evaluation error: {}", rex.getMessage());
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    // Ignore parse errors on malformed rule JSON
+                }
+            }
 
             String sql = endpoint.getSqlQuery();
 
@@ -178,6 +245,43 @@ public class DynamicApiController {
                 sql = sql.replace("{{filters}}", builtClause);
             }
             // ───────────────────────────────────────────────────────────────────────
+
+            // ── Mutation Check (INSERT, UPDATE, DELETE) ────────────────────────────
+            String upperSql = sql.trim().toUpperCase();
+            boolean isMutation = upperSql.startsWith("INSERT") || upperSql.startsWith("UPDATE") || upperSql.startsWith("DELETE")
+                    || (!upperSql.startsWith("SELECT") && !upperSql.startsWith("WITH") && !upperSql.startsWith("EXPLAIN") && (method.equals("POST") || method.equals("PUT") || method.equals("PATCH") || method.equals("DELETE")));
+
+            if (isMutation) {
+                int rowsAffected = jdbcTemplate.update(sql, allParams);
+                String operation = "MUTATION";
+                if (upperSql.startsWith("INSERT")) operation = "INSERT";
+                else if (upperSql.startsWith("UPDATE")) operation = "UPDATE";
+                else if (upperSql.startsWith("DELETE")) operation = "DELETE";
+                else operation = method;
+
+                String successMsg = endpoint.getSuccessMessage();
+                if (successMsg == null || successMsg.trim().isEmpty()) {
+                    switch (operation) {
+                        case "INSERT": successMsg = "Data berhasil disimpan."; break;
+                        case "UPDATE": successMsg = "Data berhasil diperbarui."; break;
+                        case "DELETE": successMsg = "Data berhasil dihapus."; break;
+                        default: successMsg = "Operasi berhasil dieksekusi."; break;
+                    }
+                }
+
+                response.setStatus(HttpStatus.OK.value());
+                response.setContentType("application/json;charset=UTF-8");
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, Object> respMap = new HashMap<>();
+                respMap.put("success", true);
+                respMap.put("operation", operation);
+                respMap.put("rows_affected", rowsAffected);
+                respMap.put("message", successMsg);
+                respMap.put("timestamp", nowTimestamp);
+                response.getWriter().write(mapper.writeValueAsString(respMap));
+                response.getWriter().flush();
+                return;
+            }
 
             response.setStatus(HttpStatus.OK.value());
             response.setContentType("application/json;charset=UTF-8");

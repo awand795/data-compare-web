@@ -9,19 +9,36 @@ import {
   ListRestart, Bug, SquareTerminal, CopyPlus, FileCode,
   LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal,
   Folder, FolderOpen, FolderPlus, FolderTree, Shield, AlertTriangle, ChevronRight,
-  CheckSquare, Square, Radio, Bell, Send, MessageCircle, Zap
+  CheckSquare, Square, Radio, Bell, Send, MessageCircle, Zap, Sparkles
 } from 'lucide-react';
 import { EndpointTargetsModal, type EndpointTarget } from './EndpointTargetsModal';
+import { ParameterRulesModal } from './ParameterRulesModal';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
 
-interface ApiParameter {
+export interface ApiParameter {
   name: string;
   type: 'string' | 'integer' | 'number' | 'boolean' | 'date';
   required: boolean;
   defaultValue: string;
   description: string;
+  pattern?: string;
+  minLength?: number;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  allowedValues?: string[];
+  transform?: 'none' | 'trim' | 'uppercase' | 'lowercase';
+  customErrorMessage?: string;
+}
+
+export interface PreValidationRule {
+  id: string;
+  name: string;
+  sqlQuery: string;
+  condition: 'EQ_0' | 'GT_0' | 'EQ_1';
+  customErrorMessage?: string;
 }
 
 interface ApiEndpoint {
@@ -38,6 +55,8 @@ interface ApiEndpoint {
   ipAllowlist?: string;
   groupName?: string;
   authToken: string;
+  successMessage?: string;
+  validationRules?: string;
   cronEnabled?: boolean;
   cronExpression?: string;
   targetEndpointId?: string;
@@ -99,6 +118,8 @@ export const ApiBuilderView: React.FC = () => {
   const [viewMode, setViewMode] = useState<'list' | 'edit' | 'spec'>('list');
   const [currentApi, setCurrentApi] = useState<ApiEndpoint | null>(null);
   const [parameterMeta, setParameterMeta] = useState<ApiParameter[]>([]);
+  const [selectedParamForRules, setSelectedParamForRules] = useState<ApiParameter | null>(null);
+  const [preValidationRules, setPreValidationRules] = useState<PreValidationRule[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -305,7 +326,7 @@ export const ApiBuilderView: React.FC = () => {
   // Track dirty state
   useEffect(() => {
     if (viewMode === 'edit' && currentApi) {
-      const serialized = JSON.stringify({ api: currentApi, params: parameterMeta });
+      const serialized = JSON.stringify({ api: currentApi, params: parameterMeta, rules: preValidationRules });
       if (editInitialRef.current && editInitialRef.current !== serialized) {
         setIsDirty(true);
       } else {
@@ -435,6 +456,8 @@ export const ApiBuilderView: React.FC = () => {
       ipAllowlist: '',
       groupName: presetGroup || (selectedGroup !== 'ALL' ? selectedGroup : 'General'),
       authToken: generateToken(),
+      successMessage: '',
+      validationRules: '[]',
       cronEnabled: false,
       cronExpression: '0 */5 * * * *',
       targetEndpointId: '',
@@ -449,10 +472,11 @@ export const ApiBuilderView: React.FC = () => {
     setTestParams({});
     setTestResult(null);
     setParameterMeta([]);
+    setPreValidationRules([]);
     setValidationErrors([]);
     setIsDirty(false);
     setIsCustomGroupInput(false);
-    editInitialRef.current = JSON.stringify({ api: newApi, params: [] });
+    editInitialRef.current = JSON.stringify({ api: newApi, params: [], rules: [] });
     setViewMode('edit');
   };
 
@@ -2611,6 +2635,16 @@ export const ApiBuilderView: React.FC = () => {
             }}
           />
         )}
+        {selectedParamForRules && (
+          <ParameterRulesModal
+            param={selectedParamForRules}
+            onClose={() => setSelectedParamForRules(null)}
+            onSave={(updated) => {
+              setParameterMeta(prev => prev.map(p => p.name === updated.name ? updated : p));
+              setSelectedParamForRules(null);
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -3098,6 +3132,45 @@ export const ApiBuilderView: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                  {/* DML Mutation vs Query Indicator */}
+                  {(() => {
+                    const trimmed = (currentApi.sqlQuery || '').trim().toUpperCase();
+                    const isMutation = trimmed.startsWith('INSERT') || trimmed.startsWith('UPDATE') || trimmed.startsWith('DELETE');
+                    if (isMutation) {
+                      const mutationType = trimmed.startsWith('INSERT') ? 'INSERT' : trimmed.startsWith('UPDATE') ? 'UPDATE' : 'DELETE';
+                      return (
+                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1 shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                          DML {mutationType}
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        SELECT Query
+                      </span>
+                    );
+                  })()}
+
+                  {/* System Variables Info Pill */}
+                  <div className="group relative">
+                    <span className="text-[11px] font-bold text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 px-2.5 py-1 rounded-lg border border-cyan-500/20 font-mono hidden sm:inline-flex items-center gap-1 cursor-help transition-colors">
+                      <Sparkles className="w-3 h-3 text-cyan-400" />
+                      <span>:sys_vars</span>
+                    </span>
+                    <div className="absolute right-0 top-full mt-1.5 hidden group-hover:block z-50 w-72 p-3 bg-bg-panel border border-border-main rounded-xl shadow-2xl text-[11px] space-y-1.5 text-text-muted backdrop-blur-md">
+                      <p className="font-bold text-text-main flex items-center gap-1 text-xs">
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" /> Auto-Injected System Variables:
+                      </p>
+                      <p className="font-mono text-cyan-300">:sys_now <span className="text-text-muted font-sans">- Timestamp saat ini (YYYY-MM-DD HH:mm:ss)</span></p>
+                      <p className="font-mono text-cyan-300">:sys_today <span className="text-text-muted font-sans">- Tanggal hari ini (YYYY-MM-DD)</span></p>
+                      <p className="font-mono text-cyan-300">:sys_user <span className="text-text-muted font-sans">- Identitas pemanggil (Auth Token)</span></p>
+                      <p className="font-mono text-cyan-300">:sys_client_ip <span className="text-text-muted font-sans">- IP Address client caller</span></p>
+                      <p className="text-[10px] text-text-muted pt-1 border-t border-border-main/50">Variabel di atas otomatis diisi backend tanpa perlu diisi caller.</p>
+                    </div>
+                  </div>
+
                   <div className="text-[11px] font-bold text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20 font-mono hidden sm:block">
                     <code className="text-blue-300 font-bold">:param</code> extract
                   </div>
@@ -3124,16 +3197,16 @@ export const ApiBuilderView: React.FC = () => {
                   <SlidersHorizontal className="w-4 h-4 text-blue-400" />
                   <span className="text-xs font-extrabold uppercase tracking-wider text-text-main">API Settings</span>
                 </div>
-                <div className="flex items-center bg-bg-panel/80 p-1 rounded-xl border border-border-main shadow-inner">
+                <div className="flex items-center bg-bg-panel/80 p-1 rounded-xl border border-border-main shadow-inner gap-0.5">
                   <button
                     onClick={() => document.getElementById('sec-config')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="px-3 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-blue-400 hover:bg-blue-500/10 transition-all cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-blue-400 hover:bg-blue-500/10 transition-all cursor-pointer"
                   >
                     1. Config
                   </button>
                   <button
                     onClick={() => document.getElementById('sec-params')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="px-3 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-purple-400 hover:bg-purple-500/10 transition-all flex items-center gap-1.5 cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-purple-400 hover:bg-purple-500/10 transition-all flex items-center gap-1 cursor-pointer"
                   >
                     2. Params
                     {paramCount > 0 && (
@@ -3143,10 +3216,27 @@ export const ApiBuilderView: React.FC = () => {
                     )}
                   </button>
                   <button
-                    onClick={() => document.getElementById('sec-security')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="px-3 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10 transition-all cursor-pointer"
+                    onClick={() => document.getElementById('sec-business-rules')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-amber-400 hover:bg-amber-500/10 transition-all flex items-center gap-1 cursor-pointer"
                   >
-                    3. Security
+                    3. Pre-Checks
+                    {preValidationRules.length > 0 && (
+                      <span className="px-1.5 py-0.2 text-[9px] bg-amber-500/20 text-amber-300 rounded-full font-mono font-extrabold">
+                        {preValidationRules.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => document.getElementById('sec-security')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10 transition-all cursor-pointer"
+                  >
+                    4. Security
+                  </button>
+                  <button
+                    onClick={() => document.getElementById('sec-cron-push')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 transition-all cursor-pointer"
+                  >
+                    5. Cron
                   </button>
                 </div>
               </div>
@@ -3359,6 +3449,28 @@ export const ApiBuilderView: React.FC = () => {
                       Assign to an existing group or create a new group name.
                     </span>
                   </div>
+
+                  {/* Custom Success Message */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
+                        Custom Success Message (Optional)
+                      </label>
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        Default: {currentApi.method === 'POST' ? '"Data berhasil disimpan."' : (currentApi.method === 'PUT' || currentApi.method === 'PATCH') ? '"Data berhasil diperbarui."' : currentApi.method === 'DELETE' ? '"Data berhasil dihapus."' : '"Data berhasil diambil."'}
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder={currentApi.method === 'POST' ? 'e.g. Data antrean bbm berhasil dibuat.' : 'Pesan sukses kustom saat request berhasil...'}
+                      value={currentApi.successMessage || ''}
+                      onChange={e => setCurrentApi({ ...currentApi, successMessage: e.target.value })}
+                      className="w-full bg-bg-editor border border-border-main hover:border-emerald-500/50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-3 py-2.5 text-sm font-semibold text-text-main outline-none transition-all shadow-inner placeholder:text-text-muted/40"
+                    />
+                    <span className="text-[10px] text-text-muted mt-1.5 block">
+                      Pesan sukses kustom ini akan dikembalikan dalam response JSON: <code className="text-emerald-400">{"{\"success\": true, \"message\": \"...\"}"}</code>. Jika dikosongkan, menggunakan default di atas.
+                    </span>
+                  </div>
                 </div>
 
                 {/* SECTION 2: PARAMETERS SCHEMA */}
@@ -3395,7 +3507,8 @@ export const ApiBuilderView: React.FC = () => {
                             <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase">Type</th>
                             <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase text-center">Req?</th>
                             <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase">Default Value</th>
-                            <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase min-w-[200px]">Description</th>
+                            <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase text-center">Validation Rules</th>
+                            <th className="p-2.5 font-extrabold text-text-main text-[10px] uppercase min-w-[180px]">Description</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border-main/50">
@@ -3403,6 +3516,14 @@ export const ApiBuilderView: React.FC = () => {
                             const meta = parameterMeta.find(m => m.name === p) || {
                               name: p, type: 'string', required: true, defaultValue: '', description: ''
                             };
+                            let activeRulesCount = 0;
+                            if (meta.pattern) activeRulesCount++;
+                            if (meta.minLength !== undefined || meta.maxLength !== undefined) activeRulesCount++;
+                            if (meta.min !== undefined || meta.max !== undefined) activeRulesCount++;
+                            if (meta.allowedValues && meta.allowedValues.length > 0) activeRulesCount++;
+                            if (meta.transform && meta.transform !== 'none') activeRulesCount++;
+                            if (meta.customErrorMessage) activeRulesCount++;
+
                             return (
                               <tr key={p} className="hover:bg-bg-hover/40 transition-colors">
                                 <td className="p-2.5 font-mono text-xs text-purple-400 font-bold">:{p}</td>
@@ -3461,7 +3582,22 @@ export const ApiBuilderView: React.FC = () => {
                                     />
                                   )}
                                 </td>
-                                <td className="p-2.5 min-w-[200px]">
+                                <td className="p-2.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedParamForRules(meta)}
+                                    className={clsx(
+                                      "px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 mx-auto cursor-pointer shadow-sm",
+                                      activeRulesCount > 0
+                                        ? "bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40"
+                                        : "bg-bg-editor hover:bg-purple-500/10 text-text-muted hover:text-purple-300 border border-border-main hover:border-purple-500/30"
+                                    )}
+                                  >
+                                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                                    <span>{activeRulesCount > 0 ? `${activeRulesCount} Rules` : '+ Rules'}</span>
+                                  </button>
+                                </td>
+                                <td className="p-2.5 min-w-[180px]">
                                   <input 
                                     type="text"
                                     className="w-full bg-bg-editor border border-border-main rounded-lg text-xs p-1.5 outline-none focus:border-purple-500 shadow-inner text-text-main placeholder:text-text-muted/40"
@@ -3487,7 +3623,123 @@ export const ApiBuilderView: React.FC = () => {
                   )}
                 </div>
 
-                {/* SECTION 3: SECURITY & ADVANCED FEATURES */}
+                {/* SECTION 3: PRE-VALIDATION BUSINESS RULES */}
+                <div id="sec-business-rules" className="bg-bg-editor/40 border border-border-main hover:border-amber-500/30 rounded-2xl p-5 space-y-4 transition-all shadow-sm">
+                  <div className="flex items-center justify-between border-b border-border-main/50 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-inner">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-text-main">3. Pre-Execution Business Assertions</h3>
+                        <p className="text-[11px] text-text-muted">Query pemeriksaan database sebelum mutasi / insert dieksekusi</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newRule: PreValidationRule = {
+                          id: 'rule_' + Date.now(),
+                          name: 'Check ' + (preValidationRules.length + 1),
+                          sqlQuery: 'SELECT COUNT(*) FROM my_table WHERE some_field = :some_param',
+                          condition: 'EQ_0',
+                          customErrorMessage: ''
+                        };
+                        setPreValidationRules(prev => [...prev, newRule]);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Tambah Rule Cek</span>
+                    </button>
+                  </div>
+
+                  {preValidationRules.length === 0 ? (
+                    <div className="bg-bg-editor/80 border border-border-main border-dashed rounded-xl p-5 text-center">
+                      <ShieldCheck className="w-6 h-6 text-text-muted/30 mx-auto mb-1.5" />
+                      <p className="text-xs text-text-muted leading-relaxed">
+                        Belum ada aturan validasi bisnis SQL. Tambahkan pemeriksaan seperti <em>cek duplikasi nomor lambung</em> (harus 0) atau <em>cek keberadaan data induk</em> (harus &gt; 0).
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {preValidationRules.map((rule, idx) => (
+                        <div key={rule.id || idx} className="bg-bg-panel/90 border border-border-main hover:border-amber-500/40 rounded-xl p-3.5 space-y-3 shadow-sm transition-all">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex-1 flex items-center gap-2">
+                              <span className="text-[11px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 shrink-0">
+                                #{idx + 1}
+                              </span>
+                              <input
+                                type="text"
+                                placeholder="Nama Aturan (e.g. Cek Duplikasi No Lambung)"
+                                value={rule.name}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, name: val } : r));
+                                }}
+                                className="flex-1 bg-bg-editor border border-border-main focus:border-amber-500 rounded-lg px-2.5 py-1 text-xs font-bold text-text-main outline-none"
+                              />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={rule.condition}
+                                onChange={e => {
+                                  const cond = e.target.value as any;
+                                  setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, condition: cond } : r));
+                                }}
+                                className="bg-bg-editor border border-border-main focus:border-amber-500 rounded-lg px-2.5 py-1 text-xs font-semibold text-amber-300 outline-none cursor-pointer"
+                              >
+                                <option value="EQ_0">Harap Bernilai 0 (Error jika data sudah ada)</option>
+                                <option value="GT_0">Harap &gt; 0 (Error jika data tidak ditemukan)</option>
+                                <option value="EQ_1">Harap Bernilai 1 (Harus tepat ada 1 record)</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => setPreValidationRules(prev => prev.filter((_, i) => i !== idx))}
+                                className="p-1.5 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                title="Hapus Aturan"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] font-mono font-bold text-text-muted uppercase block mb-1">
+                              SQL Assertion Query (Mengekstrak angka hasil query)
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={rule.sqlQuery}
+                              onChange={e => {
+                                const sql = e.target.value;
+                                setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, sqlQuery: sql } : r));
+                              }}
+                              placeholder="SELECT COUNT(*) FROM master_fleet WHERE no_lambung = :no_lambung"
+                              className="w-full bg-bg-editor border border-border-main focus:border-amber-500/60 rounded-lg p-2 font-mono text-xs text-amber-200 outline-none resize-none shadow-inner"
+                            />
+                          </div>
+
+                          <div>
+                            <input
+                              type="text"
+                              value={rule.customErrorMessage || ''}
+                              onChange={e => {
+                                const msg = e.target.value;
+                                setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, customErrorMessage: msg } : r));
+                              }}
+                              placeholder="Pesan Error Kustom jika kondisi gagal (Biarkan kosong untuk pesan default)"
+                              className="w-full bg-bg-editor border border-border-main focus:border-amber-500 rounded-lg px-2.5 py-1.5 text-xs text-text-main outline-none placeholder:text-text-muted/40 shadow-inner"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* SECTION 4: SECURITY & ADVANCED FEATURES */}
                 <div id="sec-security" className="bg-bg-editor/40 border border-border-main hover:border-emerald-500/30 rounded-2xl p-5 space-y-4 transition-all shadow-sm">
                   <div className="flex items-center justify-between border-b border-border-main/50 pb-3">
                     <div className="flex items-center gap-2.5">
@@ -3495,7 +3747,7 @@ export const ApiBuilderView: React.FC = () => {
                         <ShieldCheck className="w-4 h-4" />
                       </div>
                       <div>
-                        <h3 className="text-xs font-black uppercase tracking-wider text-text-main">3. Security & Features</h3>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-text-main">4. Security & Features</h3>
                         <p className="text-[11px] text-text-muted">Authentication rules and runtime features</p>
                       </div>
                     </div>
@@ -3639,7 +3891,7 @@ export const ApiBuilderView: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="text-xs font-black uppercase tracking-wider text-text-main flex items-center gap-2">
-                        4. Scheduled Task &amp; Webhook Push (Spring Cron, Target Endpoint &amp; Notifikasi)
+                        5. Scheduled Task &amp; Webhook Push (Spring Cron, Target Endpoint &amp; Notifikasi)
                         {currentApi.cronEnabled ? (
                           <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">
                             Schedule Active

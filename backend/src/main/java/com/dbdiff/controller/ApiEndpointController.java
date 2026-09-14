@@ -64,6 +64,16 @@ public class ApiEndpointController {
         }
         params = result.getParams();
 
+        // ── Auto-Inject System Variables ───────────────────────────────────────
+        String nowTimestamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String todayDate = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        params.putIfAbsent("sys_now", nowTimestamp);
+        params.putIfAbsent("sys_today", todayDate);
+        params.putIfAbsent("current_timestamp", nowTimestamp);
+        params.putIfAbsent("current_date", todayDate);
+        params.putIfAbsent("sys_client_ip", "127.0.0.1");
+        params.putIfAbsent("sys_user", "test-console");
+
         ConnectionDetails conn = connectionRepository.findById(endpoint.getConnectionId());
         if (conn == null) {
             sendJsonError(response, 500, Map.of("error", "Connection not found"));
@@ -72,6 +82,53 @@ public class ApiEndpointController {
         try {
             javax.sql.DataSource dataSource = connectionManagerService.getDataSource(conn);
             org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate jdbcTemplate = new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(dataSource);
+
+            // ── Pre-Validation Business Rules Check ────────────────────────────────
+            if (endpoint.getValidationRules() != null && !endpoint.getValidationRules().trim().isEmpty() && !endpoint.getValidationRules().equals("[]")) {
+                com.fasterxml.jackson.databind.ObjectMapper ruleMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                try {
+                    List<Map<String, Object>> rules = ruleMapper.readValue(endpoint.getValidationRules(), new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+                    for (Map<String, Object> rule : rules) {
+                        String ruleName = (String) rule.getOrDefault("name", "Business Rule");
+                        String ruleSql = (String) rule.get("sqlQuery");
+                        String condition = (String) rule.getOrDefault("condition", "EQ_0");
+                        String customErr = (String) rule.get("customErrorMessage");
+
+                        if (ruleSql != null && !ruleSql.trim().isEmpty()) {
+                            try {
+                                Long count = jdbcTemplate.queryForObject(ruleSql, params, Long.class);
+                                if (count == null) count = 0L;
+
+                                boolean passed = true;
+                                if ("EQ_0".equalsIgnoreCase(condition)) {
+                                    passed = (count == 0);
+                                } else if ("GT_0".equalsIgnoreCase(condition)) {
+                                    passed = (count > 0);
+                                } else if ("EQ_1".equalsIgnoreCase(condition)) {
+                                    passed = (count == 1);
+                                }
+
+                                if (!passed) {
+                                    String errMsg = (customErr != null && !customErr.trim().isEmpty())
+                                            ? customErr
+                                            : "Validasi bisnis '" + ruleName + "' tidak terpenuhi.";
+                                    sendJsonError(response, 400, Map.of(
+                                        "success", false,
+                                        "error", "Bad Request",
+                                        "message", errMsg,
+                                        "errors", List.of(errMsg)
+                                    ));
+                                    return;
+                                }
+                            } catch (Exception rex) {
+                                org.slf4j.LoggerFactory.getLogger(ApiEndpointController.class).warn("Pre-validation rule evaluation error: {}", rex.getMessage());
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    // Ignore parse errors on malformed rule JSON
+                }
+            }
 
             String sql = endpoint.getSqlQuery();
 
@@ -124,6 +181,44 @@ public class ApiEndpointController {
                 sql = sql.replace("{{filters}}", builtClause);
             }
             // ───────────────────────────────────────────────────────────────────────
+
+            // ── Mutation Check (INSERT, UPDATE, DELETE) ────────────────────────────
+            String upperSql = sql.trim().toUpperCase();
+            String method = endpoint.getMethod() != null ? endpoint.getMethod().toUpperCase() : "GET";
+            boolean isMutation = upperSql.startsWith("INSERT") || upperSql.startsWith("UPDATE") || upperSql.startsWith("DELETE")
+                    || (!upperSql.startsWith("SELECT") && !upperSql.startsWith("WITH") && !upperSql.startsWith("EXPLAIN") && (method.equals("POST") || method.equals("PUT") || method.equals("PATCH") || method.equals("DELETE")));
+
+            if (isMutation) {
+                int rowsAffected = jdbcTemplate.update(sql, params);
+                String operation = "MUTATION";
+                if (upperSql.startsWith("INSERT")) operation = "INSERT";
+                else if (upperSql.startsWith("UPDATE")) operation = "UPDATE";
+                else if (upperSql.startsWith("DELETE")) operation = "DELETE";
+                else operation = method;
+
+                String successMsg = endpoint.getSuccessMessage();
+                if (successMsg == null || successMsg.trim().isEmpty()) {
+                    switch (operation) {
+                        case "INSERT": successMsg = "Data berhasil disimpan."; break;
+                        case "UPDATE": successMsg = "Data berhasil diperbarui."; break;
+                        case "DELETE": successMsg = "Data berhasil dihapus."; break;
+                        default: successMsg = "Operasi berhasil dieksekusi."; break;
+                    }
+                }
+
+                response.setStatus(200);
+                response.setContentType("application/json;charset=UTF-8");
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, Object> respMap = new HashMap<>();
+                respMap.put("success", true);
+                respMap.put("operation", operation);
+                respMap.put("rows_affected", rowsAffected);
+                respMap.put("message", successMsg);
+                respMap.put("timestamp", nowTimestamp);
+                response.getWriter().write(mapper.writeValueAsString(respMap));
+                response.getWriter().flush();
+                return;
+            }
 
             response.setStatus(200);
             response.setContentType("application/json;charset=UTF-8");

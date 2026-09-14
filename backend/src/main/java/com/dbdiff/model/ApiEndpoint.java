@@ -25,6 +25,8 @@ public class ApiEndpoint {
     private String ipAllowlist;
     private String groupName;
     private String authToken;
+    private String successMessage;
+    private String validationRules;
 
     // ── Scheduled Push (Spring Cron) & Failure Notification ──────────────────
     private boolean cronEnabled = false;
@@ -123,6 +125,12 @@ public class ApiEndpoint {
 
     public String getLastPushMessage() { return lastPushMessage; }
     public void setLastPushMessage(String lastPushMessage) { this.lastPushMessage = lastPushMessage; }
+
+    public String getSuccessMessage() { return successMessage; }
+    public void setSuccessMessage(String successMessage) { this.successMessage = successMessage; }
+
+    public String getValidationRules() { return validationRules; }
+    public void setValidationRules(String validationRules) { this.validationRules = validationRules; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
