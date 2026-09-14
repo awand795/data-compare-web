@@ -38,7 +38,8 @@ public class ApiEndpointRepository {
                 "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS last_push_status VARCHAR(50)",
                 "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS last_push_message TEXT",
                 "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS success_message TEXT",
-                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS validation_rules TEXT"
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS validation_rules TEXT",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS required_app_id VARCHAR(100)"
             };
             for (String sql : alterSqls) {
                 try {
@@ -72,6 +73,9 @@ public class ApiEndpointRepository {
                 api.setGroupName(grp != null && !grp.trim().isEmpty() ? grp : "General");
             } catch (SQLException ignored) {}
             api.setAuthToken(rs.getString("auth_token"));
+            try {
+                api.setRequiredAppId(rs.getString("required_app_id"));
+            } catch (SQLException ignored) {}
 
             try {
                 api.setCronEnabled(rs.getBoolean("cron_enabled"));
@@ -148,11 +152,11 @@ public class ApiEndpointRepository {
         String groupName = (api.getGroupName() != null && !api.getGroupName().trim().isEmpty()) ? api.getGroupName().trim() : "General";
         try {
             return jdbcTemplate.update(
-                "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, success_message, validation_rules, created_at, updated_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, required_app_id, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, success_message, validation_rules, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
                 api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
-                api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(),
+                api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getRequiredAppId(),
                 api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(),
                 api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
                 api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getSuccessMessage(), api.getValidationRules()
@@ -196,11 +200,11 @@ public class ApiEndpointRepository {
         try {
             return jdbcTemplate.update(
                 "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, " +
-                "sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, ip_allowlist = ?, group_name = ?, auth_token = ?, " +
+                "sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, ip_allowlist = ?, group_name = ?, auth_token = ?, required_app_id = ?, " +
                 "cron_enabled = ?, cron_expression = ?, target_endpoint_id = ?, target_url = ?, target_method = ?, target_headers = ?, notification_channel_id = ?, " +
                 "notify_on_success = ?, notify_on_failure = ?, success_message = ?, validation_rules = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 api.getName(), api.getMethod(), api.getEndpointPath(), api.getConnectionId(),
-                api.getSqlQuery(), api.getParameters(), api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(),
+                api.getSqlQuery(), api.getParameters(), api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getRequiredAppId(),
                 api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(), api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
                 api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getSuccessMessage(), api.getValidationRules(), api.getId()
             );

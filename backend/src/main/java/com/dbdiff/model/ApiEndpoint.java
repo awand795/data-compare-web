@@ -23,6 +23,7 @@ public class ApiEndpoint {
     private boolean allowRawSql;
 
     private String ipAllowlist;
+    private String requiredAppId; // Optional: restrict endpoint to specific Auth App
     private String groupName;
     private String authToken;
     private String successMessage;
@@ -134,6 +135,9 @@ public class ApiEndpoint {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public String getRequiredAppId() { return requiredAppId; }
+    public void setRequiredAppId(String requiredAppId) { this.requiredAppId = requiredAppId; }
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }

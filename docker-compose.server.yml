@@ -17,6 +17,7 @@ services:
       - DB_PASSWORD=${INTERNAL_DB_PASSWORD}
       - KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092
       - DEBEZIUM_BASE_URL=http://127.0.0.1:8083
+      - APP_SCHEDULING_ENABLED=true
     volumes:
       - /home/awanda/darkosync/ssh-keys:/app/ssh-keys:ro
       - /:/host:ro

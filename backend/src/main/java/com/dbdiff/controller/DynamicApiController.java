@@ -6,6 +6,8 @@ import com.dbdiff.repository.ApiEndpointRepository;
 import com.dbdiff.repository.ConnectionRepository;
 import com.dbdiff.service.ConnectionManagerService;
 import com.dbdiff.service.ApiParameterValidator;
+import com.dbdiff.service.JwtService;
+import io.jsonwebtoken.Claims;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -39,6 +41,9 @@ public class DynamicApiController {
 
     @Autowired
     private ConnectionManagerService connectionManagerService;
+
+    @Autowired(required = false)
+    private JwtService jwtService;
 
     @RequestMapping(value = "/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE})
     public void handleRequest(
@@ -89,15 +94,28 @@ public class DynamicApiController {
         // Check authentication
         String providedToken = null;
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            providedToken = authHeader.substring(7);
+            providedToken = authHeader.substring(7).trim();
         } else if (xApiKey != null) {
-            providedToken = xApiKey;
+            providedToken = xApiKey.trim();
         }
+
+        // Try validating as JWT token (if provided)
+        Claims jwtClaims = null;
+        if (providedToken != null && jwtService != null) {
+            try {
+                jwtClaims = jwtService.validateAccessToken(providedToken);
+            } catch (Exception ignored) {
+                // Not a valid JWT, fallback to static token behavior
+                jwtClaims = null;
+            }
+        }
+        boolean isValidJwt = (jwtClaims != null);
 
         if (endpoint.isPublic() == false) {
             String token = endpoint.getAuthToken();
             if (token != null && !token.isEmpty()) {
-                if (providedToken == null || !providedToken.equals(token)) {
+                boolean authorized = (providedToken != null && providedToken.equals(token)) || isValidJwt;
+                if (!authorized) {
                     sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of(
                         "success", false,
                         "error", "Unauthorized",
@@ -106,6 +124,40 @@ public class DynamicApiController {
                     ));
                     return;
                 }
+            } else {
+                if (!isValidJwt) {
+                    sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of(
+                        "success", false,
+                        "error", "Unauthorized",
+                        "message", "Unauthorized. Valid authentication required.",
+                        "errors", List.of("Unauthorized. Valid authentication required.")
+                    ));
+                    return;
+                }
+            }
+        }
+
+        // ── Auth App Restriction Check ──────────────────────────────────────────
+        String requiredAppId = endpoint.getRequiredAppId();
+        if (requiredAppId != null && !requiredAppId.trim().isEmpty()) {
+            if (!isValidJwt || jwtClaims == null) {
+                sendJsonError(response, HttpStatus.FORBIDDEN.value(), Map.of(
+                    "success", false,
+                    "error", "Forbidden",
+                    "message", "Token tidak valid untuk endpoint ini",
+                    "errors", List.of("Token tidak valid untuk endpoint ini")
+                ));
+                return;
+            }
+            String tokenAppId = jwtClaims.get("appId", String.class);
+            if (tokenAppId == null || !tokenAppId.trim().equalsIgnoreCase(requiredAppId.trim())) {
+                sendJsonError(response, HttpStatus.FORBIDDEN.value(), Map.of(
+                    "success", false,
+                    "error", "Forbidden",
+                    "message", "Token tidak valid untuk endpoint ini",
+                    "errors", List.of("Token tidak valid untuk endpoint ini")
+                ));
+                return;
             }
         }
 
@@ -134,7 +186,24 @@ public class DynamicApiController {
         allParams.putIfAbsent("current_timestamp", nowTimestamp);
         allParams.putIfAbsent("current_date", todayDate);
         allParams.putIfAbsent("sys_client_ip", clientIp);
-        allParams.putIfAbsent("sys_user", providedToken != null ? providedToken : "anonymous");
+
+        if (isValidJwt && jwtClaims != null) {
+            String userId = jwtClaims.getSubject();
+            String tokenAppId = jwtClaims.get("appId", String.class);
+            String role = jwtClaims.get("role", String.class);
+            String companyId = jwtClaims.get("companyId", String.class);
+            allParams.putIfAbsent("sys_user_id", userId != null ? userId : "");
+            allParams.putIfAbsent("sys_app_id", tokenAppId != null ? tokenAppId : "");
+            allParams.putIfAbsent("sys_role", role != null ? role : "");
+            allParams.putIfAbsent("sys_company_id", companyId != null ? companyId : "");
+            allParams.put("sys_user", userId != null ? userId : "anonymous");
+        } else {
+            allParams.putIfAbsent("sys_user", providedToken != null ? providedToken : "anonymous");
+            allParams.putIfAbsent("sys_user_id", "");
+            allParams.putIfAbsent("sys_app_id", "");
+            allParams.putIfAbsent("sys_role", "");
+            allParams.putIfAbsent("sys_company_id", "");
+        }
 
         // Fetch Connection
         ConnectionDetails optConn = connectionRepository.findById(endpoint.getConnectionId());

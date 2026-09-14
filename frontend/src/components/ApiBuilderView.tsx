@@ -10,7 +10,7 @@ import {
   LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal,
   Folder, FolderOpen, FolderPlus, FolderTree, Shield, AlertTriangle, ChevronRight,
   CheckSquare, Square, Radio, Bell, Send, MessageCircle, Zap, Sparkles,
-  Hash, HardDrive
+  Hash, HardDrive, KeyRound
 } from 'lucide-react';
 import { EndpointTargetsModal, type EndpointTarget } from './EndpointTargetsModal';
 import { ParameterRulesModal } from './ParameterRulesModal';
@@ -18,6 +18,7 @@ import { NotificationChannelsModal } from './NotificationChannelsModal';
 import { SQLEditor } from './SQLEditor';
 import { SequenceView } from './SequenceView';
 import { StorageManagerView } from './StorageManagerView';
+import { AuthAppsView } from './AuthAppsView';
 import clsx from 'clsx';
 
 export interface ApiParameter {
@@ -74,6 +75,7 @@ interface ApiEndpoint {
   lastPushAt?: string;
   lastPushStatus?: string;
   lastPushMessage?: string;
+  requiredAppId?: string;
 }
 
 type ValidationError = {
@@ -121,7 +123,8 @@ export const ApiBuilderView: React.FC = () => {
   
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'edit' | 'spec'>('list');
-  const [backendlessTab, setBackendlessTab] = useState<'endpoints' | 'sequence' | 'storage'>('endpoints');
+  const [backendlessTab, setBackendlessTab] = useState<'endpoints' | 'sequence' | 'storage' | 'auth_apps'>('endpoints');
+  const [authAppsList, setAuthAppsList] = useState<{ id: string; name: string; allowedRoles?: string }[]>([]);
   const [currentApi, setCurrentApi] = useState<ApiEndpoint | null>(null);
   const [parameterMeta, setParameterMeta] = useState<ApiParameter[]>([]);
   const [selectedParamForRules, setSelectedParamForRules] = useState<ApiParameter | null>(null);
@@ -322,11 +325,21 @@ export const ApiBuilderView: React.FC = () => {
     }
   };
 
+  const fetchAuthApps = async () => {
+    try {
+      const res = await axios.get('/api/auth-apps');
+      if (Array.isArray(res.data)) setAuthAppsList(res.data);
+    } catch (e) {
+      console.warn('Failed to fetch auth apps', e);
+    }
+  };
+
   useEffect(() => {
     fetchEndpoints();
     fetchGroups();
     fetchEndpointTargets();
     fetchChannels();
+    fetchAuthApps();
   }, []);
 
   // Track dirty state
@@ -472,7 +485,8 @@ export const ApiBuilderView: React.FC = () => {
       targetHeaders: '{\n  "Content-Type": "application/json"\n}',
       notificationChannelId: '',
       notifyOnSuccess: false,
-      notifyOnFailure: true
+      notifyOnFailure: true,
+      requiredAppId: ''
     };
     setCurrentApi(newApi);
     setTestParams({});
@@ -1140,6 +1154,13 @@ export const ApiBuilderView: React.FC = () => {
                 <HardDrive className="w-3.5 h-3.5" />
                 <span>Storage &amp; Buckets</span>
               </button>
+              <button
+                onClick={() => setBackendlessTab('auth_apps')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Auth Apps</span>
+              </button>
             </div>
           </div>
           <div className="flex-1 overflow-hidden">
@@ -1175,10 +1196,59 @@ export const ApiBuilderView: React.FC = () => {
                 <HardDrive className="w-3.5 h-3.5" />
                 <span>Storage &amp; Buckets</span>
               </button>
+              <button
+                onClick={() => setBackendlessTab('auth_apps')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Auth Apps</span>
+              </button>
             </div>
           </div>
           <div className="flex-1 overflow-hidden">
             <StorageManagerView />
+          </div>
+        </div>
+      );
+    }
+
+    if (backendlessTab === 'auth_apps') {
+      return (
+        <div className="h-full flex flex-col overflow-hidden bg-bg-main">
+          <div className="border-b border-border-main bg-bg-panel px-4 py-2.5 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-1.5 p-1 bg-bg-editor rounded-xl border border-border-main">
+              <button
+                onClick={() => setBackendlessTab('endpoints')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                <span>API Endpoints</span>
+              </button>
+              <button
+                onClick={() => setBackendlessTab('sequence')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+              >
+                <Hash className="w-3.5 h-3.5" />
+                <span>Auto-Number (Sequence)</span>
+              </button>
+              <button
+                onClick={() => setBackendlessTab('storage')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+              >
+                <HardDrive className="w-3.5 h-3.5" />
+                <span>Storage &amp; Buckets</span>
+              </button>
+              <button
+                onClick={() => setBackendlessTab('auth_apps')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Auth Apps</span>
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <AuthAppsView />
           </div>
         </div>
       );
@@ -1208,6 +1278,13 @@ export const ApiBuilderView: React.FC = () => {
           >
             <HardDrive className="w-3.5 h-3.5" />
             <span>Storage &amp; Buckets</span>
+          </button>
+          <button
+            onClick={() => setBackendlessTab('auth_apps')}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>Auth Apps</span>
           </button>
         </div>
 
@@ -1621,6 +1698,11 @@ export const ApiBuilderView: React.FC = () => {
                                     {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' ? (
                                       <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded" title={`Allowed: ${api.ipAllowlist}`}>
                                         <Shield className="w-2.5 h-2.5" /> IP Locked
+                                      </span>
+                                    ) : null}
+                                    {api.requiredAppId ? (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.2 rounded" title={`Restricted to Auth App: ${api.requiredAppId}`}>
+                                        <KeyRound className="w-2.5 h-2.5" /> {api.requiredAppId}
                                       </span>
                                     ) : null}
                                   </div>
@@ -2092,6 +2174,11 @@ export const ApiBuilderView: React.FC = () => {
                                        ) : (
                                          <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
                                            Protected
+                                         </span>
+                                       )}
+                                       {api.requiredAppId && (
+                                         <span className="text-[10px] font-bold text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/20" title={`Restricted to Auth App: ${api.requiredAppId}`}>
+                                           App: {api.requiredAppId}
                                          </span>
                                        )}
                                        <button onClick={() => handleClone(api)} className="p-1.5 text-text-muted hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer" title="Clone API">
@@ -4024,6 +4111,43 @@ export const ApiBuilderView: React.FC = () => {
                         </span>
                       </div>
                     </label>
+                  </div>
+
+                  {/* Restrict to Auth App (Multi-App) Card */}
+                  <div className="bg-bg-editor/80 border border-border-main hover:border-violet-500/30 rounded-xl p-4 space-y-2.5 shadow-sm transition-all">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-extrabold text-violet-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5" /> Restrict to Auth App (Multi-App)
+                      </label>
+                      {currentApi.requiredAppId ? (
+                        <button
+                          type="button"
+                          onClick={() => setCurrentApi({ ...currentApi, requiredAppId: '' })}
+                          className="text-[11px] text-text-muted hover:text-rose-400 font-bold cursor-pointer transition-colors"
+                        >
+                          Clear (Allow Any App)
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded font-mono font-bold">
+                          All Apps / Unrestricted
+                        </span>
+                      )}
+                    </div>
+                    <select
+                      className="w-full bg-[#0d1117] border border-border-main focus:border-violet-500/60 rounded-xl p-2.5 text-xs outline-none text-violet-300 font-medium cursor-pointer"
+                      value={currentApi.requiredAppId || ''}
+                      onChange={e => setCurrentApi({ ...currentApi, requiredAppId: e.target.value })}
+                    >
+                      <option value="">(Semua / Tidak Dibatasi ke App Tertentu)</option>
+                      {authAppsList.map(app => (
+                        <option key={app.id} value={app.id}>
+                          {app.name} ({app.id})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-text-muted leading-relaxed">
+                      Jika dipilih, hanya token JWT yang diterbitkan untuk aplikasi ini yang diizinkan mengakses endpoint ini. Header <code className="font-mono text-violet-400">Authorization: Bearer &lt;jwt&gt;</code> akan otomatis divalidasi, dan variabel <code className="font-mono text-cyan-400">:sys_user_id</code>, <code className="font-mono text-cyan-400">:sys_role</code>, <code className="font-mono text-cyan-400">:sys_company_id</code> otomatis di-inject ke SQL query.
+                    </p>
                   </div>
 
                   {/* IP Address Allowlist Card */}
