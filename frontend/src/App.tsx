@@ -15,8 +15,9 @@ import { ApiShareDocView } from './components/ApiShareDocView';
 import { SystemMonitoringView } from './components/SystemMonitoringView';
 import { WebhooksView } from './components/WebhooksView';
 import { SequenceView } from './components/SequenceView';
+import { StorageManagerView } from './components/StorageManagerView';
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2, Database, Webhook, Globe, Activity, Code, Hash } from 'lucide-react';
+import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2, Database, Webhook, Globe, Activity, Code, Hash, HardDrive } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
 import { AlertModal } from './components/AlertModal';
@@ -117,6 +118,7 @@ function App() {
     { id: 'api_scheduler' as const, label: 'API Scheduler', icon: Globe, desc: 'Automate HTTP API requests & ingest JSON into ClickHouse/PostgreSQL' },
     { id: 'webhooks' as const, label: 'Webhooks', icon: Webhook, desc: 'Inbound Webhook receiver & JSON ingestion for Ginee, e-commerce, and external events' },
     { id: 'sequence' as const, label: 'Sequence', icon: Hash, desc: 'Auto-number generator — configurable for any project (MK-250503-001, INV-2025-0001)' },
+    { id: 'storage' as const, label: 'Storage', icon: HardDrive, desc: 'Universal file storage & bucket manager with size/format validation & auto-compression' },
   ];
 
   if (!isAuthenticated) {
@@ -320,6 +322,9 @@ function App() {
                 </div>
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'sequence' && "hidden")}>
                   <SequenceView />
+                </div>
+                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'storage' && "hidden")}>
+                  <StorageManagerView />
                 </div>
               </div>
             </Panel>
