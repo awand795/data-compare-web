@@ -10,7 +10,8 @@ import {
   LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal,
   Folder, FolderOpen, FolderPlus, FolderTree, Shield, AlertTriangle, ChevronRight,
   CheckSquare, Square, Radio, Bell, Send, MessageCircle, Zap, Sparkles,
-  Hash, HardDrive, KeyRound
+  Hash, HardDrive, KeyRound,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { EndpointTargetsModal, type EndpointTarget } from './EndpointTargetsModal';
 import { ParameterRulesModal } from './ParameterRulesModal';
@@ -163,6 +164,15 @@ export const ApiBuilderView: React.FC = () => {
   const [assignSearchQuery, setAssignSearchQuery] = useState('');
   const [isSavingAssignGroup, setIsSavingAssignGroup] = useState(false);
   const [isCustomGroupInput, setIsCustomGroupInput] = useState<boolean>(false);
+
+  // Group sorting state (asc / desc by name)
+  const [groupSort, setGroupSort] = useState<Record<string, 'asc' | 'desc'>>({});
+  const toggleGroupSort = (groupName: string) => {
+    setGroupSort(prev => ({
+      ...prev,
+      [groupName]: prev[groupName] === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   // Endpoint Targets & Failure Alert Notification Profiles
   const [endpointTargets, setEndpointTargets] = useState<EndpointTarget[]>([]);
@@ -1064,7 +1074,12 @@ export const ApiBuilderView: React.FC = () => {
   const displayedGroups = useMemo(() => {
     const groupsToConsider = selectedGroup === 'ALL' ? allGroups : [selectedGroup];
     return groupsToConsider.map(grp => {
-      const items = filteredEndpoints.filter(e => (e.groupName || 'General') === grp);
+      const rawItems = filteredEndpoints.filter(e => (e.groupName || 'General') === grp);
+      const sortDir = groupSort[grp];
+      const items = sortDir ? [...rawItems].sort((a, b) => {
+        const cmp = (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' });
+        return sortDir === 'asc' ? cmp : -cmp;
+      }) : rawItems;
       return {
         groupName: grp,
         items,
@@ -1078,7 +1093,7 @@ export const ApiBuilderView: React.FC = () => {
       if (selectedGroup !== 'ALL') return true;
       return g.items.length > 0 || g.groupName === 'General';
     });
-  }, [allGroups, filteredEndpoints, selectedGroup, searchQuery, endpoints]);
+  }, [allGroups, filteredEndpoints, selectedGroup, searchQuery, endpoints, groupSort]);
 
   const toggleGroupExpand = (grp: string) => {
     setExpandedGroups(prev => ({
@@ -1611,6 +1626,37 @@ export const ApiBuilderView: React.FC = () => {
 
                     <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                       <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleGroupSort(group.groupName);
+                        }}
+                        className={clsx(
+                          "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer",
+                          groupSort[group.groupName]
+                            ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/30"
+                            : "bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main border-border-main"
+                        )}
+                        title={
+                          groupSort[group.groupName] === 'asc'
+                            ? 'Sort Nama: Z → A (Descending)'
+                            : groupSort[group.groupName] === 'desc'
+                            ? 'Sort Nama: A → Z (Ascending)'
+                            : 'Klik untuk mengurutkan berdasarkan nama (A → Z)'
+                        }
+                      >
+                        {groupSort[group.groupName] === 'asc' ? (
+                          <ArrowUp className="w-3.5 h-3.5 text-indigo-400" />
+                        ) : groupSort[group.groupName] === 'desc' ? (
+                          <ArrowDown className="w-3.5 h-3.5 text-indigo-400" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5" />
+                        )}
+                        <span className="hidden sm:inline font-mono text-[10px]">
+                          {groupSort[group.groupName] ? groupSort[group.groupName].toUpperCase() : 'Sort'}
+                        </span>
+                      </button>
+
+                      <button
                         onClick={() => handleOpenAssignGroup(group.groupName)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 text-xs font-bold transition-all cursor-pointer"
                         title={`Add existing APIs from other groups to "${group.groupName}"`}
@@ -1953,7 +1999,40 @@ export const ApiBuilderView: React.FC = () => {
                           <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
                             <thead className="bg-bg-editor text-text-muted font-bold border-b border-border-main text-xs sticky top-0 z-10 shadow-sm">
                               <tr>
-                                <th className="p-3 uppercase tracking-wider text-[11px]">Name &amp; Group</th>
+                                <th 
+                                  onClick={() => toggleGroupSort(group.groupName)}
+                                  className="p-3 uppercase tracking-wider text-[11px] cursor-pointer select-none hover:text-text-main transition-colors group/th"
+                                  title={
+                                    groupSort[group.groupName] === 'asc'
+                                      ? 'Urutkan Nama: Z → A (Descending)'
+                                      : groupSort[group.groupName] === 'desc'
+                                      ? 'Urutkan Nama: A → Z (Ascending)'
+                                      : 'Klik untuk mengurutkan berdasarkan nama (A → Z)'
+                                  }
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span>Name &amp; Group</span>
+                                    <span className={clsx(
+                                      "p-0.5 rounded transition-colors",
+                                      groupSort[group.groupName] 
+                                        ? "text-indigo-400 bg-indigo-500/10" 
+                                        : "text-text-muted/40 group-hover/th:text-text-muted"
+                                    )}>
+                                      {groupSort[group.groupName] === 'asc' ? (
+                                        <ArrowUp className="w-3.5 h-3.5 text-indigo-400" />
+                                      ) : groupSort[group.groupName] === 'desc' ? (
+                                        <ArrowDown className="w-3.5 h-3.5 text-indigo-400" />
+                                      ) : (
+                                        <ArrowUpDown className="w-3 h-3" />
+                                      )}
+                                    </span>
+                                    {groupSort[group.groupName] && (
+                                      <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-bold">
+                                        {groupSort[group.groupName].toUpperCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                </th>
                                 <th className="p-3 uppercase tracking-wider text-[11px]">Method &amp; Path</th>
                                 <th className="p-3 uppercase tracking-wider text-[11px]">Database Connection</th>
                                 <th className="p-3 uppercase tracking-wider text-[11px]">Spring Cron</th>
