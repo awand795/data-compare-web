@@ -3186,24 +3186,24 @@ export const ApiBuilderView: React.FC = () => {
             <div className="flex-1 lg:w-3/5 flex flex-col border-r border-border-main min-w-0 bg-[#080e1a] relative z-30">
               
               {/* COMPACT INTEGRATED TOOLBAR (IDE-STYLE) */}
-              <div className="bg-bg-panel/95 backdrop-blur border-b border-border-main px-4 py-2.5 flex items-center justify-between gap-2 shrink-0 shadow-sm relative z-40 overflow-visible">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex items-center gap-2 text-xs font-black text-text-main shrink-0 uppercase tracking-wider">
+              <div className="bg-bg-panel/95 backdrop-blur border-b border-border-main px-3 sm:px-4 py-2 flex items-center justify-between gap-2 shrink-0 shadow-sm relative z-40 overflow-visible">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-xs font-black text-text-main shrink-0 uppercase tracking-wider">
                     <div className="w-6 h-6 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
                       <Database className="w-3.5 h-3.5" />
                     </div>
-                    <span>SQL Studio</span>
+                    <span className="hidden xl:inline">SQL Studio</span>
                   </div>
 
-                  <div className="h-4 w-px bg-border-main shrink-0"></div>
+                  <div className="hidden xl:block h-4 w-px bg-border-main shrink-0"></div>
 
                   {/* Sleek Target Database Dropdown Pill */}
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-[10px] font-extrabold text-text-muted uppercase tracking-wider shrink-0 hidden sm:inline">DB:</span>
-                    <div className="relative min-w-[200px] max-w-[280px]">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1 max-w-[220px] 2xl:max-w-[280px]">
+                    <span className="text-[10px] font-extrabold text-text-muted uppercase tracking-wider shrink-0">DB:</span>
+                    <div className="relative w-full min-w-[120px]">
                       <select 
                         className={clsx(
-                          "w-full bg-bg-editor/90 border rounded-lg px-2.5 py-1 text-xs focus:ring-1 outline-none appearance-none shadow-inner font-bold transition-all pr-7 cursor-pointer",
+                          "w-full bg-bg-editor/90 border rounded-lg px-2 py-1 text-xs focus:ring-1 outline-none appearance-none shadow-inner font-bold transition-all pr-6 cursor-pointer truncate",
                           currentApi.connectionId
                             ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5 focus:border-emerald-500"
                             : getError('connectionId')
@@ -3212,27 +3212,19 @@ export const ApiBuilderView: React.FC = () => {
                         )}
                         value={currentApi.connectionId}
                         onChange={e => setCurrentApi({...currentApi, connectionId: e.target.value})}
+                        title={connections.find(c => c.id === currentApi.connectionId)?.name || 'Select Target Database'}
                       >
-                        <option value="" disabled className="text-text-muted">Select Target Database...</option>
+                        <option value="" disabled className="text-text-muted">Select DB...</option>
                         {connections.map(c => (
                           <option key={c.id} value={c.id} className="text-text-main font-semibold bg-bg-panel">{c.name} ({c.type})</option>
                         ))}
                       </select>
-                      <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-2 text-text-muted pointer-events-none" />
+                      <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-2 text-text-muted pointer-events-none" />
                     </div>
-                    {currentApi.connectionId ? (
-                      <span className="hidden xl:inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Ready
-                      </span>
-                    ) : (
-                      <span className="hidden xl:inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
-                        Required
-                      </span>
-                    )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   {/* DML Mutation vs Query Indicator */}
                   {(() => {
                     const trimmed = (currentApi.sqlQuery || '').trim().toUpperCase();
@@ -3240,27 +3232,27 @@ export const ApiBuilderView: React.FC = () => {
                     if (isMutation) {
                       const mutationType = trimmed.startsWith('INSERT') ? 'INSERT' : trimmed.startsWith('UPDATE') ? 'UPDATE' : 'DELETE';
                       return (
-                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1 shadow-sm">
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-mono font-black uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1 shadow-sm shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                          DML {mutationType}
+                          <span className="hidden 2xl:inline">DML </span>{mutationType}
                         </span>
                       );
                     }
                     return (
-                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm">
+                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-mono font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        SELECT Query
+                        SELECT<span className="hidden 2xl:inline"> Query</span>
                       </span>
                     );
                   })()}
 
                   {/* System Variables Info Pill */}
-                  <div className="group relative">
-                    <span className="text-[11px] font-bold text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 px-2.5 py-1 rounded-lg border border-cyan-500/20 font-mono hidden sm:inline-flex items-center gap-1 cursor-help transition-colors select-none">
+                  <div className="group relative shrink-0">
+                    <span className="text-[11px] font-bold text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-0.5 rounded-lg border border-cyan-500/20 font-mono inline-flex items-center gap-1 cursor-help transition-colors select-none">
                       <Sparkles className="w-3 h-3 text-cyan-400" />
                       <span>:sys_vars</span>
                     </span>
-                    <div className="absolute left-1/2 -translate-x-1/2 top-full pt-1.5 hidden group-hover:block z-50 w-72">
+                    <div className="absolute right-0 top-full pt-1.5 hidden group-hover:block z-50 w-72">
                       <div className="p-3 bg-slate-900/98 dark:bg-slate-950/98 border border-cyan-500/40 rounded-xl shadow-2xl text-[11px] space-y-2 text-text-muted backdrop-blur-md ring-1 ring-white/10">
                         <div className="font-bold text-text-main flex items-center gap-1.5 text-xs pb-1.5 border-b border-border-main/60">
                           <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
@@ -3291,7 +3283,8 @@ export const ApiBuilderView: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="text-[11px] font-bold text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20 font-mono hidden sm:block">
+                  {/* Param hint (only on wide screens) */}
+                  <div className="text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-lg border border-blue-500/20 font-mono hidden 2xl:block shrink-0">
                     <code className="text-blue-300 font-bold">:param</code> extract
                   </div>
                 </div>
