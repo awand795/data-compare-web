@@ -11,6 +11,7 @@ public class RefreshToken {
     private boolean revoked = false;
     private LocalDateTime createdAt;
     private String replacedBy;
+    private String userMetadata;
 
     public RefreshToken() {}
 
@@ -23,6 +24,18 @@ public class RefreshToken {
         this.revoked = revoked;
         this.createdAt = createdAt;
         this.replacedBy = replacedBy;
+    }
+
+    public RefreshToken(String id, String appId, String userId, String tokenHash, LocalDateTime expiresAt, boolean revoked, LocalDateTime createdAt, String replacedBy, String userMetadata) {
+        this.id = id;
+        this.appId = appId;
+        this.userId = userId;
+        this.tokenHash = tokenHash;
+        this.expiresAt = expiresAt;
+        this.revoked = revoked;
+        this.createdAt = createdAt;
+        this.replacedBy = replacedBy;
+        this.userMetadata = userMetadata;
     }
 
     public String getId() { return id; }
@@ -48,4 +61,7 @@ public class RefreshToken {
 
     public String getReplacedBy() { return replacedBy; }
     public void setReplacedBy(String replacedBy) { this.replacedBy = replacedBy; }
+
+    public String getUserMetadata() { return userMetadata; }
+    public void setUserMetadata(String userMetadata) { this.userMetadata = userMetadata; }
 }

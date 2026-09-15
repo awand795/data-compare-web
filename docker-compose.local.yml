@@ -182,5 +182,4 @@ volumes:
 networks:
   darkosync-network:
     name: darkosync-local-net
-    driver: overlay
-    attachable: true
+    driver: bridge

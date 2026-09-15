@@ -23,6 +23,7 @@ import com.dbdiff.model.ConnectionDetails;
 import com.dbdiff.repository.ConnectionRepository;
 import com.dbdiff.service.ConnectionManagerService;
 import com.dbdiff.service.ApiParameterValidator;
+import com.dbdiff.service.JwtService;
 
 @RestController
 @RequestMapping("/api/api-builder")
@@ -45,6 +46,12 @@ public class ApiEndpointController {
 
     @Autowired
     private com.dbdiff.service.ApiCronPushService apiCronPushService;
+
+    @Autowired(required = false)
+    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+
+    @Autowired(required = false)
+    private com.dbdiff.service.JwtService jwtService;
 
     public static class TestRequest {
         public ApiEndpoint api;
@@ -73,6 +80,50 @@ public class ApiEndpointController {
         params.putIfAbsent("current_date", todayDate);
         params.putIfAbsent("sys_client_ip", "127.0.0.1");
         params.putIfAbsent("sys_user", "test-console");
+
+        // ── Auth Action: REFRESH_TOKEN ───────────────────────────────────────────
+        if ("REFRESH_TOKEN".equalsIgnoreCase(endpoint.getAuthAction())) {
+            String rawRefreshToken = null;
+            if (params.containsKey("refresh_token") && params.get("refresh_token") != null) {
+                rawRefreshToken = params.get("refresh_token").toString().trim();
+            } else if (params.containsKey("refreshToken") && params.get("refreshToken") != null) {
+                rawRefreshToken = params.get("refreshToken").toString().trim();
+            }
+
+            if (rawRefreshToken == null || rawRefreshToken.isEmpty()) {
+                sendJsonError(response, 400, Map.of("errors", List.of("Parameter 'refresh_token' wajib diisi untuk menguji Refresh Token.")));
+                return;
+            }
+
+            if (jwtService == null) {
+                sendJsonError(response, 500, Map.of("error", "JWT service tidak aktif pada server."));
+                return;
+            }
+
+            try {
+                JwtService.TokenPair tokenPair = jwtService.refreshDynamic(rawRefreshToken, endpoint.getRequiredAppId());
+                response.setStatus(200);
+                response.setContentType("application/json;charset=UTF-8");
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, Object> respMap = new HashMap<>();
+                respMap.put("success", true);
+                respMap.put("message", (endpoint.getSuccessMessage() != null && !endpoint.getSuccessMessage().trim().isEmpty())
+                        ? endpoint.getSuccessMessage() : "Token berhasil diperbarui.");
+                respMap.put("access_token", tokenPair.getAccessToken());
+                respMap.put("refresh_token", tokenPair.getRefreshToken());
+                respMap.put("token_type", "Bearer");
+                respMap.put("expires_in", tokenPair.getExpiresIn());
+                respMap.put("user", tokenPair.getUserData() != null ? tokenPair.getUserData() : tokenPair.getUser());
+                respMap.put("timestamp", nowTimestamp);
+
+                response.getWriter().write(mapper.writeValueAsString(respMap));
+                response.getWriter().flush();
+                return;
+            } catch (Exception ex) {
+                sendJsonError(response, 401, Map.of("error", "Unauthorized", "message", ex.getMessage()));
+                return;
+            }
+        }
 
         ConnectionDetails conn = connectionRepository.findById(endpoint.getConnectionId());
         if (conn == null) {
@@ -210,6 +261,86 @@ public class ApiEndpointController {
                 sql = sql.replace("{{filters}}", builtClause);
             }
             // ───────────────────────────────────────────────────────────────────────
+
+            // ── Auth Action: REGISTER ───────────────────────────────────────────────
+            if ("REGISTER".equalsIgnoreCase(endpoint.getAuthAction())) {
+                String passParam = endpoint.getPasswordParam();
+                if (params.containsKey(passParam) && params.get(passParam) != null) {
+                    String rawPass = params.get(passParam).toString();
+                    String hashed = (passwordEncoder != null) ? passwordEncoder.encode(rawPass) : rawPass;
+                    params.put(endpoint.getPasswordHashColumn(), hashed);
+                    params.put("password_hash", hashed);
+                    params.put(passParam, hashed);
+                }
+            }
+
+            // ── Auth Action: LOGIN ───────────────────────────────────────────────────
+            if ("LOGIN".equalsIgnoreCase(endpoint.getAuthAction())) {
+                String passParam = endpoint.getPasswordParam();
+                Object inputPassObj = params.get(passParam);
+                if (inputPassObj == null || inputPassObj.toString().trim().isEmpty()) {
+                    sendJsonError(response, 400, Map.of("errors", List.of("Parameter password '" + passParam + "' wajib diisi untuk menguji login.")));
+                    return;
+                }
+                String inputPassword = inputPassObj.toString();
+
+                List<Map<String, Object>> userRows = jdbcTemplate.queryForList(sql, params);
+                if (userRows == null || userRows.isEmpty()) {
+                    sendJsonError(response, 401, Map.of("errors", List.of("User tidak ditemukan atau kredensial salah.")));
+                    return;
+                }
+
+                Map<String, Object> userRow = new HashMap<>(userRows.get(0));
+                String hashCol = endpoint.getPasswordHashColumn();
+                Object storedHashObj = userRow.get(hashCol);
+                if (storedHashObj == null) storedHashObj = userRow.get("password_hash");
+                if (storedHashObj == null) storedHashObj = userRow.get("password");
+                String storedHash = (storedHashObj != null) ? storedHashObj.toString() : "";
+
+                boolean matches = false;
+                if (passwordEncoder != null && !storedHash.isEmpty()) {
+                    try {
+                        matches = passwordEncoder.matches(inputPassword, storedHash);
+                    } catch (Exception ignored) {}
+                }
+                if (!matches && (inputPassword.equals(storedHash) || storedHash.isEmpty())) {
+                    matches = inputPassword.equals(storedHash);
+                }
+
+                if (!matches) {
+                    sendJsonError(response, 401, Map.of("errors", List.of("Password salah.")));
+                    return;
+                }
+
+                userRow.remove("password_hash");
+                userRow.remove("password");
+                userRow.remove("passwordHash");
+                userRow.remove("passwd");
+
+                JwtService.TokenPair tokenPair = (jwtService != null)
+                    ? jwtService.issueDynamicTokenPair(userRow, endpoint.getRequiredAppId(), endpoint.getTokenTtlMinutes(), endpoint.getRefreshTokenTtlDays())
+                    : null;
+
+                response.setStatus(200);
+                response.setContentType("application/json;charset=UTF-8");
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, Object> respMap = new HashMap<>();
+                respMap.put("success", true);
+                respMap.put("message", (endpoint.getSuccessMessage() != null && !endpoint.getSuccessMessage().trim().isEmpty())
+                        ? endpoint.getSuccessMessage() : "Login berhasil.");
+                if (tokenPair != null) {
+                    respMap.put("access_token", tokenPair.getAccessToken());
+                    respMap.put("refresh_token", tokenPair.getRefreshToken());
+                    respMap.put("token_type", "Bearer");
+                    respMap.put("expires_in", tokenPair.getExpiresIn());
+                }
+                respMap.put("user", userRow);
+                respMap.put("timestamp", nowTimestamp);
+
+                response.getWriter().write(mapper.writeValueAsString(respMap));
+                response.getWriter().flush();
+                return;
+            }
 
             // ── Mutation Check (INSERT, UPDATE, DELETE) ────────────────────────────
             String upperSql = sql.trim().toUpperCase();

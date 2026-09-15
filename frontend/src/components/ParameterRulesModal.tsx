@@ -127,12 +127,12 @@ export const ParameterRulesModal: React.FC<ParameterRulesModalProps> = ({ param,
                   className={clsx(
                     'p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between',
                     transform === opt.id
-                      ? 'bg-amber-500/15 border-amber-500/50 text-amber-300 font-bold shadow-sm'
+                      ? 'bg-amber-500/15 dark:bg-amber-500/20 border-amber-500 text-amber-800 dark:text-amber-300 font-bold shadow-sm'
                       : 'bg-bg-panel border-border-main text-text-muted hover:text-text-main hover:bg-bg-hover'
                   )}
                 >
                   <span className="text-xs block font-bold">{opt.label}</span>
-                  <span className="text-[10px] opacity-70 mt-0.5">{opt.desc}</span>
+                  <span className="text-[10px] opacity-80 mt-0.5">{opt.desc}</span>
                 </button>
               ))}
             </div>
@@ -150,7 +150,7 @@ export const ParameterRulesModal: React.FC<ParameterRulesModalProps> = ({ param,
                   placeholder="e.g. ^[A-Z0-9_-]{3,16}$"
                   value={pattern}
                   onChange={e => setPattern(e.target.value)}
-                  className="w-full bg-bg-panel border border-border-main focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30 rounded-xl px-3 py-2 text-xs font-mono text-purple-300 outline-none shadow-inner"
+                  className="w-full bg-bg-panel border border-border-main focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30 rounded-xl px-3 py-2 text-xs font-mono text-text-main dark:text-purple-300 outline-none shadow-inner"
                 />
               </div>
 
@@ -166,7 +166,7 @@ export const ParameterRulesModal: React.FC<ParameterRulesModalProps> = ({ param,
                       type="button"
                       title={preset.desc}
                       onClick={() => setPattern(preset.regex)}
-                      className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-purple-500/20 text-text-muted hover:text-purple-300 border border-border-main hover:border-purple-500/40 text-[11px] font-medium transition-colors cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-purple-500/20 text-text-muted hover:text-purple-700 dark:hover:text-purple-300 border border-border-main hover:border-purple-500/40 text-[11px] font-medium transition-colors cursor-pointer"
                     >
                       {preset.label}
                     </button>
@@ -256,7 +256,7 @@ export const ParameterRulesModal: React.FC<ParameterRulesModalProps> = ({ param,
               placeholder="Contoh: CHECK_IN, PROCESS, DONE, CANCELLED (pisahkan dengan koma)"
               value={allowedValuesInput}
               onChange={e => setAllowedValuesInput(e.target.value)}
-              className="w-full bg-bg-panel border border-border-main focus:border-purple-500 rounded-xl px-3 py-2 text-xs font-mono text-purple-300 outline-none shadow-inner"
+              className="w-full bg-bg-panel border border-border-main focus:border-purple-500 rounded-xl px-3 py-2 text-xs font-mono text-text-main dark:text-purple-300 outline-none shadow-inner"
             />
             <span className="text-[11px] text-text-muted block">
               Jika diisi, request dengan nilai di luar daftar ini akan otomatis ditolak oleh backend validator.
@@ -269,7 +269,7 @@ export const ParameterRulesModal: React.FC<ParameterRulesModalProps> = ({ param,
               <label className="font-bold text-text-main block text-xs">
                 Pesan Error Kustom (Custom Error Message)
               </label>
-              <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+              <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                 Default Cerdas Aktif
               </span>
             </div>
@@ -278,7 +278,7 @@ export const ParameterRulesModal: React.FC<ParameterRulesModalProps> = ({ param,
               placeholder="Contoh: Nomor lambung armada harus berformat BK-XXXX-XX!"
               value={customErrorMessage}
               onChange={e => setCustomErrorMessage(e.target.value)}
-              className="w-full bg-bg-panel border border-border-main focus:border-purple-500 rounded-xl px-3 py-2 text-xs text-text-main outline-none shadow-inner placeholder:text-text-muted/40"
+              className="w-full bg-bg-panel border border-border-main focus:border-purple-500 rounded-xl px-3 py-2 text-xs text-text-main outline-none shadow-inner placeholder:text-text-muted"
             />
             <div className="p-2.5 rounded-lg bg-bg-panel/80 border border-border-main text-[11px] text-text-muted flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />

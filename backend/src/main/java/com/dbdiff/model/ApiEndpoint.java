@@ -29,6 +29,13 @@ public class ApiEndpoint {
     private String successMessage;
     private String validationRules;
 
+    // ── Direct Auth Handling (Login, Register, Refresh Token) ──────────────
+    private String authAction = "NONE"; // NONE, LOGIN, REGISTER, REFRESH_TOKEN
+    private String passwordParam = "password";
+    private String passwordHashColumn = "password_hash";
+    private Integer tokenTtlMinutes = 15;
+    private Integer refreshTokenTtlDays = 30;
+
     // ── Scheduled Push (Spring Cron) & Failure Notification ──────────────────
     private boolean cronEnabled = false;
     private String cronExpression;
@@ -138,6 +145,21 @@ public class ApiEndpoint {
 
     public String getRequiredAppId() { return requiredAppId; }
     public void setRequiredAppId(String requiredAppId) { this.requiredAppId = requiredAppId; }
+
+    public String getAuthAction() { return authAction != null ? authAction.toUpperCase() : "NONE"; }
+    public void setAuthAction(String authAction) { this.authAction = authAction; }
+
+    public String getPasswordParam() { return passwordParam != null && !passwordParam.trim().isEmpty() ? passwordParam.trim() : "password"; }
+    public void setPasswordParam(String passwordParam) { this.passwordParam = passwordParam; }
+
+    public String getPasswordHashColumn() { return passwordHashColumn != null && !passwordHashColumn.trim().isEmpty() ? passwordHashColumn.trim() : "password_hash"; }
+    public void setPasswordHashColumn(String passwordHashColumn) { this.passwordHashColumn = passwordHashColumn; }
+
+    public Integer getTokenTtlMinutes() { return tokenTtlMinutes != null && tokenTtlMinutes > 0 ? tokenTtlMinutes : 15; }
+    public void setTokenTtlMinutes(Integer tokenTtlMinutes) { this.tokenTtlMinutes = tokenTtlMinutes; }
+
+    public Integer getRefreshTokenTtlDays() { return refreshTokenTtlDays != null && refreshTokenTtlDays > 0 ? refreshTokenTtlDays : 30; }
+    public void setRefreshTokenTtlDays(Integer refreshTokenTtlDays) { this.refreshTokenTtlDays = refreshTokenTtlDays; }
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }

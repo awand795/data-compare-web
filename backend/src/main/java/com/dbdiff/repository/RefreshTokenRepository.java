@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import javax.sql.DataSource;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.UUID;
@@ -41,6 +42,7 @@ public class RefreshTokenRepository {
                     replaced_by   VARCHAR(255)
                 );
                 ALTER TABLE sch_sync.refresh_tokens ADD COLUMN IF NOT EXISTS app_id VARCHAR(100) DEFAULT 'bengkel-kim3';
+                ALTER TABLE sch_sync.refresh_tokens ADD COLUMN IF NOT EXISTS user_metadata TEXT;
                 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON sch_sync.refresh_tokens(token_hash);
                 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_app_user ON sch_sync.refresh_tokens(app_id, user_id);
                 """;
@@ -69,6 +71,9 @@ public class RefreshTokenRepository {
             t.setCreatedAt(created.toLocalDateTime());
         }
         t.setReplacedBy(rs.getString("replaced_by"));
+        try {
+            t.setUserMetadata(rs.getString("user_metadata"));
+        } catch (SQLException ignored) {}
         return t;
     };
 
@@ -80,17 +85,34 @@ public class RefreshTokenRepository {
             token.setAppId("bengkel-kim3");
         }
         String sql = """
-            INSERT INTO sch_sync.refresh_tokens (id, app_id, user_id, token_hash, expires_at, revoked, created_at, replaced_by)
-            VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
+            INSERT INTO sch_sync.refresh_tokens (id, app_id, user_id, token_hash, expires_at, revoked, created_at, replaced_by, user_metadata)
+            VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)
             """;
-        jdbcTemplate.update(sql,
-                token.getId(),
-                token.getAppId().trim().toLowerCase(),
-                token.getUserId(),
-                token.getTokenHash(),
-                Timestamp.valueOf(token.getExpiresAt()),
-                token.isRevoked(),
-                token.getReplacedBy());
+        try {
+            jdbcTemplate.update(sql,
+                    token.getId(),
+                    token.getAppId().trim().toLowerCase(),
+                    token.getUserId(),
+                    token.getTokenHash(),
+                    Timestamp.valueOf(token.getExpiresAt()),
+                    token.isRevoked(),
+                    token.getReplacedBy(),
+                    token.getUserMetadata());
+        } catch (Exception ex) {
+            // Fallback for backward compatibility if user_metadata column hasn't migrated yet
+            String fallbackSql = """
+                INSERT INTO sch_sync.refresh_tokens (id, app_id, user_id, token_hash, expires_at, revoked, created_at, replaced_by)
+                VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
+                """;
+            jdbcTemplate.update(fallbackSql,
+                    token.getId(),
+                    token.getAppId().trim().toLowerCase(),
+                    token.getUserId(),
+                    token.getTokenHash(),
+                    Timestamp.valueOf(token.getExpiresAt()),
+                    token.isRevoked(),
+                    token.getReplacedBy());
+        }
         return findById(token.getId());
     }
 

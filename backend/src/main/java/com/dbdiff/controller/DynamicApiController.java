@@ -45,6 +45,9 @@ public class DynamicApiController {
     @Autowired(required = false)
     private JwtService jwtService;
 
+    @Autowired(required = false)
+    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+
     @RequestMapping(value = "/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE})
     public void handleRequest(
             HttpServletRequest request,
@@ -110,8 +113,11 @@ public class DynamicApiController {
             }
         }
         boolean isValidJwt = (jwtClaims != null);
+        boolean isAuthAction = "LOGIN".equalsIgnoreCase(endpoint.getAuthAction())
+                || "REGISTER".equalsIgnoreCase(endpoint.getAuthAction())
+                || "REFRESH_TOKEN".equalsIgnoreCase(endpoint.getAuthAction());
 
-        if (endpoint.isPublic() == false) {
+        if (endpoint.isPublic() == false && !isAuthAction) {
             String token = endpoint.getAuthToken();
             if (token != null && !token.isEmpty()) {
                 boolean authorized = (providedToken != null && providedToken.equals(token)) || isValidJwt;
@@ -139,7 +145,7 @@ public class DynamicApiController {
 
         // ── Auth App Restriction Check ──────────────────────────────────────────
         String requiredAppId = endpoint.getRequiredAppId();
-        if (requiredAppId != null && !requiredAppId.trim().isEmpty()) {
+        if (requiredAppId != null && !requiredAppId.trim().isEmpty() && !isAuthAction) {
             if (!isValidJwt || jwtClaims == null) {
                 sendJsonError(response, HttpStatus.FORBIDDEN.value(), Map.of(
                     "success", false,
@@ -203,6 +209,74 @@ public class DynamicApiController {
             allParams.putIfAbsent("sys_app_id", "");
             allParams.putIfAbsent("sys_role", "");
             allParams.putIfAbsent("sys_company_id", "");
+        }
+
+        // ── Auth Action: REFRESH_TOKEN ───────────────────────────────────────────
+        if ("REFRESH_TOKEN".equalsIgnoreCase(endpoint.getAuthAction())) {
+            String rawRefreshToken = null;
+            if (allParams.containsKey("refresh_token") && allParams.get("refresh_token") != null) {
+                rawRefreshToken = allParams.get("refresh_token").toString().trim();
+            } else if (allParams.containsKey("refreshToken") && allParams.get("refreshToken") != null) {
+                rawRefreshToken = allParams.get("refreshToken").toString().trim();
+            } else if (providedToken != null) {
+                rawRefreshToken = providedToken.trim();
+            }
+
+            if (rawRefreshToken == null || rawRefreshToken.isEmpty()) {
+                sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of(
+                    "success", false,
+                    "error", "Bad Request",
+                    "message", "Parameter 'refresh_token' wajib diisi.",
+                    "errors", List.of("Parameter 'refresh_token' wajib diisi.")
+                ));
+                return;
+            }
+
+            if (jwtService == null) {
+                sendJsonError(response, HttpStatus.INTERNAL_SERVER_ERROR.value(), Map.of(
+                    "success", false,
+                    "error", "Internal Server Error",
+                    "message", "JWT service tidak aktif pada server."
+                ));
+                return;
+            }
+
+            try {
+                JwtService.TokenPair tokenPair = jwtService.refreshDynamic(rawRefreshToken, endpoint.getRequiredAppId());
+                response.setStatus(HttpStatus.OK.value());
+                response.setContentType("application/json;charset=UTF-8");
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, Object> respMap = new HashMap<>();
+                respMap.put("success", true);
+                respMap.put("message", (endpoint.getSuccessMessage() != null && !endpoint.getSuccessMessage().trim().isEmpty())
+                        ? endpoint.getSuccessMessage() : "Token berhasil diperbarui.");
+                respMap.put("access_token", tokenPair.getAccessToken());
+                respMap.put("refresh_token", tokenPair.getRefreshToken());
+                respMap.put("token_type", "Bearer");
+                respMap.put("expires_in", tokenPair.getExpiresIn());
+                respMap.put("user", tokenPair.getUserData() != null ? tokenPair.getUserData() : tokenPair.getUser());
+                respMap.put("timestamp", nowTimestamp);
+
+                response.getWriter().write(mapper.writeValueAsString(respMap));
+                response.getWriter().flush();
+                return;
+            } catch (JwtService.AuthSecurityException aex) {
+                sendJsonError(response, aex.getStatus(), Map.of(
+                    "success", false,
+                    "error", "Unauthorized",
+                    "message", aex.getMessage(),
+                    "errors", List.of(aex.getMessage())
+                ));
+                return;
+            } catch (Exception ex) {
+                sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of(
+                    "success", false,
+                    "error", "Unauthorized",
+                    "message", "Gagal memperbarui token: " + ex.getMessage(),
+                    "errors", List.of("Gagal memperbarui token: " + ex.getMessage())
+                ));
+                return;
+            }
         }
 
         // Fetch Connection
@@ -342,7 +416,101 @@ public class DynamicApiController {
                 String builtClause = buildFilterClause(filtersObj, allParams);
                 sql = sql.replace("{{filters}}", builtClause);
             }
-            // ───────────────────────────────────────────────────────────────────────
+            // ── Auth Action: REGISTER ───────────────────────────────────────────────
+            if ("REGISTER".equalsIgnoreCase(endpoint.getAuthAction())) {
+                String passParam = endpoint.getPasswordParam();
+                if (allParams.containsKey(passParam) && allParams.get(passParam) != null) {
+                    String rawPass = allParams.get(passParam).toString();
+                    String hashed = (passwordEncoder != null) ? passwordEncoder.encode(rawPass) : rawPass;
+                    allParams.put(endpoint.getPasswordHashColumn(), hashed);
+                    allParams.put("password_hash", hashed);
+                    allParams.put(passParam, hashed);
+                }
+            }
+
+            // ── Auth Action: LOGIN ───────────────────────────────────────────────────
+            if ("LOGIN".equalsIgnoreCase(endpoint.getAuthAction())) {
+                String passParam = endpoint.getPasswordParam();
+                Object inputPassObj = allParams.get(passParam);
+                if (inputPassObj == null || inputPassObj.toString().trim().isEmpty()) {
+                    sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of(
+                        "success", false,
+                        "error", "Bad Request",
+                        "message", "Parameter password '" + passParam + "' wajib diisi.",
+                        "errors", List.of("Parameter password '" + passParam + "' wajib diisi.")
+                    ));
+                    return;
+                }
+                String inputPassword = inputPassObj.toString();
+
+                List<Map<String, Object>> userRows = jdbcTemplate.queryForList(sql, allParams);
+                if (userRows == null || userRows.isEmpty()) {
+                    sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of(
+                        "success", false,
+                        "error", "Unauthorized",
+                        "message", "User tidak ditemukan atau kredensial salah.",
+                        "errors", List.of("User tidak ditemukan atau kredensial salah.")
+                    ));
+                    return;
+                }
+
+                Map<String, Object> userRow = new HashMap<>(userRows.get(0));
+                String hashCol = endpoint.getPasswordHashColumn();
+                Object storedHashObj = userRow.get(hashCol);
+                if (storedHashObj == null) storedHashObj = userRow.get("password_hash");
+                if (storedHashObj == null) storedHashObj = userRow.get("password");
+                String storedHash = (storedHashObj != null) ? storedHashObj.toString() : "";
+
+                boolean matches = false;
+                if (passwordEncoder != null && !storedHash.isEmpty()) {
+                    try {
+                        matches = passwordEncoder.matches(inputPassword, storedHash);
+                    } catch (Exception ignored) {}
+                }
+                if (!matches && (inputPassword.equals(storedHash) || storedHash.isEmpty())) {
+                    matches = inputPassword.equals(storedHash);
+                }
+
+                if (!matches) {
+                    sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of(
+                        "success", false,
+                        "error", "Unauthorized",
+                        "message", "Password salah.",
+                        "errors", List.of("Password salah.")
+                    ));
+                    return;
+                }
+
+                // Sanitize sensitive fields before returning user object
+                userRow.remove("password_hash");
+                userRow.remove("password");
+                userRow.remove("passwordHash");
+                userRow.remove("passwd");
+
+                JwtService.TokenPair tokenPair = (jwtService != null)
+                    ? jwtService.issueDynamicTokenPair(userRow, endpoint.getRequiredAppId(), endpoint.getTokenTtlMinutes(), endpoint.getRefreshTokenTtlDays())
+                    : null;
+
+                response.setStatus(HttpStatus.OK.value());
+                response.setContentType("application/json;charset=UTF-8");
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, Object> respMap = new HashMap<>();
+                respMap.put("success", true);
+                respMap.put("message", (endpoint.getSuccessMessage() != null && !endpoint.getSuccessMessage().trim().isEmpty())
+                        ? endpoint.getSuccessMessage() : "Login berhasil.");
+                if (tokenPair != null) {
+                    respMap.put("access_token", tokenPair.getAccessToken());
+                    respMap.put("refresh_token", tokenPair.getRefreshToken());
+                    respMap.put("token_type", "Bearer");
+                    respMap.put("expires_in", tokenPair.getExpiresIn());
+                }
+                respMap.put("user", userRow);
+                respMap.put("timestamp", nowTimestamp);
+
+                response.getWriter().write(mapper.writeValueAsString(respMap));
+                response.getWriter().flush();
+                return;
+            }
 
             // ── Mutation Check (INSERT, UPDATE, DELETE) ────────────────────────────
             String upperSql = sql.trim().toUpperCase();

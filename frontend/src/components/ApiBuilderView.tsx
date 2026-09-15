@@ -19,7 +19,6 @@ import { NotificationChannelsModal } from './NotificationChannelsModal';
 import { SQLEditor } from './SQLEditor';
 import { SequenceView } from './SequenceView';
 import { StorageManagerView } from './StorageManagerView';
-import { AuthAppsView } from './AuthAppsView';
 import clsx from 'clsx';
 
 export interface ApiParameter {
@@ -77,6 +76,11 @@ interface ApiEndpoint {
   lastPushStatus?: string;
   lastPushMessage?: string;
   requiredAppId?: string;
+  authAction?: 'NONE' | 'LOGIN' | 'REGISTER' | 'REFRESH_TOKEN';
+  passwordParam?: string;
+  passwordHashColumn?: string;
+  tokenTtlMinutes?: number;
+  refreshTokenTtlDays?: number;
 }
 
 type ValidationError = {
@@ -124,8 +128,7 @@ export const ApiBuilderView: React.FC = () => {
   
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'edit' | 'spec'>('list');
-  const [backendlessTab, setBackendlessTab] = useState<'endpoints' | 'sequence' | 'storage' | 'auth_apps'>('endpoints');
-  const [authAppsList, setAuthAppsList] = useState<{ id: string; name: string; allowedRoles?: string }[]>([]);
+  const [backendlessTab, setBackendlessTab] = useState<'endpoints' | 'sequence' | 'storage'>('endpoints');
   const [currentApi, setCurrentApi] = useState<ApiEndpoint | null>(null);
   const [parameterMeta, setParameterMeta] = useState<ApiParameter[]>([]);
   const [selectedParamForRules, setSelectedParamForRules] = useState<ApiParameter | null>(null);
@@ -335,21 +338,11 @@ export const ApiBuilderView: React.FC = () => {
     }
   };
 
-  const fetchAuthApps = async () => {
-    try {
-      const res = await axios.get('/api/auth-apps');
-      if (Array.isArray(res.data)) setAuthAppsList(res.data);
-    } catch (e) {
-      console.warn('Failed to fetch auth apps', e);
-    }
-  };
-
   useEffect(() => {
     fetchEndpoints();
     fetchGroups();
     fetchEndpointTargets();
     fetchChannels();
-    fetchAuthApps();
   }, []);
 
   // Track dirty state
@@ -496,7 +489,12 @@ export const ApiBuilderView: React.FC = () => {
       notificationChannelId: '',
       notifyOnSuccess: false,
       notifyOnFailure: true,
-      requiredAppId: ''
+      requiredAppId: '',
+      authAction: 'NONE',
+      passwordParam: 'password',
+      passwordHashColumn: 'password_hash',
+      tokenTtlMinutes: 15,
+      refreshTokenTtlDays: 30
     };
     setCurrentApi(newApi);
     setTestParams({});
@@ -1169,13 +1167,6 @@ export const ApiBuilderView: React.FC = () => {
                 <HardDrive className="w-3.5 h-3.5" />
                 <span>Storage &amp; Buckets</span>
               </button>
-              <button
-                onClick={() => setBackendlessTab('auth_apps')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>Auth Apps</span>
-              </button>
             </div>
           </div>
           <div className="flex-1 overflow-hidden">
@@ -1211,59 +1202,10 @@ export const ApiBuilderView: React.FC = () => {
                 <HardDrive className="w-3.5 h-3.5" />
                 <span>Storage &amp; Buckets</span>
               </button>
-              <button
-                onClick={() => setBackendlessTab('auth_apps')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>Auth Apps</span>
-              </button>
             </div>
           </div>
           <div className="flex-1 overflow-hidden">
             <StorageManagerView />
-          </div>
-        </div>
-      );
-    }
-
-    if (backendlessTab === 'auth_apps') {
-      return (
-        <div className="h-full flex flex-col overflow-hidden bg-bg-main">
-          <div className="border-b border-border-main bg-bg-panel px-4 py-2.5 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-1.5 p-1 bg-bg-editor rounded-xl border border-border-main">
-              <button
-                onClick={() => setBackendlessTab('endpoints')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
-              >
-                <Code2 className="w-3.5 h-3.5" />
-                <span>API Endpoints</span>
-              </button>
-              <button
-                onClick={() => setBackendlessTab('sequence')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
-              >
-                <Hash className="w-3.5 h-3.5" />
-                <span>Auto-Number (Sequence)</span>
-              </button>
-              <button
-                onClick={() => setBackendlessTab('storage')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
-              >
-                <HardDrive className="w-3.5 h-3.5" />
-                <span>Storage &amp; Buckets</span>
-              </button>
-              <button
-                onClick={() => setBackendlessTab('auth_apps')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all cursor-pointer"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>Auth Apps</span>
-              </button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <AuthAppsView />
           </div>
         </div>
       );
@@ -1293,13 +1235,6 @@ export const ApiBuilderView: React.FC = () => {
           >
             <HardDrive className="w-3.5 h-3.5" />
             <span>Storage &amp; Buckets</span>
-          </button>
-          <button
-            onClick={() => setBackendlessTab('auth_apps')}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>Auth Apps</span>
           </button>
         </div>
 
@@ -1751,6 +1686,17 @@ export const ApiBuilderView: React.FC = () => {
                                         <KeyRound className="w-2.5 h-2.5" /> {api.requiredAppId}
                                       </span>
                                     ) : null}
+                                    {api.authAction && api.authAction !== 'NONE' && (
+                                      <span className={clsx(
+                                        "inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full border",
+                                        api.authAction === 'LOGIN' ? "text-amber-300 bg-amber-500/15 border-amber-500/30" :
+                                        api.authAction === 'REGISTER' ? "text-cyan-300 bg-cyan-500/15 border-cyan-500/30" :
+                                        "text-emerald-300 bg-emerald-500/15 border-emerald-500/30"
+                                      )}>
+                                        <KeyRound className="w-2.5 h-2.5" />
+                                        {api.authAction === 'LOGIN' ? 'AUTH LOGIN' : api.authAction === 'REGISTER' ? 'AUTH REG' : 'AUTH REFRESH'}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
 
@@ -2067,6 +2013,16 @@ export const ApiBuilderView: React.FC = () => {
                                       <span className={clsx("px-2 py-0.5 rounded text-[10px] font-bold", getMethodBadgeClass(api.method))}>
                                         {api.method}
                                       </span>
+                                      {api.authAction && api.authAction !== 'NONE' && (
+                                        <span className={clsx(
+                                          "px-2 py-0.5 rounded text-[9px] font-extrabold uppercase border",
+                                          api.authAction === 'LOGIN' ? "bg-amber-500/15 text-amber-300 border-amber-500/30" :
+                                          api.authAction === 'REGISTER' ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" :
+                                          "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                        )}>
+                                          {api.authAction === 'LOGIN' ? 'AUTH LOGIN' : api.authAction === 'REGISTER' ? 'AUTH REG' : 'AUTH REFRESH'}
+                                        </span>
+                                      )}
                                       <span className="text-text-muted">/api/data{api.endpointPath}</span>
                                     </div>
                                   </td>
@@ -3928,7 +3884,7 @@ export const ApiBuilderView: React.FC = () => {
                         };
                         setPreValidationRules(prev => [...prev, newRule]);
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer shadow-sm"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-800 dark:text-amber-300 hover:bg-amber-500/25 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Tambah Rule Cek</span>
@@ -3948,7 +3904,7 @@ export const ApiBuilderView: React.FC = () => {
                         <div key={rule.id || idx} className="bg-bg-panel/90 border border-border-main hover:border-amber-500/40 rounded-xl p-3.5 space-y-3 shadow-sm transition-all">
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex-1 flex items-center gap-2">
-                              <span className="text-[11px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 shrink-0">
+                              <span className="text-[11px] font-mono font-bold text-amber-800 dark:text-amber-300 bg-amber-500/15 dark:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 shrink-0">
                                 #{idx + 1}
                               </span>
                               <input
@@ -3969,7 +3925,7 @@ export const ApiBuilderView: React.FC = () => {
                                   const cond = e.target.value as any;
                                   setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, condition: cond } : r));
                                 }}
-                                className="bg-bg-editor border border-border-main focus:border-amber-500 rounded-lg px-2.5 py-1 text-xs font-semibold text-amber-300 outline-none cursor-pointer"
+                                className="bg-bg-editor border border-border-main focus:border-amber-500 rounded-lg px-2.5 py-1 text-xs font-bold text-text-main outline-none cursor-pointer"
                               >
                                 <option value="EQ_0">Harap Bernilai 0 (Error jika data sudah ada)</option>
                                 <option value="GT_0">Harap &gt; 0 (Error jika data tidak ditemukan)</option>
@@ -3988,15 +3944,15 @@ export const ApiBuilderView: React.FC = () => {
 
                           {/* Rule Type Selector */}
                           <div className="flex items-center gap-2 border-b border-border-main/40 pb-2">
-                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-text-muted">Tipe Rule:</span>
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-text-main">Tipe Rule:</span>
                             <div className="flex items-center gap-1 bg-bg-editor p-0.5 rounded-lg border border-border-main">
                               <button
                                 type="button"
                                 onClick={() => setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, type: 'SQL' } : r))}
                                 className={clsx(
-                                  "px-2 py-0.5 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                                  "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
                                   (!rule.type || rule.type === 'SQL')
-                                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                    ? "bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/50 shadow-sm"
                                     : "text-text-muted hover:text-text-main"
                                 )}
                               >
@@ -4006,9 +3962,9 @@ export const ApiBuilderView: React.FC = () => {
                                 type="button"
                                 onClick={() => setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, type: 'EXPRESSION' } : r))}
                                 className={clsx(
-                                  "px-2 py-0.5 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                                  "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
                                   rule.type === 'EXPRESSION'
-                                    ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                                    ? "bg-purple-500/20 text-purple-800 dark:text-purple-300 border border-purple-500/50 shadow-sm"
                                     : "text-text-muted hover:text-text-main"
                                 )}
                               >
@@ -4019,7 +3975,7 @@ export const ApiBuilderView: React.FC = () => {
 
                           {(!rule.type || rule.type === 'SQL') ? (
                             <div>
-                              <label className="text-[10px] font-mono font-bold text-text-muted uppercase block mb-1">
+                              <label className="text-[10px] font-mono font-bold text-text-main/90 uppercase block mb-1">
                                 SQL Assertion Query (Mengekstrak angka hasil query)
                               </label>
                               <textarea
@@ -4030,12 +3986,12 @@ export const ApiBuilderView: React.FC = () => {
                                   setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, sqlQuery: sql } : r));
                                 }}
                                 placeholder="SELECT COUNT(*) FROM master_fleet WHERE no_lambung = :no_lambung"
-                                className="w-full bg-bg-editor border border-border-main focus:border-amber-500/60 rounded-lg p-2 font-mono text-xs text-amber-200 outline-none resize-none shadow-inner"
+                                className="w-full bg-bg-editor border border-border-main focus:border-amber-500/60 rounded-lg p-2 font-mono text-xs text-text-main dark:text-amber-200 outline-none resize-none shadow-inner"
                               />
                             </div>
                           ) : (
                             <div className="space-y-2">
-                              <label className="text-[10px] font-mono font-bold text-purple-400 uppercase block">
+                              <label className="text-[10px] font-mono font-bold text-purple-700 dark:text-purple-300 uppercase block">
                                 SpEL Expression Formula (Evaluasi logika true/false)
                               </label>
                               <input
@@ -4046,28 +4002,28 @@ export const ApiBuilderView: React.FC = () => {
                                   setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, expression: expr } : r));
                                 }}
                                 placeholder="e.g. #km_keluar > #km_masuk or #liter <= 200"
-                                className="w-full bg-bg-editor border border-purple-500/40 focus:border-purple-500 rounded-lg px-2.5 py-1.5 font-mono text-xs text-purple-300 outline-none shadow-inner"
+                                className="w-full bg-bg-editor border border-purple-500/40 focus:border-purple-500 rounded-lg px-2.5 py-1.5 font-mono text-xs text-text-main dark:text-purple-300 outline-none shadow-inner"
                               />
                               <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
                                 <span className="text-text-muted font-bold">Preset:</span>
                                 <button
                                   type="button"
                                   onClick={() => setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, expression: '#km_keluar > #km_masuk' } : r))}
-                                  className="px-2 py-0.5 rounded bg-bg-panel hover:bg-purple-500/20 text-purple-300 border border-border-main cursor-pointer"
+                                  className="px-2 py-0.5 rounded bg-bg-panel hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-border-main cursor-pointer font-medium"
                                 >
                                   km_out &gt; km_in
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, expression: '#liter <= 200' } : r))}
-                                  className="px-2 py-0.5 rounded bg-bg-panel hover:bg-purple-500/20 text-purple-300 border border-border-main cursor-pointer"
+                                  className="px-2 py-0.5 rounded bg-bg-panel hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-border-main cursor-pointer font-medium"
                                 >
                                   liter &le; 200
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, expression: "#status == 'SELESAI' ? #catatan != null && #catatan != '' : true" } : r))}
-                                  className="px-2 py-0.5 rounded bg-bg-panel hover:bg-purple-500/20 text-purple-300 border border-border-main cursor-pointer"
+                                  className="px-2 py-0.5 rounded bg-bg-panel hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-border-main cursor-pointer font-medium"
                                 >
                                   required_if selesai
                                 </button>
@@ -4084,7 +4040,7 @@ export const ApiBuilderView: React.FC = () => {
                                 setPreValidationRules(prev => prev.map((r, i) => i === idx ? { ...r, customErrorMessage: msg } : r));
                               }}
                               placeholder="Pesan Error Kustom jika kondisi gagal (Biarkan kosong untuk pesan default)"
-                              className="w-full bg-bg-editor border border-border-main focus:border-amber-500 rounded-lg px-2.5 py-1.5 text-xs text-text-main outline-none placeholder:text-text-muted/40 shadow-inner"
+                              className="w-full bg-bg-editor border border-border-main focus:border-amber-500 rounded-lg px-2.5 py-1.5 text-xs text-text-main outline-none placeholder:text-text-muted shadow-inner"
                             />
                           </div>
                         </div>
@@ -4105,6 +4061,154 @@ export const ApiBuilderView: React.FC = () => {
                         <p className="text-[11px] text-text-muted">Authentication rules and runtime features</p>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Backendless Auth & Token Handler Card */}
+                  <div className="bg-bg-editor/80 border border-border-main hover:border-amber-500/40 rounded-xl p-4 space-y-3 shadow-sm transition-all">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-amber-400" />
+                        <div>
+                          <span className="text-xs font-black text-text-main uppercase tracking-wider block">
+                            Direct Auth &amp; Token Handler (Backendless Auth)
+                          </span>
+                          <span className="text-[11px] text-text-muted block">
+                            Aktifkan fitur Login, Register, atau Refresh Token langsung pada endpoint ini tanpa modul terpisah.
+                          </span>
+                        </div>
+                      </div>
+                      {currentApi.authAction && currentApi.authAction !== 'NONE' && (
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 uppercase">
+                          {currentApi.authAction}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-1">
+                      {[
+                        { id: 'NONE', label: 'Standard API', desc: 'Endpoint data biasa (CRUD)' },
+                        { id: 'LOGIN', label: 'Auth: Login', desc: 'Verifikasi password & issue JWT + Refresh Token' },
+                        { id: 'REGISTER', label: 'Auth: Register', desc: 'Auto-hash input password dengan BCrypt' },
+                        { id: 'REFRESH_TOKEN', label: 'Auth: Refresh Token', desc: 'Tukar refresh token lama dengan token baru' },
+                      ].map(mode => {
+                        const isSelected = (currentApi.authAction || 'NONE') === mode.id;
+                        return (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            onClick={() => {
+                              const updated: Partial<ApiEndpoint> = { authAction: mode.id as any };
+                              if (mode.id !== 'NONE') {
+                                updated.isPublic = true;
+                              }
+                              setCurrentApi({ ...currentApi, ...updated });
+                            }}
+                            className={clsx(
+                              "p-3 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between",
+                              isSelected
+                                ? "bg-amber-500/10 dark:bg-amber-500/20 border-amber-500 ring-1 ring-amber-500/30 shadow-sm"
+                                : "bg-bg-panel border-border-main hover:border-amber-500/40 hover:bg-bg-hover"
+                            )}
+                          >
+                            <span className={clsx(
+                              "text-xs font-bold block",
+                              isSelected ? "text-amber-800 dark:text-amber-300" : "text-text-main"
+                            )}>
+                              {mode.label}
+                            </span>
+                            <span className={clsx(
+                              "text-[11px] mt-1 block leading-tight",
+                              isSelected ? "text-amber-900/80 dark:text-amber-300/80 font-medium" : "text-text-muted"
+                            )}>
+                              {mode.desc}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Additional settings when Login / Register / Refresh is active */}
+                    {currentApi.authAction && currentApi.authAction !== 'NONE' && (
+                      <div className="bg-bg-panel border border-amber-500/30 rounded-xl p-3.5 space-y-3 mt-2 shadow-sm">
+                        {currentApi.authAction === 'LOGIN' && (
+                          <div className="text-[11px] text-amber-900 dark:text-amber-200 leading-relaxed bg-amber-50 dark:bg-amber-500/10 p-3 rounded-lg border border-amber-200 dark:border-amber-500/30">
+                            💡 <strong>Cara Kerja Login:</strong> Tulis query <code className="bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded font-mono text-amber-950 dark:text-amber-200 font-bold">SELECT id, name, email, password_hash, role, company_id FROM users WHERE email = :email</code>. Backend akan memverifikasi parameter <code className="bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded font-mono text-amber-950 dark:text-amber-200 font-bold">:{currentApi.passwordParam || 'password'}</code> terhadap kolom hash di database menggunakan <strong>BCrypt</strong>, lalu otomatis menerbitkan <strong>JWT Access Token</strong> &amp; <strong>Refresh Token</strong> resmi!
+                          </div>
+                        )}
+
+                        {currentApi.authAction === 'REGISTER' && (
+                          <div className="text-[11px] text-cyan-900 dark:text-cyan-200 leading-relaxed bg-cyan-50 dark:bg-cyan-500/10 p-3 rounded-lg border border-cyan-200 dark:border-cyan-500/30">
+                            💡 <strong>Cara Kerja Register:</strong> Tulis query INSERT (misal: <code className="bg-cyan-100 dark:bg-cyan-950/60 px-1.5 py-0.5 rounded font-mono text-cyan-950 dark:text-cyan-200 font-bold">INSERT INTO users (id, email, password_hash) VALUES (..., :email, :password_hash)</code>). Parameter password akan otomatis di-hash aman dengan <strong>BCrypt</strong> sebelum query dieksekusi ke database.
+                          </div>
+                        )}
+
+                        {currentApi.authAction === 'REFRESH_TOKEN' && (
+                          <div className="text-[11px] text-emerald-900 dark:text-emerald-200 leading-relaxed bg-emerald-50 dark:bg-emerald-500/10 p-3 rounded-lg border border-emerald-200 dark:border-emerald-500/30">
+                            💡 <strong>Cara Kerja Refresh Token:</strong> Endpoint ini menerima parameter <code className="bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded font-mono text-emerald-950 dark:text-emerald-200 font-bold">refresh_token</code> (di body/query/header), memvalidasi masa berlaku dan deteksi reuse token, lalu merotasi refresh token dan menghasilkan access token JWT baru.
+                          </div>
+                        )}
+
+                        {(currentApi.authAction === 'LOGIN' || currentApi.authAction === 'REGISTER') && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                Nama Parameter Input Password
+                              </label>
+                              <input
+                                type="text"
+                                className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-amber-500"
+                                value={currentApi.passwordParam || 'password'}
+                                onChange={e => setCurrentApi({ ...currentApi, passwordParam: e.target.value })}
+                                placeholder="default: password"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                Nama Kolom Password Hash di DB
+                              </label>
+                              <input
+                                type="text"
+                                className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-amber-500"
+                                value={currentApi.passwordHashColumn || 'password_hash'}
+                                onChange={e => setCurrentApi({ ...currentApi, passwordHashColumn: e.target.value })}
+                                placeholder="default: password_hash"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {(currentApi.authAction === 'LOGIN' || currentApi.authAction === 'REFRESH_TOKEN') && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                Access Token TTL (Menit)
+                              </label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={1440}
+                                className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-amber-500"
+                                value={currentApi.tokenTtlMinutes || 15}
+                                onChange={e => setCurrentApi({ ...currentApi, tokenTtlMinutes: parseInt(e.target.value) || 15 })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                Refresh Token TTL (Hari)
+                              </label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={365}
+                                className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-amber-500"
+                                value={currentApi.refreshTokenTtlDays || 30}
+                                onChange={e => setCurrentApi({ ...currentApi, refreshTokenTtlDays: parseInt(e.target.value) || 30 })}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Public Access Card */}
@@ -4144,7 +4248,7 @@ export const ApiBuilderView: React.FC = () => {
                       </div>
                       <input 
                         type="text"
-                        className="w-full bg-[#0d1117] border border-amber-500/30 rounded-xl p-2.5 text-xs outline-none text-amber-300 font-mono font-bold shadow-inner"
+                        className="w-full bg-bg-editor border border-amber-500/30 rounded-xl p-2.5 text-xs outline-none text-text-main font-mono font-bold shadow-inner focus:border-amber-500"
                         value={currentApi.authToken}
                         onChange={e => setCurrentApi({...currentApi, authToken: e.target.value})}
                         placeholder="e.g. sk_secret_token..."
@@ -4192,42 +4296,6 @@ export const ApiBuilderView: React.FC = () => {
                     </label>
                   </div>
 
-                  {/* Restrict to Auth App (Multi-App) Card */}
-                  <div className="bg-bg-editor/80 border border-border-main hover:border-violet-500/30 rounded-xl p-4 space-y-2.5 shadow-sm transition-all">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-extrabold text-violet-400 uppercase tracking-wider flex items-center gap-1.5">
-                        <KeyRound className="w-3.5 h-3.5" /> Restrict to Auth App (Multi-App)
-                      </label>
-                      {currentApi.requiredAppId ? (
-                        <button
-                          type="button"
-                          onClick={() => setCurrentApi({ ...currentApi, requiredAppId: '' })}
-                          className="text-[11px] text-text-muted hover:text-rose-400 font-bold cursor-pointer transition-colors"
-                        >
-                          Clear (Allow Any App)
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded font-mono font-bold">
-                          All Apps / Unrestricted
-                        </span>
-                      )}
-                    </div>
-                    <select
-                      className="w-full bg-[#0d1117] border border-border-main focus:border-violet-500/60 rounded-xl p-2.5 text-xs outline-none text-violet-300 font-medium cursor-pointer"
-                      value={currentApi.requiredAppId || ''}
-                      onChange={e => setCurrentApi({ ...currentApi, requiredAppId: e.target.value })}
-                    >
-                      <option value="">(Semua / Tidak Dibatasi ke App Tertentu)</option>
-                      {authAppsList.map(app => (
-                        <option key={app.id} value={app.id}>
-                          {app.name} ({app.id})
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-text-muted leading-relaxed">
-                      Jika dipilih, hanya token JWT yang diterbitkan untuk aplikasi ini yang diizinkan mengakses endpoint ini. Header <code className="font-mono text-violet-400">Authorization: Bearer &lt;jwt&gt;</code> akan otomatis divalidasi, dan variabel <code className="font-mono text-cyan-400">:sys_user_id</code>, <code className="font-mono text-cyan-400">:sys_role</code>, <code className="font-mono text-cyan-400">:sys_company_id</code> otomatis di-inject ke SQL query.
-                    </p>
-                  </div>
 
                   {/* IP Address Allowlist Card */}
                   <div className="bg-bg-editor/80 border border-border-main hover:border-emerald-500/30 rounded-xl p-4 space-y-2.5 shadow-sm transition-all">
@@ -4251,7 +4319,7 @@ export const ApiBuilderView: React.FC = () => {
                     </div>
                     <textarea 
                       rows={2}
-                      className="w-full bg-[#0d1117] border border-border-main focus:border-emerald-500/60 rounded-xl p-2.5 text-xs outline-none text-emerald-300 font-mono shadow-inner resize-none font-medium"
+                      className="w-full bg-bg-editor border border-border-main focus:border-emerald-500/60 rounded-xl p-2.5 text-xs outline-none text-text-main font-mono shadow-inner resize-none font-medium"
                       value={currentApi.ipAllowlist || ''}
                       onChange={e => setCurrentApi({...currentApi, ipAllowlist: e.target.value})}
                       placeholder="Leave blank to allow all IPs. Or enter: 192.168.1.100, 10.0.0.0/24, 203.0.113.50"
