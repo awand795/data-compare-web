@@ -4619,27 +4619,27 @@ export const ApiBuilderView: React.FC = () => {
                 </div>
 
                 {/* SECTION 5: SCHEDULED TASK & NOTIFICATIONS (SPRING CRON, OPTIONAL WEBHOOK TARGET & ALERTS) */}
-                <div id="sec-cron-push" className="bg-bg-panel border border-border-main hover:border-cyan-500/30 rounded-2xl p-5 space-y-6 transition-all shadow-sm">
+                <div id="sec-cron-push" className="bg-bg-panel border border-border-main hover:border-cyan-500/30 rounded-2xl p-5 space-y-4 transition-all shadow-sm">
                   {/* Section Title Header */}
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-500">
+                    <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-500 shrink-0">
                       <Clock className="w-4 h-4" />
                     </div>
                     <div>
                       <h3 className="text-xs font-black uppercase tracking-wider text-text-main flex items-center gap-2">
-                        5. Scheduled Task &amp; Webhook Push (Spring Cron, Target Endpoint &amp; Notifikasi)
+                        5. Scheduled Task &amp; Webhook
                         {currentApi.cronEnabled ? (
-                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">
-                            Schedule Active
+                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">
+                            Active
                           </span>
                         ) : (
                           <span className="text-[10px] font-bold text-text-muted bg-bg-main border border-border-main px-2 py-0.5 rounded-full font-mono">
-                            Schedule Inactive
+                            Inactive
                           </span>
                         )}
                       </h3>
                       <p className="text-[11px] text-text-muted">
-                        Jadwalkan eksekusi query SQL berkala via Spring Cron. Pengiriman data ke Webhook Target bersifat opsional &mdash; scheduler dapat berjalan mandiri di database atau mem-push JSON ke target luar.
+                        Jadwal eksekusi query SQL berkala &amp; webhook push.
                       </p>
                     </div>
                   </div>
@@ -4656,10 +4656,10 @@ export const ApiBuilderView: React.FC = () => {
                         />
                         <div>
                           <span className={clsx("text-xs font-bold block", currentApi.cronEnabled ? "text-cyan-700 dark:text-cyan-300" : "text-text-main")}>
-                            Aktifkan Penjadwalan Berkala (Spring Cron Scheduler)
+                            Aktifkan Scheduler (Spring Cron)
                           </span>
-                          <span className="text-[11px] text-text-muted block mt-0.5 leading-relaxed">
-                            Ketika dicentang aktif, Spring TaskScheduler di backend akan otomatis menjalankan query ini sesuai interval cron yang ditentukan.
+                          <span className="text-[11px] text-text-muted block mt-0.5">
+                            Jalankan query ini otomatis sesuai jadwal interval waktu.
                           </span>
                         </div>
                       </label>
@@ -4675,30 +4675,30 @@ export const ApiBuilderView: React.FC = () => {
                     </div>
 
                     {/* Cron Expressions List */}
-                    <div className={clsx("space-y-3 pt-3 border-t border-border-main/50 transition-opacity", !currentApi.cronEnabled && "opacity-60")}>
+                    <div className={clsx("space-y-2.5 pt-3 border-t border-border-main/50 transition-opacity", !currentApi.cronEnabled && "opacity-60")}>
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-bold text-text-main flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5 text-amber-500" />
-                          Spring Cron Schedule Triggers
+                          Jadwal Interval (Cron Triggers)
                         </h4>
                         <button
                           type="button"
                           onClick={() => setCronTriggers([...cronTriggers, '0 0 * * * *'])}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-colors border border-amber-500/30 shadow-sm cursor-pointer"
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-colors border border-amber-500/30 shadow-sm cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>Add Cron Trigger</span>
+                          <span>Tambah Trigger</span>
                         </button>
                       </div>
 
                       <div className="space-y-2">
                         {cronTriggers.map((cron, cIdx) => (
-                          <div key={cIdx} className="flex items-center gap-2.5">
-                            <div className="flex-1 bg-bg-panel p-2.5 border border-border-main rounded-xl shadow-sm flex items-center gap-2 focus-within:border-amber-500/60">
+                          <div key={cIdx} className="flex items-center gap-2">
+                            <div className="flex-1 bg-bg-panel p-2 border border-border-main rounded-xl shadow-sm flex items-center gap-2 focus-within:border-amber-500/60">
                               <Clock className="w-4 h-4 text-amber-500 shrink-0" />
                               <input
                                 type="text"
-                                placeholder="e.g. 0 0 * * * * (Hourly) or 0 */15 * * * *"
+                                placeholder="e.g. 0 */5 * * * *"
                                 value={cron}
                                 onChange={(e) => {
                                   const copy = [...cronTriggers];
@@ -4720,25 +4720,25 @@ export const ApiBuilderView: React.FC = () => {
                                   e.target.value = "";
                                 }
                               }}
-                              className="bg-bg-panel border border-border-main text-text-muted hover:text-text-main text-xs font-semibold rounded-xl px-2.5 py-2.5 focus:outline-none cursor-pointer shrink-0 shadow-sm"
+                              className="bg-bg-panel border border-border-main text-text-muted hover:text-text-main text-xs font-semibold rounded-xl px-2.5 py-2 focus:outline-none cursor-pointer shrink-0 shadow-sm"
                               title="Pilih Preset Cron"
                             >
                               <option value="" disabled>⚡ Preset ▾</option>
-                              <option value="0 */1 * * * *">Setiap 1 Menit (0 */1 * * * *)</option>
-                              <option value="0 */5 * * * *">Setiap 5 Menit (0 */5 * * * *)</option>
-                              <option value="0 */15 * * * *">Setiap 15 Menit (0 */15 * * * *)</option>
-                              <option value="0 0 * * * *">Tiap Jam / Hourly (0 0 * * * *)</option>
-                              <option value="0 0 */6 * * *">Tiap 6 Jam (0 0 */6 * * *)</option>
-                              <option value="0 0 0 * * *">Tengah Malam (0 0 0 * * *)</option>
-                              <option value="0 0 12 * * *">Siang (12:00) (0 0 12 * * *)</option>
+                              <option value="0 */1 * * * *">Setiap 1 Menit</option>
+                              <option value="0 */5 * * * *">Setiap 5 Menit</option>
+                              <option value="0 */15 * * * *">Setiap 15 Menit</option>
+                              <option value="0 0 * * * *">Tiap Jam (Hourly)</option>
+                              <option value="0 0 */6 * * *">Tiap 6 Jam</option>
+                              <option value="0 0 0 * * *">Tengah Malam (00:00)</option>
+                              <option value="0 0 12 * * *">Siang Hari (12:00)</option>
                             </select>
 
                             {cronTriggers.length > 1 && (
                               <button
                                 type="button"
                                 onClick={() => setCronTriggers(cronTriggers.filter((_, i) => i !== cIdx))}
-                                className="p-2.5 text-text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer"
-                                title="Remove Cron Trigger"
+                                className="p-2 text-text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer"
+                                title="Hapus Trigger"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -4746,23 +4746,18 @@ export const ApiBuilderView: React.FC = () => {
                           </div>
                         ))}
                       </div>
-
-                      <p className="text-[11px] text-text-muted flex items-center gap-1.5 px-0.5">
-                        <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        <span>Query SQL dieksekusi berkala langsung pada database. Target endpoint di bawah bersifat opsional.</span>
-                      </p>
                     </div>
                   </div>
 
                   {/* ── 5.2 TARGET ENDPOINT PUSH (OPSIONAL) ──────── */}
-                  <div className="bg-bg-main border border-cyan-500/25 rounded-xl p-4 space-y-4 shadow-inner">
+                  <div className="bg-bg-main border border-cyan-500/25 rounded-xl p-4 space-y-3 shadow-inner">
                     <div className="flex items-center justify-between">
                       <div>
-                        <label className="text-xs font-extrabold text-cyan-700 dark:text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
-                          <Radio className="w-3.5 h-3.5 text-cyan-500" /> Target Endpoint Push (Opsional)
+                        <label className="text-xs font-bold text-cyan-700 dark:text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <Radio className="w-3.5 h-3.5 text-cyan-500" /> Webhook Target (Opsional)
                         </label>
                         <p className="text-[11px] text-text-muted mt-0.5">
-                          Kirim payload JSON hasil query via HTTP POST/PUT ke sistem luar (e.g. APISIX, Webhook Receiver). Kosongkan jika hanya ingin query dijalankan di database.
+                          Kirim hasil query ke endpoint URL luar via POST/PUT. Kosongkan jika hanya di database.
                         </p>
                       </div>
 
@@ -4772,14 +4767,14 @@ export const ApiBuilderView: React.FC = () => {
                         className="text-[11px] text-cyan-700 dark:text-cyan-300 hover:text-cyan-600 dark:hover:text-cyan-200 font-bold flex items-center gap-1.5 cursor-pointer shrink-0 bg-cyan-500/10 hover:bg-cyan-500/20 px-2.5 py-1 rounded-lg border border-cyan-500/20 transition-all"
                       >
                         <Radio className="w-3 h-3 text-cyan-500" />
-                        <span>Manage Endpoint List</span>
+                        <span>Kelola Endpoint</span>
                         <span className="px-1.5 py-0.2 text-[10px] bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 rounded-full font-mono font-bold">
                           {endpointTargets.length}
                         </span>
                       </button>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-2.5">
                       <select
                         value={currentApi.targetEndpointId || (selectedTargetEndpoint ? selectedTargetEndpoint.id : '')}
                         onChange={(e) => {
@@ -4803,7 +4798,7 @@ export const ApiBuilderView: React.FC = () => {
                         }}
                         className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl px-3.5 py-2.5 text-xs text-text-main font-semibold focus:outline-none cursor-pointer shadow-sm"
                       >
-                        <option value="">-- Tanpa Target Endpoint (Direct SQL: Hanya Eksekusi di Database) --</option>
+                        <option value="">-- Tanpa Webhook (Direct DB Saja) --</option>
                         {endpointTargets.map(ep => (
                           <option key={ep.id} value={ep.id}>
                             [{ep.method || 'POST'}] {ep.name} &mdash; {ep.url} {ep.groupName ? `(${ep.groupName})` : ''}
@@ -4813,7 +4808,7 @@ export const ApiBuilderView: React.FC = () => {
 
                       {/* Selected Target Preview OR Minimal Direct SQL Notice */}
                       {selectedTargetEndpoint || currentApi.targetUrl ? (
-                        <div className="p-3.5 bg-bg-panel border border-cyan-500/30 rounded-xl space-y-2.5 shadow-sm">
+                        <div className="p-3 bg-bg-panel border border-cyan-500/30 rounded-xl space-y-2 shadow-sm">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <span className={clsx(
@@ -4842,11 +4837,11 @@ export const ApiBuilderView: React.FC = () => {
                               }}
                               className="text-[11px] text-rose-500 hover:text-rose-400 font-bold cursor-pointer"
                             >
-                              &times; Hapus Target (Gunakan Mode SQL Saja)
+                              &times; Hapus Target
                             </button>
                           </div>
 
-                          <div className="font-mono text-[11px] text-cyan-700 dark:text-cyan-300 bg-bg-main px-3 py-2 rounded-lg border border-border-main flex items-center justify-between gap-2 overflow-hidden">
+                          <div className="font-mono text-[11px] text-cyan-700 dark:text-cyan-300 bg-bg-main px-3 py-1.5 rounded-lg border border-border-main flex items-center justify-between gap-2 overflow-hidden">
                             <span className="truncate">{currentApi.targetUrl || selectedTargetEndpoint?.url}</span>
                             <button
                               type="button"
@@ -4865,33 +4860,30 @@ export const ApiBuilderView: React.FC = () => {
                       ) : (
                         <p className="text-[11px] text-text-muted flex items-center gap-1.5 px-1">
                           <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <span><b>Mode Direct SQL:</b> Tidak ada target endpoint yang dipilih. Scheduler mengeksekusi query langsung di database tanpa HTTP push.</span>
+                          <span><b>Direct SQL:</b> Eksekusi langsung di database tanpa HTTP push.</span>
                         </p>
                       )}
 
                       {/* HTTP Method & Target Headers (Shown if Target configured) */}
                       {(selectedTargetEndpoint || currentApi.targetUrl) && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                          <div className="space-y-2">
-                            <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
-                              HTTP Method
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                              Method
                             </label>
                             <select
                               value={currentApi.targetMethod || selectedTargetEndpoint?.method || 'POST'}
                               onChange={e => setCurrentApi({...currentApi, targetMethod: e.target.value})}
-                              className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl px-3 py-2 text-xs text-text-main font-semibold focus:outline-none cursor-pointer shadow-sm"
+                              className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl px-3 py-1.5 text-xs text-text-main font-semibold focus:outline-none cursor-pointer shadow-sm"
                             >
                               <option value="POST">POST (Default)</option>
                               <option value="PUT">PUT</option>
                             </select>
-                            <p className="text-[10px] text-text-muted">
-                              Payload format: application/json list of records.
-                            </p>
                           </div>
 
-                          <div className="md:col-span-2 space-y-2">
+                          <div className="md:col-span-2 space-y-1.5">
                             <div className="flex items-center justify-between">
-                              <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
+                              <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
                                 HTTP Headers (JSON)
                               </label>
                               <div className="flex items-center gap-2">
@@ -4903,7 +4895,7 @@ export const ApiBuilderView: React.FC = () => {
                                   })}
                                   className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
                                 >
-                                  + Bearer Auth Template
+                                  + Bearer
                                 </button>
                                 <button
                                   type="button"
@@ -4913,16 +4905,16 @@ export const ApiBuilderView: React.FC = () => {
                                   })}
                                   className="text-[10px] text-cyan-600 dark:text-cyan-400 hover:underline font-bold cursor-pointer"
                                 >
-                                  + API Key Template
+                                  + API Key
                                 </button>
                               </div>
                             </div>
                             <textarea
-                              rows={3}
+                              rows={2}
                               value={currentApi.targetHeaders || ''}
                               onChange={e => setCurrentApi({...currentApi, targetHeaders: e.target.value})}
-                              placeholder={`{\n  "Content-Type": "application/json",\n  "apikey": "xyz"\n}`}
-                              className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl p-3 font-mono text-xs text-text-main focus:outline-none focus:ring-0 placeholder:text-text-muted resize-none shadow-sm"
+                              placeholder={`{\n  "Content-Type": "application/json"\n}`}
+                              className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl p-2.5 font-mono text-xs text-text-main focus:outline-none focus:ring-0 placeholder:text-text-muted resize-none shadow-sm"
                             />
                           </div>
                         </div>
@@ -4931,27 +4923,27 @@ export const ApiBuilderView: React.FC = () => {
                   </div>
 
                   {/* ── 5.3 NOTIFIKASI TELEGRAM & DISCORD ─────────── */}
-                  <div className="space-y-4 bg-bg-main border border-purple-500/25 rounded-xl p-4 shadow-inner">
+                  <div className="space-y-3 bg-bg-main border border-purple-500/25 rounded-xl p-4 shadow-inner">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Bell className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                         <div>
-                          <h4 className="text-xs font-bold text-text-main">Pengaturan Notifikasi (Telegram &amp; Discord)</h4>
-                          <p className="text-[11px] text-text-muted">Kirim update status eksekusi jadwal query atau push ke channel Telegram / Discord</p>
+                          <h4 className="text-xs font-bold text-text-main">Notifikasi Alert</h4>
+                          <p className="text-[11px] text-text-muted">Kirim update status eksekusi jadwal ke Telegram / Discord</p>
                         </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => setIsChannelModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-700 dark:text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold transition-all cursor-pointer shadow-sm"
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-500/15 text-purple-700 dark:text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold transition-all cursor-pointer shadow-sm"
                       >
                         <Settings2 className="w-3.5 h-3.5" />
-                        <span>Manage Channels</span>
+                        <span>Kelola Channel</span>
                       </button>
                     </div>
 
                     {/* Checkboxes: Notify on Success & Failure */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-bg-panel border border-border-main rounded-xl">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-2.5 bg-bg-panel border border-border-main rounded-xl">
                       <label className="flex items-start gap-2.5 cursor-pointer select-none">
                         <input
                           type="checkbox"
@@ -4962,10 +4954,10 @@ export const ApiBuilderView: React.FC = () => {
                         <div>
                           <span className="text-xs font-bold text-text-main flex items-center gap-1">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                            Kirim Notifikasi saat Berhasil (Success)
+                            Notifikasi Sukses
                           </span>
                           <span className="text-[10px] text-text-muted block mt-0.5">
-                            Kirim pesan konfirmasi setiap kali query berhasil dijalankan (memuat durasi ms &amp; preview hasil query).
+                            Kirim konfirmasi saat query sukses dijalankan.
                           </span>
                         </div>
                       </label>
@@ -4980,20 +4972,20 @@ export const ApiBuilderView: React.FC = () => {
                         <div>
                           <span className="text-xs font-bold text-text-main flex items-center gap-1">
                             <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
-                            Kirim Notifikasi saat Gagal (Failure / Error)
+                            Notifikasi Gagal
                           </span>
                           <span className="text-[10px] text-text-muted block mt-0.5">
-                            Kirim peringatan jika terjadi error sintaks SQL, timeout koneksi database, atau target HTTP push gagal.
+                            Kirim peringatan jika query error atau timeout.
                           </span>
                         </div>
                       </label>
                     </div>
 
                     {/* Channels Selection Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {/* Telegram Channel Card */}
                       <div className={clsx(
-                        "p-3.5 rounded-xl border transition-all space-y-3",
+                        "p-3 rounded-xl border transition-all space-y-2.5",
                         isTgEnabled
                           ? "bg-blue-500/10 border-blue-500/40 shadow-sm"
                           : "bg-bg-panel border-border-main hover:border-blue-500/30"
@@ -5013,7 +5005,7 @@ export const ApiBuilderView: React.FC = () => {
                             <div>
                               <span className="text-xs font-bold text-text-main block">Telegram Alerts</span>
                               <span className="text-[10px] text-text-muted">
-                                {isTgEnabled ? 'Aktif untuk endpoint ini' : 'Klik untuk mengaktifkan notifikasi Telegram'}
+                                {isTgEnabled ? 'Aktif' : 'Klik untuk mengaktifkan'}
                               </span>
                             </div>
                           </div>
@@ -5035,7 +5027,7 @@ export const ApiBuilderView: React.FC = () => {
                         {isTgEnabled && (
                           <div className="space-y-2 pt-2 border-t border-blue-500/20">
                             {channels.filter(c => c.type === 'TELEGRAM').length === 0 ? (
-                              <div className="p-3 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs text-blue-700 dark:text-blue-300 space-y-2">
+                              <div className="p-2.5 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs text-blue-700 dark:text-blue-300 space-y-1.5">
                                 <p className="font-medium">Belum ada channel Telegram tersimpan.</p>
                                 <button 
                                   type="button" 
@@ -5043,17 +5035,17 @@ export const ApiBuilderView: React.FC = () => {
                                     e.stopPropagation();
                                     setIsChannelModalOpen(true);
                                   }} 
-                                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600 text-white font-bold text-xs cursor-pointer"
+                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-600 text-white font-bold text-xs cursor-pointer"
                                 >
                                   <Plus className="w-3.5 h-3.5" />
-                                  <span>Tambah Channel Telegram</span>
+                                  <span>Tambah Channel</span>
                                 </button>
                               </div>
                             ) : (
                               <select
                                 value={selectedTgChannelId}
                                 onChange={(e) => setSelectedTgChannelId(e.target.value)}
-                                className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-semibold text-text-main focus:outline-none focus:border-blue-500 cursor-pointer shadow-inner"
+                                className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-1.5 text-xs font-semibold text-text-main focus:outline-none focus:border-blue-500 cursor-pointer shadow-inner"
                               >
                                 {channels.filter(c => c.type === 'TELEGRAM').map(chan => (
                                   <option key={chan.id} value={chan.id}>
@@ -5068,7 +5060,7 @@ export const ApiBuilderView: React.FC = () => {
 
                       {/* Discord Channel Card */}
                       <div className={clsx(
-                        "p-3.5 rounded-xl border transition-all space-y-3",
+                        "p-3 rounded-xl border transition-all space-y-2.5",
                         isDcEnabled
                           ? "bg-indigo-500/10 border-indigo-500/40 shadow-sm"
                           : "bg-bg-panel border-border-main hover:border-indigo-500/30"
@@ -5088,7 +5080,7 @@ export const ApiBuilderView: React.FC = () => {
                             <div>
                               <span className="text-xs font-bold text-text-main block">Discord Alerts</span>
                               <span className="text-[10px] text-text-muted">
-                                {isDcEnabled ? 'Aktif untuk endpoint ini' : 'Klik untuk mengaktifkan notifikasi Discord'}
+                                {isDcEnabled ? 'Aktif' : 'Klik untuk mengaktifkan'}
                               </span>
                             </div>
                           </div>
@@ -5110,7 +5102,7 @@ export const ApiBuilderView: React.FC = () => {
                         {isDcEnabled && (
                           <div className="space-y-2 pt-2 border-t border-indigo-500/20">
                             {channels.filter(c => c.type === 'DISCORD').length === 0 ? (
-                              <div className="p-3 bg-indigo-500/10 border border-indigo-500/25 rounded-xl text-xs text-indigo-700 dark:text-indigo-300 space-y-2">
+                              <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/25 rounded-xl text-xs text-indigo-700 dark:text-indigo-300 space-y-1.5">
                                 <p className="font-medium">Belum ada channel Discord tersimpan.</p>
                                 <button 
                                   type="button" 
@@ -5118,17 +5110,17 @@ export const ApiBuilderView: React.FC = () => {
                                     e.stopPropagation();
                                     setIsChannelModalOpen(true);
                                   }} 
-                                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600 text-white font-bold text-xs cursor-pointer"
+                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-bold text-xs cursor-pointer"
                                 >
                                   <Plus className="w-3.5 h-3.5" />
-                                  <span>Tambah Channel Discord</span>
+                                  <span>Tambah Channel</span>
                                 </button>
                               </div>
                             ) : (
                               <select
                                 value={selectedDcChannelId}
                                 onChange={(e) => setSelectedDcChannelId(e.target.value)}
-                                className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-semibold text-text-main focus:outline-none focus:border-indigo-500 cursor-pointer shadow-inner"
+                                className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-1.5 text-xs font-semibold text-text-main focus:outline-none focus:border-indigo-500 cursor-pointer shadow-inner"
                               >
                                 {channels.filter(c => c.type === 'DISCORD').map(chan => (
                                   <option key={chan.id} value={chan.id}>
@@ -5144,10 +5136,10 @@ export const ApiBuilderView: React.FC = () => {
                   </div>
 
                   {/* ── 5.4 DIAGNOSTICS & TEST RUN NOW ────────────── */}
-                  <div className="p-4 bg-bg-main border border-border-main rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-inner">
-                    <div className="space-y-1">
+                  <div className="p-3.5 bg-bg-main border border-border-main rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-inner">
+                    <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-text-main">Status Eksekusi Terakhir:</span>
+                        <span className="text-xs font-bold text-text-main">Status Terakhir:</span>
                         {currentApi.lastPushStatus ? (
                           <span className={clsx(
                             "px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono",
@@ -5156,11 +5148,11 @@ export const ApiBuilderView: React.FC = () => {
                             {currentApi.lastPushStatus}
                           </span>
                         ) : (
-                          <span className="text-[10px] text-text-muted font-mono">Belum pernah dieksekusi</span>
+                          <span className="text-[10px] text-text-muted font-mono">Belum pernah dijalankan</span>
                         )}
                         {currentApi.lastPushAt && (
                           <span className="text-[10px] text-text-muted font-mono">
-                            Terakhir: {new Date(currentApi.lastPushAt).toLocaleString()}
+                            ({new Date(currentApi.lastPushAt).toLocaleString()})
                           </span>
                         )}
                       </div>
@@ -5186,8 +5178,8 @@ export const ApiBuilderView: React.FC = () => {
                         {isTestingPush 
                           ? 'Mengeksekusi...' 
                           : (currentApi.targetEndpointId || currentApi.targetUrl) 
-                            ? 'Test Query & Push Now' 
-                            : 'Test Run SQL Query Now'
+                            ? 'Test Query & Push' 
+                            : 'Test Run Query'
                         }
                       </span>
                     </button>
