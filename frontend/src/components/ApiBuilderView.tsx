@@ -4610,593 +4610,586 @@ export const ApiBuilderView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* SECTION 4: SCHEDULED TASK & NOTIFICATIONS (SPRING CRON, OPTIONAL WEBHOOK TARGET & ALERTS) */}
-                <div id="sec-cron-push" className="bg-bg-panel border border-border-main hover:border-cyan-500/30 rounded-2xl p-5 space-y-6 transition-all shadow-sm">
-                  {/* Section Title Header */}
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-500">
-                      <Clock className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-black uppercase tracking-wider text-text-main flex items-center gap-2">
-                        5. Scheduled Task &amp; Webhook Push (Spring Cron, Target Endpoint &amp; Notifikasi)
-                        {currentApi.cronEnabled ? (
-                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">
-                            Schedule Active
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold text-text-muted bg-bg-main border border-border-main px-2 py-0.5 rounded-full font-mono">
-                            Schedule Inactive
-                          </span>
-                        )}
-                      </h3>
-                      <p className="text-[11px] text-text-muted">
-                        Jadwalkan eksekusi query SQL berkala via Spring Cron. Pengiriman data ke Webhook Target bersifat opsional &mdash; scheduler dapat berjalan mandiri di database atau mem-push JSON ke target luar.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* ── 4.1 SPRING CRON SCHEDULER (DEFAULT MUNCUL) ────────────────── */}
-                  <div className="space-y-3 bg-bg-main border border-border-main rounded-xl p-4 shadow-inner">
-                    <div className="flex items-start justify-between gap-3">
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="mt-1 w-4 h-4 rounded border-border-main text-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                          checked={Boolean(currentApi.cronEnabled)}
-                          onChange={e => setCurrentApi({...currentApi, cronEnabled: e.target.checked})}
-                        />
-                        <div>
-                          <span className={clsx("text-xs font-bold block", currentApi.cronEnabled ? "text-cyan-700 dark:text-cyan-300" : "text-text-main")}>
-                            Aktifkan Penjadwalan Berkala (Spring Cron Scheduler)
-                          </span>
-                          <span className="text-[11px] text-text-muted block mt-0.5 leading-relaxed">
-                            Ketika dicentang aktif, Spring TaskScheduler di backend akan otomatis menjalankan query ini sesuai interval cron yang ditentukan.
+                {/* SECTION 5: SCHEDULED TASK & WEBHOOK PUSH (SPRING CRON & AUTOMATION) */}
+                <div id="sec-cron-push" className="bg-bg-panel border border-border-main hover:border-cyan-500/30 rounded-2xl p-5 space-y-4 transition-all shadow-sm">
+                  {/* Section Title Header with Toggle Switch */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className={clsx(
+                        "w-9 h-9 rounded-xl flex items-center justify-center transition-colors shrink-0",
+                        currentApi.cronEnabled
+                          ? "bg-cyan-500/15 text-cyan-500 border border-cyan-500/30"
+                          : "bg-bg-main text-text-muted border border-border-main"
+                      )}>
+                        <Clock className="w-4.5 h-4.5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs font-black uppercase tracking-wider text-text-main">
+                            5. Scheduled Task &amp; Webhook Push
+                          </h3>
+                          <span className={clsx(
+                            "text-[10px] font-bold px-2 py-0.5 rounded-full font-mono border",
+                            currentApi.cronEnabled
+                              ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25"
+                              : "text-text-muted bg-bg-main border-border-main"
+                          )}>
+                            {currentApi.cronEnabled ? 'Active' : 'Disabled'}
                           </span>
                         </div>
-                      </label>
-
-                      <span className={clsx(
-                        "px-2.5 py-1 rounded-full text-[10px] font-mono font-black uppercase border shrink-0",
-                        currentApi.cronEnabled
-                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-                          : "bg-slate-500/15 text-slate-500 border-slate-500/20"
-                      )}>
-                        {currentApi.cronEnabled ? 'Cron ON' : 'Cron OFF'}
-                      </span>
-                    </div>
-
-                    {/* Cron Expressions List */}
-                    <div className="space-y-3 pt-3 border-t border-border-main/50">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-text-main flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                          Spring Cron Schedule Triggers
-                        </h4>
-                        <button
-                          type="button"
-                          onClick={() => setCronTriggers([...cronTriggers, '0 0 * * * *'])}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-colors border border-amber-500/30 shadow-sm cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Cron Trigger</span>
-                        </button>
-                      </div>
-
-                      <div className="space-y-2">
-                        {cronTriggers.map((cron, cIdx) => (
-                          <div key={cIdx} className="flex items-center gap-2.5">
-                            <div className="flex-1 bg-bg-panel p-2.5 border border-border-main rounded-xl shadow-sm flex items-center gap-2 focus-within:border-amber-500/60">
-                              <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                              <input
-                                type="text"
-                                placeholder="e.g. 0 0 * * * * (Hourly) or 0 */15 * * * *"
-                                value={cron}
-                                onChange={(e) => {
-                                  const copy = [...cronTriggers];
-                                  copy[cIdx] = e.target.value;
-                                  setCronTriggers(copy);
-                                }}
-                                className="w-full bg-transparent border-0 text-xs font-mono font-bold text-amber-700 dark:text-amber-300 focus:outline-none focus:ring-0 placeholder:text-text-muted"
-                              />
-                            </div>
-                            {cronTriggers.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => setCronTriggers(cronTriggers.filter((_, i) => i !== cIdx))}
-                                className="p-2.5 text-text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer"
-                                title="Remove Cron Trigger"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Quick Presets */}
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] text-text-muted mr-1 font-semibold">Pilihan Cepat (Presets):</span>
-                        {[
-                          { label: 'Setiap 1 Menit', expr: '0 */1 * * * *' },
-                          { label: 'Setiap 5 Menit', expr: '0 */5 * * * *' },
-                          { label: 'Setiap 15 Menit', expr: '0 */15 * * * *' },
-                          { label: 'Tiap Jam (Hourly)', expr: '0 0 * * * *' },
-                          { label: 'Tiap 6 Jam', expr: '0 0 */6 * * *' },
-                          { label: 'Tengah Malam (00:00)', expr: '0 0 0 * * *' },
-                          { label: 'Siang (12:00)', expr: '0 0 12 * * *' },
-                        ].map((p, pIdx) => (
-                          <button
-                            key={pIdx}
-                            type="button"
-                            onClick={() => {
-                              if (cronTriggers.length === 1 && (!cronTriggers[0] || cronTriggers[0] === '0 */5 * * * *')) {
-                                setCronTriggers([p.expr]);
-                              } else {
-                                setCronTriggers([...cronTriggers, p.expr]);
-                              }
-                            }}
-                            className={clsx(
-                              "px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all cursor-pointer",
-                              cronTriggers.includes(p.expr)
-                                ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40 shadow-sm"
-                                : "bg-bg-panel text-text-muted hover:text-text-main border-border-main hover:bg-bg-hover"
-                            )}
-                          >
-                            {p.label} ({p.expr})
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2.5">
-                        <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                        <span className="leading-relaxed font-medium">
-                          Query SQL Anda akan dieksekusi berkala langsung pada database. Target endpoint di bawah bersifat <b>opsional</b> &mdash; Anda dapat menjalankan jadwal query tanpa memilih target endpoint (misal untuk mengeksekusi function atau procedure di PostgreSQL).
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ── 4.2 TARGET ENDPOINT PUSH (OPSIONAL - DEFAULT MUNCUL) ──────── */}
-                  <div className="bg-bg-main border border-cyan-500/25 rounded-xl p-4 space-y-4 shadow-inner">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <label className="text-xs font-extrabold text-cyan-700 dark:text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
-                          <Radio className="w-3.5 h-3.5 text-cyan-500" /> Target Endpoint Push (Opsional)
-                        </label>
                         <p className="text-[11px] text-text-muted mt-0.5">
-                          Kirim payload JSON hasil query via HTTP POST/PUT ke sistem luar (e.g. APISIX, Webhook Receiver). Kosongkan jika hanya ingin query dijalankan di database.
+                          Eksekusi query SQL berkala via Spring Cron (opsional push JSON ke webhook).
                         </p>
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsEndpointListModalOpen(true)}
-                        className="text-[11px] text-cyan-700 dark:text-cyan-300 hover:text-cyan-600 dark:hover:text-cyan-200 font-bold flex items-center gap-1.5 cursor-pointer shrink-0 bg-cyan-500/10 hover:bg-cyan-500/20 px-2.5 py-1 rounded-lg border border-cyan-500/20 transition-all"
-                      >
-                        <Radio className="w-3 h-3 text-cyan-500" />
-                        <span>Manage Endpoint List</span>
-                        <span className="px-1.5 py-0.2 text-[10px] bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 rounded-full font-mono font-bold">
-                          {endpointTargets.length}
-                        </span>
-                      </button>
                     </div>
 
-                    <div className="space-y-3">
-                      <select
-                        value={currentApi.targetEndpointId || (selectedTargetEndpoint ? selectedTargetEndpoint.id : '')}
-                        onChange={(e) => {
-                          const epId = e.target.value;
-                          const found = endpointTargets.find(t => t.id === epId);
-                          if (found) {
-                            setCurrentApi({
-                              ...currentApi,
-                              targetEndpointId: found.id,
-                              targetUrl: found.url,
-                              targetMethod: found.method || 'POST',
-                              targetHeaders: found.headers || currentApi.targetHeaders || '{\n  "Content-Type": "application/json"\n}'
-                            });
-                          } else {
-                            setCurrentApi({
-                              ...currentApi,
-                              targetEndpointId: '',
-                              targetUrl: ''
-                            });
-                          }
-                        }}
-                        className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl px-3.5 py-2.5 text-xs text-text-main font-semibold focus:outline-none cursor-pointer shadow-sm"
-                      >
-                        <option value="">-- Tanpa Target Endpoint (Hanya Eksekusi SQL di Database) --</option>
-                        {endpointTargets.map(ep => (
-                          <option key={ep.id} value={ep.id}>
-                            [{ep.method || 'POST'}] {ep.name} &mdash; {ep.url} {ep.groupName ? `(${ep.groupName})` : ''}
-                          </option>
-                        ))}
-                      </select>
+                    {/* Clean Toggle Switch */}
+                    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0" title={currentApi.cronEnabled ? 'Nonaktifkan Jadwal' : 'Aktifkan Jadwal Berkala'}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(currentApi.cronEnabled)}
+                        onChange={e => setCurrentApi({...currentApi, cronEnabled: e.target.checked})}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-bg-main border border-border-main peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border-main after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+                    </label>
+                  </div>
 
-                      {/* Selected Target Preview OR Direct Mode Banner */}
-                      {selectedTargetEndpoint || currentApi.targetUrl ? (
-                        <div className="p-3.5 bg-bg-panel border border-cyan-500/30 rounded-xl space-y-2.5 shadow-sm">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className={clsx(
-                                "px-2 py-0.5 rounded text-[10px] font-extrabold uppercase font-mono border",
-                                (selectedTargetEndpoint?.method || currentApi.targetMethod || 'POST') === 'POST' ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30" :
-                                (selectedTargetEndpoint?.method || currentApi.targetMethod || 'POST') === 'PUT' ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" :
-                                "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                              )}>
-                                {selectedTargetEndpoint?.method || currentApi.targetMethod || 'POST'}
-                              </span>
-                              <span className="font-bold text-xs text-text-main">{selectedTargetEndpoint?.name || 'Custom Target Webhook'}</span>
-                              {selectedTargetEndpoint?.groupName && (
-                                <span className="text-[10px] font-mono px-2 py-0.2 rounded-md bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20">
-                                  {selectedTargetEndpoint.groupName}
-                                </span>
+                  {/* If Disabled: Minimal collapsed bar */}
+                  {!currentApi.cronEnabled ? (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-bg-main border border-border-main/60 rounded-xl text-xs">
+                      <span className="text-[11px] text-text-muted flex items-center gap-2">
+                        <Clock className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                        Jadwal otomatis dinonaktifkan. Aktifkan sakelar di atas jika ingin query dijalankan berkala oleh server.
+                      </span>
+                      <button
+                        type="button"
+                        disabled={isTestingPush}
+                        onClick={handleTestPushNow}
+                        className="px-3 py-1.5 bg-bg-panel hover:bg-bg-hover text-text-main border border-border-main rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 self-start sm:self-auto shadow-sm"
+                        title="Eksekusi query SQL sekarang langsung di database"
+                      >
+                        {isTestingPush ? <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-500" /> : <Play className="w-3.5 h-3.5 text-emerald-500" />}
+                        <span>{isTestingPush ? 'Running...' : 'Test Run SQL Now'}</span>
+                      </button>
+                    </div>
+                  ) : (
+                    /* If Enabled: Clean expanded settings */
+                    <div className="space-y-4 pt-1">
+                      {/* ── 5.1 SPRING CRON INTERVALS ── */}
+                      <div className="space-y-3 bg-bg-main border border-border-main rounded-xl p-4 shadow-inner">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-text-main flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-amber-500" />
+                            Spring Cron Schedule Triggers
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => setCronTriggers([...cronTriggers, '0 0 * * * *'])}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-colors border border-amber-500/30 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Tambah Trigger</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-2">
+                          {cronTriggers.map((cron, cIdx) => (
+                            <div key={cIdx} className="flex items-center gap-2">
+                              <div className="flex-1 bg-bg-panel p-2 border border-border-main rounded-xl shadow-sm flex items-center gap-2 focus-within:border-amber-500/60">
+                                <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                                <input
+                                  type="text"
+                                  placeholder="e.g. 0 */5 * * * *"
+                                  value={cron}
+                                  onChange={(e) => {
+                                    const copy = [...cronTriggers];
+                                    copy[cIdx] = e.target.value;
+                                    setCronTriggers(copy);
+                                  }}
+                                  className="w-full bg-transparent border-0 text-xs font-mono font-bold text-amber-700 dark:text-amber-300 focus:outline-none focus:ring-0 placeholder:text-text-muted"
+                                />
+                              </div>
+
+                              {/* Compact Preset Selector */}
+                              <select
+                                defaultValue=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    const copy = [...cronTriggers];
+                                    copy[cIdx] = e.target.value;
+                                    setCronTriggers(copy);
+                                    e.target.value = "";
+                                  }
+                                }}
+                                className="bg-bg-panel border border-border-main text-text-muted hover:text-text-main text-xs font-semibold rounded-xl px-2.5 py-2 focus:outline-none cursor-pointer shrink-0"
+                                title="Pilih preset ekspresi cron"
+                              >
+                                <option value="" disabled>⚡ Preset ▾</option>
+                                <option value="0 */1 * * * *">Setiap 1 Menit (0 */1 * * * *)</option>
+                                <option value="0 */5 * * * *">Setiap 5 Menit (0 */5 * * * *)</option>
+                                <option value="0 */15 * * * *">Setiap 15 Menit (0 */15 * * * *)</option>
+                                <option value="0 0 * * * *">Tiap Jam / Hourly (0 0 * * * *)</option>
+                                <option value="0 0 */6 * * *">Tiap 6 Jam (0 0 */6 * * *)</option>
+                                <option value="0 0 0 * * *">Setiap Hari 00:00 (Tengah Malam)</option>
+                                <option value="0 0 12 * * *">Setiap Hari 12:00 (Siang)</option>
+                              </select>
+
+                              {cronTriggers.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCronTriggers(cronTriggers.filter((_, i) => i !== cIdx))}
+                                  className="p-2 text-text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer shrink-0"
+                                  title="Hapus Trigger"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               )}
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => {
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* ── 5.2 TARGET ENDPOINT PUSH (OPSIONAL) ── */}
+                      <div className="bg-bg-main border border-cyan-500/25 rounded-xl p-4 space-y-3 shadow-inner">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className="text-xs font-bold text-cyan-700 dark:text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                              <Radio className="w-3.5 h-3.5 text-cyan-500" /> Target Endpoint Push (Opsional)
+                            </label>
+                            <p className="text-[11px] text-text-muted mt-0.5">
+                              Kirim payload JSON hasil query via HTTP POST/PUT ke sistem luar atau biarkan kosong untuk mode database saja.
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setIsEndpointListModalOpen(true)}
+                            className="text-[11px] text-cyan-700 dark:text-cyan-300 hover:text-cyan-600 dark:hover:text-cyan-200 font-bold flex items-center gap-1.5 cursor-pointer shrink-0 bg-cyan-500/10 hover:bg-cyan-500/20 px-2.5 py-1 rounded-lg border border-cyan-500/20 transition-all"
+                          >
+                            <Radio className="w-3 h-3 text-cyan-500" />
+                            <span>Manage Endpoint List</span>
+                            <span className="px-1.5 py-0.2 text-[10px] bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 rounded-full font-mono font-bold">
+                              {endpointTargets.length}
+                            </span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-3">
+                          <select
+                            value={currentApi.targetEndpointId || (selectedTargetEndpoint ? selectedTargetEndpoint.id : '')}
+                            onChange={(e) => {
+                              const epId = e.target.value;
+                              const found = endpointTargets.find(t => t.id === epId);
+                              if (found) {
+                                setCurrentApi({
+                                  ...currentApi,
+                                  targetEndpointId: found.id,
+                                  targetUrl: found.url,
+                                  targetMethod: found.method || 'POST',
+                                  targetHeaders: found.headers || currentApi.targetHeaders || '{\n  "Content-Type": "application/json"\n}'
+                                });
+                              } else {
                                 setCurrentApi({
                                   ...currentApi,
                                   targetEndpointId: '',
                                   targetUrl: ''
                                 });
-                              }}
-                              className="text-[11px] text-rose-500 hover:text-rose-400 font-bold cursor-pointer"
-                            >
-                              &times; Hapus Target (Gunakan Mode SQL Saja)
-                            </button>
-                          </div>
+                              }
+                            }}
+                            className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl px-3.5 py-2.5 text-xs text-text-main font-semibold focus:outline-none cursor-pointer shadow-sm"
+                          >
+                            <option value="">-- Tanpa Target Endpoint (Direct SQL: Hanya Eksekusi di Database) --</option>
+                            {endpointTargets.map(ep => (
+                              <option key={ep.id} value={ep.id}>
+                                [{ep.method || 'POST'}] {ep.name} &mdash; {ep.url} {ep.groupName ? `(${ep.groupName})` : ''}
+                              </option>
+                            ))}
+                          </select>
 
-                          <div className="font-mono text-[11px] text-cyan-700 dark:text-cyan-300 bg-bg-main px-3 py-2 rounded-lg border border-border-main flex items-center justify-between gap-2 overflow-hidden">
-                            <span className="truncate">{currentApi.targetUrl || selectedTargetEndpoint?.url}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const u = currentApi.targetUrl || selectedTargetEndpoint?.url || '';
-                                navigator.clipboard?.writeText(u);
-                                addToast({ type: 'info', title: 'Copied', message: 'Target URL copied to clipboard' });
-                              }}
-                              className="p-1 hover:text-cyan-600 text-text-muted transition-colors shrink-0 cursor-pointer"
-                              title="Copy URL"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-800 dark:text-cyan-200 flex items-start gap-2.5">
-                          <AlertCircle className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
-                          <span className="leading-relaxed">
-                            <b>Mode Direct SQL:</b> Tidak ada target endpoint yang dipilih. Scheduler akan mengeksekusi query SQL langsung pada koneksi database Anda tanpa mem-push HTTP. Anda tetap dapat menggunakan cron scheduler dan menerima notifikasi.
-                          </span>
-                        </div>
-                      )}
+                          {/* Selected Target Preview OR Minimal Direct SQL Hint */}
+                          {selectedTargetEndpoint || currentApi.targetUrl ? (
+                            <div className="p-3.5 bg-bg-panel border border-cyan-500/30 rounded-xl space-y-2.5 shadow-sm">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className={clsx(
+                                    "px-2 py-0.5 rounded text-[10px] font-extrabold uppercase font-mono border",
+                                    (selectedTargetEndpoint?.method || currentApi.targetMethod || 'POST') === 'POST' ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30" :
+                                    (selectedTargetEndpoint?.method || currentApi.targetMethod || 'POST') === 'PUT' ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" :
+                                    "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                  )}>
+                                    {selectedTargetEndpoint?.method || currentApi.targetMethod || 'POST'}
+                                  </span>
+                                  <span className="font-bold text-xs text-text-main">{selectedTargetEndpoint?.name || 'Custom Target Webhook'}</span>
+                                  {selectedTargetEndpoint?.groupName && (
+                                    <span className="text-[10px] font-mono px-2 py-0.2 rounded-md bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20">
+                                      {selectedTargetEndpoint.groupName}
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCurrentApi({
+                                      ...currentApi,
+                                      targetEndpointId: '',
+                                      targetUrl: ''
+                                    });
+                                  }}
+                                  className="text-[11px] text-rose-500 hover:text-rose-400 font-bold cursor-pointer"
+                                >
+                                  &times; Hapus Target (Gunakan Mode SQL Saja)
+                                </button>
+                              </div>
 
-                      {/* HTTP Method & Target Headers (Shown if Target configured) */}
-                      {(selectedTargetEndpoint || currentApi.targetUrl) && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                          <div className="space-y-2">
-                            <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
-                              HTTP Method
-                            </label>
-                            <select
-                              value={currentApi.targetMethod || selectedTargetEndpoint?.method || 'POST'}
-                              onChange={e => setCurrentApi({...currentApi, targetMethod: e.target.value})}
-                              className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl px-3 py-2 text-xs text-text-main font-semibold focus:outline-none cursor-pointer shadow-sm"
-                            >
-                              <option value="POST">POST (Default)</option>
-                              <option value="PUT">PUT</option>
-                            </select>
-                            <p className="text-[10px] text-text-muted">
-                              Payload format: application/json list of records.
+                              <div className="font-mono text-[11px] text-cyan-700 dark:text-cyan-300 bg-bg-main px-3 py-2 rounded-lg border border-border-main flex items-center justify-between gap-2 overflow-hidden">
+                                <span className="truncate">{currentApi.targetUrl || selectedTargetEndpoint?.url}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const u = currentApi.targetUrl || selectedTargetEndpoint?.url || '';
+                                    navigator.clipboard?.writeText(u);
+                                    addToast({ type: 'info', title: 'Copied', message: 'Target URL copied to clipboard' });
+                                  }}
+                                  className="p-1 hover:text-cyan-600 text-text-muted transition-colors shrink-0 cursor-pointer"
+                                  title="Copy URL"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-text-muted flex items-center gap-1.5 px-1">
+                              <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              <span><b>Mode Direct SQL:</b> Query akan dieksekusi berkala langsung pada database tanpa push HTTP luar.</span>
                             </p>
-                          </div>
+                          )}
 
-                          <div className="md:col-span-2 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
-                                HTTP Headers (JSON)
-                              </label>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setCurrentApi({
-                                    ...currentApi,
-                                    targetHeaders: JSON.stringify({ "Content-Type": "application/json", "Authorization": "Bearer YOUR_TOKEN" }, null, 2)
-                                  })}
-                                  className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
+                          {/* HTTP Method & Target Headers (Shown if Target configured) */}
+                          {(selectedTargetEndpoint || currentApi.targetUrl) && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                              <div className="space-y-2">
+                                <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
+                                  HTTP Method
+                                </label>
+                                <select
+                                  value={currentApi.targetMethod || selectedTargetEndpoint?.method || 'POST'}
+                                  onChange={e => setCurrentApi({...currentApi, targetMethod: e.target.value})}
+                                  className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl px-3 py-2 text-xs text-text-main font-semibold focus:outline-none cursor-pointer shadow-sm"
                                 >
-                                  + Bearer Auth Template
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setCurrentApi({
-                                    ...currentApi,
-                                    targetHeaders: JSON.stringify({ "Content-Type": "application/json", "X-API-KEY": "secret" }, null, 2)
-                                  })}
-                                  className="text-[10px] text-cyan-600 dark:text-cyan-400 hover:underline font-bold cursor-pointer"
-                                >
-                                  + API Key Template
-                                </button>
+                                  <option value="POST">POST (Default)</option>
+                                  <option value="PUT">PUT</option>
+                                </select>
+                                <p className="text-[10px] text-text-muted">
+                                  Payload format: application/json list of records.
+                                </p>
+                              </div>
+
+                              <div className="md:col-span-2 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <label className="text-[11px] font-extrabold text-text-muted uppercase tracking-wider">
+                                    HTTP Headers (JSON)
+                                  </label>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setCurrentApi({
+                                        ...currentApi,
+                                        targetHeaders: JSON.stringify({ "Content-Type": "application/json", "Authorization": "Bearer YOUR_TOKEN" }, null, 2)
+                                      })}
+                                      className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
+                                    >
+                                      + Bearer Auth Template
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setCurrentApi({
+                                        ...currentApi,
+                                        targetHeaders: JSON.stringify({ "Content-Type": "application/json", "X-API-KEY": "secret" }, null, 2)
+                                      })}
+                                      className="text-[10px] text-cyan-600 dark:text-cyan-400 hover:underline font-bold cursor-pointer"
+                                    >
+                                      + API Key Template
+                                    </button>
+                                  </div>
+                                </div>
+                                <textarea
+                                  rows={3}
+                                  value={currentApi.targetHeaders || ''}
+                                  onChange={e => setCurrentApi({...currentApi, targetHeaders: e.target.value})}
+                                  placeholder={`{\n  "Content-Type": "application/json",\n  "apikey": "xyz"\n}`}
+                                  className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl p-3 font-mono text-xs text-text-main focus:outline-none focus:ring-0 placeholder:text-text-muted resize-none shadow-sm"
+                                />
                               </div>
                             </div>
-                            <textarea
-                              rows={3}
-                              value={currentApi.targetHeaders || ''}
-                              onChange={e => setCurrentApi({...currentApi, targetHeaders: e.target.value})}
-                              placeholder={`{\n  "Content-Type": "application/json",\n  "apikey": "xyz"\n}`}
-                              className="w-full bg-bg-panel border border-border-main focus:border-cyan-500/60 rounded-xl p-3 font-mono text-xs text-text-main focus:outline-none focus:ring-0 placeholder:text-text-muted resize-none shadow-sm"
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ── 5.3 NOTIFIKASI TELEGRAM & DISCORD ── */}
+                      <div className="space-y-3 bg-bg-main border border-purple-500/25 rounded-xl p-4 shadow-inner">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Bell className="w-4 h-4 text-purple-500" />
+                            <div>
+                              <h4 className="text-xs font-bold text-text-main">Pengaturan Notifikasi (Telegram &amp; Discord)</h4>
+                              <p className="text-[11px] text-text-muted">Kirim update status eksekusi jadwal query atau push ke channel Telegram / Discord</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsChannelModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-700 dark:text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold transition-all cursor-pointer shadow-sm"
+                          >
+                            <Settings2 className="w-3.5 h-3.5" />
+                            <span>Manage Channels</span>
+                          </button>
+                        </div>
+
+                        {/* Checkboxes: Notify on Success & Failure */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-bg-panel border border-border-main rounded-xl">
+                          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 w-4 h-4 rounded border-border-main text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                              checked={Boolean(currentApi.notifyOnSuccess)}
+                              onChange={e => setCurrentApi({...currentApi, notifyOnSuccess: e.target.checked})}
                             />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* ── 4.3 NOTIFIKASI TELEGRAM & DISCORD (DEFAULT MUNCUL) ─────────── */}
-                  <div className="space-y-4 bg-bg-main border border-purple-500/25 rounded-xl p-4 shadow-inner">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Bell className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                        <div>
-                          <h4 className="text-xs font-bold text-text-main">Pengaturan Notifikasi (Telegram &amp; Discord)</h4>
-                          <p className="text-[11px] text-text-muted">Kirim update status eksekusi jadwal query atau push ke channel Telegram / Discord</p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsChannelModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-700 dark:text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold transition-all cursor-pointer shadow-sm"
-                      >
-                        <Settings2 className="w-3.5 h-3.5" />
-                        <span>Manage Channels</span>
-                      </button>
-                    </div>
-
-                    {/* Checkboxes: Notify on Success & Failure */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-bg-panel border border-border-main rounded-xl">
-                      <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 w-4 h-4 rounded border-border-main text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                          checked={Boolean(currentApi.notifyOnSuccess)}
-                          onChange={e => setCurrentApi({...currentApi, notifyOnSuccess: e.target.checked})}
-                        />
-                        <div>
-                          <span className="text-xs font-bold text-text-main flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                            Kirim Notifikasi saat Berhasil (Success)
-                          </span>
-                          <span className="text-[10px] text-text-muted block mt-0.5">
-                            Kirim pesan konfirmasi setiap kali query berhasil dijalankan (memuat durasi ms &amp; preview hasil query).
-                          </span>
-                        </div>
-                      </label>
-
-                      <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 w-4 h-4 rounded border-border-main text-rose-600 focus:ring-rose-500 cursor-pointer"
-                          checked={currentApi.notifyOnFailure !== false}
-                          onChange={e => setCurrentApi({...currentApi, notifyOnFailure: e.target.checked})}
-                        />
-                        <div>
-                          <span className="text-xs font-bold text-text-main flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
-                            Kirim Notifikasi saat Gagal (Failure / Error)
-                          </span>
-                          <span className="text-[10px] text-text-muted block mt-0.5">
-                            Kirim peringatan jika terjadi error sintaks SQL, timeout koneksi database, atau target HTTP push gagal.
-                          </span>
-                        </div>
-                      </label>
-                    </div>
-
-                    {/* Channels Selection Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Telegram Channel Card */}
-                      <div className={clsx(
-                        "p-3.5 rounded-xl border transition-all space-y-3",
-                        isTgEnabled
-                          ? "bg-blue-500/10 border-blue-500/40 shadow-sm"
-                          : "bg-bg-panel border-border-main hover:border-blue-500/30"
-                      )}>
-                        <div 
-                          onClick={() => {
-                            const next = !isTgEnabled;
-                            setIsTgEnabled(next);
-                            if (next && !selectedTgChannelId && channels.filter(c => c.type === 'TELEGRAM').length > 0) {
-                              setSelectedTgChannelId(channels.filter(c => c.type === 'TELEGRAM')[0].id);
-                            }
-                          }}
-                          className="flex items-center justify-between cursor-pointer select-none"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Send className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                             <div>
-                              <span className="text-xs font-bold text-text-main block">Telegram Alerts</span>
-                              <span className="text-[10px] text-text-muted">
-                                {isTgEnabled ? 'Aktif untuk endpoint ini' : 'Klik untuk mengaktifkan notifikasi Telegram'}
+                              <span className="text-xs font-bold text-text-main flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                                Kirim Notifikasi saat Berhasil (Success)
+                              </span>
+                              <span className="text-[10px] text-text-muted block mt-0.5">
+                                Konfirmasi durasi ms &amp; preview hasil query.
                               </span>
                             </div>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={isTgEnabled}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              const next = e.target.checked;
-                              setIsTgEnabled(next);
-                              if (next && !selectedTgChannelId && channels.filter(c => c.type === 'TELEGRAM').length > 0) {
-                                setSelectedTgChannelId(channels.filter(c => c.type === 'TELEGRAM')[0].id);
-                              }
-                            }}
-                            className="w-4 h-4 rounded border-border-main text-blue-600 focus:ring-0 cursor-pointer"
-                          />
-                        </div>
+                          </label>
 
-                        {isTgEnabled && (
-                          <div className="space-y-2 pt-2 border-t border-blue-500/20">
-                            {channels.filter(c => c.type === 'TELEGRAM').length === 0 ? (
-                              <div className="p-3 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs text-blue-700 dark:text-blue-300 space-y-2">
-                                <p className="font-medium">Belum ada channel Telegram tersimpan.</p>
-                                <button 
-                                  type="button" 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsChannelModalOpen(true);
-                                  }} 
-                                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600 text-white font-bold text-xs cursor-pointer"
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                  <span>Tambah Channel Telegram</span>
-                                </button>
-                              </div>
-                            ) : (
-                              <select
-                                value={selectedTgChannelId}
-                                onChange={(e) => setSelectedTgChannelId(e.target.value)}
-                                className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-semibold text-text-main focus:outline-none focus:border-blue-500 cursor-pointer shadow-inner"
-                              >
-                                {channels.filter(c => c.type === 'TELEGRAM').map(chan => (
-                                  <option key={chan.id} value={chan.id}>
-                                    {chan.name} (Chat ID: {chan.chatId || '-'})
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Discord Channel Card */}
-                      <div className={clsx(
-                        "p-3.5 rounded-xl border transition-all space-y-3",
-                        isDcEnabled
-                          ? "bg-indigo-500/10 border-indigo-500/40 shadow-sm"
-                          : "bg-bg-panel border-border-main hover:border-indigo-500/30"
-                      )}>
-                        <div 
-                          onClick={() => {
-                            const next = !isDcEnabled;
-                            setIsDcEnabled(next);
-                            if (next && !selectedDcChannelId && channels.filter(c => c.type === 'DISCORD').length > 0) {
-                              setSelectedDcChannelId(channels.filter(c => c.type === 'DISCORD')[0].id);
-                            }
-                          }}
-                          className="flex items-center justify-between cursor-pointer select-none"
-                        >
-                          <div className="flex items-center gap-2">
-                            <MessageCircle className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 w-4 h-4 rounded border-border-main text-rose-600 focus:ring-rose-500 cursor-pointer"
+                              checked={currentApi.notifyOnFailure !== false}
+                              onChange={e => setCurrentApi({...currentApi, notifyOnFailure: e.target.checked})}
+                            />
                             <div>
-                              <span className="text-xs font-bold text-text-main block">Discord Alerts</span>
-                              <span className="text-[10px] text-text-muted">
-                                {isDcEnabled ? 'Aktif untuk endpoint ini' : 'Klik untuk mengaktifkan notifikasi Discord'}
+                              <span className="text-xs font-bold text-text-main flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                                Kirim Notifikasi saat Gagal (Failure / Error)
+                              </span>
+                              <span className="text-[10px] text-text-muted block mt-0.5">
+                                Peringatan jika query error atau push gagal.
                               </span>
                             </div>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={isDcEnabled}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              const next = e.target.checked;
-                              setIsDcEnabled(next);
-                              if (next && !selectedDcChannelId && channels.filter(c => c.type === 'DISCORD').length > 0) {
-                                setSelectedDcChannelId(channels.filter(c => c.type === 'DISCORD')[0].id);
-                              }
-                            }}
-                            className="w-4 h-4 rounded border-border-main text-indigo-600 focus:ring-0 cursor-pointer"
-                          />
+                          </label>
                         </div>
 
-                        {isDcEnabled && (
-                          <div className="space-y-2 pt-2 border-t border-indigo-500/20">
-                            {channels.filter(c => c.type === 'DISCORD').length === 0 ? (
-                              <div className="p-3 bg-indigo-500/10 border border-indigo-500/25 rounded-xl text-xs text-indigo-700 dark:text-indigo-300 space-y-2">
-                                <p className="font-medium">Belum ada channel Discord tersimpan.</p>
-                                <button 
-                                  type="button" 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsChannelModalOpen(true);
-                                  }} 
-                                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600 text-white font-bold text-xs cursor-pointer"
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                  <span>Tambah Channel Discord</span>
-                                </button>
-                              </div>
-                            ) : (
-                              <select
-                                value={selectedDcChannelId}
-                                onChange={(e) => setSelectedDcChannelId(e.target.value)}
-                                className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-semibold text-text-main focus:outline-none focus:border-indigo-500 cursor-pointer shadow-inner"
-                              >
-                                {channels.filter(c => c.type === 'DISCORD').map(chan => (
-                                  <option key={chan.id} value={chan.id}>
-                                    {chan.name}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ── 4.4 DIAGNOSTICS & TEST RUN NOW ────────────────────────────── */}
-                  <div className="p-4 bg-bg-main border border-border-main rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-inner">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-text-main">Status Eksekusi Terakhir:</span>
-                        {currentApi.lastPushStatus ? (
-                          <span className={clsx(
-                            "px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono",
-                            currentApi.lastPushStatus === 'SUCCESS' ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" : "bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                        {/* Channels Selection Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Telegram Channel Card */}
+                          <div className={clsx(
+                            "p-3.5 rounded-xl border transition-all space-y-3",
+                            isTgEnabled
+                              ? "bg-blue-500/10 border-blue-500/40 shadow-sm"
+                              : "bg-bg-panel border-border-main hover:border-blue-500/30"
                           )}>
-                            {currentApi.lastPushStatus}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-text-muted font-mono">Belum pernah dieksekusi</span>
-                        )}
-                        {currentApi.lastPushAt && (
-                          <span className="text-[10px] text-text-muted font-mono">
-                            Terakhir: {new Date(currentApi.lastPushAt).toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                      {currentApi.lastPushMessage && (
-                        <p className="text-[11px] text-text-muted font-mono truncate max-w-xl">
-                          {currentApi.lastPushMessage}
-                        </p>
-                      )}
-                    </div>
+                            <div 
+                              onClick={() => {
+                                const next = !isTgEnabled;
+                                setIsTgEnabled(next);
+                                if (next && !selectedTgChannelId && channels.filter(c => c.type === 'TELEGRAM').length > 0) {
+                                  setSelectedTgChannelId(channels.filter(c => c.type === 'TELEGRAM')[0].id);
+                                }
+                              }}
+                              className="flex items-center justify-between cursor-pointer select-none"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Send className="w-4 h-4 text-blue-500" />
+                                <div>
+                                  <span className="text-xs font-bold text-text-main block">Telegram Alerts</span>
+                                  <span className="text-[10px] text-text-muted">
+                                    {isTgEnabled ? 'Aktif untuk endpoint ini' : 'Klik untuk mengaktifkan notifikasi Telegram'}
+                                  </span>
+                                </div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={isTgEnabled}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  const next = e.target.checked;
+                                  setIsTgEnabled(next);
+                                  if (next && !selectedTgChannelId && channels.filter(c => c.type === 'TELEGRAM').length > 0) {
+                                    setSelectedTgChannelId(channels.filter(c => c.type === 'TELEGRAM')[0].id);
+                                  }
+                                }}
+                                className="w-4 h-4 rounded border-border-main text-blue-600 focus:ring-0 cursor-pointer"
+                              />
+                            </div>
 
-                    <button
-                      type="button"
-                      disabled={isTestingPush}
-                      onClick={handleTestPushNow}
-                      className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer shrink-0"
-                    >
-                      {isTestingPush ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                      <span>
-                        {isTestingPush 
-                          ? 'Mengeksekusi...' 
-                          : (currentApi.targetEndpointId || currentApi.targetUrl) 
-                            ? 'Test Query & Push Now' 
-                            : 'Test Run SQL Query Now'
-                        }
-                      </span>
-                    </button>
-                  </div>
+                            {isTgEnabled && (
+                              <div className="space-y-2 pt-2 border-t border-blue-500/20">
+                                {channels.filter(c => c.type === 'TELEGRAM').length === 0 ? (
+                                  <div className="p-3 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs text-blue-700 dark:text-blue-300 space-y-2">
+                                    <p className="font-medium">Belum ada channel Telegram tersimpan.</p>
+                                    <button 
+                                      type="button" 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsChannelModalOpen(true);
+                                      }} 
+                                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600 text-white font-bold text-xs cursor-pointer"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>Tambah Channel Telegram</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <select
+                                    value={selectedTgChannelId}
+                                    onChange={(e) => setSelectedTgChannelId(e.target.value)}
+                                    className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-semibold text-text-main focus:outline-none focus:border-blue-500 cursor-pointer shadow-inner"
+                                  >
+                                    {channels.filter(c => c.type === 'TELEGRAM').map(chan => (
+                                      <option key={chan.id} value={chan.id}>
+                                        {chan.name} (Chat ID: {chan.chatId || '-'})
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Discord Channel Card */}
+                          <div className={clsx(
+                            "p-3.5 rounded-xl border transition-all space-y-3",
+                            isDcEnabled
+                              ? "bg-indigo-500/10 border-indigo-500/40 shadow-sm"
+                              : "bg-bg-panel border-border-main hover:border-indigo-500/30"
+                          )}>
+                            <div 
+                              onClick={() => {
+                                const next = !isDcEnabled;
+                                setIsDcEnabled(next);
+                                if (next && !selectedDcChannelId && channels.filter(c => c.type === 'DISCORD').length > 0) {
+                                  setSelectedDcChannelId(channels.filter(c => c.type === 'DISCORD')[0].id);
+                                }
+                              }}
+                              className="flex items-center justify-between cursor-pointer select-none"
+                            >
+                              <div className="flex items-center gap-2">
+                                <MessageCircle className="w-4 h-4 text-indigo-500" />
+                                <div>
+                                  <span className="text-xs font-bold text-text-main block">Discord Alerts</span>
+                                  <span className="text-[10px] text-text-muted">
+                                    {isDcEnabled ? 'Aktif untuk endpoint ini' : 'Klik untuk mengaktifkan notifikasi Discord'}
+                                  </span>
+                                </div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={isDcEnabled}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  const next = e.target.checked;
+                                  setIsDcEnabled(next);
+                                  if (next && !selectedDcChannelId && channels.filter(c => c.type === 'DISCORD').length > 0) {
+                                    setSelectedDcChannelId(channels.filter(c => c.type === 'DISCORD')[0].id);
+                                  }
+                                }}
+                                className="w-4 h-4 rounded border-border-main text-indigo-600 focus:ring-0 cursor-pointer"
+                              />
+                            </div>
+
+                            {isDcEnabled && (
+                              <div className="space-y-2 pt-2 border-t border-indigo-500/20">
+                                {channels.filter(c => c.type === 'DISCORD').length === 0 ? (
+                                  <div className="p-3 bg-indigo-500/10 border border-indigo-500/25 rounded-xl text-xs text-indigo-700 dark:text-indigo-300 space-y-2">
+                                    <p className="font-medium">Belum ada channel Discord tersimpan.</p>
+                                    <button 
+                                      type="button" 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsChannelModalOpen(true);
+                                      }} 
+                                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600 text-white font-bold text-xs cursor-pointer"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>Tambah Channel Discord</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <select
+                                    value={selectedDcChannelId}
+                                    onChange={(e) => setSelectedDcChannelId(e.target.value)}
+                                    className="w-full bg-bg-panel border border-border-main rounded-xl px-3 py-2 text-xs font-semibold text-text-main focus:outline-none focus:border-indigo-500 cursor-pointer shadow-inner"
+                                  >
+                                    {channels.filter(c => c.type === 'DISCORD').map(chan => (
+                                      <option key={chan.id} value={chan.id}>
+                                        {chan.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ── 5.4 DIAGNOSTICS & TEST RUN NOW ── */}
+                      <div className="p-4 bg-bg-main border border-border-main rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-inner">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-text-main">Status Eksekusi Terakhir:</span>
+                            {currentApi.lastPushStatus ? (
+                              <span className={clsx(
+                                "px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono",
+                                currentApi.lastPushStatus === 'SUCCESS' ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" : "bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                              )}>
+                                {currentApi.lastPushStatus}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-text-muted font-mono">Belum pernah dieksekusi</span>
+                            )}
+                            {currentApi.lastPushAt && (
+                              <span className="text-[10px] text-text-muted font-mono">
+                                Terakhir: {new Date(currentApi.lastPushAt).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                          {currentApi.lastPushMessage && (
+                            <p className="text-[11px] text-text-muted font-mono truncate max-w-xl">
+                              {currentApi.lastPushMessage}
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isTestingPush}
+                          onClick={handleTestPushNow}
+                          className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer shrink-0"
+                        >
+                          {isTestingPush ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Send className="w-4 h-4" />
+                          )}
+                          <span>
+                            {isTestingPush 
+                              ? 'Mengeksekusi...' 
+                              : (currentApi.targetEndpointId || currentApi.targetUrl) 
+                                ? 'Test Query & Push Now' 
+                                : 'Test Run SQL Query Now'
+                            }
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
               </div>
