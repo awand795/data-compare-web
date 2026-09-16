@@ -4474,32 +4474,8 @@ export const ApiBuilderView: React.FC = () => {
                           placeholder="Kosongkan jika semua user yang telah login diizinkan (misal: ADMIN, SPV, MEKANIK, KASIR)"
                         />
 
-                        {/* Quick Presets & Live Badge Preview */}
+                        {/* Live Badge Preview */}
                         <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-cyan-500/10">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] text-text-muted font-bold">Quick Presets:</span>
-                            {['ADMIN', 'SPV', 'MEKANIK', 'KASIR', 'USER', 'CUSTOMER'].map(role => (
-                              <button
-                                key={role}
-                                type="button"
-                                onClick={() => {
-                                  const currentRoles = (currentApi.allowedRoles || '')
-                                    .split(/[,;\s]+/)
-                                    .map(r => r.trim().toUpperCase())
-                                    .filter(Boolean);
-                                  if (!currentRoles.includes(role)) {
-                                    const next = currentRoles.length > 0 ? `${currentRoles.join(', ')}, ${role}` : role;
-                                    setCurrentApi({ ...currentApi, allowedRoles: next });
-                                  }
-                                }}
-                                className="px-2 py-0.5 rounded-lg bg-bg-panel hover:bg-cyan-500/15 border border-border-main hover:border-cyan-500/30 text-[10px] font-bold text-text-muted hover:text-cyan-400 transition-colors cursor-pointer"
-                              >
-                                + {role}
-                              </button>
-                            ))}
-                          </div>
-
-                          {/* Active Roles Preview */}
                           {currentApi.allowedRoles && currentApi.allowedRoles.trim() ? (
                             <div className="flex items-center gap-1 flex-wrap">
                               <span className="text-[10px] text-cyan-400 font-bold">Active Roles:</span>
@@ -4511,7 +4487,7 @@ export const ApiBuilderView: React.FC = () => {
                             </div>
                           ) : (
                             <span className="text-[10px] text-emerald-400 font-semibold italic">
-                              ✓ Terbuka untuk semua role yang telah login
+                              ✓ Kosongkan jika terbuka untuk semua user yang telah login
                             </span>
                           )}
                         </div>
