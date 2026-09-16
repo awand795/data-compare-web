@@ -4144,7 +4144,7 @@ export const ApiBuilderView: React.FC = () => {
                             Direct Auth &amp; Token Handler (Backendless Auth)
                           </span>
                           <span className="text-[11px] text-text-muted block">
-                            Aktifkan fitur Login, Register, atau Refresh Token langsung pada endpoint ini tanpa modul terpisah.
+                            Jadikan endpoint ini sebagai handler Login, Register, atau Refresh Token otomatis.
                           </span>
                         </div>
                       </div>
@@ -4155,12 +4155,12 @@ export const ApiBuilderView: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                       {[
-                        { id: 'NONE', label: 'Standard API', desc: 'Endpoint data biasa (CRUD)' },
-                        { id: 'LOGIN', label: 'Auth: Login', desc: 'Verifikasi password & issue JWT + Refresh Token' },
-                        { id: 'REGISTER', label: 'Auth: Register', desc: 'Auto-hash input password dengan BCrypt' },
-                        { id: 'REFRESH_TOKEN', label: 'Auth: Refresh Token', desc: 'Tukar refresh token lama dengan token baru' },
+                        { id: 'NONE', label: 'Standard API', badge: 'CRUD', desc: 'Endpoint query data biasa tanpa aksi auth' },
+                        { id: 'LOGIN', label: 'Auth: Login', badge: 'Login', desc: 'Verifikasi password hash & terbitkan JWT' },
+                        { id: 'REGISTER', label: 'Auth: Register', badge: 'Register', desc: 'Auto-hash input password dengan BCrypt' },
+                        { id: 'REFRESH_TOKEN', label: 'Auth: Refresh Token', badge: 'Refresh', desc: 'Tukar refresh token lama dengan token baru' },
                       ].map(mode => {
                         const isSelected = (currentApi.authAction || 'NONE') === mode.id;
                         return (
@@ -4182,14 +4182,22 @@ export const ApiBuilderView: React.FC = () => {
                                 : "bg-bg-panel border-border-main hover:border-amber-500/40 hover:bg-bg-hover"
                             )}
                           >
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                              <span className={clsx(
+                                "text-xs font-bold block",
+                                isSelected ? "text-amber-800 dark:text-amber-300" : "text-text-main"
+                              )}>
+                                {mode.label}
+                              </span>
+                              <span className={clsx(
+                                "text-[9px] font-bold uppercase px-1.5 py-0.5 rounded font-mono",
+                                isSelected ? "bg-amber-500/20 text-amber-700 dark:text-amber-300" : "bg-bg-main text-text-muted border border-border-main"
+                              )}>
+                                {mode.badge}
+                              </span>
+                            </div>
                             <span className={clsx(
-                              "text-xs font-bold block",
-                              isSelected ? "text-amber-800 dark:text-amber-300" : "text-text-main"
-                            )}>
-                              {mode.label}
-                            </span>
-                            <span className={clsx(
-                              "text-[11px] mt-1 block leading-tight",
+                              "text-[11px] block leading-snug",
                               isSelected ? "text-amber-900/80 dark:text-amber-300/80 font-medium" : "text-text-muted"
                             )}>
                               {mode.desc}
@@ -4309,8 +4317,8 @@ export const ApiBuilderView: React.FC = () => {
                       </span>
                     </div>
 
-                    {/* 4 Security Mode Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* 4 Security Mode Cards (2x2 Grid) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {/* 1. JWT_AUTH */}
                       <button
                         type="button"
@@ -4322,7 +4330,7 @@ export const ApiBuilderView: React.FC = () => {
                           });
                         }}
                         className={clsx(
-                          "p-3.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
+                          "p-3 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
                           currentApi.securityMode === 'JWT_AUTH'
                             ? "bg-cyan-500/10 border-cyan-500 shadow-md shadow-cyan-500/10 ring-1 ring-cyan-500"
                             : "bg-bg-panel/60 border-border-main hover:border-cyan-500/40 hover:bg-cyan-500/5"
@@ -4331,17 +4339,17 @@ export const ApiBuilderView: React.FC = () => {
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <span className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400">
-                              <ShieldCheck className="w-4 h-4" />
+                              <ShieldCheck className="w-3.5 h-3.5" />
                             </span>
-                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300">
-                              Rekomendasi
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono">
+                              JWT Login
                             </span>
                           </div>
                           <div className="font-bold text-xs text-text-main group-hover:text-cyan-400 transition-colors">
                             JWT Auth (Login)
                           </div>
-                          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
-                            Hanya user yang telah login yang bisa akses. Mendukung RBAC role &amp; claim otomatis.
+                          <p className="text-[10px] text-text-muted mt-1 leading-snug">
+                            Wajib login. Verifikasi token JWT &amp; role RBAC otomatis.
                           </p>
                         </div>
                       </button>
@@ -4357,7 +4365,7 @@ export const ApiBuilderView: React.FC = () => {
                           });
                         }}
                         className={clsx(
-                          "p-3.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
+                          "p-3 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
                           (currentApi.securityMode === 'PUBLIC' || currentApi.isPublic)
                             ? "bg-emerald-500/10 border-emerald-500 shadow-md shadow-emerald-500/10 ring-1 ring-emerald-500"
                             : "bg-bg-panel/60 border-border-main hover:border-emerald-500/40 hover:bg-emerald-500/5"
@@ -4366,17 +4374,17 @@ export const ApiBuilderView: React.FC = () => {
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
-                              <Unlock className="w-4 h-4" />
+                              <Unlock className="w-3.5 h-3.5" />
                             </span>
-                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
-                              No Token
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                              No Auth
                             </span>
                           </div>
                           <div className="font-bold text-xs text-text-main group-hover:text-emerald-400 transition-colors">
                             Public Endpoint
                           </div>
-                          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
-                            Bisa diakses terbuka oleh siapa saja tanpa perlu token/login (misal webhook/katalog).
+                          <p className="text-[10px] text-text-muted mt-1 leading-snug">
+                            Akses bebas terbuka tanpa token atau login.
                           </p>
                         </div>
                       </button>
@@ -4393,7 +4401,7 @@ export const ApiBuilderView: React.FC = () => {
                           });
                         }}
                         className={clsx(
-                          "p-3.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
+                          "p-3 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
                           (currentApi.securityMode === 'API_KEY' || (!currentApi.securityMode && !currentApi.isPublic))
                             ? "bg-amber-500/10 border-amber-500 shadow-md shadow-amber-500/10 ring-1 ring-amber-500"
                             : "bg-bg-panel/60 border-border-main hover:border-amber-500/40 hover:bg-amber-500/5"
@@ -4402,17 +4410,17 @@ export const ApiBuilderView: React.FC = () => {
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
-                              <KeyRound className="w-4 h-4" />
+                              <KeyRound className="w-3.5 h-3.5" />
                             </span>
-                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">
                               API Key
                             </span>
                           </div>
                           <div className="font-bold text-xs text-text-main group-hover:text-amber-400 transition-colors">
                             Static API Key
                           </div>
-                          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
-                            Hanya menerima static token yang ditentukan. Cocok untuk bot atau integrasi pihak ke-3.
+                          <p className="text-[10px] text-text-muted mt-1 leading-snug">
+                            Wajib API Key statis (bot / pihak ke-3).
                           </p>
                         </div>
                       </button>
@@ -4429,7 +4437,7 @@ export const ApiBuilderView: React.FC = () => {
                           });
                         }}
                         className={clsx(
-                          "p-3.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
+                          "p-3 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
                           currentApi.securityMode === 'HYBRID'
                             ? "bg-purple-500/10 border-purple-500 shadow-md shadow-purple-500/10 ring-1 ring-purple-500"
                             : "bg-bg-panel/60 border-border-main hover:border-purple-500/40 hover:bg-purple-500/5"
@@ -4438,17 +4446,17 @@ export const ApiBuilderView: React.FC = () => {
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-400">
-                              <Layers className="w-4 h-4" />
+                              <Layers className="w-3.5 h-3.5" />
                             </span>
-                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300">
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">
                               Dual Auth
                             </span>
                           </div>
                           <div className="font-bold text-xs text-text-main group-hover:text-purple-400 transition-colors">
                             Hybrid (JWT + Key)
                           </div>
-                          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
-                            Menerima JWT login user ATAU Static API Key secara fleksibel.
+                          <p className="text-[10px] text-text-muted mt-1 leading-snug">
+                            Menerima token JWT atau Static API Key fleksibel.
                           </p>
                         </div>
                       </button>
