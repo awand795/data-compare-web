@@ -26,7 +26,7 @@ public class ApiEndpoint {
     private String requiredAppId; // Optional: restrict endpoint to specific Auth App
     private String groupName;
     private String authToken;
-    private String securityMode; // PUBLIC, JWT_AUTH, API_KEY, HYBRID (evaluated in getSecurityMode)
+    private String securityMode = "API_KEY"; // PUBLIC, JWT_AUTH, API_KEY, HYBRID (evaluated in getSecurityMode)
     private String allowedRoles; // Comma-separated list of allowed user roles (e.g. "ADMIN, SPV, MEKANIK")
     private String successMessage;
     private String validationRules;
@@ -166,8 +166,7 @@ public class ApiEndpoint {
     public String getSecurityMode() {
         if (securityMode != null && !securityMode.trim().isEmpty()) return securityMode.toUpperCase();
         if (isPublic) return "PUBLIC";
-        if (authToken != null && !authToken.trim().isEmpty()) return "API_KEY";
-        return "JWT_AUTH";
+        return "API_KEY";
     }
     public void setSecurityMode(String securityMode) {
         this.securityMode = securityMode;

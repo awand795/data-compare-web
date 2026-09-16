@@ -83,6 +83,7 @@ class DynamicApiControllerAuthTest {
         endpoint.setEndpointPath("/fleet-vehicles");
         endpoint.setMethod("GET");
         endpoint.setPublic(false);
+        endpoint.setSecurityMode("JWT_AUTH");
         endpoint.setAuthToken(null);
         endpoint.setConnectionId("conn-1");
 
@@ -112,6 +113,7 @@ class DynamicApiControllerAuthTest {
         endpoint.setEndpointPath("/pos/transactions");
         endpoint.setMethod("GET");
         endpoint.setPublic(false);
+        endpoint.setSecurityMode("JWT_AUTH");
         endpoint.setRequiredAppId("bikinpos"); // RESTRICTED TO BIKINPOS!
         endpoint.setConnectionId("conn-1");
 
@@ -139,6 +141,7 @@ class DynamicApiControllerAuthTest {
         endpoint.setEndpointPath("/pos/transactions");
         endpoint.setMethod("GET");
         endpoint.setPublic(false);
+        endpoint.setSecurityMode("JWT_AUTH");
         endpoint.setRequiredAppId("bikinpos"); // RESTRICTED TO BIKINPOS
         endpoint.setConnectionId("conn-1");
 

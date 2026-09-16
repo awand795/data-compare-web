@@ -120,8 +120,7 @@ public class DynamicApiController {
         String secMode = endpoint.getSecurityMode();
         if (secMode == null || secMode.trim().isEmpty()) {
             if (endpoint.isPublic()) secMode = "PUBLIC";
-            else if (endpoint.getAuthToken() != null && !endpoint.getAuthToken().trim().isEmpty()) secMode = "HYBRID";
-            else secMode = "JWT_AUTH";
+            else secMode = "API_KEY";
         }
 
         if (!"PUBLIC".equalsIgnoreCase(secMode) && !endpoint.isPublic() && !isAuthAction) {

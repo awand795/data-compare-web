@@ -497,7 +497,7 @@ export const ApiBuilderView: React.FC = () => {
       passwordHashColumn: 'password_hash',
       tokenTtlMinutes: 15,
       refreshTokenTtlDays: 30,
-      securityMode: 'JWT_AUTH',
+      securityMode: 'API_KEY',
       allowedRoles: ''
     };
     setCurrentApi(newApi);
@@ -720,7 +720,7 @@ export const ApiBuilderView: React.FC = () => {
     } else {
       setCronTriggers(['0 */5 * * * *']);
     }
-    const secMode = api.securityMode || (api.isPublic ? 'PUBLIC' : (api.authToken ? 'HYBRID' : 'JWT_AUTH'));
+    const secMode = api.securityMode || (api.isPublic ? 'PUBLIC' : 'API_KEY');
     setCurrentApi({
       ...api,
       securityMode: secMode,
@@ -812,7 +812,7 @@ export const ApiBuilderView: React.FC = () => {
     
     setIsSaving(true);
     try {
-      const secMode = currentApi.securityMode || (currentApi.isPublic ? 'PUBLIC' : (currentApi.authToken ? 'HYBRID' : 'JWT_AUTH'));
+      const secMode = currentApi.securityMode || (currentApi.isPublic ? 'PUBLIC' : 'API_KEY');
       const isPublicVal = (secMode === 'PUBLIC');
       const targetEpId = currentApi.targetEndpointId || (selectedTargetEndpoint ? selectedTargetEndpoint.id : '');
       const targetUrl = currentApi.targetUrl || (selectedTargetEndpoint ? selectedTargetEndpoint.url : '');
@@ -1066,7 +1066,7 @@ export const ApiBuilderView: React.FC = () => {
         (api.sqlQuery && api.sqlQuery.toLowerCase().includes(q));
       
       const matchesMethod = methodFilter === 'ALL' || api.method.toUpperCase() === methodFilter;
-      const secMode = api.securityMode || (api.isPublic ? 'PUBLIC' : (api.authToken ? 'HYBRID' : 'JWT_AUTH'));
+      const secMode = api.securityMode || (api.isPublic ? 'PUBLIC' : 'API_KEY');
       const matchesSecurity = 
         securityFilter === 'ALL' || 
         (securityFilter === 'PUBLIC' && secMode === 'PUBLIC') ||
@@ -1688,17 +1688,17 @@ export const ApiBuilderView: React.FC = () => {
                                       <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                                         <Unlock className="w-3 h-3" /> Public
                                       </span>
-                                    ) : (api.securityMode === 'JWT_AUTH' || (!api.securityMode && !api.authToken)) ? (
+                                    ) : api.securityMode === 'JWT_AUTH' ? (
                                       <span className="inline-flex items-center gap-1 text-[10px] text-cyan-400 font-bold bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-full" title={api.allowedRoles ? `Roles: ${api.allowedRoles}` : 'All Logged In Users'}>
                                         <ShieldCheck className="w-3 h-3" /> JWT {api.allowedRoles ? `(${api.allowedRoles})` : 'Auth'}
                                       </span>
-                                    ) : api.securityMode === 'API_KEY' ? (
-                                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
-                                        <KeyRound className="w-3 h-3" /> API Key
-                                      </span>
-                                    ) : (
+                                    ) : api.securityMode === 'HYBRID' ? (
                                       <span className="inline-flex items-center gap-1 text-[10px] text-purple-400 font-bold bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded-full">
                                         <Layers className="w-3 h-3" /> Hybrid
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                                        <KeyRound className="w-3 h-3" /> API Key
                                       </span>
                                     )}
                                     {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' ? (
@@ -2223,7 +2223,6 @@ export const ApiBuilderView: React.FC = () => {
                                        );
                                      })()}
                                    </td>
-
                                    {/* Access Security */}
                                    <td className="p-3">
                                      <div className="flex items-center gap-2">
@@ -2231,7 +2230,7 @@ export const ApiBuilderView: React.FC = () => {
                                          <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
                                            Public
                                          </span>
-                                       ) : (api.securityMode === 'JWT_AUTH' || (!api.securityMode && !api.authToken)) ? (
+                                       ) : api.securityMode === 'JWT_AUTH' ? (
                                          <div className="flex flex-col items-start gap-0.5">
                                            <span className="text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/20" title={api.allowedRoles ? `Allowed Roles: ${api.allowedRoles}` : 'All Logged In Users'}>
                                              JWT Auth
@@ -2242,13 +2241,13 @@ export const ApiBuilderView: React.FC = () => {
                                              </span>
                                            )}
                                          </div>
-                                       ) : api.securityMode === 'API_KEY' ? (
-                                         <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
-                                           API Key
-                                         </span>
-                                       ) : (
+                                       ) : api.securityMode === 'HYBRID' ? (
                                          <span className="text-xs font-bold text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
                                            Hybrid
+                                         </span>
+                                       ) : (
+                                         <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                                           API Key
                                          </span>
                                        )}
                                        {api.requiredAppId && (
@@ -2928,7 +2927,7 @@ export const ApiBuilderView: React.FC = () => {
       ? '?' + [...detectedParams.map(p => `${p}=value`), ...(currentApi.enablePagination ? ['limit=100', 'offset=0'] : [])].join('&')
       : '';
       
-    const secMode = currentApi.securityMode || (currentApi.isPublic ? 'PUBLIC' : (currentApi.authToken ? 'HYBRID' : 'JWT_AUTH'));
+    const secMode = currentApi.securityMode || (currentApi.isPublic ? 'PUBLIC' : 'API_KEY');
     const isPublic = (secMode === 'PUBLIC');
     const isJwt = (secMode === 'JWT_AUTH');
     const authHeaderVal = isPublic ? '' : isJwt ? 'Bearer <YOUR_USER_LOGIN_JWT_TOKEN>' : `Bearer ${currentApi.authToken || '<STATIC_API_KEY>'}`;
@@ -4298,15 +4297,15 @@ export const ApiBuilderView: React.FC = () => {
                       </div>
                       <span className={clsx(
                         "px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border tracking-wider",
-                        (currentApi.securityMode === 'JWT_AUTH' || (!currentApi.securityMode && !currentApi.isPublic && !currentApi.authToken))
+                        currentApi.securityMode === 'JWT_AUTH'
                           ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30"
                           : (currentApi.securityMode === 'PUBLIC' || currentApi.isPublic)
                           ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                          : currentApi.securityMode === 'API_KEY'
+                          : (currentApi.securityMode === 'API_KEY' || (!currentApi.securityMode && !currentApi.isPublic))
                           ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
                           : "bg-purple-500/15 text-purple-400 border-purple-500/30"
                       )}>
-                        Mode: {currentApi.securityMode || (currentApi.isPublic ? 'PUBLIC' : 'JWT_AUTH')}
+                        Mode: {currentApi.securityMode || (currentApi.isPublic ? 'PUBLIC' : 'API_KEY')}
                       </span>
                     </div>
 
@@ -4324,7 +4323,7 @@ export const ApiBuilderView: React.FC = () => {
                         }}
                         className={clsx(
                           "p-3.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
-                          (currentApi.securityMode === 'JWT_AUTH' || (!currentApi.securityMode && !currentApi.isPublic && !currentApi.authToken))
+                          currentApi.securityMode === 'JWT_AUTH'
                             ? "bg-cyan-500/10 border-cyan-500 shadow-md shadow-cyan-500/10 ring-1 ring-cyan-500"
                             : "bg-bg-panel/60 border-border-main hover:border-cyan-500/40 hover:bg-cyan-500/5"
                         )}
@@ -4395,7 +4394,7 @@ export const ApiBuilderView: React.FC = () => {
                         }}
                         className={clsx(
                           "p-3.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
-                          currentApi.securityMode === 'API_KEY'
+                          (currentApi.securityMode === 'API_KEY' || (!currentApi.securityMode && !currentApi.isPublic))
                             ? "bg-amber-500/10 border-amber-500 shadow-md shadow-amber-500/10 ring-1 ring-amber-500"
                             : "bg-bg-panel/60 border-border-main hover:border-amber-500/40 hover:bg-amber-500/5"
                         )}
@@ -4525,7 +4524,7 @@ export const ApiBuilderView: React.FC = () => {
                     )}
 
                     {/* Static API Key Input (For API_KEY and HYBRID) */}
-                    {(currentApi.securityMode === 'API_KEY' || currentApi.securityMode === 'HYBRID') && (
+                    {(currentApi.securityMode === 'API_KEY' || currentApi.securityMode === 'HYBRID' || (!currentApi.securityMode && !currentApi.isPublic)) && (
                       <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2.5 shadow-sm">
                         <div className="flex items-center justify-between">
                           <label className="text-[11px] font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
