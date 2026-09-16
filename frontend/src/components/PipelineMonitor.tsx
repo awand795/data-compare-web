@@ -44,6 +44,19 @@ export const PipelineMonitor: React.FC = () => {
   const [snapshotTimes, setSnapshotTimes] = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem('snapshotTimes') || '{}'); } catch { return {}; }
   });
+  const completedSnapshotsRef = useRef<Set<string>>(
+    (() => {
+      try {
+        const times = JSON.parse(localStorage.getItem('snapshotTimes') || '{}');
+        return new Set<string>(Object.keys(times));
+      } catch {
+        return new Set<string>();
+      }
+    })()
+  );
+  const inFlightProgressRef = useRef<Set<string>>(new Set());
+  const pipelineSourcesRef = useRef<Record<string, PipelineSourcesData>>({});
+  const loadingSourcesRef = useRef<Record<string, boolean>>({});
   
   const [peekModalOpen, setPeekModalOpen] = useState<string | null>(null);
   const [peekData, setPeekData] = useState<any[]>([]);
@@ -343,17 +356,25 @@ export const PipelineMonitor: React.FC = () => {
   };
 
   const fetchSourcesForDeployId = async (deployId: string) => {
-    if (deployId.startsWith('Shared:') || loadingSources[deployId] || pipelineSources[deployId]) return;
+    if (deployId.startsWith('Shared:') || loadingSourcesRef.current[deployId] || pipelineSourcesRef.current[deployId]) return;
+    loadingSourcesRef.current[deployId] = true;
     setLoadingSources(prev => ({ ...prev, [deployId]: true }));
     try {
       const res = await fetch(`/api/dwh/pipelines/sources/${deployId}`);
       if (res.ok) {
         const data: PipelineSourcesData = await res.json();
+        pipelineSourcesRef.current[deployId] = data;
         setPipelineSources(prev => ({ ...prev, [deployId]: data }));
+      } else {
+        const placeholder: PipelineSourcesData = { deployId, targetTable: '', activeSources: [], availableSources: [] };
+        pipelineSourcesRef.current[deployId] = placeholder;
       }
     } catch (err) {
       console.error(`Failed to fetch sources for ${deployId}:`, err);
+      const placeholder: PipelineSourcesData = { deployId, targetTable: '', activeSources: [], availableSources: [] };
+      pipelineSourcesRef.current[deployId] = placeholder;
     } finally {
+      loadingSourcesRef.current[deployId] = false;
       setLoadingSources(prev => ({ ...prev, [deployId]: false }));
     }
   };
@@ -615,6 +636,13 @@ export const PipelineMonitor: React.FC = () => {
 
         dIds.forEach(deployId => {
           fetchSourcesForDeployId(deployId);
+
+          // Stop polling if snapshot is already completed or if request is currently in-flight
+          if (completedSnapshotsRef.current.has(deployId) || inFlightProgressRef.current.has(deployId)) {
+            return;
+          }
+
+          inFlightProgressRef.current.add(deployId);
           fetch(`/api/dwh/pipelines/progress/${deployId}`)
             .then(r => r.json())
             .then(res => {
@@ -627,6 +655,7 @@ export const PipelineMonitor: React.FC = () => {
                   });
                   
                   if (res.snapshotCompleted) {
+                     completedSnapshotsRef.current.add(deployId);
                      setSnapshotTimes(prev => {
                         if (!prev[deployId]) {
                            const updated = { ...prev, [deployId]: Date.now() };
@@ -638,7 +667,10 @@ export const PipelineMonitor: React.FC = () => {
                   }
                }
             })
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => {
+               inFlightProgressRef.current.delete(deployId);
+            });
         });
       }
     } catch (error) {
@@ -650,7 +682,7 @@ export const PipelineMonitor: React.FC = () => {
 
   useEffect(() => {
     fetchPipelines();
-    const interval = setInterval(fetchPipelines, 5000);
+    const interval = setInterval(fetchPipelines, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1034,11 +1066,11 @@ export const PipelineMonitor: React.FC = () => {
                        </div>
                     </div>
                   )}
-                  {snapshotProgress[deployId] && snapshotProgress[deployId].snapshotCompleted && (
+                  {((snapshotProgress[deployId]?.snapshotCompleted) || snapshotTimes[deployId]) && (
                     <div className="flex items-center gap-2 px-1 mb-2">
                       <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                       <span className="text-[10px] text-text-muted italic">
-                        Snapshot finished {snapshotTimes[deployId] ? `in ${Math.max(1, Math.round((snapshotTimes[deployId] - Number(deployId)) / 60000))} minutes` : `(${snapshotProgress[deployId].targetCount?.toLocaleString()} records)`}
+                        Snapshot finished {snapshotTimes[deployId] ? `in ${Math.max(1, Math.round((snapshotTimes[deployId] - Number(deployId)) / 60000))} minutes` : (snapshotProgress[deployId]?.targetCount ? `(${snapshotProgress[deployId].targetCount?.toLocaleString()} records)` : '')}
                       </span>
                     </div>
                   )}
