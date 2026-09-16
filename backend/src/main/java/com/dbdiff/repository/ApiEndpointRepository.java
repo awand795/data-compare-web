@@ -44,7 +44,9 @@ public class ApiEndpointRepository {
                 "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS password_param VARCHAR(50) DEFAULT 'password'",
                 "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS password_hash_column VARCHAR(50) DEFAULT 'password_hash'",
                 "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS token_ttl_minutes INT DEFAULT 15",
-                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS refresh_token_ttl_days INT DEFAULT 30"
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS refresh_token_ttl_days INT DEFAULT 30",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS security_mode VARCHAR(50) DEFAULT 'JWT_AUTH'",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS allowed_roles TEXT"
             };
             for (String sql : alterSqls) {
                 try {
@@ -144,6 +146,13 @@ public class ApiEndpointRepository {
                 int rttl = rs.getInt("refresh_token_ttl_days");
                 if (!rs.wasNull()) api.setRefreshTokenTtlDays(rttl);
             } catch (SQLException ignored) {}
+            try {
+                String sm = rs.getString("security_mode");
+                if (sm != null && !sm.trim().isEmpty()) api.setSecurityMode(sm);
+            } catch (SQLException ignored) {}
+            try {
+                api.setAllowedRoles(rs.getString("allowed_roles"));
+            } catch (SQLException ignored) {}
             
             if (rs.getTimestamp("created_at") != null) {
                 api.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
@@ -175,57 +184,72 @@ public class ApiEndpointRepository {
         String groupName = (api.getGroupName() != null && !api.getGroupName().trim().isEmpty()) ? api.getGroupName().trim() : "General";
         try {
             return jdbcTemplate.update(
-                "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, required_app_id, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, success_message, validation_rules, auth_action, password_param, password_hash_column, token_ttl_minutes, refresh_token_ttl_days, created_at, updated_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, required_app_id, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, success_message, validation_rules, auth_action, password_param, password_hash_column, token_ttl_minutes, refresh_token_ttl_days, security_mode, allowed_roles, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
                 api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
                 api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getRequiredAppId(),
                 api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(),
                 api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
                 api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getSuccessMessage(), api.getValidationRules(),
-                api.getAuthAction(), api.getPasswordParam(), api.getPasswordHashColumn(), api.getTokenTtlMinutes(), api.getRefreshTokenTtlDays()
+                api.getAuthAction(), api.getPasswordParam(), api.getPasswordHashColumn(), api.getTokenTtlMinutes(), api.getRefreshTokenTtlDays(),
+                api.getSecurityMode(), api.getAllowedRoles()
             );
         } catch (Exception e1) {
             try {
                 return jdbcTemplate.update(
-                    "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, required_app_id, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, success_message, validation_rules, created_at, updated_at) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, required_app_id, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, success_message, validation_rules, auth_action, password_param, password_hash_column, token_ttl_minutes, refresh_token_ttl_days, created_at, updated_at) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                     api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
                     api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
                     api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getRequiredAppId(),
                     api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(),
                     api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
-                    api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getSuccessMessage(), api.getValidationRules()
+                    api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getSuccessMessage(), api.getValidationRules(),
+                    api.getAuthAction(), api.getPasswordParam(), api.getPasswordHashColumn(), api.getTokenTtlMinutes(), api.getRefreshTokenTtlDays()
                 );
-            } catch (Exception e1b) {
+            } catch (Exception e1_sub) {
                 try {
                     return jdbcTemplate.update(
-                        "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, created_at, updated_at) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                        "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, required_app_id, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, success_message, validation_rules, created_at, updated_at) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                         api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
                         api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
-                        api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(),
+                        api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getRequiredAppId(),
                         api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(),
                         api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
-                        api.isNotifyOnSuccess(), api.isNotifyOnFailure()
+                        api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getSuccessMessage(), api.getValidationRules()
                     );
-                } catch (Exception e2) {
+                } catch (Exception e1b) {
                     try {
                         return jdbcTemplate.update(
-                            "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, created_at, updated_at) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                            "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, created_at, updated_at) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                             api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
                             api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
-                            api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken()
+                            api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(),
+                            api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(),
+                            api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
+                            api.isNotifyOnSuccess(), api.isNotifyOnFailure()
                         );
-                    } catch (Exception e3) {
-                        return jdbcTemplate.update(
-                            "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, auth_token, created_at, updated_at) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-                            api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
-                            api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
-                            api.isEnablePagination(), api.isPublic(), api.getAuthToken()
-                        );
+                    } catch (Exception e2) {
+                        try {
+                            return jdbcTemplate.update(
+                                "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, created_at, updated_at) " +
+                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                                api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
+                                api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
+                                api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken()
+                            );
+                        } catch (Exception e3) {
+                            return jdbcTemplate.update(
+                                "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, auth_token, created_at, updated_at) " +
+                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                                api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
+                                api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
+                                api.isEnablePagination(), api.isPublic(), api.getAuthToken()
+                            );
+                        }
                     }
                 }
             }
@@ -239,12 +263,13 @@ public class ApiEndpointRepository {
                 "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, " +
                 "sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, ip_allowlist = ?, group_name = ?, auth_token = ?, required_app_id = ?, " +
                 "cron_enabled = ?, cron_expression = ?, target_endpoint_id = ?, target_url = ?, target_method = ?, target_headers = ?, notification_channel_id = ?, " +
-                "notify_on_success = ?, notify_on_failure = ?, success_message = ?, validation_rules = ?, auth_action = ?, password_param = ?, password_hash_column = ?, token_ttl_minutes = ?, refresh_token_ttl_days = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                "notify_on_success = ?, notify_on_failure = ?, success_message = ?, validation_rules = ?, auth_action = ?, password_param = ?, password_hash_column = ?, token_ttl_minutes = ?, refresh_token_ttl_days = ?, security_mode = ?, allowed_roles = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 api.getName(), api.getMethod(), api.getEndpointPath(), api.getConnectionId(),
                 api.getSqlQuery(), api.getParameters(), api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getRequiredAppId(),
                 api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(), api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
                 api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getSuccessMessage(), api.getValidationRules(),
-                api.getAuthAction(), api.getPasswordParam(), api.getPasswordHashColumn(), api.getTokenTtlMinutes(), api.getRefreshTokenTtlDays(), api.getId()
+                api.getAuthAction(), api.getPasswordParam(), api.getPasswordHashColumn(), api.getTokenTtlMinutes(), api.getRefreshTokenTtlDays(),
+                api.getSecurityMode(), api.getAllowedRoles(), api.getId()
             );
         } catch (Exception e1) {
             try {
@@ -252,44 +277,58 @@ public class ApiEndpointRepository {
                     "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, " +
                     "sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, ip_allowlist = ?, group_name = ?, auth_token = ?, required_app_id = ?, " +
                     "cron_enabled = ?, cron_expression = ?, target_endpoint_id = ?, target_url = ?, target_method = ?, target_headers = ?, notification_channel_id = ?, " +
-                    "notify_on_success = ?, notify_on_failure = ?, success_message = ?, validation_rules = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    "notify_on_success = ?, notify_on_failure = ?, success_message = ?, validation_rules = ?, auth_action = ?, password_param = ?, password_hash_column = ?, token_ttl_minutes = ?, refresh_token_ttl_days = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     api.getName(), api.getMethod(), api.getEndpointPath(), api.getConnectionId(),
                     api.getSqlQuery(), api.getParameters(), api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getRequiredAppId(),
                     api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(), api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
-                    api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getSuccessMessage(), api.getValidationRules(), api.getId()
+                    api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getSuccessMessage(), api.getValidationRules(),
+                    api.getAuthAction(), api.getPasswordParam(), api.getPasswordHashColumn(), api.getTokenTtlMinutes(), api.getRefreshTokenTtlDays(), api.getId()
                 );
-            } catch (Exception e1b) {
-            try {
-                return jdbcTemplate.update(
-                    "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, " +
-                    "sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, ip_allowlist = ?, group_name = ?, auth_token = ?, " +
-                    "cron_enabled = ?, cron_expression = ?, target_endpoint_id = ?, target_url = ?, target_method = ?, target_headers = ?, notification_channel_id = ?, " +
-                    "notify_on_success = ?, notify_on_failure = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    api.getName(), api.getMethod(), api.getEndpointPath(), api.getConnectionId(),
-                    api.getSqlQuery(), api.getParameters(), api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(),
-                    api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(), api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
-                    api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getId()
-                );
-            } catch (Exception e2) {
+            } catch (Exception e1_sub) {
                 try {
                     return jdbcTemplate.update(
-                        "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, ip_allowlist = ?, group_name = ?, auth_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                        api.getName(), api.getMethod(), api.getEndpointPath(),
-                        api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
-                        api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getId()
+                        "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, " +
+                        "sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, ip_allowlist = ?, group_name = ?, auth_token = ?, required_app_id = ?, " +
+                        "cron_enabled = ?, cron_expression = ?, target_endpoint_id = ?, target_url = ?, target_method = ?, target_headers = ?, notification_channel_id = ?, " +
+                        "notify_on_success = ?, notify_on_failure = ?, success_message = ?, validation_rules = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        api.getName(), api.getMethod(), api.getEndpointPath(), api.getConnectionId(),
+                        api.getSqlQuery(), api.getParameters(), api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getRequiredAppId(),
+                        api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(), api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
+                        api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getSuccessMessage(), api.getValidationRules(), api.getId()
                     );
-                } catch (Exception e3) {
-                    return jdbcTemplate.update(
-                        "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, auth_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                        api.getName(), api.getMethod(), api.getEndpointPath(),
-                        api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
-                        api.isEnablePagination(), api.isPublic(), api.getAuthToken(), api.getId()
-                    );
+                } catch (Exception e1b) {
+                    try {
+                        return jdbcTemplate.update(
+                            "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, " +
+                            "sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, ip_allowlist = ?, group_name = ?, auth_token = ?, " +
+                            "cron_enabled = ?, cron_expression = ?, target_endpoint_id = ?, target_url = ?, target_method = ?, target_headers = ?, notification_channel_id = ?, " +
+                            "notify_on_success = ?, notify_on_failure = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                            api.getName(), api.getMethod(), api.getEndpointPath(), api.getConnectionId(),
+                            api.getSqlQuery(), api.getParameters(), api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(),
+                            api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(), api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
+                            api.isNotifyOnSuccess(), api.isNotifyOnFailure(), api.getId()
+                        );
+                    } catch (Exception e2) {
+                        try {
+                            return jdbcTemplate.update(
+                                "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, ip_allowlist = ?, group_name = ?, auth_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                api.getName(), api.getMethod(), api.getEndpointPath(),
+                                api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
+                                api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getId()
+                            );
+                        } catch (Exception e3) {
+                            return jdbcTemplate.update(
+                                "UPDATE api_endpoints SET name = ?, method = ?, endpoint_path = ?, connection_id = ?, sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, auth_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                api.getName(), api.getMethod(), api.getEndpointPath(),
+                                api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
+                                api.isEnablePagination(), api.isPublic(), api.getAuthToken(), api.getId()
+                            );
+                        }
+                    }
                 }
             }
         }
     }
-}
 
     public int updateIpAllowlist(String id, String ipAllowlist) {
         try {

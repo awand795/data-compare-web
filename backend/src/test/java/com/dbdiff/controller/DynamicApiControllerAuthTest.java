@@ -159,4 +159,87 @@ class DynamicApiControllerAuthTest {
         assertThat(res.getStatus()).isNotEqualTo(401);
         assertThat(res.getStatus()).isNotEqualTo(403);
     }
+
+    @Test
+    @DisplayName("RBAC: Endpoint with allowedRoles allows user with matching role")
+    void testJwtRoleAllowed() throws Exception {
+        ApiEndpoint endpoint = new ApiEndpoint();
+        endpoint.setEndpointPath("/bengkel/spk");
+        endpoint.setMethod("GET");
+        endpoint.setPublic(false);
+        endpoint.setSecurityMode("JWT_AUTH");
+        endpoint.setAllowedRoles("ADMIN, MEKANIK, SPV");
+        endpoint.setConnectionId("conn-1");
+
+        when(apiEndpointRepository.findByPathAndMethod("/bengkel/spk", "GET")).thenReturn(Optional.of(endpoint));
+
+        Claims claims = mock(Claims.class);
+        when(claims.getSubject()).thenReturn("user-mekanik-10");
+        when(claims.get("role", String.class)).thenReturn("MEKANIK");
+        when(jwtService.validateAccessToken("mekanik-token")).thenReturn(claims);
+
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/data/bengkel/spk");
+        req.setAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE, "/api/data/bengkel/spk");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+
+        controller.handleRequest(req, res, Map.of(), null, "Bearer mekanik-token", null);
+
+        assertThat(res.getStatus()).isNotEqualTo(401);
+        assertThat(res.getStatus()).isNotEqualTo(403);
+    }
+
+    @Test
+    @DisplayName("RBAC: Endpoint with allowedRoles rejects user with non-matching role with 403")
+    void testJwtRoleForbidden() throws Exception {
+        ApiEndpoint endpoint = new ApiEndpoint();
+        endpoint.setEndpointPath("/bengkel/spk");
+        endpoint.setMethod("GET");
+        endpoint.setPublic(false);
+        endpoint.setSecurityMode("JWT_AUTH");
+        endpoint.setAllowedRoles("ADMIN, SPV");
+        endpoint.setConnectionId("conn-1");
+
+        when(apiEndpointRepository.findByPathAndMethod("/bengkel/spk", "GET")).thenReturn(Optional.of(endpoint));
+
+        Claims claims = mock(Claims.class);
+        when(claims.getSubject()).thenReturn("user-mekanik-10");
+        when(claims.get("role", String.class)).thenReturn("MEKANIK"); // Not in ADMIN, SPV!
+        when(jwtService.validateAccessToken("mekanik-token")).thenReturn(claims);
+
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/data/bengkel/spk");
+        req.setAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE, "/api/data/bengkel/spk");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+
+        controller.handleRequest(req, res, Map.of(), null, "Bearer mekanik-token", null);
+
+        assertThat(res.getStatus()).isEqualTo(403);
+        assertThat(res.getContentAsString()).contains("tidak diizinkan mengakses endpoint ini");
+    }
+
+    @Test
+    @DisplayName("Security Mode API_KEY: Rejects JWT token when mode is strictly API_KEY")
+    void testApiKeyModeRejectsJwt() throws Exception {
+        ApiEndpoint endpoint = new ApiEndpoint();
+        endpoint.setEndpointPath("/webhook/payment");
+        endpoint.setMethod("POST");
+        endpoint.setPublic(false);
+        endpoint.setSecurityMode("API_KEY");
+        endpoint.setAuthToken("static-secret-key-123");
+        endpoint.setConnectionId("conn-1");
+
+        when(apiEndpointRepository.findByPathAndMethod("/webhook/payment", "POST")).thenReturn(Optional.of(endpoint));
+
+        Claims claims = mock(Claims.class);
+        when(claims.getSubject()).thenReturn("user-jwt");
+        when(jwtService.validateAccessToken("some-jwt-token")).thenReturn(claims);
+
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/data/webhook/payment");
+        req.setAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE, "/api/data/webhook/payment");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+
+        controller.handleRequest(req, res, Map.of(), null, "Bearer some-jwt-token", null);
+
+        assertThat(res.getStatus()).isEqualTo(401);
+        assertThat(res.getContentAsString()).contains("Static API Key");
+    }
 }

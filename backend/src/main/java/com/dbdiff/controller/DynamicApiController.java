@@ -117,29 +117,43 @@ public class DynamicApiController {
                 || "REGISTER".equalsIgnoreCase(endpoint.getAuthAction())
                 || "REFRESH_TOKEN".equalsIgnoreCase(endpoint.getAuthAction());
 
-        if (endpoint.isPublic() == false && !isAuthAction) {
+        String secMode = endpoint.getSecurityMode();
+        if (secMode == null || secMode.trim().isEmpty()) {
+            if (endpoint.isPublic()) secMode = "PUBLIC";
+            else if (endpoint.getAuthToken() != null && !endpoint.getAuthToken().trim().isEmpty()) secMode = "HYBRID";
+            else secMode = "JWT_AUTH";
+        }
+
+        if (!"PUBLIC".equalsIgnoreCase(secMode) && !endpoint.isPublic() && !isAuthAction) {
             String token = endpoint.getAuthToken();
-            if (token != null && !token.isEmpty()) {
-                boolean authorized = (providedToken != null && providedToken.equals(token)) || isValidJwt;
-                if (!authorized) {
-                    sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of(
-                        "success", false,
-                        "error", "Unauthorized",
-                        "message", "Unauthorized. Invalid or missing token.",
-                        "errors", List.of("Unauthorized. Invalid or missing token.")
-                    ));
-                    return;
+            boolean authorized = false;
+
+            if ("JWT_AUTH".equalsIgnoreCase(secMode)) {
+                // Must be a valid JWT
+                authorized = isValidJwt;
+            } else if ("API_KEY".equalsIgnoreCase(secMode)) {
+                // Must match static API key
+                authorized = (providedToken != null && token != null && !token.trim().isEmpty() && providedToken.equals(token));
+            } else { // HYBRID
+                authorized = (providedToken != null && token != null && !token.trim().isEmpty() && providedToken.equals(token)) || isValidJwt;
+            }
+
+            if (!authorized) {
+                String errorMsg;
+                if ("JWT_AUTH".equalsIgnoreCase(secMode)) {
+                    errorMsg = "Unauthorized. Akses endpoint ini wajib menggunakan token JWT yang valid (hasil login).";
+                } else if ("API_KEY".equalsIgnoreCase(secMode)) {
+                    errorMsg = "Unauthorized. Akses endpoint ini memerlukan Static API Key yang valid.";
+                } else {
+                    errorMsg = "Unauthorized. Invalid or missing token (Static API Key atau JWT login diperlukan).";
                 }
-            } else {
-                if (!isValidJwt) {
-                    sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of(
-                        "success", false,
-                        "error", "Unauthorized",
-                        "message", "Unauthorized. Valid authentication required.",
-                        "errors", List.of("Unauthorized. Valid authentication required.")
-                    ));
-                    return;
-                }
+                sendJsonError(response, HttpStatus.UNAUTHORIZED.value(), Map.of(
+                    "success", false,
+                    "error", "Unauthorized",
+                    "message", errorMsg,
+                    "errors", List.of(errorMsg)
+                ));
+                return;
             }
         }
 
@@ -162,6 +176,44 @@ public class DynamicApiController {
                     "error", "Forbidden",
                     "message", "Token tidak valid untuk endpoint ini",
                     "errors", List.of("Token tidak valid untuk endpoint ini")
+                ));
+                return;
+            }
+        }
+
+        // ── Allowed Roles Check (RBAC) ──────────────────────────────────────────
+        String allowedRoles = endpoint.getAllowedRoles();
+        if (allowedRoles != null && !allowedRoles.trim().isEmpty() && !isAuthAction && !endpoint.isPublic() && !"PUBLIC".equalsIgnoreCase(secMode)) {
+            if (!isValidJwt || jwtClaims == null) {
+                sendJsonError(response, HttpStatus.FORBIDDEN.value(), Map.of(
+                    "success", false,
+                    "error", "Forbidden",
+                    "message", "Akses ditolak: Autentikasi JWT diperlukan untuk endpoint dengan pembatasan role.",
+                    "errors", List.of("Akses ditolak: Autentikasi JWT diperlukan untuk endpoint dengan pembatasan role.")
+                ));
+                return;
+            }
+            String userRole = jwtClaims.get("role", String.class);
+            if (userRole == null) userRole = "";
+            userRole = userRole.trim();
+
+            String[] roles = allowedRoles.split("[,;\\s]+");
+            boolean roleMatched = false;
+            for (String r : roles) {
+                String cleanR = r.trim();
+                if (!cleanR.isEmpty() && cleanR.equalsIgnoreCase(userRole)) {
+                    roleMatched = true;
+                    break;
+                }
+            }
+
+            if (!roleMatched) {
+                String deniedMsg = "Akses ditolak: Role Anda ('" + (userRole.isEmpty() ? "UNKNOWN" : userRole) + "') tidak diizinkan mengakses endpoint ini.";
+                sendJsonError(response, HttpStatus.FORBIDDEN.value(), Map.of(
+                    "success", false,
+                    "error", "Forbidden",
+                    "message", deniedMsg,
+                    "errors", List.of(deniedMsg)
                 ));
                 return;
             }

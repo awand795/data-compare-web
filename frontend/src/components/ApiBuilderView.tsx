@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
 import { 
-  Webhook, Plus, Save, ArrowLeft, Play, ShieldCheck, ShieldAlert, 
+  Webhook, Plus, Save, ArrowLeft, Play, ShieldCheck, 
   FileJson, Pencil, Trash2, Copy, Check, Share2, Database, Server, 
   Settings2, ChevronDown, ChevronUp, X, AlertCircle, Loader2, 
   Search, Eraser, Code2, 
@@ -81,6 +81,8 @@ interface ApiEndpoint {
   passwordHashColumn?: string;
   tokenTtlMinutes?: number;
   refreshTokenTtlDays?: number;
+  securityMode?: 'PUBLIC' | 'JWT_AUTH' | 'API_KEY' | 'HYBRID';
+  allowedRoles?: string;
 }
 
 type ValidationError = {
@@ -494,7 +496,9 @@ export const ApiBuilderView: React.FC = () => {
       passwordParam: 'password',
       passwordHashColumn: 'password_hash',
       tokenTtlMinutes: 15,
-      refreshTokenTtlDays: 30
+      refreshTokenTtlDays: 30,
+      securityMode: 'JWT_AUTH',
+      allowedRoles: ''
     };
     setCurrentApi(newApi);
     setTestParams({});
@@ -716,8 +720,11 @@ export const ApiBuilderView: React.FC = () => {
     } else {
       setCronTriggers(['0 */5 * * * *']);
     }
+    const secMode = api.securityMode || (api.isPublic ? 'PUBLIC' : (api.authToken ? 'HYBRID' : 'JWT_AUTH'));
     setCurrentApi({
       ...api,
+      securityMode: secMode,
+      allowedRoles: api.allowedRoles || '',
       targetEndpointId: targetEndpointId || api.targetEndpointId || '',
       notifyOnSuccess: Boolean(api.notifyOnSuccess),
       notifyOnFailure: api.notifyOnFailure !== false
@@ -805,7 +812,8 @@ export const ApiBuilderView: React.FC = () => {
     
     setIsSaving(true);
     try {
-      const isPublicVal = Boolean(currentApi.isPublic);
+      const secMode = currentApi.securityMode || (currentApi.isPublic ? 'PUBLIC' : (currentApi.authToken ? 'HYBRID' : 'JWT_AUTH'));
+      const isPublicVal = (secMode === 'PUBLIC');
       const targetEpId = currentApi.targetEndpointId || (selectedTargetEndpoint ? selectedTargetEndpoint.id : '');
       const targetUrl = currentApi.targetUrl || (selectedTargetEndpoint ? selectedTargetEndpoint.url : '');
       const targetMethod = currentApi.targetMethod || (selectedTargetEndpoint ? selectedTargetEndpoint.method : 'POST');
@@ -813,6 +821,8 @@ export const ApiBuilderView: React.FC = () => {
       const compiledCron = validCrons.length > 0 ? validCrons.join('; ') : (currentApi.cronExpression || '0 */5 * * * *');
       const apiToSave = { 
         ...currentApi, 
+        securityMode: secMode,
+        allowedRoles: currentApi.allowedRoles || '',
         isPublic: isPublicVal,
         public: isPublicVal,
         parameters: JSON.stringify(parameterMeta),
@@ -1056,10 +1066,14 @@ export const ApiBuilderView: React.FC = () => {
         (api.sqlQuery && api.sqlQuery.toLowerCase().includes(q));
       
       const matchesMethod = methodFilter === 'ALL' || api.method.toUpperCase() === methodFilter;
+      const secMode = api.securityMode || (api.isPublic ? 'PUBLIC' : (api.authToken ? 'HYBRID' : 'JWT_AUTH'));
       const matchesSecurity = 
         securityFilter === 'ALL' || 
-        (securityFilter === 'PUBLIC' && api.isPublic) ||
-        (securityFilter === 'PROTECTED' && !api.isPublic) ||
+        (securityFilter === 'PUBLIC' && secMode === 'PUBLIC') ||
+        (securityFilter === 'JWT_AUTH' && secMode === 'JWT_AUTH') ||
+        (securityFilter === 'API_KEY' && secMode === 'API_KEY') ||
+        (securityFilter === 'HYBRID' && secMode === 'HYBRID') ||
+        (securityFilter === 'PROTECTED' && secMode !== 'PUBLIC') ||
         (securityFilter === 'IP_RESTRICTED' && Boolean(api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*'));
       
       const matchesGroup = selectedGroup === 'ALL' || (api.groupName || 'General') === selectedGroup;
@@ -1436,8 +1450,11 @@ export const ApiBuilderView: React.FC = () => {
               className="bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-xs font-bold text-text-main outline-none focus:border-blue-500 cursor-pointer shadow-inner"
             >
               <option value="ALL">All Security Types</option>
+              <option value="JWT_AUTH">JWT Auth (Login Required)</option>
               <option value="PUBLIC">Public Only</option>
-              <option value="PROTECTED">Protected Only</option>
+              <option value="API_KEY">Static API Key Only</option>
+              <option value="HYBRID">Hybrid Auth Only</option>
+              <option value="PROTECTED">Protected (All Non-Public)</option>
               <option value="IP_RESTRICTED">IP Restricted Only</option>
             </select>
 
@@ -1667,13 +1684,21 @@ export const ApiBuilderView: React.FC = () => {
                                   </div>
 
                                   <div className="flex items-center gap-1.5 flex-col items-end">
-                                    {api.isPublic ? (
+                                    {(api.securityMode === 'PUBLIC' || api.isPublic) ? (
                                       <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                                        <ShieldCheck className="w-3 h-3" /> Public
+                                        <Unlock className="w-3 h-3" /> Public
+                                      </span>
+                                    ) : (api.securityMode === 'JWT_AUTH' || (!api.securityMode && !api.authToken)) ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-cyan-400 font-bold bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-full" title={api.allowedRoles ? `Roles: ${api.allowedRoles}` : 'All Logged In Users'}>
+                                        <ShieldCheck className="w-3 h-3" /> JWT {api.allowedRoles ? `(${api.allowedRoles})` : 'Auth'}
+                                      </span>
+                                    ) : api.securityMode === 'API_KEY' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                                        <KeyRound className="w-3 h-3" /> API Key
                                       </span>
                                     ) : (
-                                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
-                                        <ShieldAlert className="w-3 h-3" /> Protected
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-purple-400 font-bold bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded-full">
+                                        <Layers className="w-3 h-3" /> Hybrid
                                       </span>
                                     )}
                                     {api.ipAllowlist && api.ipAllowlist.trim() && api.ipAllowlist.trim() !== '*' ? (
@@ -2202,13 +2227,28 @@ export const ApiBuilderView: React.FC = () => {
                                    {/* Access Security */}
                                    <td className="p-3">
                                      <div className="flex items-center gap-2">
-                                       {api.isPublic ? (
+                                       {(api.securityMode === 'PUBLIC' || api.isPublic) ? (
                                          <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
                                            Public
                                          </span>
-                                       ) : (
+                                       ) : (api.securityMode === 'JWT_AUTH' || (!api.securityMode && !api.authToken)) ? (
+                                         <div className="flex flex-col items-start gap-0.5">
+                                           <span className="text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/20" title={api.allowedRoles ? `Allowed Roles: ${api.allowedRoles}` : 'All Logged In Users'}>
+                                             JWT Auth
+                                           </span>
+                                           {api.allowedRoles && (
+                                             <span className="text-[10px] font-mono text-cyan-300 max-w-[120px] truncate" title={`Roles: ${api.allowedRoles}`}>
+                                               {api.allowedRoles}
+                                             </span>
+                                           )}
+                                         </div>
+                                       ) : api.securityMode === 'API_KEY' ? (
                                          <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
-                                           Protected
+                                           API Key
+                                         </span>
+                                       ) : (
+                                         <span className="text-xs font-bold text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
+                                           Hybrid
                                          </span>
                                        )}
                                        {api.requiredAppId && (
@@ -2888,15 +2928,20 @@ export const ApiBuilderView: React.FC = () => {
       ? '?' + [...detectedParams.map(p => `${p}=value`), ...(currentApi.enablePagination ? ['limit=100', 'offset=0'] : [])].join('&')
       : '';
       
-    const curlExample = `curl -X ${currentApi.method} "${fullUrl}${qs}" \\\n  -H "Accept: application/json" ${!currentApi.isPublic ? `\\\n  -H "Authorization: Bearer ${currentApi.authToken}"` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '{\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }'` : ''}`;
+    const secMode = currentApi.securityMode || (currentApi.isPublic ? 'PUBLIC' : (currentApi.authToken ? 'HYBRID' : 'JWT_AUTH'));
+    const isPublic = (secMode === 'PUBLIC');
+    const isJwt = (secMode === 'JWT_AUTH');
+    const authHeaderVal = isPublic ? '' : isJwt ? 'Bearer <YOUR_USER_LOGIN_JWT_TOKEN>' : `Bearer ${currentApi.authToken || '<STATIC_API_KEY>'}`;
 
-    const postmanExample = `${currentApi.method} ${fullUrl}${qs} HTTP/1.1\nHost: ${window.location.host}\nAccept: application/json${!currentApi.isPublic ? `\nAuthorization: Bearer ${currentApi.authToken}` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? `\nContent-Type: application/json\n\n{\n${detectedParams.map(p => `  "${p}": "value"`).join(',\n')}\n}` : ''}`;
+    const curlExample = `curl -X ${currentApi.method} "${fullUrl}${qs}" \\\n  -H "Accept: application/json" ${!isPublic ? `\\\n  -H "Authorization: ${authHeaderVal}"` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '{\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }'` : ''}`;
 
-    const brunoExample = `meta {\n  name: ${currentApi.name}\n  type: http\n  seq: 1\n}\n\n${currentApi.method.toLowerCase()} {\n  url: ${fullUrl}${qs}\n  body: ${currentApi.method !== 'GET' && detectedParams.length > 0 ? 'json' : 'none'}\n  auth: ${!currentApi.isPublic ? 'bearer' : 'none'}\n}\n${!currentApi.isPublic ? `\nauth:bearer {\n  token: ${currentApi.authToken}\n}` : ''}${(detectedParams.length > 0 || currentApi.enablePagination) && currentApi.method === 'GET' ? `\nquery {\n${detectedParams.map(p => `  ${p}: value`).join('\n')}${currentApi.enablePagination ? '\n  limit: 100\n  offset: 0' : ''}\n}` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? `\nbody:json {\n  {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }\n}` : ''}`;
+    const postmanExample = `${currentApi.method} ${fullUrl}${qs} HTTP/1.1\nHost: ${window.location.host}\nAccept: application/json${!isPublic ? `\nAuthorization: ${authHeaderVal}` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? `\nContent-Type: application/json\n\n{\n${detectedParams.map(p => `  "${p}": "value"`).join(',\n')}\n}` : ''}`;
+
+    const brunoExample = `meta {\n  name: ${currentApi.name}\n  type: http\n  seq: 1\n}\n\n${currentApi.method.toLowerCase()} {\n  url: ${fullUrl}${qs}\n  body: ${currentApi.method !== 'GET' && detectedParams.length > 0 ? 'json' : 'none'}\n  auth: ${!isPublic ? 'bearer' : 'none'}\n}\n${!isPublic ? `\nauth:bearer {\n  token: ${isJwt ? '<YOUR_USER_LOGIN_JWT_TOKEN>' : (currentApi.authToken || '<TOKEN>')}\n}` : ''}${(detectedParams.length > 0 || currentApi.enablePagination) && currentApi.method === 'GET' ? `\nquery {\n${detectedParams.map(p => `  ${p}: value`).join('\n')}${currentApi.enablePagination ? '\n  limit: 100\n  offset: 0' : ''}\n}` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? `\nbody:json {\n  {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }\n}` : ''}`;
     
-    const jsExample = `const response = await fetch("${fullUrl}${qs}", {\n  method: "${currentApi.method}",\n  headers: {\n    "Accept": "application/json",\n    ${!currentApi.isPublic ? `"Authorization": "Bearer ${currentApi.authToken}",\n    ` : ''}${currentApi.method !== 'GET' ? `"Content-Type": "application/json"\n  },\n  body: JSON.stringify({\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  })` : '\n  }'}\n});\nconst data = await response.json();`;
+    const jsExample = `const response = await fetch("${fullUrl}${qs}", {\n  method: "${currentApi.method}",\n  headers: {\n    "Accept": "application/json",\n    ${!isPublic ? `"Authorization": "${authHeaderVal}",\n    ` : ''}${currentApi.method !== 'GET' ? `"Content-Type": "application/json"\n  },\n  body: JSON.stringify({\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  })` : '\n  }'}\n});\nconst data = await response.json();`;
 
-    const pythonExample = `import requests\n\nurl = "${fullUrl}${qs}"\nheaders = {\n    "Accept": "application/json",\n    ${!currentApi.isPublic ? `"Authorization": "Bearer ${currentApi.authToken}",\n    ` : ''}${currentApi.method !== 'GET' ? `"Content-Type": "application/json"` : ''}\n}\n${currentApi.method !== 'GET' && detectedParams.length > 0 ? `payload = {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n}\nresponse = requests.${currentApi.method.toLowerCase()}(url, headers=headers, json=payload)` : `response = requests.${currentApi.method.toLowerCase()}(url, headers=headers)`}\nprint(response.json())`;
+    const pythonExample = `import requests\n\nurl = "${fullUrl}${qs}"\nheaders = {\n    "Accept": "application/json",\n    ${!isPublic ? `"Authorization": "${authHeaderVal}",\n    ` : ''}${currentApi.method !== 'GET' ? `"Content-Type": "application/json"` : ''}\n}\n${currentApi.method !== 'GET' && detectedParams.length > 0 ? `payload = {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n}\nresponse = requests.${currentApi.method.toLowerCase()}(url, headers=headers, json=payload)` : `response = requests.${currentApi.method.toLowerCase()}(url, headers=headers)`}\nprint(response.json())`;
 
     return (
       <div className="h-full flex flex-col p-6 overflow-y-auto bg-bg-main min-h-0">
@@ -2998,29 +3043,56 @@ export const ApiBuilderView: React.FC = () => {
               <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-indigo-500" /> Authorization &amp; Access
               </h3>
-              {currentApi.isPublic ? (
+              {isPublic ? (
                 <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-2xl flex items-center gap-4">
-                  <ShieldCheck className="w-7 h-7 text-emerald-400 shrink-0" />
+                  <Unlock className="w-7 h-7 text-emerald-400 shrink-0" />
                   <div>
                     <p className="text-sm font-bold text-emerald-400">Public Access Endpoint</p>
                     <p className="text-xs text-emerald-400/80 mt-0.5">This API can be called directly without bearer tokens or credentials.</p>
                   </div>
                 </div>
+              ) : isJwt ? (
+                <div className="bg-cyan-500/10 border border-cyan-500/20 p-5 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck className="w-6 h-6 text-cyan-400 shrink-0" />
+                    <div>
+                      <p className="text-sm font-bold text-cyan-400">JWT Authentication Required (User Login)</p>
+                      <p className="text-xs text-cyan-400/80 mt-0.5">Caller must provide a valid JWT access token obtained via user login in the Authorization header.</p>
+                    </div>
+                  </div>
+                  {currentApi.allowedRoles && currentApi.allowedRoles.trim() && (
+                    <div className="flex items-center gap-2 bg-[#0d1117] p-2.5 rounded-xl border border-cyan-500/30">
+                      <span className="text-xs text-text-muted font-bold">Allowed Roles:</span>
+                      {currentApi.allowedRoles.split(/[,;\s]+/).map(r => r.trim()).filter(Boolean).map((r, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-xs font-bold border border-cyan-500/30">
+                          {r.toUpperCase()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-0 border border-cyan-500/30 rounded-xl overflow-hidden">
+                    <code className="flex-1 bg-[#0d1117] px-4 py-3 text-cyan-300 font-mono text-sm overflow-x-auto">
+                      Authorization: Bearer &lt;YOUR_USER_LOGIN_JWT_TOKEN&gt;
+                    </code>
+                  </div>
+                </div>
               ) : (
                 <div className="bg-amber-500/10 border border-amber-500/20 p-5 rounded-2xl">
                   <div className="flex items-center gap-3 mb-3">
-                    <ShieldAlert className="w-6 h-6 text-amber-400 shrink-0" />
+                    <KeyRound className="w-6 h-6 text-amber-400 shrink-0" />
                     <div>
-                      <p className="text-sm font-bold text-amber-400">Protected Bearer Token Endpoint</p>
+                      <p className="text-sm font-bold text-amber-400">
+                        {secMode === 'HYBRID' ? 'Hybrid (JWT Login or Static API Key)' : 'Protected Bearer Token / API Key Endpoint'}
+                      </p>
                       <p className="text-xs text-amber-400/80 mt-0.5">Pass the Authorization header below in all consumer HTTP requests.</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-0 border border-amber-500/30 rounded-xl overflow-hidden">
                     <code className="flex-1 bg-[#0d1117] px-4 py-3 text-amber-300 font-mono text-sm overflow-x-auto">
-                      Authorization: Bearer {currentApi.authToken}
+                      Authorization: Bearer {currentApi.authToken || '<STATIC_API_KEY>'}
                     </code>
                     <button 
-                      onClick={() => handleCopy(currentApi.authToken, 'token')}
+                      onClick={() => handleCopy(currentApi.authToken || '', 'token')}
                       className="bg-amber-500/20 hover:bg-amber-500/30 border-l border-amber-500/30 px-5 py-3 text-amber-400 transition-colors font-bold text-xs flex items-center gap-1.5"
                     >
                       {copiedStates['token'] ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
@@ -4100,6 +4172,7 @@ export const ApiBuilderView: React.FC = () => {
                               const updated: Partial<ApiEndpoint> = { authAction: mode.id as any };
                               if (mode.id !== 'NONE') {
                                 updated.isPublic = true;
+                                updated.securityMode = 'PUBLIC';
                               }
                               setCurrentApi({ ...currentApi, ...updated });
                             }}
@@ -4211,50 +4284,271 @@ export const ApiBuilderView: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Public Access Card */}
-                  <div className={clsx("border rounded-xl p-4 transition-all shadow-sm", currentApi.isPublic ? "bg-emerald-500/10 border-emerald-500/30" : "bg-bg-editor/80 border-border-main")}>
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="mt-1 w-4 h-4 rounded border-border-main text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                        checked={currentApi.isPublic} 
-                        onChange={e => setCurrentApi({...currentApi, isPublic: e.target.checked})} 
-                      />
+                  {/* Security & Access Control Mode (Backendless) */}
+                  <div className="bg-bg-editor/80 border border-border-main rounded-2xl p-5 space-y-4 shadow-sm">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <div>
-                        <span className={clsx("text-xs font-bold block", currentApi.isPublic ? "text-emerald-400" : "text-text-main")}>
-                          Public Endpoint Access
-                        </span>
-                        <span className="text-[11px] text-text-muted block mt-0.5">
-                          Allow external callers to access this API without authorization tokens.
-                        </span>
+                        <h4 className="text-xs font-black uppercase tracking-wider text-text-main flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-indigo-500" />
+                          Security Mode &amp; Access Control
+                        </h4>
+                        <p className="text-[11px] text-text-muted mt-0.5">
+                          Tentukan mekanisme otentikasi untuk endpoint ini. JWT Auth direkomendasikan untuk sistem aplikasi multi-user backendless.
+                        </p>
                       </div>
-                    </label>
-                  </div>
-
-                  {/* Protected Bearer Token Card */}
-                  {!currentApi.isPublic && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2.5 shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <Lock className="w-3.5 h-3.5" /> Required Bearer Auth Token
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setCurrentApi({ ...currentApi, authToken: generateToken() })}
-                          className="text-[11px] text-amber-400 hover:underline font-bold cursor-pointer"
-                        >
-                          Generate Token
-                        </button>
-                      </div>
-                      <input 
-                        type="text"
-                        className="w-full bg-bg-editor border border-amber-500/30 rounded-xl p-2.5 text-xs outline-none text-text-main font-mono font-bold shadow-inner focus:border-amber-500"
-                        value={currentApi.authToken}
-                        onChange={e => setCurrentApi({...currentApi, authToken: e.target.value})}
-                        placeholder="e.g. sk_secret_token..."
-                      />
+                      <span className={clsx(
+                        "px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border tracking-wider",
+                        (currentApi.securityMode === 'JWT_AUTH' || (!currentApi.securityMode && !currentApi.isPublic && !currentApi.authToken))
+                          ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30"
+                          : (currentApi.securityMode === 'PUBLIC' || currentApi.isPublic)
+                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          : currentApi.securityMode === 'API_KEY'
+                          ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                          : "bg-purple-500/15 text-purple-400 border-purple-500/30"
+                      )}>
+                        Mode: {currentApi.securityMode || (currentApi.isPublic ? 'PUBLIC' : 'JWT_AUTH')}
+                      </span>
                     </div>
-                  )}
+
+                    {/* 4 Security Mode Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {/* 1. JWT_AUTH */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentApi({
+                            ...currentApi,
+                            securityMode: 'JWT_AUTH',
+                            isPublic: false
+                          });
+                        }}
+                        className={clsx(
+                          "p-3.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
+                          (currentApi.securityMode === 'JWT_AUTH' || (!currentApi.securityMode && !currentApi.isPublic && !currentApi.authToken))
+                            ? "bg-cyan-500/10 border-cyan-500 shadow-md shadow-cyan-500/10 ring-1 ring-cyan-500"
+                            : "bg-bg-panel/60 border-border-main hover:border-cyan-500/40 hover:bg-cyan-500/5"
+                        )}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400">
+                              <ShieldCheck className="w-4 h-4" />
+                            </span>
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300">
+                              Rekomendasi
+                            </span>
+                          </div>
+                          <div className="font-bold text-xs text-text-main group-hover:text-cyan-400 transition-colors">
+                            JWT Auth (Login)
+                          </div>
+                          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                            Hanya user yang telah login yang bisa akses. Mendukung RBAC role &amp; claim otomatis.
+                          </p>
+                        </div>
+                      </button>
+
+                      {/* 2. PUBLIC */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentApi({
+                            ...currentApi,
+                            securityMode: 'PUBLIC',
+                            isPublic: true
+                          });
+                        }}
+                        className={clsx(
+                          "p-3.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
+                          (currentApi.securityMode === 'PUBLIC' || currentApi.isPublic)
+                            ? "bg-emerald-500/10 border-emerald-500 shadow-md shadow-emerald-500/10 ring-1 ring-emerald-500"
+                            : "bg-bg-panel/60 border-border-main hover:border-emerald-500/40 hover:bg-emerald-500/5"
+                        )}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                              <Unlock className="w-4 h-4" />
+                            </span>
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
+                              No Token
+                            </span>
+                          </div>
+                          <div className="font-bold text-xs text-text-main group-hover:text-emerald-400 transition-colors">
+                            Public Endpoint
+                          </div>
+                          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                            Bisa diakses terbuka oleh siapa saja tanpa perlu token/login (misal webhook/katalog).
+                          </p>
+                        </div>
+                      </button>
+
+                      {/* 3. API_KEY */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentApi({
+                            ...currentApi,
+                            securityMode: 'API_KEY',
+                            isPublic: false,
+                            authToken: currentApi.authToken || generateToken()
+                          });
+                        }}
+                        className={clsx(
+                          "p-3.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
+                          currentApi.securityMode === 'API_KEY'
+                            ? "bg-amber-500/10 border-amber-500 shadow-md shadow-amber-500/10 ring-1 ring-amber-500"
+                            : "bg-bg-panel/60 border-border-main hover:border-amber-500/40 hover:bg-amber-500/5"
+                        )}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                              <KeyRound className="w-4 h-4" />
+                            </span>
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">
+                              API Key
+                            </span>
+                          </div>
+                          <div className="font-bold text-xs text-text-main group-hover:text-amber-400 transition-colors">
+                            Static API Key
+                          </div>
+                          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                            Hanya menerima static token yang ditentukan. Cocok untuk bot atau integrasi pihak ke-3.
+                          </p>
+                        </div>
+                      </button>
+
+                      {/* 4. HYBRID */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentApi({
+                            ...currentApi,
+                            securityMode: 'HYBRID',
+                            isPublic: false,
+                            authToken: currentApi.authToken || generateToken()
+                          });
+                        }}
+                        className={clsx(
+                          "p-3.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between relative group",
+                          currentApi.securityMode === 'HYBRID'
+                            ? "bg-purple-500/10 border-purple-500 shadow-md shadow-purple-500/10 ring-1 ring-purple-500"
+                            : "bg-bg-panel/60 border-border-main hover:border-purple-500/40 hover:bg-purple-500/5"
+                        )}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-400">
+                              <Layers className="w-4 h-4" />
+                            </span>
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300">
+                              Dual Auth
+                            </span>
+                          </div>
+                          <div className="font-bold text-xs text-text-main group-hover:text-purple-400 transition-colors">
+                            Hybrid (JWT + Key)
+                          </div>
+                          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                            Menerima JWT login user ATAU Static API Key secara fleksibel.
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* RBAC Allowed Roles Configuration (For JWT_AUTH and HYBRID) */}
+                    {(currentApi.securityMode === 'JWT_AUTH' || currentApi.securityMode === 'HYBRID' || (!currentApi.securityMode && !currentApi.isPublic)) && (
+                      <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                            <Shield className="w-3.5 h-3.5" /> Allowed User Roles (RBAC)
+                          </label>
+                          <span className="text-[10px] text-text-muted font-medium">
+                            Pisahkan koma (e.g. ADMIN, SPV, MEKANIK)
+                          </span>
+                        </div>
+
+                        <input 
+                          type="text"
+                          className="w-full bg-bg-panel border border-cyan-500/30 rounded-xl p-2.5 text-xs text-text-main font-semibold outline-none focus:border-cyan-500 shadow-inner"
+                          value={currentApi.allowedRoles || ''}
+                          onChange={e => setCurrentApi({ ...currentApi, allowedRoles: e.target.value })}
+                          placeholder="Kosongkan jika semua user yang telah login diizinkan (misal: ADMIN, SPV, MEKANIK, KASIR)"
+                        />
+
+                        {/* Quick Presets & Live Badge Preview */}
+                        <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-cyan-500/10">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] text-text-muted font-bold">Quick Presets:</span>
+                            {['ADMIN', 'SPV', 'MEKANIK', 'KASIR', 'USER', 'CUSTOMER'].map(role => (
+                              <button
+                                key={role}
+                                type="button"
+                                onClick={() => {
+                                  const currentRoles = (currentApi.allowedRoles || '')
+                                    .split(/[,;\s]+/)
+                                    .map(r => r.trim().toUpperCase())
+                                    .filter(Boolean);
+                                  if (!currentRoles.includes(role)) {
+                                    const next = currentRoles.length > 0 ? `${currentRoles.join(', ')}, ${role}` : role;
+                                    setCurrentApi({ ...currentApi, allowedRoles: next });
+                                  }
+                                }}
+                                className="px-2 py-0.5 rounded-lg bg-bg-panel hover:bg-cyan-500/15 border border-border-main hover:border-cyan-500/30 text-[10px] font-bold text-text-muted hover:text-cyan-400 transition-colors cursor-pointer"
+                              >
+                                + {role}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Active Roles Preview */}
+                          {currentApi.allowedRoles && currentApi.allowedRoles.trim() ? (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="text-[10px] text-cyan-400 font-bold">Active Roles:</span>
+                              {currentApi.allowedRoles.split(/[,;\s]+/).map(r => r.trim()).filter(Boolean).map((r, i) => (
+                                <span key={i} className="px-1.5 py-0.5 rounded-md bg-cyan-500/20 text-cyan-300 font-mono text-[10px] font-bold border border-cyan-500/30">
+                                  {r.toUpperCase()}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-emerald-400 font-semibold italic">
+                              ✓ Terbuka untuk semua role yang telah login
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Automatic Claims Note */}
+                        <div className="bg-bg-panel/80 p-2.5 rounded-lg border border-border-main text-[11px] text-text-muted leading-relaxed">
+                          💡 <strong className="text-cyan-400">Parameter otomatis dari token JWT:</strong> Anda dapat langsung menggunakan parameter <code className="font-mono text-cyan-300">:sys_user_id</code> (ID user yang login), <code className="font-mono text-cyan-300">:sys_role</code> (role user), dan <code className="font-mono text-cyan-300">:sys_company_id</code> (tenant company) di dalam SQL query Anda tanpa perlu dikirim manual oleh frontend!
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Static API Key Input (For API_KEY and HYBRID) */}
+                    {(currentApi.securityMode === 'API_KEY' || currentApi.securityMode === 'HYBRID') && (
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2.5 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <KeyRound className="w-3.5 h-3.5" /> Required Static Bearer Token / API Key
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentApi({ ...currentApi, authToken: generateToken() })}
+                            className="text-[11px] text-amber-400 hover:underline font-bold cursor-pointer"
+                          >
+                            Generate Token Baru
+                          </button>
+                        </div>
+                        <input 
+                          type="text"
+                          className="w-full bg-bg-panel border border-amber-500/30 rounded-xl p-2.5 text-xs outline-none text-text-main font-mono font-bold shadow-inner focus:border-amber-500"
+                          value={currentApi.authToken || ''}
+                          onChange={e => setCurrentApi({...currentApi, authToken: e.target.value})}
+                          placeholder="e.g. sk_secret_token..."
+                        />
+                      </div>
+                    )}
+                  </div>
 
                   {/* Allow Raw SQL Condition Card */}
                   <div className={clsx("border rounded-xl p-4 transition-all shadow-sm", currentApi.allowRawSql ? "bg-purple-500/10 border-purple-500/30" : "bg-bg-editor/80 border-border-main")}>
