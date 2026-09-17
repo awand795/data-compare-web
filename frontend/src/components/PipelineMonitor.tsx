@@ -646,15 +646,19 @@ export const PipelineMonitor: React.FC = () => {
 
         const dIds = new Set<string>();
         data.forEach((p: Pipeline) => {
-          const lastDash = p.name.lastIndexOf('-');
-          const tsStr = p.name.slice(lastDash + 1);
-          if (lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10) {
-             const existingKey = Array.from(dIds).find(k => Math.abs(Number(k) - Number(tsStr)) <= 2000);
-             if (existingKey) {
-                 dIds.add(existingKey);
-             } else {
-                 dIds.add(tsStr);
-             }
+          if (p.deployId) {
+            dIds.add(p.deployId);
+          } else {
+            const lastDash = p.name.lastIndexOf('-');
+            const tsStr = p.name.slice(lastDash + 1);
+            if (lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10) {
+               const existingKey = Array.from(dIds).find(k => Math.abs(Number(k) - Number(tsStr)) <= 2000);
+               if (existingKey) {
+                   dIds.add(existingKey);
+               } else {
+                   dIds.add(tsStr);
+               }
+            }
           }
         });
 
@@ -921,7 +925,7 @@ export const PipelineMonitor: React.FC = () => {
                 const isTimestamp = lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10;
                 const currentDeployId = p.deployId || (isTimestamp ? tsStr : (p.name.startsWith('sink-') ? p.name.replace(/^sink-[^-]+-/, '') : p.name));
                 
-                // If it's a sink connector, group by its target table ONLY IF the query is the same
+                // If it's a sink connector, group by its target table ONLY IF the query is identical
                 const sinkTargetTable = p.targetTable || getSinkTargetTable(p.name);
                 const pQueryNorm = normalizeQuery(p.query || originalQueries[currentDeployId]);
 
@@ -933,14 +937,14 @@ export const PipelineMonitor: React.FC = () => {
                     const groupTargetTable = firstSink.targetTable || getSinkTargetTable(firstSink.name);
                     if (groupTargetTable !== sinkTargetTable) return false;
 
-                    // Check queries if available
+                    // If both queries are present, group ONLY if queries are identical
                     const firstDeployId = firstSink.deployId || key;
                     const groupQueryNorm = normalizeQuery(firstSink.query || originalQueries[firstDeployId]);
                     if (pQueryNorm && groupQueryNorm) {
                       return pQueryNorm === groupQueryNorm;
                     }
-                    // If queries are not yet resolved, group by deployId proximity
-                    return key === currentDeployId || Math.abs(Number(key) - Number(currentDeployId)) <= 2000;
+                    // If either query is not yet available, only group if exact same deployId
+                    return key === currentDeployId || (p.deployId && firstDeployId === p.deployId);
                   });
                   if (existingGroup) {
                     existingGroup[1].push(p);
@@ -949,7 +953,9 @@ export const PipelineMonitor: React.FC = () => {
                 }
 
                 let deployId = '';
-                if (isTimestamp) {
+                if (p.deployId) {
+                  deployId = p.deployId;
+                } else if (isTimestamp) {
                   const ts = Number(tsStr);
                   const existingKey = Object.keys(acc).find(k => !k.startsWith('Shared:') && !isNaN(Number(k)) && Math.abs(Number(k) - ts) <= 2000);
                   deployId = existingKey ? existingKey : tsStr;
