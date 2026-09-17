@@ -160,6 +160,24 @@ public class DataWarehouseService {
             }
         }
     }
+    public static boolean isSameQuery(String q1, String q2) {
+        if (q1 == null && q2 == null) return true;
+        if (q1 == null || q2 == null) return false;
+        return normalizeQuerySql(q1).equals(normalizeQuerySql(q2));
+    }
+
+    public static String normalizeQuerySql(String sql) {
+        if (sql == null) return "";
+        // Remove multi-line comments and single-line comments
+        String cleaned = sql.replaceAll("(?s)/\\*.*?\\*/", "")
+                            .replaceAll("--[^\r\n]*", "");
+        // Normalize whitespace and lowercase
+        cleaned = cleaned.replaceAll("\\s+", " ").trim().toLowerCase();
+        if (cleaned.endsWith(";")) {
+            cleaned = cleaned.substring(0, cleaned.length() - 1).trim();
+        }
+        return cleaned;
+    }
 
     /**
      * Registers a connector via POST /connectors, retrying on transient failures
@@ -265,21 +283,32 @@ public class DataWarehouseService {
             String cleanTarget = request.getTargetTable().replaceAll("[^a-zA-Z0-9_-]", "");
             String sharedDeployId = request.getDeployId();
             if (sharedDeployId == null || sharedDeployId.isBlank()) {
-                Map<String, Object> existingMeta = pipelineMetadataRepository.findPipelineByTargetTable(cleanTarget);
-                if (existingMeta != null && existingMeta.get("deploy_id") != null) {
-                    sharedDeployId = (String) existingMeta.get("deploy_id");
-                    sendLog(emitter, "Found existing pipeline metadata for `" + cleanTarget + "` (Deploy ID: " + sharedDeployId + "). Updating pipeline...");
-                } else {
-                    // Check active connectors in Debezium for this cleanTarget
+                // Only reuse existing pipeline if target table AND query are identical!
+                List<Map<String, Object>> existingList = pipelineMetadataRepository.findPipelinesByTargetTable(cleanTarget);
+                for (Map<String, Object> existingMeta : existingList) {
+                    String existingQuery = (String) existingMeta.get("query");
+                    if (isSameQuery(existingQuery, request.getQuery())) {
+                        sharedDeployId = (String) existingMeta.get("deploy_id");
+                        sendLog(emitter, "Found existing pipeline for `" + cleanTarget + "` with identical query (Deploy ID: " + sharedDeployId + "). Reusing pipeline...");
+                        break;
+                    }
+                }
+
+                if (sharedDeployId == null || sharedDeployId.isBlank()) {
+                    // Check active connectors in Debezium for this cleanTarget, but only reuse if query is identical
                     try {
                         String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
                         if (connectors != null) {
                             for (String cName : connectors) {
                                 if (cName.matches("sink-(clickhouse|postgres)-" + cleanTarget + "-[0-9]+")) {
                                     int lastDash = cName.lastIndexOf('-');
-                                    sharedDeployId = cName.substring(lastDash + 1);
-                                    sendLog(emitter, "Found active sink connector for `" + cleanTarget + "`: " + cName + " (Deploy ID: " + sharedDeployId + "). Reusing existing pipeline...");
-                                    break;
+                                    String candDeployId = cName.substring(lastDash + 1);
+                                    String candQuery = pipelineMetadataRepository.getOriginalQuery(candDeployId);
+                                    if (candQuery != null && isSameQuery(candQuery, request.getQuery())) {
+                                        sharedDeployId = candDeployId;
+                                        sendLog(emitter, "Found active sink connector for `" + cleanTarget + "` with identical query: " + cName + " (Deploy ID: " + sharedDeployId + "). Reusing pipeline...");
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -288,16 +317,25 @@ public class DataWarehouseService {
             }
             if (sharedDeployId == null || sharedDeployId.isBlank()) {
                 sharedDeployId = String.valueOf(System.currentTimeMillis());
+                sendLog(emitter, "Created new pipeline instance for `" + cleanTarget + "` (Deploy ID: " + sharedDeployId + ").");
             }
 
-            // Only clean up obsolete / duplicate sink connectors, NEVER delete the active sharedDeployId!
+            // Only clean up obsolete / duplicate sink connectors IF they belong to the SAME query!
+            // NEVER delete sink connectors for other query variants!
             final String activeDeployId = sharedDeployId;
             try {
                 String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
                 if (connectors != null) {
                     for (String cName : connectors) {
                         if (cName.matches("sink-(clickhouse|postgres)-" + cleanTarget + "-[0-9]+") && !cName.endsWith("-" + activeDeployId)) {
-                            sendLog(emitter, "Cleaning up obsolete/duplicate sink connector: " + cName);
+                            int lastDash = cName.lastIndexOf('-');
+                            String oldId = cName.substring(lastDash + 1);
+                            String oldQ = pipelineMetadataRepository.getOriginalQuery(oldId);
+                            if (oldQ != null && !isSameQuery(oldQ, request.getQuery())) {
+                                // Belongs to a different query variant for this target table. DO NOT DELETE!
+                                continue;
+                            }
+                            sendLog(emitter, "Cleaning up obsolete/duplicate sink connector for same query: " + cName);
                             try {
                                 restTemplate.delete(DEBEZIUM_URL + "/" + cName);
                             } catch (Exception ex) {
@@ -391,8 +429,21 @@ public class DataWarehouseService {
                 if (connectors != null) {
                     for (String cName : connectors) {
                         // Check if it belongs to this pipeline target or source
-                        if (cName.startsWith("source-" + baseName + "-" + cleanTarget) || 
-                            (cName.matches("sink-(clickhouse|postgres)-" + cleanTarget + "-[0-9]+") && !cName.endsWith("-" + deployId))) {
+                        if (cName.startsWith("source-" + baseName + "-" + cleanTarget)) {
+                            sendLog(emitter, "Deleting old source connector: " + cName);
+                            try {
+                                restTemplate.delete(DEBEZIUM_URL + "/" + cName);
+                            } catch (Exception ex) {
+                                logger.warn("Failed to delete connector " + cName, ex);
+                            }
+                        } else if (cName.matches("sink-(clickhouse|postgres)-" + cleanTarget + "-[0-9]+") && !cName.endsWith("-" + deployId)) {
+                            int lastDash = cName.lastIndexOf('-');
+                            String oldId = cName.substring(lastDash + 1);
+                            String oldQ = pipelineMetadataRepository.getOriginalQuery(oldId);
+                            if (oldQ != null && !isSameQuery(oldQ, request.getQuery())) {
+                                // Belongs to a different query variant for this target table. DO NOT DELETE!
+                                continue;
+                            }
                             sendLog(emitter, "Deleting old connector: " + cName);
                             try {
                                 restTemplate.delete(DEBEZIUM_URL + "/" + cName);
@@ -1565,6 +1616,13 @@ public class DataWarehouseService {
                     if (connectors != null) {
                         for (String cName : connectors) {
                             if (cName.matches("sink-(clickhouse|postgres)-" + cleanTarget + "-[0-9]+") && !cName.equals(sinkConnectorName)) {
+                                int lastDash = cName.lastIndexOf('-');
+                                String oldId = cName.substring(lastDash + 1);
+                                String oldQ = pipelineMetadataRepository.getOriginalQuery(oldId);
+                                if (oldQ != null && !isSameQuery(oldQ, request.getQuery())) {
+                                    // Belongs to a different query variant for this target table. Preserve it!
+                                    continue;
+                                }
                                 try {
                                     Map<String, Object> dupCfg = getConnectorConfig(cName);
                                     if (dupCfg != null && dupCfg.get("topics") != null) {
@@ -1692,6 +1750,13 @@ public class DataWarehouseService {
                     if (connectors != null) {
                         for (String cName : connectors) {
                             if (cName.matches("sink-(clickhouse|postgres)-" + cleanTarget + "-[0-9]+") && !cName.equals(sinkConnectorName)) {
+                                int lastDash = cName.lastIndexOf('-');
+                                String oldId = cName.substring(lastDash + 1);
+                                String oldQ = pipelineMetadataRepository.getOriginalQuery(oldId);
+                                if (oldQ != null && !isSameQuery(oldQ, request.getQuery())) {
+                                    // Belongs to a different query variant for this target table. Preserve it!
+                                    continue;
+                                }
                                 try {
                                     Map<String, Object> dupCfg = getConnectorConfig(cName);
                                     if (dupCfg != null && dupCfg.get("topics") != null) {
@@ -3354,6 +3419,22 @@ public class DataWarehouseService {
                     } else {
                         pipelineInfo.put("state", "UNKNOWN");
                     }
+
+                    if (name.startsWith("sink-")) {
+                        int lastDash = name.lastIndexOf('-');
+                        if (lastDash > 0) {
+                            String deployId = name.substring(lastDash + 1);
+                            pipelineInfo.put("deployId", deployId);
+                            Map<String, Object> meta = pipelineMetadataRepository.getPipelineMetadata(deployId);
+                            if (meta != null) {
+                                pipelineInfo.put("query", meta.get("query"));
+                                pipelineInfo.put("targetTable", meta.get("target_table"));
+                                pipelineInfo.put("targetDatabase", meta.get("target_database"));
+                                pipelineInfo.put("sourceConnectionId", meta.get("source_connection_id"));
+                                pipelineInfo.put("sourceConnectionIds", meta.get("source_connection_ids"));
+                            }
+                        }
+                    }
                     pipelines.add(pipelineInfo);
                 }
                 return pipelines;
@@ -3536,10 +3617,12 @@ public class DataWarehouseService {
                                     }
                                 }
                                 
-                                stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + targetTable + "`");
-                                
-                                // Tidak lagi men-drop database meskipun kosong, sesuai request:
-                                // "jangan drop database, hanya tabel jika sudah tidak ada pipeline lain yang pakai lagi"
+                                long remainingPipelines = pipelineMetadataRepository.countPipelinesForTargetTableExcept(targetTable, deployId);
+                                if (remainingPipelines == 0) {
+                                    stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + targetTable + "`");
+                                } else {
+                                    logger.info("Target table `" + targetTable + "` is still used by " + remainingPipelines + " other pipeline(s). Preserving table.");
+                                }
                             }
                         }
                     } catch (Exception e) {
@@ -3805,7 +3888,20 @@ public class DataWarehouseService {
 
         Set<String> activeConnIds = new LinkedHashSet<>();
         if (targetTable != null) {
-            activeConnIds.addAll(pipelineMetadataRepository.getAllSourceConnectionIdsForTargetTable(targetTable));
+            String thisQuery = meta != null ? (String) meta.get("query") : null;
+            if (thisQuery != null) {
+                List<Map<String, Object>> pipelines = pipelineMetadataRepository.findPipelinesByTargetTable(targetTable);
+                for (Map<String, Object> p : pipelines) {
+                    if (isSameQuery(thisQuery, (String) p.get("query"))) {
+                        String sId = (String) p.get("source_connection_id");
+                        if (sId != null && !sId.isBlank()) activeConnIds.add(sId.trim());
+                        String mId = (String) p.get("source_connection_ids");
+                        if (mId != null && !mId.isBlank()) {
+                            for (String s : mId.split(",")) if (!s.isBlank()) activeConnIds.add(s.trim());
+                        }
+                    }
+                }
+            }
         }
         if (meta != null) {
             String single = (String) meta.get("source_connection_id");
@@ -3822,7 +3918,7 @@ public class DataWarehouseService {
             String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
             if (connectors != null) {
                 for (String c : connectors) {
-                    if (c.matches("sink-(clickhouse|postgres)-" + cleanTarget + "-[0-9]+")) {
+                    if (c.endsWith("-" + deployId) && c.startsWith("sink-")) {
                         Map<String, Object> cfg = getConnectorConfig(c);
                         if (cfg != null && cfg.get("topics") != null) {
                             String topicsStr = (String) cfg.get("topics");
@@ -3939,7 +4035,19 @@ public class DataWarehouseService {
 
             // ── 2. Look up ALL Source ConnectionDetails for this pipeline ────────────
             java.util.Set<String> allSourceConnIds = new java.util.LinkedHashSet<>();
-            allSourceConnIds.addAll(pipelineMetadataRepository.getAllSourceConnectionIdsForTargetTable(targetTable));
+            if (oldQuery != null) {
+                List<Map<String, Object>> pipelines = pipelineMetadataRepository.findPipelinesByTargetTable(targetTable);
+                for (Map<String, Object> p : pipelines) {
+                    if (isSameQuery(oldQuery, (String) p.get("query"))) {
+                        String sId = (String) p.get("source_connection_id");
+                        if (sId != null && !sId.isBlank()) allSourceConnIds.add(sId.trim());
+                        String mId = (String) p.get("source_connection_ids");
+                        if (mId != null && !mId.isBlank()) {
+                            for (String s : mId.split(",")) if (!s.isBlank()) allSourceConnIds.add(s.trim());
+                        }
+                    }
+                }
+            }
             if (sourceConnectionId != null && !sourceConnectionId.isBlank()) allSourceConnIds.add(sourceConnectionId.trim());
             String multiIds = (String) meta.get("source_connection_ids");
             if (multiIds != null && !multiIds.isBlank()) {
@@ -3951,7 +4059,7 @@ public class DataWarehouseService {
                 String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
                 if (connectors != null) {
                     for (String c : connectors) {
-                        if (c.matches("sink-(clickhouse|postgres)-" + cleanTarget + "-[0-9]+")) {
+                        if (c.endsWith("-" + deployId) && c.startsWith("sink-")) {
                             java.util.Map<String, Object> cfg = getConnectorConfig(c);
                             if (cfg != null && cfg.get("topics") != null) {
                                 String topicsStr = (String) cfg.get("topics");

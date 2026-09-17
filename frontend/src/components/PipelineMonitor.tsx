@@ -13,7 +13,25 @@ interface Pipeline {
   task_state?: string;
   trace?: string;
   lag?: number;
+  deployId?: string;
+  query?: string;
+  targetTable?: string;
+  targetDatabase?: string;
+  sourceConnectionId?: string;
+  sourceConnectionIds?: string;
 }
+
+const normalizeQuery = (q?: string): string => {
+  if (!q) return '';
+  return q
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/--[^\r\n]*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/;$/, '')
+    .trim();
+};
 
 interface PipelineSourceItem {
   id: string;
@@ -607,6 +625,12 @@ export const PipelineMonitor: React.FC = () => {
         const data = await response.json();
         setPipelines(data);
 
+        data.forEach((p: Pipeline) => {
+          if (p.deployId && p.query) {
+            setOriginalQueries(prev => ({ ...prev, [p.deployId!]: p.query! }));
+          }
+        });
+
         // Update lag history
         const now = new Date().toLocaleTimeString();
         setLagHistory(prev => {
@@ -895,13 +919,28 @@ export const PipelineMonitor: React.FC = () => {
                 const lastDash = p.name.lastIndexOf('-');
                 const tsStr = p.name.slice(lastDash + 1);
                 const isTimestamp = lastDash > 0 && !isNaN(Number(tsStr)) && tsStr.length >= 10;
+                const currentDeployId = p.deployId || (isTimestamp ? tsStr : (p.name.startsWith('sink-') ? p.name.replace(/^sink-[^-]+-/, '') : p.name));
                 
-                // If it's a sink connector, group by its target table across duplicate deployIds
-                const sinkTargetTable = getSinkTargetTable(p.name);
+                // If it's a sink connector, group by its target table ONLY IF the query is the same
+                const sinkTargetTable = p.targetTable || getSinkTargetTable(p.name);
+                const pQueryNorm = normalizeQuery(p.query || originalQueries[currentDeployId]);
+
                 if (sinkTargetTable) {
                   const existingGroup = Object.entries(acc).find(([key, list]) => {
                     if (key.startsWith('Shared:')) return false;
-                    return list.some(item => getSinkTargetTable(item.name) === sinkTargetTable);
+                    const firstSink = list.find(item => item.name.startsWith('sink-'));
+                    if (!firstSink) return false;
+                    const groupTargetTable = firstSink.targetTable || getSinkTargetTable(firstSink.name);
+                    if (groupTargetTable !== sinkTargetTable) return false;
+
+                    // Check queries if available
+                    const firstDeployId = firstSink.deployId || key;
+                    const groupQueryNorm = normalizeQuery(firstSink.query || originalQueries[firstDeployId]);
+                    if (pQueryNorm && groupQueryNorm) {
+                      return pQueryNorm === groupQueryNorm;
+                    }
+                    // If queries are not yet resolved, group by deployId proximity
+                    return key === currentDeployId || Math.abs(Number(key) - Number(currentDeployId)) <= 2000;
                   });
                   if (existingGroup) {
                     existingGroup[1].push(p);

@@ -71,6 +71,32 @@ public class PipelineMetadataRepository {
         }
     }
 
+    public java.util.List<Map<String, Object>> findPipelinesByTargetTable(String targetTable) {
+        if (targetTable == null || targetTable.trim().isEmpty()) return java.util.Collections.emptyList();
+        try {
+            return jdbcTemplate.queryForList(
+                "SELECT deploy_id, query, source_connection_id, target_table, target_connection_id, target_database, source_connection_ids, created_at " +
+                "FROM data_warehouse_pipelines WHERE target_table = ? ORDER BY created_at DESC",
+                targetTable.trim()
+            );
+        } catch (Exception e) {
+            return java.util.Collections.emptyList();
+        }
+    }
+
+    public long countPipelinesForTargetTableExcept(String targetTable, String excludeDeployId) {
+        if (targetTable == null || targetTable.trim().isEmpty()) return 0;
+        try {
+            Long count = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM data_warehouse_pipelines WHERE target_table = ? AND deploy_id <> ?",
+                new Object[]{targetTable.trim(), excludeDeployId}, Long.class
+            );
+            return count != null ? count : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     public java.util.Set<String> getAllSourceConnectionIdsForTargetTable(String targetTable) {
         java.util.Set<String> result = new java.util.LinkedHashSet<>();
         if (targetTable == null || targetTable.trim().isEmpty()) return result;
