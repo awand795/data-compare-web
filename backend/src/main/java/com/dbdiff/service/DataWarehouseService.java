@@ -968,7 +968,7 @@ public class DataWarehouseService {
                 // Save metadata
                 try {
                     Set<String> allSourceIds = new LinkedHashSet<>();
-                    allSourceIds.addAll(pipelineMetadataRepository.getAllSourceConnectionIdsForTargetTable(request.getTargetTable()));
+                    allSourceIds.addAll(pipelineMetadataRepository.getAllSourceConnectionIdsForDeployId(String.valueOf(deployId)));
                     if (request.getSourceConnections() != null) {
                         for (ConnectionDetails cd : request.getSourceConnections()) {
                             if (cd != null && cd.getId() != null) allSourceIds.add(String.valueOf(cd.getId()));
@@ -1209,7 +1209,7 @@ public class DataWarehouseService {
                 // Save the original query + connection metadata to repository
                 try {
                     Set<String> allSourceIds = new LinkedHashSet<>();
-                    allSourceIds.addAll(pipelineMetadataRepository.getAllSourceConnectionIdsForTargetTable(request.getTargetTable()));
+                    allSourceIds.addAll(pipelineMetadataRepository.getAllSourceConnectionIdsForDeployId(String.valueOf(deployId)));
                     if (request.getSourceConnections() != null) {
                         for (ConnectionDetails cd : request.getSourceConnections()) {
                             if (cd != null && cd.getId() != null) allSourceIds.add(String.valueOf(cd.getId()));

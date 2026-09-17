@@ -97,6 +97,25 @@ public class PipelineMetadataRepository {
         }
     }
 
+    public java.util.Set<String> getAllSourceConnectionIdsForDeployId(String deployId) {
+        java.util.Set<String> result = new java.util.LinkedHashSet<>();
+        if (deployId == null || deployId.trim().isEmpty()) return result;
+        try {
+            Map<String, Object> meta = getPipelineMetadata(deployId.trim());
+            if (meta != null) {
+                String single = (String) meta.get("source_connection_id");
+                if (single != null && !single.isBlank()) result.add(single.trim());
+                String multiple = (String) meta.get("source_connection_ids");
+                if (multiple != null && !multiple.isBlank()) {
+                    for (String s : multiple.split(",")) {
+                        if (!s.isBlank()) result.add(s.trim());
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return result;
+    }
+
     public java.util.Set<String> getAllSourceConnectionIdsForTargetTable(String targetTable) {
         java.util.Set<String> result = new java.util.LinkedHashSet<>();
         if (targetTable == null || targetTable.trim().isEmpty()) return result;
