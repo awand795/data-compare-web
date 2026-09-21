@@ -37,7 +37,7 @@ public class SshTunnelService implements DisposableBean {
     public void checkAndReconnectTunnels() {
         for (String connId : permanentTunnels) {
             if (!isTunnelHealthy(connId)) {
-                logger.warn("Auto-Heal: autossh process {} is dead. Attempting to restart...", connId);
+                logger.warn("Auto-Heal: autossh process / port for {} is dead or not listening. Attempting to restart...", connId);
                 ConnectionDetails details = connectionDetailsMap.get(connId);
                 if (details != null) {
                     try {
@@ -72,11 +72,12 @@ public class SshTunnelService implements DisposableBean {
     private int getOrOpenTunnelInternal(ConnectionDetails details, String connId) throws Exception {
         if (activeAutossh.containsKey(connId)) {
             Process p = activeAutossh.get(connId);
-            if (p.isAlive()) {
-                int cachedPort = localPorts.get(connId);
+            Integer cachedPort = localPorts.get(connId);
+            if (p.isAlive() && cachedPort != null && cachedPort > 0 && isPortListening(cachedPort)) {
                 logger.debug("Reusing existing autossh process for {} on localhost:{}", connId, cachedPort);
                 return cachedPort;
             } else {
+                logger.warn("Existing autossh process for {} (port {}) is dead or not listening. Forcing restart...", connId, cachedPort);
                 closeTunnelInternal(connId);
             }
         }
@@ -110,6 +111,8 @@ public class SshTunnelService implements DisposableBean {
         cmd.add("-o"); cmd.add("ServerAliveInterval=15");
         cmd.add("-o"); cmd.add("ServerAliveCountMax=3");
         cmd.add("-o"); cmd.add("ExitOnForwardFailure=yes");
+        cmd.add("-o"); cmd.add("ConnectTimeout=10");
+        cmd.add("-o"); cmd.add("TCPKeepAlive=yes");
         
         if (keyPath != null) {
             cmd.add("-i");
@@ -137,6 +140,7 @@ public class SshTunnelService implements DisposableBean {
         } catch (Exception ignored) {}
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.environment().put("AUTOSSH_GATETIME", "0");
         pb.redirectErrorStream(true);
         Process process = pb.start();
         
@@ -159,7 +163,23 @@ public class SshTunnelService implements DisposableBean {
 
     public boolean isTunnelHealthy(String connId) {
         Process p = activeAutossh.get(connId);
-        return p != null && p.isAlive();
+        if (p == null || !p.isAlive()) {
+            return false;
+        }
+        Integer port = localPorts.get(connId);
+        if (port == null || port <= 0) {
+            return false;
+        }
+        return isPortListening(port);
+    }
+
+    private boolean isPortListening(int port) {
+        try (java.net.Socket s = new java.net.Socket()) {
+            s.connect(new java.net.InetSocketAddress("127.0.0.1", port), 1500);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public void markTunnelAsPermanent(String connectionId) {
@@ -203,11 +223,22 @@ public class SshTunnelService implements DisposableBean {
             } catch (Exception ignored) {}
         }
         
+        Integer port = localPorts.get(connectionId);
+        if (port != null && port > 0) {
+            try {
+                if (!System.getProperty("os.name", "").toLowerCase().contains("win")) {
+                    new ProcessBuilder("sh", "-c", "pkill -9 -f ':" + port + ":' || true").start().waitFor();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (!permanentTunnels.contains(connectionId)) {
+            localPorts.remove(connectionId);
+        }
+        
         try {
             Files.deleteIfExists(Paths.get("/tmp/key_" + connectionId + ".pem"));
         } catch (Exception ignored) {}
-        
-        localPorts.remove(connectionId);
     }
 
     @Override
