@@ -2837,13 +2837,38 @@ public class DataWarehouseService {
                                 baseVersion = rsMax.getLong(1);
                             }
                         } catch (Exception ignored) {}
-                        long backfillVersion = Math.max(baseVersion + 1, System.currentTimeMillis() * 1000L);
-                        
+                        // Ambil daftar kolom yang benar-benar ada di landing table ClickHouse
+                        Set<String> chLandingCols = new LinkedHashSet<>();
+                        try (ResultSet rsChCols = targetStmt.executeQuery("SELECT name FROM system.columns WHERE database = '" + chDb + "' AND table = '" + landingTable + "'")) {
+                            while (rsChCols.next()) {
+                                chLandingCols.add(rsChCols.getString(1).toLowerCase());
+                            }
+                        } catch (Exception ex) {
+                            logger.warn("Could not inspect columns for ClickHouse landing table " + landingTable + ": " + ex.getMessage());
+                        }
+
+                        // Filter cols agar hanya menyertakan kolom yang ADA di ClickHouse landing table dan buat pemetaan index sumber
+                        List<ColumnInfo> activeCols = new ArrayList<>();
+                        List<Integer> activeColIndices = new ArrayList<>(); // 1-based index di ResultSet sumber
+                        for (int i = 0; i < cols.size(); i++) {
+                            ColumnInfo c = cols.get(i);
+                            if (chLandingCols.isEmpty() || chLandingCols.contains(c.name.toLowerCase())) {
+                                activeCols.add(c);
+                                activeColIndices.add(i + 1);
+                            }
+                        }
+
+                        if (activeCols.isEmpty()) {
+                            logger.warn("No matching columns between source table " + physicalTable + " and landing table " + landingTable);
+                            sendLog(emitter, "WARNING: Tidak ada kolom yang cocok antara source table `" + physicalTable + "` dan landing table `" + landingTable + "`.");
+                            return;
+                        }
+
                         try {
                             StringBuilder psSql = new StringBuilder("INSERT INTO `").append(chDb).append("`.`").append(landingTable).append("` (`");
-                            psSql.append(cols.stream().map(c -> c.name).collect(java.util.stream.Collectors.joining("`, `")));
+                            psSql.append(activeCols.stream().map(c -> c.name).collect(java.util.stream.Collectors.joining("`, `")));
                             psSql.append("`, `version`, `is_deleted`) VALUES (");
-                            for (int i = 0; i < cols.size() + 2; i++) {
+                            for (int i = 0; i < activeCols.size() + 2; i++) {
                                 psSql.append(i == 0 ? "?" : ", ?");
                             }
                             psSql.append(")");
@@ -2853,8 +2878,9 @@ public class DataWarehouseService {
                             
                             try (PreparedStatement targetPs = targetConn.prepareStatement(psSql.toString())) {
                                 while (rs.next()) {
-                                    for (int i = 1; i <= cols.size(); i++) {
-                                        Object val = rs.getObject(i);
+                                    for (int k = 0; k < activeCols.size(); k++) {
+                                        int srcIdx = activeColIndices.get(k);
+                                        Object val = rs.getObject(srcIdx);
                                         if (val instanceof java.sql.Date) {
                                             java.sql.Date d = (java.sql.Date) val;
                                             java.time.LocalDate ld = d.toLocalDate();
@@ -2865,7 +2891,7 @@ public class DataWarehouseService {
                                                 ld = java.time.LocalDate.of(2299, 12, 31);
                                                 val = java.sql.Date.valueOf(ld);
                                             }
-                                            ColumnInfo colInfo = (i - 1 < cols.size()) ? cols.get(i - 1) : null;
+                                            ColumnInfo colInfo = activeCols.get(k);
                                             if (colInfo != null && "Date".equalsIgnoreCase(colInfo.clickhouseType) && ld.getYear() < 1970) {
                                                 ld = java.time.LocalDate.of(1970, 1, 1);
                                                 val = java.sql.Date.valueOf(ld);
@@ -2877,7 +2903,7 @@ public class DataWarehouseService {
                                             } else if (ld.getYear() > 2299) {
                                                 ld = java.time.LocalDate.of(2299, 12, 31);
                                             }
-                                            ColumnInfo colInfo = (i - 1 < cols.size()) ? cols.get(i - 1) : null;
+                                            ColumnInfo colInfo = activeCols.get(k);
                                             if (colInfo != null && "Date".equalsIgnoreCase(colInfo.clickhouseType) && ld.getYear() < 1970) {
                                                 ld = java.time.LocalDate.of(1970, 1, 1);
                                             }
@@ -2892,10 +2918,10 @@ public class DataWarehouseService {
                                             }
                                             val = ldt;
                                         }
-                                        targetPs.setObject(i, val);
+                                        targetPs.setObject(k + 1, val);
                                     }
-                                    targetPs.setLong(cols.size() + 1, backfillVersion);
-                                    targetPs.setInt(cols.size() + 2, 0);
+                                    targetPs.setLong(activeCols.size() + 1, backfillVersion);
+                                    targetPs.setInt(activeCols.size() + 2, 0);
                                     targetPs.addBatch();
                                     rowCount++;
                                     batchRows++;
