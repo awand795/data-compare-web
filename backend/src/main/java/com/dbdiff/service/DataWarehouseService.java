@@ -2886,37 +2886,35 @@ public class DataWarehouseService {
                                         if (val instanceof java.sql.Date) {
                                             java.sql.Date d = (java.sql.Date) val;
                                             java.time.LocalDate ld = d.toLocalDate();
-                                            if (ld.getYear() < 1900) {
-                                                ld = java.time.LocalDate.of(1900, 1, 1);
-                                                val = java.sql.Date.valueOf(ld);
-                                            } else if (ld.getYear() > 2299) {
-                                                ld = java.time.LocalDate.of(2299, 12, 31);
-                                                val = java.sql.Date.valueOf(ld);
-                                            }
-                                            ColumnInfo colInfo = activeCols.get(k);
-                                            if (colInfo != null && "Date".equalsIgnoreCase(colInfo.clickhouseType) && ld.getYear() < 1970) {
+                                            if (ld.getYear() < 1970) {
                                                 ld = java.time.LocalDate.of(1970, 1, 1);
-                                                val = java.sql.Date.valueOf(ld);
+                                            } else if (ld.getYear() > 2148) {
+                                                ld = java.time.LocalDate.of(2148, 12, 31);
                                             }
+                                            val = java.sql.Date.valueOf(ld);
                                         } else if (val instanceof java.time.LocalDate) {
                                             java.time.LocalDate ld = (java.time.LocalDate) val;
-                                            if (ld.getYear() < 1900) {
-                                                ld = java.time.LocalDate.of(1900, 1, 1);
-                                            } else if (ld.getYear() > 2299) {
-                                                ld = java.time.LocalDate.of(2299, 12, 31);
-                                            }
-                                            ColumnInfo colInfo = activeCols.get(k);
-                                            if (colInfo != null && "Date".equalsIgnoreCase(colInfo.clickhouseType) && ld.getYear() < 1970) {
+                                            if (ld.getYear() < 1970) {
                                                 ld = java.time.LocalDate.of(1970, 1, 1);
+                                            } else if (ld.getYear() > 2148) {
+                                                ld = java.time.LocalDate.of(2148, 12, 31);
                                             }
                                             val = java.sql.Date.valueOf(ld);
                                         } else if (val instanceof java.sql.Timestamp) {
                                             java.sql.Timestamp ts = (java.sql.Timestamp) val;
                                             java.time.LocalDateTime ldt = ts.toLocalDateTime();
-                                            if (ldt.getYear() < 1900) {
-                                                ldt = java.time.LocalDateTime.of(1900, 1, 1, 0, 0, 0);
-                                            } else if (ldt.getYear() > 2299) {
-                                                ldt = java.time.LocalDateTime.of(2299, 12, 31, 23, 59, 59);
+                                            if (ldt.getYear() < 1970) {
+                                                ldt = java.time.LocalDateTime.of(1970, 1, 1, 0, 0, 0);
+                                            } else if (ldt.getYear() > 2105) {
+                                                ldt = java.time.LocalDateTime.of(2105, 12, 31, 23, 59, 59);
+                                            }
+                                            val = ldt;
+                                        } else if (val instanceof java.time.LocalDateTime) {
+                                            java.time.LocalDateTime ldt = (java.time.LocalDateTime) val;
+                                            if (ldt.getYear() < 1970) {
+                                                ldt = java.time.LocalDateTime.of(1970, 1, 1, 0, 0, 0);
+                                            } else if (ldt.getYear() > 2105) {
+                                                ldt = java.time.LocalDateTime.of(2105, 12, 31, 23, 59, 59);
                                             }
                                             val = ldt;
                                         }
