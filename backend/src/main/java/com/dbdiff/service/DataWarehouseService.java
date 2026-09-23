@@ -2816,7 +2816,7 @@ public class DataWarehouseService {
                 } catch (Exception ignored) {}
                 try (PreparedStatement srcPs = srcConn.prepareStatement(srcSelectSql)) {
                     try {
-                        srcPs.setFetchSize(5000);
+                        srcPs.setFetchSize(2000);
                     } catch (Exception ignored) {}
                     try (ResultSet rs = srcPs.executeQuery();
                          Connection targetConn = targetDs.getConnection();
@@ -2935,12 +2935,14 @@ public class DataWarehouseService {
                                     
                                     if (batchRows >= 2000) {
                                         targetPs.executeBatch();
+                                        targetPs.clearBatch();
                                         batchRows = 0;
                                     }
                                 }
                                 
                                 if (batchRows > 0) {
                                     targetPs.executeBatch();
+                                    targetPs.clearBatch();
                                 }
                             }
                             
@@ -2949,6 +2951,7 @@ public class DataWarehouseService {
                         } finally {
                             // Attach dependent MVs back
                             for (String mv : mvs) { targetStmt.execute("ATTACH TABLE `" + chDb + "`.`" + mv + "`"); }
+                            System.gc();
                         }
                     }
                 }

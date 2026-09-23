@@ -6,7 +6,7 @@ services:
     # Menggunakan host network agar menyatu dengan IP server (localhost)
     network_mode: "host"
     environment:
-      - JAVA_OPTS=-Xmx1536m -Xms1536m -DMALLOC_ARENA_MAX=2
+      - JAVA_OPTS=-Xmx2048m -Xms1024m -DMALLOC_ARENA_MAX=2
       - MALLOC_ARENA_MAX=2
       - TZ=Asia/Jakarta
       # Karena network_mode host, semua service di server bisa dipanggil dengan 127.0.0.1
