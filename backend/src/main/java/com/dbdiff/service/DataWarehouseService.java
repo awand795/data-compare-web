@@ -4560,8 +4560,310 @@ public class DataWarehouseService {
                     logger.warn("Could not optimize target table: " + e.getMessage());
                 }
 
+                // D. Reconcile & Restore Debezium Source Connectors, Replication Slots, and Topics
+                sendLog(emitter, "🔍 Memeriksa dan merekonsiliasi Replication Slot, Publication, dan Debezium Connector...");
+                for (ConnectionDetails sConn : allSourceConns) {
+                    String sBaseName = sConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                    String sConnectorName = "source-" + sBaseName + "-shared";
+                    String safeSlotName = "slot_" + sBaseName + "_shared";
+                    DataSource sDs = connectionManagerService.getDataSource(sConn);
+
+                    List<String> formattedTables = new ArrayList<>();
+                    for (String t : physicalTables) {
+                        String cleanTable = t.replaceAll("[\"``]", "");
+                        if (cleanTable.contains(".")) {
+                            formattedTables.add(cleanTable);
+                        } else {
+                            if ("postgresql".equalsIgnoreCase(sConn.getType())) {
+                                String defaultSchema = sConn.getSchema();
+                                if (defaultSchema == null || defaultSchema.isEmpty()) defaultSchema = "public";
+                                formattedTables.add(defaultSchema + "." + cleanTable);
+                            } else if ("mysql".equalsIgnoreCase(sConn.getType())) {
+                                String db = sConn.getDatabase();
+                                formattedTables.add(db + "." + cleanTable);
+                            } else {
+                                formattedTables.add(cleanTable);
+                            }
+                        }
+                    }
+
+                    if ("postgresql".equalsIgnoreCase(sConn.getType())) {
+                        try (Connection pgConn = sDs.getConnection();
+                             Statement pgStmt = pgConn.createStatement()) {
+                            try { pgStmt.execute("SET lock_timeout = '3s'"); } catch (Exception ignored) {}
+
+                            // 1. Cek / Buat tabel heartbeat public._dbz_heartbeat
+                            try {
+                                pgStmt.execute("CREATE TABLE IF NOT EXISTS public._dbz_heartbeat (id INT PRIMARY KEY, ts TIMESTAMPTZ NOT NULL)");
+                                pgStmt.execute("INSERT INTO public._dbz_heartbeat(id, ts) VALUES(1, now()) ON CONFLICT(id) DO NOTHING");
+                            } catch (Exception ignored) {}
+
+                            // 2. Set REPLICA IDENTITY FULL
+                            for (String tbl : formattedTables) {
+                                try {
+                                    pgStmt.execute("ALTER TABLE " + tbl + " REPLICA IDENTITY FULL");
+                                } catch (Exception ex) {
+                                    logger.debug("Could not set REPLICA IDENTITY FULL on " + tbl + ": " + ex.getMessage());
+                                }
+                            }
+
+                            // 3. Cek apakah replication slot sudah ada di PostgreSQL
+                            boolean slotExists = false;
+                            try (ResultSet rs = pgStmt.executeQuery("SELECT 1 FROM pg_replication_slots WHERE slot_name = '" + safeSlotName + "'")) {
+                                if (rs.next()) {
+                                    slotExists = true;
+                                }
+                            }
+
+                            // 4. Cek apakah publication sudah ada
+                            boolean pubExists = false;
+                            try (ResultSet rs = pgStmt.executeQuery("SELECT 1 FROM pg_publication WHERE pubname = 'pub_" + safeSlotName + "'")) {
+                                if (rs.next()) {
+                                    pubExists = true;
+                                }
+                            }
+                            if (!pubExists) {
+                                try {
+                                    pgStmt.execute("CREATE PUBLICATION pub_" + safeSlotName + " FOR ALL TABLES");
+                                    sendLog(emitter, "Created publication `pub_" + safeSlotName + "` in PostgreSQL.");
+                                } catch (Exception ex) {
+                                    try {
+                                        pgStmt.execute("CREATE PUBLICATION pub_" + safeSlotName);
+                                    } catch (Exception ignored) {}
+                                }
+                            }
+
+                            // Pastikan semua tabel masuk ke publication
+                            for (String tbl : formattedTables) {
+                                try {
+                                    pgStmt.execute("ALTER PUBLICATION pub_" + safeSlotName + " ADD TABLE " + tbl);
+                                } catch (Exception ignored) {}
+                            }
+                            try {
+                                pgStmt.execute("ALTER PUBLICATION pub_" + safeSlotName + " ADD TABLE public._dbz_heartbeat");
+                            } catch (Exception ignored) {}
+
+                            if (slotExists) {
+                                sendLog(emitter, "PostgreSQL replication slot `" + safeSlotName + "` sudah aktif (SKIP recreate slot).");
+                            } else {
+                                sendLog(emitter, "PostgreSQL replication slot `" + safeSlotName + "` belum ada / telah dihapus. Debezium akan otomatis membuatnya kembali.");
+                            }
+                        } catch (Exception ex) {
+                            logger.warn("Gagal merekonsiliasi PostgreSQL replication slot: " + ex.getMessage());
+                        }
+                    }
+
+                    // 5. Cek status Debezium Source Connector
+                    boolean needRecreateConnector = false;
+                    boolean connectorExists = false;
+                    Map<String, Object> existingSourceConfig = null;
+                    try {
+                        existingSourceConfig = getConnectorConfig(sConnectorName);
+                        if (existingSourceConfig != null && !existingSourceConfig.isEmpty() && !existingSourceConfig.containsKey("error_code")) {
+                            connectorExists = true;
+                        }
+                    } catch (Exception ignored) {}
+
+                    if (connectorExists) {
+                        try {
+                            String statusJson = restTemplate.getForObject(DEBEZIUM_URL + "/" + sConnectorName + "/status", String.class);
+                            if (statusJson != null && statusJson.contains("\"state\":\"FAILED\"")) {
+                                sendLog(emitter, "Connector `" + sConnectorName + "` berstatus FAILED (karena slot sempat hilang). Melakukan recreate...");
+                                needRecreateConnector = true;
+                            }
+                        } catch (Exception ex) {
+                            needRecreateConnector = true;
+                        }
+                    } else {
+                        needRecreateConnector = true;
+                    }
+
+                    if (needRecreateConnector) {
+                        try {
+                            if (connectorExists) {
+                                deleteConnectorWithWait(sConnectorName);
+                                Thread.sleep(1500);
+                            }
+
+                            sendLog(emitter, "Mendaftarkan ulang connector Debezium `" + sConnectorName + "` dengan mode realtime streaming...");
+
+                            // Build Source Config
+                            Map<String, Object> newSourceConfig = new HashMap<>();
+                            String sHost = sConn.getHost() != null ? sConn.getHost().trim() : "";
+                            String sPort = String.valueOf(sConn.getPort());
+                            if (sConn.isUseSsh()) {
+                                try {
+                                    int tunnelPort = sshTunnelService.getOrOpenTunnel(sConn, String.valueOf(sConn.getId()));
+                                    sshTunnelService.markTunnelAsPermanent(String.valueOf(sConn.getId()));
+                                    sHost = resolveTunnelHost();
+                                    sPort = String.valueOf(tunnelPort);
+                                } catch (Exception ignored) {}
+                            }
+
+                            if ("postgresql".equalsIgnoreCase(sConn.getType())) {
+                                newSourceConfig.put("connector.class", "io.debezium.connector.postgresql.PostgresConnector");
+                                newSourceConfig.put("plugin.name", "pgoutput");
+                                newSourceConfig.put("slot.name", safeSlotName);
+                                newSourceConfig.put("publication.name", "pub_" + safeSlotName);
+                                newSourceConfig.put("publication.autocreate.mode", "filtered");
+                                newSourceConfig.put("heartbeat.interval.ms", "10000");
+                                newSourceConfig.put("heartbeat.action.query",
+                                        "INSERT INTO public._dbz_heartbeat(id, ts) VALUES(1, now()) ON CONFLICT(id) DO UPDATE SET ts = EXCLUDED.ts");
+                                newSourceConfig.put("slot.drop.on.stop", "false");
+                                newSourceConfig.put("database.sslmode", (sConn.getSslMode() != null && !sConn.getSslMode().trim().isEmpty()) ? sConn.getSslMode().trim() : "disable");
+                                newSourceConfig.put("time.precision.mode", "connect");
+                                // Karena data historis sudah di-backfill oleh JDBC, snapshot.mode diset never agar langsung streaming LSN realtime
+                                newSourceConfig.put("snapshot.mode", "never");
+                            } else if ("mysql".equalsIgnoreCase(sConn.getType())) {
+                                newSourceConfig.put("connector.class", "io.debezium.connector.mysql.MySqlConnector");
+                                newSourceConfig.put("snapshot.mode", "schema_only");
+                            } else {
+                                newSourceConfig.put("connector.class", "io.debezium.connector." + sConn.getType().toLowerCase() + "." + sConn.getType() + "Connector");
+                                newSourceConfig.put("snapshot.mode", "schema_only");
+                            }
+
+                            newSourceConfig.put("tasks.max", "1");
+                            newSourceConfig.put("database.hostname", sHost);
+                            newSourceConfig.put("database.port", sPort);
+                            newSourceConfig.put("database.user", sConn.getUsername() != null ? sConn.getUsername().trim() : "");
+                            newSourceConfig.put("database.password", sConn.getPassword());
+                            newSourceConfig.put("database.dbname", sConn.getDatabase() != null ? sConn.getDatabase().trim() : "");
+                            newSourceConfig.put("database.connect.timeout.ms", "30000");
+                            newSourceConfig.put("database.server.name", sConnectorName);
+                            newSourceConfig.put("topic.prefix", sConnectorName);
+
+                            String topicPrefix = "cdc_" + sBaseName + "_";
+                            newSourceConfig.put("transforms", "route,unwrap,rename,castBool,castInt,dropHeartbeat");
+                            newSourceConfig.put("transforms.route.type", "org.apache.kafka.connect.transforms.RegexRouter");
+                            newSourceConfig.put("transforms.route.regex", "([^\\.]+)\\.([^\\.]+)\\.([^\\.]+)");
+                            newSourceConfig.put("transforms.route.replacement", topicPrefix + "$2_$3");
+                            newSourceConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
+                            newSourceConfig.put("transforms.unwrap.drop.tombstones", "true");
+                            newSourceConfig.put("transforms.unwrap.delete.handling.mode", "rewrite");
+                            newSourceConfig.put("transforms.unwrap.add.fields", "lsn");
+                            newSourceConfig.put("transforms.rename.type", "org.apache.kafka.connect.transforms.ReplaceField$Value");
+                            newSourceConfig.put("transforms.rename.renames", "__deleted:is_deleted,__lsn:version");
+                            newSourceConfig.put("transforms.castBool.type", "org.apache.kafka.connect.transforms.Cast$Value");
+                            newSourceConfig.put("transforms.castBool.spec", "is_deleted:boolean");
+                            newSourceConfig.put("transforms.castInt.type", "org.apache.kafka.connect.transforms.Cast$Value");
+                            newSourceConfig.put("transforms.castInt.spec", "is_deleted:int8");
+                            newSourceConfig.put("predicates", "isHeartbeat");
+                            newSourceConfig.put("predicates.isHeartbeat.type", "org.apache.kafka.connect.transforms.predicates.TopicNameMatches");
+                            newSourceConfig.put("predicates.isHeartbeat.pattern", ".*_dbz_heartbeat");
+                            newSourceConfig.put("transforms.dropHeartbeat.type", "org.apache.kafka.connect.transforms.Filter");
+                            newSourceConfig.put("transforms.dropHeartbeat.predicate", "isHeartbeat");
+
+                            String tblList = String.join(",", formattedTables);
+                            if ("postgresql".equalsIgnoreCase(sConn.getType())) {
+                                tblList += ",public._dbz_heartbeat";
+                            }
+                            newSourceConfig.put("table.include.list", tblList);
+                            newSourceConfig.put("decimal.handling.mode", "double");
+                            newSourceConfig.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
+                            newSourceConfig.put("key.converter.schemas.enable", "true");
+                            newSourceConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
+                            newSourceConfig.put("value.converter.schemas.enable", "true");
+
+                            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+                            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+
+                            Map<String, Object> payload = new HashMap<>();
+                            payload.put("name", sConnectorName);
+                            payload.put("config", newSourceConfig);
+                            org.springframework.http.HttpEntity<Map<String, Object>> entity = new org.springframework.http.HttpEntity<>(payload, headers);
+                            registerConnectorWithRetry(emitter, sConnectorName, entity, 3);
+                            sendLog(emitter, "Connector `" + sConnectorName + "` berhasil didaftarkan ulang & CDC streaming aktif.");
+                        } catch (Exception ex) {
+                            sendLog(emitter, "WARNING: Gagal mendaftarkan ulang connector `" + sConnectorName + "`: " + ex.getMessage());
+                        }
+                    } else {
+                        // Connector sudah RUNNING, pastikan semua tabel sudah ter-include
+                        String currentTablesStr = (String) existingSourceConfig.get("table.include.list");
+                        Set<String> currentTables = new HashSet<>();
+                        if (currentTablesStr != null) {
+                            for (String ct : currentTablesStr.split(",")) currentTables.add(ct.trim());
+                        }
+                        boolean missingAnyTable = false;
+                        for (String ft : formattedTables) {
+                            if (!currentTables.contains(ft)) {
+                                missingAnyTable = true;
+                                break;
+                            }
+                        }
+                        if (missingAnyTable) {
+                            sendLog(emitter, "Menambahkan tabel yang belum terdaftar ke connector `" + sConnectorName + "`...");
+                            currentTables.addAll(formattedTables);
+                            if ("postgresql".equalsIgnoreCase(sConn.getType())) currentTables.add("public._dbz_heartbeat");
+                            existingSourceConfig.put("table.include.list", String.join(",", currentTables));
+                            try {
+                                org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+                                headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+                                org.springframework.http.HttpEntity<Map<String, Object>> updateEntity = new org.springframework.http.HttpEntity<>(existingSourceConfig, headers);
+                                restTemplate.put(DEBEZIUM_URL + "/" + sConnectorName + "/config", updateEntity);
+                                sendLog(emitter, "Daftar tabel pada connector `" + sConnectorName + "` berhasil diperbarui.");
+                            } catch (Exception ex) {
+                                logger.warn("Could not update connector config: " + ex.getMessage());
+                            }
+                        } else {
+                            sendLog(emitter, "Connector `" + sConnectorName + "` sudah aktif normal dan memonitor seluruh tabel (SKIP).");
+                        }
+                    }
+                }
+
+                // 6. Cek Sink Connector dan Topics
+                boolean isPostgresTarget = "postgresql".equalsIgnoreCase(targetConn.getType());
+                String cleanTarget = targetTable.replaceAll("[\"``]", "");
+                String sinkConnectorName = isPostgresTarget ?
+                        "sink-postgres-" + cleanTarget + "-" + deployId :
+                        "sink-clickhouse-" + cleanTarget + "-" + deployId;
+
+                try {
+                    Map<String, Object> currentSinkConfig = getConnectorConfig(sinkConnectorName);
+                    if (currentSinkConfig != null && !currentSinkConfig.isEmpty() && !currentSinkConfig.containsKey("error_code")) {
+                        Set<String> existingTopics = new LinkedHashSet<>();
+                        String currentTopicsStr = (String) currentSinkConfig.get("topics");
+                        if (currentTopicsStr != null) {
+                            for (String t : currentTopicsStr.split(",")) {
+                                if (!t.trim().isEmpty()) existingTopics.add(t.trim());
+                            }
+                        }
+
+                        Set<String> requiredTopics = new LinkedHashSet<>();
+                        for (ConnectionDetails connItem : allSourceConns) {
+                            String itemBaseName = connItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                            String itemTopicPrefix = "cdc_" + itemBaseName + "_";
+                            for (String t : physicalTables) {
+                                String cleanTable = t.replaceAll("[\"``]", "").replace(".", "_");
+                                requiredTopics.add(itemTopicPrefix + cleanTable);
+                            }
+                        }
+
+                        boolean missingTopic = false;
+                        for (String rt : requiredTopics) {
+                            if (!existingTopics.contains(rt)) {
+                                missingTopic = true;
+                                existingTopics.add(rt);
+                            }
+                        }
+
+                        if (missingTopic) {
+                            sendLog(emitter, "Memperbarui daftar topics pada Sink Connector `" + sinkConnectorName + "`...");
+                            currentSinkConfig.put("topics", String.join(",", existingTopics));
+                            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+                            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+                            org.springframework.http.HttpEntity<Map<String, Object>> sinkUpdateEntity = new org.springframework.http.HttpEntity<>(currentSinkConfig, headers);
+                            restTemplate.put(DEBEZIUM_URL + "/" + sinkConnectorName + "/config", sinkUpdateEntity);
+                            sendLog(emitter, "Topics pada Sink Connector berhasil diperbarui.");
+                        } else {
+                            sendLog(emitter, "Sink Connector `" + sinkConnectorName + "` sudah mencakup seluruh CDC topics (SKIP).");
+                        }
+                    }
+                } catch (Exception ex) {
+                    logger.warn("Gagal mengecek atau memperbarui Sink Connector topics: " + ex.getMessage());
+                }
+
                 sendLog(emitter, "==================================================");
-                sendLog(emitter, "✅ Backfill Missing Data berhasil diselesaikan untuk semua " + allSourceConns.size() + " database sumber!");
+                sendLog(emitter, "✅ Backfill & Sinkronisasi Realtime berhasil dipulihkan untuk semua " + allSourceConns.size() + " database sumber!");
             }
 
             emitter.complete();

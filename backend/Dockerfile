@@ -1,9 +1,10 @@
-# Stage 1: Build with Maven
+# syntax=docker/dockerfile:1.4
+# Stage 1: Build with Maven using host m2 cache
 FROM maven:3.9-eclipse-temurin-21-alpine AS build
 WORKDIR /app
 COPY pom.xml ./
 COPY src ./src
-RUN mvn clean package -DskipTests -B
+RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests -B
 
 # Stage 2: Run with JRE
 FROM eclipse-temurin:21-jre-alpine
