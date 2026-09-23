@@ -220,6 +220,7 @@ public class SshTunnelService implements DisposableBean {
                 if (p.isAlive()) {
                     p.destroyForcibly();
                 }
+                p.waitFor();
             } catch (Exception ignored) {}
         }
         
@@ -227,7 +228,8 @@ public class SshTunnelService implements DisposableBean {
         if (port != null && port > 0) {
             try {
                 if (!System.getProperty("os.name", "").toLowerCase().contains("win")) {
-                    new ProcessBuilder("sh", "-c", "pkill -9 -f ':" + port + ":' || true").start().waitFor();
+                    Process pk = new ProcessBuilder("pkill", "-9", "-f", ":" + port + ":").start();
+                    pk.waitFor();
                 }
             } catch (Exception ignored) {}
         }
