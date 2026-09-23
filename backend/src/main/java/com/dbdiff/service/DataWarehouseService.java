@@ -2837,6 +2837,8 @@ public class DataWarehouseService {
                                 baseVersion = rsMax.getLong(1);
                             }
                         } catch (Exception ignored) {}
+                        long backfillVersion = Math.max(baseVersion + 1, System.currentTimeMillis() * 1000L);
+                        
                         // Ambil daftar kolom yang benar-benar ada di landing table ClickHouse
                         Set<String> chLandingCols = new LinkedHashSet<>();
                         try (ResultSet rsChCols = targetStmt.executeQuery("SELECT name FROM system.columns WHERE database = '" + chDb + "' AND table = '" + landingTable + "'")) {
