@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit, Edit3, Code, FileEdit, Database, Clock, Plus, Terminal } from 'lucide-react';
+import { Play, Pause, RotateCcw, Trash2, Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Search, Settings, Eye, BarChart2, X, Save, Edit, Edit3, Code, FileEdit, Database, Clock, Plus, Terminal, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { SQLEditor } from './SQLEditor';
 import clsx from 'clsx';
@@ -104,6 +104,17 @@ export const PipelineMonitor: React.FC = () => {
   const [addSourceLogs, setAddSourceLogs] = useState<string[]>([]);
   const [isAddingSources, setIsAddingSources] = useState(false);
   const addSourceLogEndRef = useRef<HTMLDivElement>(null);
+
+  // Resync Pipeline Modal State
+  const [resyncModal, setResyncModal] = useState<{
+    deployId: string;
+    folderName: string;
+    targetTable: string;
+  } | null>(null);
+  const [resyncMode, setResyncMode] = useState<'full' | 'backfill'>('full');
+  const [resyncLogs, setResyncLogs] = useState<string[]>([]);
+  const [isResyncing, setIsResyncing] = useState(false);
+  const resyncLogEndRef = useRef<HTMLDivElement>(null);
 
   const [renameModalOpen, setRenameModalOpen] = useState<{deployId: string, currentName: string} | null>(null);
   const [newPipelineName, setNewPipelineName] = useState('');
@@ -501,6 +512,68 @@ export const PipelineMonitor: React.FC = () => {
       addToast({ type: 'error', title: 'Failed to Add Source', message: e.message });
     } finally {
       setIsAddingSources(false);
+    }
+  };
+
+  const openResyncModal = (deployId: string, folderName: string, targetTable: string) => {
+    setResyncMode('full');
+    setResyncLogs([]);
+    setIsResyncing(false);
+    setResyncModal({
+      deployId,
+      folderName,
+      targetTable
+    });
+  };
+
+  const handleResyncSubmit = async () => {
+    if (!resyncModal) return;
+
+    setIsResyncing(true);
+    setResyncLogs([`[${new Date().toLocaleTimeString()}] Memulai proses ${resyncMode === 'full' ? 'Full Resync / Clean' : 'Resume / Backfill Missing Data'} untuk pipeline ${resyncModal.deployId}...`]);
+
+    try {
+      const res = await fetch(`/api/dwh/pipelines/resync/${resyncModal.deployId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: resyncMode })
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response stream received');
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('data:')) {
+            const msg = line.substring(5).trim();
+            if (msg) {
+              setResyncLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+              setTimeout(() => resyncLogEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+            }
+          }
+        }
+      }
+
+      addToast({
+        type: 'success',
+        title: 'Resync Berhasil',
+        message: `Pipeline ${resyncModal.targetTable || resyncModal.deployId} berhasil di-resync.`
+      });
+
+      // Refresh data
+      fetchPipelines();
+      fetchSourcesForDeployId(resyncModal.deployId);
+    } catch (e: any) {
+      setResyncLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ERROR: ${e.message}`]);
+      addToast({ type: 'error', title: 'Resync Gagal', message: e.message });
+    } finally {
+      setIsResyncing(false);
     }
   };
 
@@ -1057,6 +1130,14 @@ export const PipelineMonitor: React.FC = () => {
                         >
                           <Plus className="w-3.5 h-3.5" />
                           <span>Add Source DB</span>
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openResyncModal(deployId, folderName, targetTable); }} 
+                          className="px-2 py-1 rounded bg-sky-500/10 text-sky-400 hover:bg-sky-500 hover:text-white transition-colors tooltip flex items-center gap-1.5 text-xs font-semibold"
+                          title="Resync Pipeline (Full Clean or Backfill Missing Data)"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Resync</span>
                         </button>
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleDeletePipeline(deployId, folderName); }} 
@@ -1696,6 +1777,186 @@ export const PipelineMonitor: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Resync Pipeline Modal */}
+      {resyncModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-bg-panel w-full max-w-2xl rounded-xl shadow-2xl flex flex-col border border-border-main" style={{ maxHeight: '90vh' }}>
+            <div className="px-5 py-4 border-b border-border-main flex justify-between items-center bg-sky-500/10 shrink-0">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+                <h3 className="font-bold text-sky-700 dark:text-sky-300 text-sm md:text-base">
+                  Resync Pipeline: <span className="text-text-main font-normal">{resyncModal.folderName}</span>
+                </h3>
+              </div>
+              <button 
+                onClick={() => { if (!isResyncing) setResyncModal(null); }} 
+                className="text-text-muted hover:text-text-main"
+                disabled={isResyncing}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-5 gap-4">
+              <div className="p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg">
+                <p className="text-xs text-sky-800 dark:text-sky-300 leading-relaxed font-medium">
+                  🔄 <strong>Pilih Mode Sinkronisasi Ulang:</strong> Fitur ini memulihkan data ketika replication slot PostgreSQL dihapus atau storage penuh saat CDC terhenti. Pilih strategi yang sesuai dengan kebutuhan Anda.
+                </p>
+              </div>
+
+              {/* Radio Card Options */}
+              <div className="space-y-3">
+                <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider block">
+                  Metode Resync
+                </label>
+
+                {/* Option 1: Full Resync / Clean */}
+                <div 
+                  onClick={() => { if (!isResyncing) setResyncMode('full'); }}
+                  className={clsx(
+                    "p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
+                    resyncMode === 'full' 
+                      ? "bg-rose-500/10 border-rose-500/50 shadow-sm" 
+                      : "bg-bg-main border-border-main hover:border-border-highlight opacity-85",
+                    isResyncing && "pointer-events-none opacity-60"
+                  )}
+                >
+                  <input 
+                    type="radio" 
+                    name="resyncMode" 
+                    checked={resyncMode === 'full'} 
+                    onChange={() => {}} 
+                    className="mt-1 text-rose-500 focus:ring-0 cursor-pointer"
+                    disabled={isResyncing}
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-text-main">
+                        🧹 Full Resync &amp; Clean (Rekomendasi Bersih)
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                        Drop &amp; Re-pull
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-text-muted mt-1 leading-relaxed">
+                      Menghapus total <code>view</code>, <code>Materialized View</code>, landing CDC table, dan tabel target di ClickHouse, lalu melakukan deployment dan penarikan awal ulang dari seluruh database sumber terdaftar. Data lama dibersihkan tuntas tanpa duplikasi.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Option 2: Resume / Backfill Missing Data */}
+                <div 
+                  onClick={() => { if (!isResyncing) setResyncMode('backfill'); }}
+                  className={clsx(
+                    "p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
+                    resyncMode === 'backfill' 
+                      ? "bg-sky-500/10 border-sky-500/50 shadow-sm" 
+                      : "bg-bg-main border-border-main hover:border-border-highlight opacity-85",
+                    isResyncing && "pointer-events-none opacity-60"
+                  )}
+                >
+                  <input 
+                    type="radio" 
+                    name="resyncMode" 
+                    checked={resyncMode === 'backfill'} 
+                    onChange={() => {}} 
+                    className="mt-1 text-sky-500 focus:ring-0 cursor-pointer"
+                    disabled={isResyncing}
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-text-main">
+                        ⚡ Resume &amp; Backfill Missing Data
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                        Tanpa Hapus Data
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-text-muted mt-1 leading-relaxed">
+                      Tidak menghapus tabel/view ClickHouse yang ada. Menjalankan penarikan data langsung (injeksi query) dari database sumber ke landing table dan target table untuk mengisi celah/gap data yang hilang, lalu menjalankan <code>OPTIMIZE TABLE FINAL DEDUPLICATE</code>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Streaming Logs Viewer */}
+              {resyncLogs.length > 0 && (
+                <div className="flex flex-col flex-1 min-h-[160px] max-h-64 overflow-hidden rounded-lg border border-slate-700 dark:border-slate-800 bg-[#0f172a] shadow-inner mt-2">
+                  <div className="px-3.5 py-2 bg-[#1e293b] border-b border-slate-700 dark:border-slate-800 text-[11px] font-mono text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      {isResyncing ? (
+                        <Activity className="w-3.5 h-3.5 text-sky-400 animate-spin" />
+                      ) : (
+                        <Terminal className="w-3.5 h-3.5 text-sky-400" />
+                      )}
+                      <span className="font-semibold text-slate-100">Resync Execution Log</span>
+                    </span>
+                    <span className="text-[10px] font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-300 border border-slate-700">
+                      {resyncLogs.length} events
+                    </span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3.5 font-mono text-[11.5px] bg-[#0f172a] select-text custom-scrollbar">
+                    {resyncLogs.map((log, i) => (
+                      <div
+                        key={i}
+                        className={clsx(
+                          'leading-relaxed py-0.5',
+                          log.includes('ERROR') ? 'text-rose-400 font-semibold' :
+                          log.includes('✅') ? 'text-emerald-400 font-semibold' :
+                          log.includes('WARNING') ? 'text-amber-300 font-medium' :
+                          log.startsWith('---') || log.startsWith('===') ? 'text-slate-500' :
+                          log.includes('Memulai') || log.includes('Menghapus') || log.includes('Menyuntikkan') ? 'text-sky-300' :
+                          'text-slate-100'
+                        )}
+                      >
+                        {log}
+                      </div>
+                    ))}
+                    <div ref={resyncLogEndRef} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-border-main flex justify-between items-center bg-bg-header/50 shrink-0 rounded-b-xl">
+              <span className="text-xs text-text-muted">
+                Target: <b>{resyncModal.targetTable || resyncModal.deployId}</b>
+              </span>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setResyncModal(null)}
+                  disabled={isResyncing}
+                  className="px-4 py-2 rounded-lg text-sm font-bold bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 transition-colors disabled:opacity-50"
+                >
+                  {resyncLogs.length > 0 && !isResyncing ? 'Close' : 'Cancel'}
+                </button>
+                <button
+                  onClick={handleResyncSubmit}
+                  disabled={isResyncing}
+                  className={clsx(
+                    "px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-50 transition-colors flex items-center gap-2",
+                    resyncMode === 'full' ? "bg-rose-600 hover:bg-rose-500" : "bg-sky-600 hover:bg-sky-500"
+                  )}
+                >
+                  {isResyncing ? (
+                    <>
+                      <Activity className="w-4 h-4 animate-spin" />
+                      Memproses Resync...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      {resyncMode === 'full' ? 'Jalankan Full Clean & Re-pull' : 'Mulai Backfill Missing Data'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {slotsModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 md:p-4">

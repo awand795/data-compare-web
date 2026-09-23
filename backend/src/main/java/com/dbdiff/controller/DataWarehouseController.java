@@ -131,6 +131,20 @@ public class DataWarehouseController {
         });
         return emitter;
     }
+    @PostMapping(value = "/pipelines/resync/{deployId}", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter resyncPipeline(@PathVariable String deployId, @RequestBody java.util.Map<String, Object> body) {
+        SseEmitter emitter = new SseEmitter(7_200_000L); // 2 hours timeout
+        executor.execute(() -> {
+            try {
+                String mode = body != null && body.containsKey("mode") ? body.get("mode").toString() : "full";
+                dataWarehouseService.resyncPipeline(deployId, mode, emitter);
+                emitter.complete();
+            } catch (Exception e) {
+                emitter.completeWithError(e);
+            }
+        });
+        return emitter;
+    }
 
     @PostMapping(value = "/pipelines/backfill-cdc/{deployId}", produces = "text/event-stream")
     public org.springframework.web.servlet.mvc.method.annotation.SseEmitter backfillCdcPipeline(

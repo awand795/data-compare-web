@@ -4304,6 +4304,275 @@ public class DataWarehouseService {
         }
     }
 
+    public void resyncPipeline(String deployId, String mode, SseEmitter emitter) throws Exception {
+        try {
+            boolean isFullClean = "full".equalsIgnoreCase(mode);
+            sendLog(emitter, "Memulai Resync Pipeline (Deploy ID: " + deployId + ", Mode: " + (isFullClean ? "Full Resync / Clean" : "Resume / Backfill Missing Data") + ")...");
+
+            Map<String, Object> meta = pipelineMetadataRepository.getPipelineMetadata(deployId);
+            if (meta == null) {
+                throw new RuntimeException("Metadata pipeline tidak ditemukan untuk Deploy ID: " + deployId);
+            }
+
+            String query = (String) meta.get("query");
+            String targetTable = (String) meta.get("target_table");
+            String targetConnectionId = (String) meta.get("target_connection_id");
+            String targetDatabase = (String) meta.get("target_database");
+            String primarySourceId = (String) meta.get("source_connection_id");
+            String multiSourceIds = (String) meta.get("source_connection_ids");
+
+            if (targetTable == null || targetTable.isBlank()) {
+                throw new RuntimeException("Target table tidak valid pada metadata.");
+            }
+
+            // 1. Kumpulkan seluruh ConnectionDetails source yang terdaftar
+            Set<String> allSourceConnIds = new LinkedHashSet<>();
+            if (primarySourceId != null && !primarySourceId.isBlank()) {
+                allSourceConnIds.add(primarySourceId.trim());
+            }
+            if (multiSourceIds != null && !multiSourceIds.isBlank()) {
+                for (String s : multiSourceIds.split(",")) {
+                    if (!s.isBlank()) allSourceConnIds.add(s.trim());
+                }
+            }
+
+            // Fallback cari koneksi dari topics sink connector
+            try {
+                String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+                if (connectors != null) {
+                    for (String c : connectors) {
+                        if (c.endsWith("-" + deployId) && c.startsWith("sink-")) {
+                            Map<String, Object> cfg = getConnectorConfig(c);
+                            if (cfg != null && cfg.get("topics") != null) {
+                                String topicsStr = (String) cfg.get("topics");
+                                for (String topic : topicsStr.split(",")) {
+                                    if (topic.startsWith("cdc_")) {
+                                        String rem = topic.substring(4);
+                                        for (ConnectionDetails conn : connectionRepository.findAll()) {
+                                            String bName = conn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                                            if (rem.startsWith(bName + "_")) {
+                                                allSourceConnIds.add(String.valueOf(conn.getId()));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            List<ConnectionDetails> allSourceConns = new ArrayList<>();
+            for (String cid : allSourceConnIds) {
+                ConnectionDetails c = connectionRepository.findById(cid);
+                if (c != null) allSourceConns.add(enrichConnection(c));
+            }
+            if (allSourceConns.isEmpty() && primarySourceId != null) {
+                ConnectionDetails c = connectionRepository.findById(primarySourceId);
+                if (c != null) allSourceConns.add(enrichConnection(c));
+            }
+            if (allSourceConns.isEmpty()) {
+                throw new RuntimeException("Tidak ada source connection yang terdaftar untuk pipeline: " + deployId);
+            }
+
+            ConnectionDetails targetConn = enrichConnection(connectionRepository.findById(targetConnectionId));
+            if (targetConn == null) {
+                targetConn = connectionRepository.findAll().stream()
+                        .filter(c -> "clickhouse".equalsIgnoreCase(c.getType()))
+                        .findFirst().orElseThrow(() -> new RuntimeException("Target connection ClickHouse tidak ditemukan"));
+            }
+
+            String chDb = targetDatabase;
+            if (chDb == null || chDb.isEmpty()) chDb = targetConn.getDatabase();
+            if (chDb == null || chDb.isEmpty()) chDb = "default";
+
+            DataSource targetDs = connectionManagerService.getDataSource(targetConn);
+
+            if (isFullClean) {
+                // =========================================================================
+                // OPSI 1: FULL RESYNC / CLEAN (Hapus total struktur/data, lalu deploy ulang)
+                // =========================================================================
+                sendLog(emitter, "🧹 Menghapus view, Materialized View, CDC landing table, dan target table di ClickHouse...");
+
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+
+                    // 1. Drop unified view v_<targetTable>
+                    try {
+                        stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`v_" + targetTable + "`");
+                        sendLog(emitter, "Dropped view `v_" + targetTable + "`");
+                    } catch (Exception e) {
+                        logger.warn("Could not drop view v_" + targetTable + ": " + e.getMessage());
+                    }
+
+                    // 2. Cari dan drop semua MV yang mengarah ke target table ini
+                    String findMVs = "SELECT name FROM system.tables WHERE database = '" + chDb + "' AND name LIKE 'mv_" + targetTable + "_%'";
+                    List<String> mvsToDrop = new ArrayList<>();
+                    try (ResultSet rs = stmt.executeQuery(findMVs)) {
+                        while (rs.next()) {
+                            mvsToDrop.add(rs.getString("name"));
+                        }
+                    }
+                    for (String mv : mvsToDrop) {
+                        try {
+                            stmt.execute("DROP VIEW IF EXISTS `" + chDb + "`.`" + mv + "`");
+                            sendLog(emitter, "Dropped Materialized View `" + mv + "`");
+                            String prefix = "mv_" + targetTable + "_";
+                            if (mv.startsWith(prefix)) {
+                                String landingTable = mv.substring(prefix.length());
+                                try (ResultSet rsDep = stmt.executeQuery(
+                                        "SELECT length(dependencies_table) FROM system.tables WHERE database = '" + chDb + "' AND name = '" + landingTable + "'")) {
+                                    if (rsDep.next() && rsDep.getInt(1) == 0) {
+                                        stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + landingTable + "`");
+                                        sendLog(emitter, "Dropped unused CDC landing table `" + landingTable + "`");
+                                    }
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
+                    // 3. Drop target table
+                    try {
+                        stmt.execute("DROP TABLE IF EXISTS `" + chDb + "`.`" + targetTable + "`");
+                        sendLog(emitter, "Dropped target table `" + targetTable + "`");
+                    } catch (Exception e) {
+                        logger.warn("Could not drop target table " + targetTable + ": " + e.getMessage());
+                    }
+                }
+
+                // 4. Hapus sink connector lama di Debezium/Kafka Connect agar recreate bersih
+                try {
+                    String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
+                    if (connectors != null) {
+                        for (String c : connectors) {
+                            if (c.endsWith("-" + deployId) && c.startsWith("sink-")) {
+                                sendLog(emitter, "Menghapus sink connector lama: " + c);
+                                deleteConnectorWithWait(c);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("Could not delete old sink connector: " + e.getMessage());
+                }
+
+                // 5. Re-deploy dengan request lengkap menggunakan Deploy ID yang sama
+                sendLog(emitter, "🚀 Memulai fresh deployPipeline ulang untuk " + allSourceConns.size() + " source database...");
+                DataWarehouseDeployRequest deployReq = new DataWarehouseDeployRequest();
+                deployReq.setSourceConnections(allSourceConns);
+                deployReq.setTargetConnection(targetConn);
+                deployReq.setTargetTable(targetTable);
+                deployReq.setTargetDatabase(targetDatabase);
+                deployReq.setQuery(query);
+                deployReq.setDeployId(deployId);
+
+                deployPipeline(deployReq, emitter);
+                sendLog(emitter, "==================================================");
+                sendLog(emitter, "✅ Full Resync & Clean berhasil selesai! Seluruh struktur dan data telah ditarik ulang secara bersih.");
+            } else {
+                // =========================================================================
+                // OPSI 2: RESUME / BACKFILL MISSING DATA (Injeksi langsung tanpa drop data)
+                // =========================================================================
+                sendLog(emitter, "⚡ Memulai Backfill Missing Data langsung dari database PostgreSQL...");
+
+                DataSource primaryDs = connectionManagerService.getDataSource(allSourceConns.get(0));
+                String expandedInitialQuery = expandWildcardsAndAlias(query, primaryDs, allSourceConns.get(0));
+                List<String> physicalTables = extractPhysicalTables(expandedInitialQuery);
+                if (physicalTables.isEmpty()) {
+                    throw new RuntimeException("Tidak ada physical table yang dapat diekstrak dari query.");
+                }
+
+                for (ConnectionDetails sConn : allSourceConns) {
+                    sendLog(emitter, "Memproses source database: [" + sConn.getName() + "]...");
+                    DataSource sDs = connectionManagerService.getDataSource(sConn);
+                    String sBaseName = sConn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                    String sExpandedQuery = inlineCTEs(query, sBaseName);
+
+                    // A. Backfill landing table untuk setiap table fisik sumber
+                    for (String t : physicalTables) {
+                        String landingTable = getClickHouseLandingTable(t, sBaseName, sConn);
+                        sendLog(emitter, "Menyuntikkan data ke landing table `" + landingTable + "` dari [" + sConn.getName() + "]...");
+                        try {
+                            backfillLandingTableFromSource(sDs, targetDs, t, landingTable, chDb, sConn, emitter);
+                        } catch (Exception ex) {
+                            sendLog(emitter, "WARNING: Backfill landing table `" + landingTable + "`: " + ex.getMessage());
+                        }
+                    }
+
+                    // B. Injeksi ke target table dengan query yang direwrite
+                    sendLog(emitter, "Memperbarui target table `" + targetTable + "` dari data sumber [" + sConn.getName() + "]...");
+                    try (Connection chConn = targetDs.getConnection();
+                         Statement chStmt = chConn.createStatement()) {
+                        try { chStmt.execute("SET max_memory_usage = 0"); } catch (Exception ignored) {}
+                        try { chStmt.execute("SET max_threads = 1"); } catch (Exception ignored) {}
+                        try { chStmt.execute("SET join_algorithm = 'grace_hash,partial_merge,hash'"); } catch (Exception ignored) {}
+
+                        String primaryTable = physicalTables.get(0);
+                        String rotatedSql = rotateQuery(sExpandedQuery, primaryTable);
+                        String sqlWithMeta = addMetadataColsToSelect(rotatedSql, primaryTable);
+                        String rewrittenSql;
+                        if (physicalTables.size() > 1) {
+                            Map<String, Set<String>> tableToPKs = new HashMap<>();
+                            for (String pt : physicalTables) {
+                                Set<String> pks = new LinkedHashSet<>();
+                                try (Connection conn = sDs.getConnection()) {
+                                    DatabaseMetaData metaData = conn.getMetaData();
+                                    String schemaName = pt.contains(".") ? pt.substring(0, pt.indexOf('.')) : sConn.getSchema();
+                                    String tableName = pt.contains(".") ? pt.substring(pt.indexOf('.') + 1) : pt;
+                                    tableName = tableName.replaceAll("[\"``]", "");
+                                    if (schemaName != null) schemaName = schemaName.replaceAll("[\"``]", "");
+                                    try (ResultSet pkRs = metaData.getPrimaryKeys(null, schemaName, tableName)) {
+                                        while (pkRs.next()) {
+                                            String pk = pkRs.getString("COLUMN_NAME");
+                                            if (pk != null) pks.add(pk);
+                                        }
+                                    }
+                                } catch (Exception ignored) {}
+                                tableToPKs.put(pt, pks);
+                            }
+                            String sqlWithFilters = addPKFiltersToWhere(sqlWithMeta, physicalTables, tableToPKs);
+                            rewrittenSql = rewriteQueryForClickHouse(sqlWithFilters, physicalTables, sBaseName, sConn, chDb);
+                        } else {
+                            rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, sBaseName, sConn, chDb);
+                        }
+
+                        List<String> targetCols = extractSelectColumnNames(rewrittenSql);
+                        String colList = (targetCols != null && !targetCols.isEmpty()) ? " (" + String.join(", ", targetCols) + ") " : " ";
+                        String settingsClause = " SETTINGS max_threads = 1, max_memory_usage = 0, join_algorithm = 'grace_hash,partial_merge,hash', max_bytes_before_external_group_by = 100000000, max_bytes_before_external_sort = 100000000";
+                        String insertSql = "INSERT INTO `" + chDb + "`.`" + targetTable + "`" + colList + rewrittenSql + settingsClause;
+                        chStmt.execute(insertSql);
+                        sendLog(emitter, "Data dari [" + sConn.getName() + "] berhasil disuntikkan ke `" + targetTable + "`.");
+                    } catch (Exception ex) {
+                        sendLog(emitter, "WARNING: Gagal menyuntikkan data ke target table: " + ex.getMessage());
+                    }
+                }
+
+                // C. Optimize Final Deduplicate
+                sendLog(emitter, "Menjalankan dedup fisik pada target table `" + targetTable + "` (FINAL DEDUPLICATE)...");
+                try (Connection conn = targetDs.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    try {
+                        stmt.execute("OPTIMIZE TABLE `" + chDb + "`.`" + targetTable + "` FINAL DEDUPLICATE");
+                    } catch (Exception ex) {
+                        try { stmt.execute("OPTIMIZE TABLE `" + chDb + "`.`" + targetTable + "` FINAL"); } catch (Exception ignored) {}
+                    }
+                    sendLog(emitter, "Deduplikasi data ClickHouse selesai.");
+                } catch (Exception e) {
+                    logger.warn("Could not optimize target table: " + e.getMessage());
+                }
+
+                sendLog(emitter, "==================================================");
+                sendLog(emitter, "✅ Backfill Missing Data berhasil diselesaikan untuk semua " + allSourceConns.size() + " database sumber!");
+            }
+
+            emitter.complete();
+        } catch (Exception e) {
+            logger.error("Failed to resync pipeline " + deployId, e);
+            try { sendLog(emitter, "ERROR: " + e.getMessage()); emitter.complete(); } catch (Exception ignored) {}
+            throw e;
+        }
+    }
+
+
     private java.util.List<ColumnInfo> getQueryColumns(String query, DataSource sourceDs, ConnectionDetails sourceConn) throws Exception {
         String cleanQuery = (query != null) ? query.trim().replaceAll(";+$", "").trim() : "";
         String srcType = sourceConn.getType().toLowerCase();
