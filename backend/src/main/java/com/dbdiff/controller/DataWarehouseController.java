@@ -132,12 +132,13 @@ public class DataWarehouseController {
         return emitter;
     }
     @PostMapping(value = "/pipelines/resync/{deployId}", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter resyncPipeline(@PathVariable String deployId, @RequestBody java.util.Map<String, Object> body) {
+    public SseEmitter resyncPipeline(@PathVariable String deployId, @RequestBody(required = false) java.util.Map<String, Object> body) {
         SseEmitter emitter = new SseEmitter(7_200_000L); // 2 hours timeout
         executor.execute(() -> {
             try {
-                String mode = body != null && body.containsKey("mode") ? body.get("mode").toString() : "full";
-                dataWarehouseService.resyncPipeline(deployId, mode, emitter);
+                String mode = body != null && body.containsKey("mode") && body.get("mode") != null ? body.get("mode").toString() : "full";
+                String customPrimaryKeys = body != null && body.containsKey("primaryKeys") && body.get("primaryKeys") != null ? body.get("primaryKeys").toString() : null;
+                dataWarehouseService.resyncPipeline(deployId, mode, customPrimaryKeys, emitter);
                 emitter.complete();
             } catch (Exception e) {
                 emitter.completeWithError(e);

@@ -652,7 +652,7 @@ public class DataWarehouseService {
                 String[] pks = request.getPrimaryKeys().split(",");
                 for (String pk : pks) {
                     if (!pk.trim().isEmpty()) {
-                        String trimmed = pk.trim();
+                        String trimmed = pk.trim().replaceAll("[\"``]", "");
                         String matched = trimmed;
                         for (ColumnInfo col : targetColumns) {
                             if (col.name.equalsIgnoreCase(trimmed)) {
@@ -4328,6 +4328,10 @@ public class DataWarehouseService {
     }
 
     public void resyncPipeline(String deployId, String mode, SseEmitter emitter) throws Exception {
+        resyncPipeline(deployId, mode, null, emitter);
+    }
+
+    public void resyncPipeline(String deployId, String mode, String customPrimaryKeys, SseEmitter emitter) throws Exception {
         try {
             boolean isFullClean = "full".equalsIgnoreCase(mode);
             sendLog(emitter, "Memulai Resync Pipeline (Deploy ID: " + deployId + ", Mode: " + (isFullClean ? "Full Resync / Clean" : "Resume / Backfill Missing Data") + ")...");
@@ -4415,10 +4419,30 @@ public class DataWarehouseService {
                 // =========================================================================
                 // OPSI 1: FULL RESYNC / CLEAN (Hapus total struktur/data, lalu deploy ulang)
                 // =========================================================================
-                sendLog(emitter, "🧹 Menghapus view, Materialized View, CDC landing table, dan target table di ClickHouse...");
+                String existingSortingKey = customPrimaryKeys;
 
                 try (Connection conn = targetDs.getConnection();
                      Statement stmt = conn.createStatement()) {
+
+                    // 0. Ambil sorting_key / primary_key yang sedang aktif di ClickHouse sebelum target table di-drop
+                    if (existingSortingKey == null || existingSortingKey.isBlank()) {
+                        try (ResultSet rs = stmt.executeQuery(
+                                "SELECT sorting_key, primary_key FROM system.tables WHERE database = '" + chDb + "' AND name = '" + targetTable + "'")) {
+                            if (rs.next()) {
+                                String sk = rs.getString("sorting_key");
+                                String pk = rs.getString("primary_key");
+                                if (sk != null && !sk.isBlank()) {
+                                    existingSortingKey = sk;
+                                } else if (pk != null && !pk.isBlank()) {
+                                    existingSortingKey = pk;
+                                }
+                            }
+                        } catch (Exception e) {
+                            logger.warn("Could not retrieve existing sorting_key from ClickHouse: " + e.getMessage());
+                        }
+                    }
+
+                    sendLog(emitter, "🧹 Menghapus view, Materialized View, CDC landing table, dan target table di ClickHouse...");
 
                     // 1. Drop unified view v_<targetTable>
                     try {
@@ -4487,6 +4511,10 @@ public class DataWarehouseService {
                 deployReq.setTargetDatabase(targetDatabase);
                 deployReq.setQuery(query);
                 deployReq.setDeployId(deployId);
+                if (existingSortingKey != null && !existingSortingKey.isBlank()) {
+                    deployReq.setPrimaryKeys(existingSortingKey);
+                    sendLog(emitter, "🔑 Mempertahankan Primary Key / Sorting Key eksisting ClickHouse: (" + existingSortingKey + ")");
+                }
 
                 deployPipeline(deployReq, emitter);
                 sendLog(emitter, "==================================================");
