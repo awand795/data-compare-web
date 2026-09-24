@@ -286,6 +286,7 @@ type AppState = {
   deployLogs: string[];
   setDeployLogs: (logs: string[]) => void;
   addDeployLog: (log: string) => void;
+  addDeployLogs: (logs: string[]) => void;
   clearDeployLogs: () => void;
 
   notificationChannels: NotificationChannel[];
@@ -572,7 +573,14 @@ export const useAppStore = create<AppState>()(
   setIsDeployingDwh: (isDeploying) => set({ isDeployingDwh: isDeploying }),
   deployLogs: [],
   setDeployLogs: (logs) => set({ deployLogs: logs }),
-  addDeployLog: (log) => set((state) => ({ deployLogs: [...state.deployLogs, log] })),
+  addDeployLog: (log) => set((state) => {
+    const updated = [...state.deployLogs, log];
+    return { deployLogs: updated.length > 1000 ? updated.slice(updated.length - 1000) : updated };
+  }),
+  addDeployLogs: (newLogs) => set((state) => {
+    const updated = [...state.deployLogs, ...newLogs];
+    return { deployLogs: updated.length > 1000 ? updated.slice(updated.length - 1000) : updated };
+  }),
   clearDeployLogs: () => set({ deployLogs: [] }),
 
   notificationChannels: [],

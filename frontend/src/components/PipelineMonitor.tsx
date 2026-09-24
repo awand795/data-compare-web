@@ -473,19 +473,39 @@ export const PipelineMonitor: React.FC = () => {
       const reader = res.body?.getReader();
       if (!reader) throw new Error('No response stream received');
       const decoder = new TextDecoder();
+      let buffer = '';
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n')) {
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        const newLogs: string[] = [];
+        for (const line of lines) {
           if (line.startsWith('data:')) {
             const msg = line.substring(5).trim();
             if (msg) {
-              setAddSourceLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-              setTimeout(() => addSourceLogEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+              newLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
             }
           }
+        }
+        if (newLogs.length > 0) {
+          setAddSourceLogs(prev => {
+            const next = [...prev, ...newLogs];
+            return next.length > 1000 ? next.slice(next.length - 1000) : next;
+          });
+          requestAnimationFrame(() => {
+            addSourceLogEndRef.current?.scrollIntoView({ behavior: 'auto' });
+          });
+        }
+      }
+
+      if (buffer.trim().startsWith('data:')) {
+        const msg = buffer.trim().substring(5).trim();
+        if (msg) {
+          setAddSourceLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
         }
       }
 
@@ -544,19 +564,39 @@ export const PipelineMonitor: React.FC = () => {
       const reader = res.body?.getReader();
       if (!reader) throw new Error('No response stream received');
       const decoder = new TextDecoder();
+      let buffer = '';
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n')) {
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        const newLogs: string[] = [];
+        for (const line of lines) {
           if (line.startsWith('data:')) {
             const msg = line.substring(5).trim();
             if (msg) {
-              setResyncLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-              setTimeout(() => resyncLogEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+              newLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
             }
           }
+        }
+        if (newLogs.length > 0) {
+          setResyncLogs(prev => {
+            const next = [...prev, ...newLogs];
+            return next.length > 1000 ? next.slice(next.length - 1000) : next;
+          });
+          requestAnimationFrame(() => {
+            resyncLogEndRef.current?.scrollIntoView({ behavior: 'auto' });
+          });
+        }
+      }
+
+      if (buffer.trim().startsWith('data:')) {
+        const msg = buffer.trim().substring(5).trim();
+        if (msg) {
+          setResyncLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
         }
       }
 
@@ -666,19 +706,39 @@ export const PipelineMonitor: React.FC = () => {
       const reader = res.body?.getReader();
       if (!reader) throw new Error('No stream');
       const decoder = new TextDecoder();
+      let buffer = '';
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n')) {
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        const newLogs: string[] = [];
+        for (const line of lines) {
           if (line.startsWith('data:')) {
             const msg = line.substring(5).trim();
             if (msg) {
-              setEditQueryLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-              setTimeout(() => editLogEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+              newLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
             }
           }
+        }
+        if (newLogs.length > 0) {
+          setEditQueryLogs(prev => {
+            const next = [...prev, ...newLogs];
+            return next.length > 1000 ? next.slice(next.length - 1000) : next;
+          });
+          requestAnimationFrame(() => {
+            editLogEndRef.current?.scrollIntoView({ behavior: 'auto' });
+          });
+        }
+      }
+
+      if (buffer.trim().startsWith('data:')) {
+        const msg = buffer.trim().substring(5).trim();
+        if (msg) {
+          setEditQueryLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
         }
       }
       setOriginalQueries(prev => ({ ...prev, [editQueryModal.deployId]: editQueryValue }));

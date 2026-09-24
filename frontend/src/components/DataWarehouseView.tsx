@@ -10,7 +10,7 @@ export const DataWarehouseView: React.FC = () => {
   const { 
     connections, addToast, 
     isDeployingDwh, setIsDeployingDwh, 
-    deployLogs, setDeployLogs, addDeployLog, clearDeployLogs
+    deployLogs, setDeployLogs, addDeployLog, addDeployLogs, clearDeployLogs
   } = useAppStore();
   
   const [sourceConnId, setSourceConnId] = useState('');
@@ -96,24 +96,42 @@ export const DataWarehouseView: React.FC = () => {
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No readable stream available');
       const decoder = new TextDecoder('utf-8');
+      let buffer = '';
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         if (value) {
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          const newLogs: string[] = [];
+          let errorMsgToThrow: string | null = null;
           for (const line of lines) {
             if (line.startsWith('data:')) {
               const logMsg = line.substring(5).trim();
               if (logMsg) {
-                addDeployLog(`[${new Date().toLocaleTimeString()}] ${logMsg}`);
+                newLogs.push(`[${new Date().toLocaleTimeString()}] ${logMsg}`);
                 if (logMsg.startsWith('ERROR:')) {
-                  throw new Error(logMsg.substring(6).trim());
+                  errorMsgToThrow = logMsg.substring(6).trim();
                 }
               }
             }
           }
+          if (newLogs.length > 0) {
+            addDeployLogs(newLogs);
+          }
+          if (errorMsgToThrow) {
+            throw new Error(errorMsgToThrow);
+          }
+        }
+      }
+
+      if (buffer.trim().startsWith('data:')) {
+        const logMsg = buffer.trim().substring(5).trim();
+        if (logMsg) {
+          addDeployLog(`[${new Date().toLocaleTimeString()}] ${logMsg}`);
         }
       }
 
