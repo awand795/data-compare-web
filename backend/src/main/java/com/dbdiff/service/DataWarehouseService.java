@@ -651,8 +651,8 @@ public class DataWarehouseService {
             if (request.getPrimaryKeys() != null && !request.getPrimaryKeys().trim().isEmpty()) {
                 String[] pks = request.getPrimaryKeys().split(",");
                 for (String pk : pks) {
-                    if (!pk.trim().isEmpty()) {
-                        String trimmed = pk.trim().replaceAll("[\"``]", "");
+                    String trimmed = pk.trim().replaceAll("[()\"``]", "").trim();
+                    if (!trimmed.isEmpty()) {
                         String matched = trimmed;
                         for (ColumnInfo col : targetColumns) {
                             if (col.name.equalsIgnoreCase(trimmed)) {
@@ -4432,14 +4432,17 @@ public class DataWarehouseService {
                                 String sk = rs.getString("sorting_key");
                                 String pk = rs.getString("primary_key");
                                 if (sk != null && !sk.isBlank()) {
-                                    existingSortingKey = sk;
+                                    existingSortingKey = sk.replaceAll("[()]", "").trim();
                                 } else if (pk != null && !pk.isBlank()) {
-                                    existingSortingKey = pk;
+                                    existingSortingKey = pk.replaceAll("[()]", "").trim();
                                 }
                             }
                         } catch (Exception e) {
                             logger.warn("Could not retrieve existing sorting_key from ClickHouse: " + e.getMessage());
                         }
+                    }
+                    if (existingSortingKey != null) {
+                        existingSortingKey = existingSortingKey.replaceAll("[()]", "").trim();
                     }
 
                     sendLog(emitter, "🧹 Menghapus view, Materialized View, CDC landing table, dan target table di ClickHouse...");
