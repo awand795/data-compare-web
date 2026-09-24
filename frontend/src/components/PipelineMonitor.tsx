@@ -1845,32 +1845,25 @@ export const PipelineMonitor: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Option 2: Resume / Backfill Missing Data */}
+                {/* Option 2: Resume / Backfill Missing Data (Disabled) */}
                 <div 
-                  onClick={() => { if (!isResyncing) setResyncMode('backfill'); }}
-                  className={clsx(
-                    "p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
-                    resyncMode === 'backfill' 
-                      ? "bg-sky-500/10 border-sky-500/50 shadow-sm" 
-                      : "bg-bg-main border-border-main hover:border-border-highlight opacity-85",
-                    isResyncing && "pointer-events-none opacity-60"
-                  )}
+                  className="p-3.5 rounded-xl border transition-all flex items-start gap-3 bg-bg-main/50 border-border-main opacity-40 cursor-not-allowed pointer-events-none select-none"
                 >
                   <input 
                     type="radio" 
                     name="resyncMode" 
-                    checked={resyncMode === 'backfill'} 
+                    checked={false} 
                     onChange={() => {}} 
-                    className="mt-1 text-sky-500 focus:ring-0 cursor-pointer"
-                    disabled={isResyncing}
+                    className="mt-1 text-slate-500 focus:ring-0 cursor-not-allowed"
+                    disabled={true}
                   />
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-text-main">
+                      <span className="font-bold text-xs text-text-muted line-through">
                         ⚡ Resume &amp; Backfill Missing Data
                       </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                        Tanpa Hapus Data
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-500/20 text-slate-400 border border-slate-500/30">
+                        Nonaktif
                       </span>
                     </div>
                     <p className="text-[11px] text-text-muted mt-1 leading-relaxed">
