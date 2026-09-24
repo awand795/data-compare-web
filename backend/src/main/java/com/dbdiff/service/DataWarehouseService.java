@@ -2832,29 +2832,6 @@ public class DataWarehouseService {
                         for (String mv : mvs) { targetStmt.execute("DETACH TABLE `" + chDb + "`.`" + mv + "`"); }
                         
                         long backfillVersion = 0L;
-                        // 1. Coba ambil current WAL LSN dari PostgreSQL sumber jika database bertipe postgresql
-                        try (Statement pgLsnStmt = srcConn.createStatement();
-                             ResultSet rsLsn = pgLsnStmt.executeQuery("SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')")) {
-                            if (rsLsn.next()) {
-                                backfillVersion = rsLsn.getLong(1);
-                            }
-                        } catch (Exception ex) {
-                            logger.warn("Could not fetch current WAL LSN from Postgres source for backfill: " + ex.getMessage());
-                        }
-
-                        // 2. Jika bukan Postgres atau gagal ambil WAL LSN, fallback ke max(version) di ClickHouse landing table (yang normal < 100 Triliun)
-                        if (backfillVersion <= 0L) {
-                            try (ResultSet rsMax = targetStmt.executeQuery("SELECT max(version) FROM `" + chDb + "`.`" + landingTable + "` WHERE version < 100000000000000")) {
-                                if (rsMax.next()) {
-                                    backfillVersion = rsMax.getLong(1) + 1L;
-                                }
-                            } catch (Exception ignored) {}
-                        }
-
-                        // 3. Fallback jika masih 0 (tabel baru belum pernah ada data sama sekali)
-                        if (backfillVersion <= 0L) {
-                            backfillVersion = 1L;
-                        }
                         
                         // Ambil daftar kolom yang benar-benar ada di landing table ClickHouse
                         Set<String> chLandingCols = new LinkedHashSet<>();
@@ -3322,7 +3299,7 @@ public class DataWarehouseService {
             syncItem.setAlias(new net.sf.jsqlparser.expression.Alias("sync_dt"));
 
             net.sf.jsqlparser.statement.select.SelectItem verItem = new net.sf.jsqlparser.statement.select.SelectItem();
-            verItem.setExpression(net.sf.jsqlparser.parser.CCJSqlParserUtil.parseExpression("(" + prefix + "version + 20000000000000000)"));
+            verItem.setExpression(net.sf.jsqlparser.parser.CCJSqlParserUtil.parseExpression(prefix + "version"));
             verItem.setAlias(new net.sf.jsqlparser.expression.Alias("version"));
             
             net.sf.jsqlparser.statement.select.SelectItem delItem = new net.sf.jsqlparser.statement.select.SelectItem();
@@ -3888,7 +3865,7 @@ public class DataWarehouseService {
             String insertQuery = "INSERT INTO dw_erp." + cdcTableName + " (" + colListCh + ") " +
                     "SELECT " + colListPg + ", " +
                     "now64(3) AS sync_dt, " +
-                    "toUnixTimestamp64Milli(now64(3)) AS version, " +
+                    "0 AS version, " +
                     "0 AS is_deleted " +
                     "FROM postgresql('" + pgHostForClickhouse + "', '" + sourceConn.getDatabase() + "', '" + pgTable + "', '" + sourceConn.getUsername() + "', '" + dbPass + "', '" + pgSchema + "')";
 
