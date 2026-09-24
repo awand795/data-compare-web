@@ -3322,7 +3322,7 @@ public class DataWarehouseService {
             syncItem.setAlias(new net.sf.jsqlparser.expression.Alias("sync_dt"));
 
             net.sf.jsqlparser.statement.select.SelectItem verItem = new net.sf.jsqlparser.statement.select.SelectItem();
-            verItem.setExpression(net.sf.jsqlparser.parser.CCJSqlParserUtil.parseExpression(prefix + "version"));
+            verItem.setExpression(net.sf.jsqlparser.parser.CCJSqlParserUtil.parseExpression("(" + prefix + "version + 20000000000000000)"));
             verItem.setAlias(new net.sf.jsqlparser.expression.Alias("version"));
             
             net.sf.jsqlparser.statement.select.SelectItem delItem = new net.sf.jsqlparser.statement.select.SelectItem();
