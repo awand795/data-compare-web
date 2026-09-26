@@ -1798,7 +1798,6 @@ public class DataWarehouseService {
                 sinkConfig.put("password", request.getTargetConnection().getPassword());
                 sinkConfig.put("database", request.getTargetConnection().getDatabase() != null ? request.getTargetConnection().getDatabase().trim() : "");
                 sinkConfig.put("clickhouseSettings", "insert_quorum=1"); // Optional optimization
-                sinkConfig.put("bypassRowBinary", "true");
                 sinkConfig.put("transforms", "unwrap");
                 sinkConfig.put("transforms.unwrap.type", "io.debezium.transforms.ExtractNewRecordState");
                 sinkConfig.put("transforms.unwrap.drop.tombstones", "true");
