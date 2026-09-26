@@ -13,12 +13,21 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.multipart.MultipartHttpServletRequest;
+import org.springframework.web.multipart.support.StandardServletMultipartResolver;
 import org.springframework.web.servlet.HandlerMapping;
+import net.coobird.thumbnailator.Thumbnails;
+import org.apache.tika.Tika;
 
 import jakarta.servlet.http.HttpServletRequest;
 import javax.sql.DataSource;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -29,6 +38,8 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/data")
 public class DynamicApiController {
+
+    private final Tika tika = new Tika();
 
     @Autowired
     private ApiParameterValidator apiParameterValidator;
@@ -52,10 +63,29 @@ public class DynamicApiController {
     public void handleRequest(
             HttpServletRequest request,
             jakarta.servlet.http.HttpServletResponse response,
-            @RequestParam Map<String, Object> queryParams,
-            @RequestBody(required = false) Map<String, Object> bodyParams,
+            @RequestParam(required = false) Map<String, Object> queryParams,
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestHeader(value = "x-api-key", required = false) String xApiKey) throws Exception {
+        handleRequestInternal(request, response, queryParams, null, authHeader, xApiKey);
+    }
+
+    public void handleRequest(
+            HttpServletRequest request,
+            jakarta.servlet.http.HttpServletResponse response,
+            Map<String, Object> queryParams,
+            Map<String, Object> bodyParams,
+            String authHeader,
+            String xApiKey) throws Exception {
+        handleRequestInternal(request, response, queryParams, bodyParams, authHeader, xApiKey);
+    }
+
+    private void handleRequestInternal(
+            HttpServletRequest request,
+            jakarta.servlet.http.HttpServletResponse response,
+            Map<String, Object> queryParams,
+            Map<String, Object> bodyParams,
+            String authHeader,
+            String xApiKey) throws Exception {
 
         // Extract path after /api/data
         String path = (String) request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
@@ -218,10 +248,238 @@ public class DynamicApiController {
             }
         }
 
+        // Resolve bodyParams (JSON or Multipart / Form)
+        Map<String, Object> resolvedBodyParams = new HashMap<>();
+        if (bodyParams != null) {
+            resolvedBodyParams.putAll(bodyParams);
+        } else {
+            String contentType = request.getContentType();
+            if (contentType != null && contentType.toLowerCase().contains("application/json")) {
+                try {
+                    byte[] raw = request.getInputStream().readAllBytes();
+                    if (raw.length > 0) {
+                        com.fasterxml.jackson.databind.ObjectMapper jsonMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                        Map<String, Object> parsed = jsonMapper.readValue(raw, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+                        if (parsed != null) resolvedBodyParams.putAll(parsed);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // Handle multipart/form-data
+        MultipartHttpServletRequest multipartRequest = null;
+        if (request instanceof MultipartHttpServletRequest) {
+            multipartRequest = (MultipartHttpServletRequest) request;
+        } else {
+            try {
+                StandardServletMultipartResolver resolver = new StandardServletMultipartResolver();
+                if (resolver.isMultipart(request)) {
+                    multipartRequest = resolver.resolveMultipart(request);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        Map<String, Object> uploadMetadata = new HashMap<>();
+
+        if (multipartRequest != null) {
+            // Read form text parameters
+            for (Map.Entry<String, String[]> formParam : multipartRequest.getParameterMap().entrySet()) {
+                if (formParam.getValue() != null && formParam.getValue().length > 0) {
+                    resolvedBodyParams.put(formParam.getKey(), formParam.getValue()[0]);
+                }
+            }
+
+            // Process uploaded files
+            Map<String, MultipartFile> fileMap = multipartRequest.getFileMap();
+            for (Map.Entry<String, MultipartFile> fileEntry : fileMap.entrySet()) {
+                String fieldName = fileEntry.getKey();
+                MultipartFile file = fileEntry.getValue();
+                if (file == null || file.isEmpty()) continue;
+
+                // Validate max size (MB)
+                int maxMb = endpoint.getMaxFileSizeMb() != null ? endpoint.getMaxFileSizeMb() : 10;
+                long maxBytes = (long) maxMb * 1024L * 1024L;
+                if (file.getSize() > maxBytes) {
+                    sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of(
+                        "success", false,
+                        "error", "Bad Request",
+                        "message", "Ukuran file '" + file.getOriginalFilename() + "' (" + (file.getSize() / 1024 / 1024) + "MB) melebihi batas maksimal " + maxMb + "MB."
+                    ));
+                    return;
+                }
+
+                // Validate extension
+                String originalName = file.getOriginalFilename();
+                if (originalName == null || originalName.trim().isEmpty()) {
+                    originalName = "file_" + System.currentTimeMillis() + ".bin";
+                }
+                originalName = Paths.get(originalName).getFileName().toString();
+                String ext = "";
+                int dotIdx = originalName.lastIndexOf('.');
+                if (dotIdx > 0) {
+                    ext = originalName.substring(dotIdx + 1).toLowerCase();
+                }
+
+                String allowedExt = endpoint.getAllowedExtensions();
+                if (allowedExt != null && !allowedExt.trim().isEmpty() && !allowedExt.equals("*")) {
+                    Set<String> allowedSet = new HashSet<>(Arrays.asList(allowedExt.toLowerCase().split("[,\\s|]+")));
+                    if (!allowedSet.contains(ext)) {
+                        sendJsonError(response, HttpStatus.BAD_REQUEST.value(), Map.of(
+                            "success", false,
+                            "error", "Bad Request",
+                            "message", "Format file '." + ext + "' tidak diizinkan. Format yang diterima: " + allowedExt.toUpperCase()
+                        ));
+                        return;
+                    }
+                }
+
+                // Magic-byte MIME detection via Apache Tika
+                String detectedMime = "application/octet-stream";
+                try {
+                    detectedMime = tika.detect(file.getInputStream(), originalName);
+                } catch (Exception ignored) {}
+
+                String lowerMime = detectedMime.toLowerCase();
+                if (lowerMime.contains("dosexec") || lowerMime.contains("x-executable") || 
+                    lowerMime.contains("x-sh") || lowerMime.contains("x-bat") || 
+                    lowerMime.contains("javascript") || lowerMime.contains("x-msdownload")) {
+                    sendJsonError(response, HttpStatus.FORBIDDEN.value(), Map.of(
+                        "success", false,
+                        "error", "Forbidden",
+                        "message", "File ditolak karena alasan keamanan (tipe file berbahaya terdeteksi)."
+                    ));
+                    return;
+                }
+
+                long originalBytes = file.getSize();
+                byte[] finalBytes = file.getBytes();
+                boolean wasCompressed = false;
+
+                // Compress image via Thumbnailator if auto-compress is enabled
+                boolean isCompressible = lowerMime.startsWith("image/")
+                        && (ext.equals("jpg") || ext.equals("jpeg") || ext.equals("png") || ext.equals("webp"));
+
+                if (endpoint.isAutoCompressImage() && isCompressible) {
+                    try {
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        int maxWidth = endpoint.getImageMaxWidth() != null ? endpoint.getImageMaxWidth() : 1920;
+                        int maxHeight = endpoint.getImageMaxHeight() != null ? endpoint.getImageMaxHeight() : 1920;
+                        int qualityPct = endpoint.getImageQualityPercent() != null ? endpoint.getImageQualityPercent() : 80;
+                        double quality = Math.min(1.0, Math.max(0.05, (double) qualityPct / 100.0));
+
+                        Thumbnails.of(file.getInputStream())
+                            .size(maxWidth, maxHeight)
+                            .outputQuality(quality)
+                            .toOutputStream(baos);
+
+                        byte[] comp = baos.toByteArray();
+                        if (comp.length > 0 && comp.length < finalBytes.length) {
+                            finalBytes = comp;
+                            wasCompressed = true;
+                        }
+                    } catch (Exception thumbEx) {
+                        org.slf4j.LoggerFactory.getLogger(DynamicApiController.class).warn("Thumbnailator compression fallback: {}", thumbEx.getMessage());
+                    }
+                }
+
+                // Encode Base64
+                String base64Str = Base64.getEncoder().encodeToString(finalBytes);
+                String dataUri = "data:" + detectedMime + ";base64," + base64Str;
+
+                // Inject parameters:
+                resolvedBodyParams.put(fieldName, finalBytes);
+                resolvedBodyParams.put(fieldName + "_base64", base64Str);
+                resolvedBodyParams.put(fieldName + "_base64_data", dataUri);
+                resolvedBodyParams.put(fieldName + "_name", originalName);
+                resolvedBodyParams.put(fieldName + "_filename", originalName);
+                resolvedBodyParams.put(fieldName + "_mime", detectedMime);
+                resolvedBodyParams.put(fieldName + "_content_type", detectedMime);
+                resolvedBodyParams.put(fieldName + "_size", (long) finalBytes.length);
+                resolvedBodyParams.put(fieldName + "_original_size", originalBytes);
+
+                // Map to custom fileParamName if different (e.g. endpoint specifies 'foto' while field was 'file' or vice versa)
+                String customParam = endpoint.getFileParamName();
+                if (customParam != null && !customParam.trim().isEmpty() && !customParam.equalsIgnoreCase(fieldName)) {
+                    resolvedBodyParams.putIfAbsent(customParam, finalBytes);
+                    resolvedBodyParams.putIfAbsent(customParam + "_base64", base64Str);
+                    resolvedBodyParams.putIfAbsent(customParam + "_base64_data", dataUri);
+                    resolvedBodyParams.putIfAbsent(customParam + "_name", originalName);
+                    resolvedBodyParams.putIfAbsent(customParam + "_filename", originalName);
+                    resolvedBodyParams.putIfAbsent(customParam + "_mime", detectedMime);
+                    resolvedBodyParams.putIfAbsent(customParam + "_content_type", detectedMime);
+                    resolvedBodyParams.putIfAbsent(customParam + "_size", (long) finalBytes.length);
+                }
+
+                uploadMetadata.put("field", fieldName);
+                uploadMetadata.put("filename", originalName);
+                uploadMetadata.put("original_size", originalBytes);
+                uploadMetadata.put("size", (long) finalBytes.length);
+                uploadMetadata.put("mime_type", detectedMime);
+                uploadMetadata.put("compressed", wasCompressed);
+                if (wasCompressed && originalBytes > 0) {
+                    int savedPct = (int) Math.round((1.0 - (double) finalBytes.length / originalBytes) * 100);
+                    uploadMetadata.put("saved_percentage", Math.max(0, savedPct) + "%");
+                }
+            }
+        }
+
+        // Also check if any param in resolvedBodyParams is a Base64 image data URI (from JSON payload)
+        for (Map.Entry<String, Object> pEntry : new HashMap<>(resolvedBodyParams).entrySet()) {
+            if (pEntry.getValue() instanceof String strVal) {
+                if (strVal.startsWith("data:image/") && strVal.contains(";base64,")) {
+                    try {
+                        String mime = strVal.substring(5, strVal.indexOf(";"));
+                        String b64 = strVal.substring(strVal.indexOf(";base64,") + 8);
+                        byte[] decoded = Base64.getDecoder().decode(b64);
+                        byte[] finalBytes = decoded;
+                        boolean wasComp = false;
+
+                        if (endpoint.isAutoCompressImage() && mime.startsWith("image/")) {
+                            try {
+                                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                                int maxWidth = endpoint.getImageMaxWidth() != null ? endpoint.getImageMaxWidth() : 1920;
+                                int maxHeight = endpoint.getImageMaxHeight() != null ? endpoint.getImageMaxHeight() : 1920;
+                                int qualityPct = endpoint.getImageQualityPercent() != null ? endpoint.getImageQualityPercent() : 80;
+                                double quality = Math.min(1.0, Math.max(0.05, (double) qualityPct / 100.0));
+
+                                Thumbnails.of(new ByteArrayInputStream(decoded))
+                                    .size(maxWidth, maxHeight)
+                                    .outputQuality(quality)
+                                    .toOutputStream(baos);
+                                byte[] comp = baos.toByteArray();
+                                if (comp.length > 0 && comp.length < finalBytes.length) {
+                                    finalBytes = comp;
+                                    wasComp = true;
+                                }
+                            } catch (Exception ignored) {}
+                        }
+
+                        String newB64 = Base64.getEncoder().encodeToString(finalBytes);
+                        resolvedBodyParams.put(pEntry.getKey(), finalBytes);
+                        resolvedBodyParams.put(pEntry.getKey() + "_base64", newB64);
+                        resolvedBodyParams.put(pEntry.getKey() + "_base64_data", "data:" + mime + ";base64," + newB64);
+                        resolvedBodyParams.put(pEntry.getKey() + "_mime", mime);
+                        resolvedBodyParams.put(pEntry.getKey() + "_size", (long) finalBytes.length);
+                        resolvedBodyParams.put(pEntry.getKey() + "_original_size", (long) decoded.length);
+
+                        uploadMetadata.put("field", pEntry.getKey());
+                        uploadMetadata.put("original_size", (long) decoded.length);
+                        uploadMetadata.put("size", (long) finalBytes.length);
+                        uploadMetadata.put("mime_type", mime);
+                        uploadMetadata.put("compressed", wasComp);
+                        if (wasComp && decoded.length > 0) {
+                            int savedPct = (int) Math.round((1.0 - (double) finalBytes.length / decoded.length) * 100);
+                            uploadMetadata.put("saved_percentage", Math.max(0, savedPct) + "%");
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+
         // Merge parameters (body overrides query params)
         Map<String, Object> allParams = new HashMap<>();
         if (queryParams != null) allParams.putAll(queryParams);
-        if (bodyParams != null) allParams.putAll(bodyParams);
+        allParams.putAll(resolvedBodyParams);
 
         ApiParameterValidator.ValidationResult validationResult = apiParameterValidator.validate(endpoint.getParameters(), allParams);
         if (!validationResult.isValid()) {
@@ -664,6 +922,9 @@ public class DynamicApiController {
                 respMap.put("rows_affected", rowsAffected);
                 respMap.put("message", successMsg);
                 respMap.put("timestamp", nowTimestamp);
+                if (!uploadMetadata.isEmpty()) {
+                    respMap.put("upload", uploadMetadata);
+                }
                 if (hasReturning) {
                     if (returningRows.size() == 1) {
                         respMap.put("data", returningRows.get(0));
@@ -862,12 +1123,17 @@ public class DynamicApiController {
         if (val == null) return null;
         if (val instanceof java.sql.Blob) {
             java.sql.Blob b = (java.sql.Blob) val;
-            return "[BLOB Data: " + b.length() + " bytes]";
+            try {
+                byte[] bytes = b.getBytes(1, (int) Math.min(b.length(), 20 * 1024 * 1024));
+                return Base64.getEncoder().encodeToString(bytes);
+            } catch (Exception ex) {
+                return "[BLOB Data: " + b.length() + " bytes]";
+            }
         } else if (val instanceof java.sql.Clob) {
             java.sql.Clob c = (java.sql.Clob) val;
-            return "[CLOB Data: " + c.length() + " chars]";
+            return c.getSubString(1, (int) Math.min(c.length(), 100000));
         } else if (val instanceof byte[]) {
-            return "[BINARY Data: " + ((byte[]) val).length + " bytes]";
+            return Base64.getEncoder().encodeToString((byte[]) val);
         } else if (val instanceof java.sql.Timestamp) {
             return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format((java.util.Date) val);
         } else if (val instanceof java.sql.Date) {

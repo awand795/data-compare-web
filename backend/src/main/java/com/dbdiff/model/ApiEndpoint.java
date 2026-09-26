@@ -38,6 +38,16 @@ public class ApiEndpoint {
     private Integer tokenTtlMinutes = 15;
     private Integer refreshTokenTtlDays = 30;
 
+    // ── Direct Database File / Photo Upload & Compression ─────────────────
+    private boolean enableFileUpload = false;
+    private String fileParamName = "foto";
+    private String allowedExtensions = "jpg,jpeg,png,webp";
+    private Integer maxFileSizeMb = 10;
+    private boolean autoCompressImage = true;
+    private Integer imageQualityPercent = 80;
+    private Integer imageMaxWidth = 1920;
+    private Integer imageMaxHeight = 1920;
+
     // ── Scheduled Push (Spring Cron) & Failure Notification ──────────────────
     private boolean cronEnabled = false;
     private String cronExpression;
@@ -179,6 +189,30 @@ public class ApiEndpoint {
 
     public String getAllowedRoles() { return allowedRoles; }
     public void setAllowedRoles(String allowedRoles) { this.allowedRoles = allowedRoles; }
+
+    public boolean isEnableFileUpload() { return enableFileUpload; }
+    public void setEnableFileUpload(boolean enableFileUpload) { this.enableFileUpload = enableFileUpload; }
+
+    public String getFileParamName() { return fileParamName != null && !fileParamName.trim().isEmpty() ? fileParamName.trim() : "foto"; }
+    public void setFileParamName(String fileParamName) { this.fileParamName = fileParamName; }
+
+    public String getAllowedExtensions() { return allowedExtensions != null && !allowedExtensions.trim().isEmpty() ? allowedExtensions.trim() : "jpg,jpeg,png,webp"; }
+    public void setAllowedExtensions(String allowedExtensions) { this.allowedExtensions = allowedExtensions; }
+
+    public Integer getMaxFileSizeMb() { return maxFileSizeMb != null && maxFileSizeMb > 0 ? maxFileSizeMb : 10; }
+    public void setMaxFileSizeMb(Integer maxFileSizeMb) { this.maxFileSizeMb = maxFileSizeMb; }
+
+    public boolean isAutoCompressImage() { return autoCompressImage; }
+    public void setAutoCompressImage(boolean autoCompressImage) { this.autoCompressImage = autoCompressImage; }
+
+    public Integer getImageQualityPercent() { return imageQualityPercent != null && imageQualityPercent > 0 ? Math.min(100, Math.max(1, imageQualityPercent)) : 80; }
+    public void setImageQualityPercent(Integer imageQualityPercent) { this.imageQualityPercent = imageQualityPercent; }
+
+    public Integer getImageMaxWidth() { return imageMaxWidth != null && imageMaxWidth > 0 ? imageMaxWidth : 1920; }
+    public void setImageMaxWidth(Integer imageMaxWidth) { this.imageMaxWidth = imageMaxWidth; }
+
+    public Integer getImageMaxHeight() { return imageMaxHeight != null && imageMaxHeight > 0 ? imageMaxHeight : 1920; }
+    public void setImageMaxHeight(Integer imageMaxHeight) { this.imageMaxHeight = imageMaxHeight; }
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }

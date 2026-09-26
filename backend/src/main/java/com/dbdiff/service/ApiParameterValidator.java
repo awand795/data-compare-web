@@ -62,6 +62,19 @@ public class ApiParameterValidator {
             for (ParameterDef def : defs) {
                 String name = def.name;
                 Object valueObj = resultParams.get(name);
+                String type = def.type != null ? def.type.toLowerCase() : "string";
+
+                // Special handling for binary file or image uploads
+                if ("file".equals(type) || "image".equals(type) || valueObj instanceof byte[]) {
+                    if (def.required && (valueObj == null || (valueObj instanceof byte[] && ((byte[]) valueObj).length == 0) || (valueObj instanceof String && ((String) valueObj).trim().isEmpty()))) {
+                        String errMsg = (def.customErrorMessage != null && !def.customErrorMessage.trim().isEmpty())
+                                ? def.customErrorMessage
+                                : "File / foto '" + name + "' wajib diunggah.";
+                        errors.add(errMsg);
+                    }
+                    continue;
+                }
+
                 String value = valueObj != null ? valueObj.toString() : null;
 
                 // 1. Text Transformation (trim, uppercase, lowercase)
@@ -91,7 +104,6 @@ public class ApiParameterValidator {
                 }
 
                 // 3. Type parsing & Range Check
-                String type = def.type != null ? def.type.toLowerCase() : "string";
                 try {
                     switch (type) {
                         case "integer": {

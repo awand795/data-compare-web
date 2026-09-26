@@ -10,20 +10,20 @@ import {
   LayoutGrid, List, Clock, Lock, Unlock, Layers, SlidersHorizontal,
   Folder, FolderOpen, FolderPlus, FolderTree, Shield, AlertTriangle, ChevronRight,
   CheckSquare, Square, Radio, Bell, Send, MessageCircle, Zap, Sparkles,
-  Hash, HardDrive, KeyRound,
-  ArrowUpDown, ArrowUp, ArrowDown
+  Hash, KeyRound,
+  ArrowUpDown, ArrowUp, ArrowDown,
+  Camera, UploadCloud
 } from 'lucide-react';
 import { EndpointTargetsModal, type EndpointTarget } from './EndpointTargetsModal';
 import { ParameterRulesModal } from './ParameterRulesModal';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
 import { SQLEditor } from './SQLEditor';
 import { SequenceView } from './SequenceView';
-import { StorageManagerView } from './StorageManagerView';
 import clsx from 'clsx';
 
 export interface ApiParameter {
   name: string;
-  type: 'string' | 'integer' | 'number' | 'boolean' | 'date';
+  type: 'string' | 'integer' | 'number' | 'boolean' | 'date' | 'file' | 'image';
   required: boolean;
   defaultValue: string;
   description: string;
@@ -83,6 +83,16 @@ interface ApiEndpoint {
   refreshTokenTtlDays?: number;
   securityMode?: 'PUBLIC' | 'JWT_AUTH' | 'API_KEY' | 'HYBRID';
   allowedRoles?: string;
+
+  // Direct Database File / Photo Upload & Compression
+  enableFileUpload?: boolean;
+  fileParamName?: string;
+  allowedExtensions?: string;
+  maxFileSizeMb?: number;
+  autoCompressImage?: boolean;
+  imageQualityPercent?: number;
+  imageMaxWidth?: number;
+  imageMaxHeight?: number;
 }
 
 type ValidationError = {
@@ -130,7 +140,7 @@ export const ApiBuilderView: React.FC = () => {
   
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'edit' | 'spec'>('list');
-  const [backendlessTab, setBackendlessTab] = useState<'endpoints' | 'sequence' | 'storage'>('endpoints');
+  const [backendlessTab, setBackendlessTab] = useState<'endpoints' | 'sequence'>('endpoints');
   const [currentApi, setCurrentApi] = useState<ApiEndpoint | null>(null);
   const [parameterMeta, setParameterMeta] = useState<ApiParameter[]>([]);
   const [selectedParamForRules, setSelectedParamForRules] = useState<ApiParameter | null>(null);
@@ -320,6 +330,43 @@ export const ApiBuilderView: React.FC = () => {
   // Testing States
   const [testResult, setTestResult] = useState<any>(null);
   const [testParams, setTestParams] = useState<Record<string, string>>({});
+  const [testUploadedFile, setTestUploadedFile] = useState<{ name: string; size: number; previewUrl: string; dataUrl: string } | null>(null);
+
+  const handleTestFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setTestUploadedFile({
+        name: file.name,
+        size: file.size,
+        previewUrl: file.type.startsWith('image/') ? dataUrl : '',
+        dataUrl: dataUrl
+      });
+      const fileKey = currentApi?.fileParamName?.trim() || 'file';
+      setTestParams(prev => ({
+        ...prev,
+        [fileKey]: dataUrl,
+        ...(fileKey !== 'file' ? { file: dataUrl } : {})
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleClearTestFile = () => {
+    setTestUploadedFile(null);
+    const fileKey = currentApi?.fileParamName?.trim() || 'file';
+    setTestParams(prev => {
+      const copy = { ...prev };
+      delete copy[fileKey];
+      delete copy['file'];
+      delete copy['foto'];
+      delete copy['image'];
+      return copy;
+    });
+  };
   const [isTesting, setIsTesting] = useState(false);
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
   const [isTestConsoleOpen, setIsTestConsoleOpen] = useState(false);
@@ -498,7 +545,15 @@ export const ApiBuilderView: React.FC = () => {
       tokenTtlMinutes: 15,
       refreshTokenTtlDays: 30,
       securityMode: 'API_KEY',
-      allowedRoles: ''
+      allowedRoles: '',
+      enableFileUpload: false,
+      fileParamName: 'foto',
+      allowedExtensions: 'jpg,jpeg,png,webp',
+      maxFileSizeMb: 10,
+      autoCompressImage: true,
+      imageQualityPercent: 80,
+      imageMaxWidth: 1920,
+      imageMaxHeight: 1920
     };
     setCurrentApi(newApi);
     setTestParams({});
@@ -1174,52 +1229,10 @@ export const ApiBuilderView: React.FC = () => {
                 <Hash className="w-3.5 h-3.5" />
                 <span>Auto-Number (Sequence)</span>
               </button>
-              <button
-                onClick={() => setBackendlessTab('storage')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
-              >
-                <HardDrive className="w-3.5 h-3.5" />
-                <span>Storage &amp; Buckets</span>
-              </button>
             </div>
           </div>
           <div className="flex-1 overflow-hidden">
             <SequenceView />
-          </div>
-        </div>
-      );
-    }
-
-    if (backendlessTab === 'storage') {
-      return (
-        <div className="h-full flex flex-col overflow-hidden bg-bg-main">
-          <div className="border-b border-border-main bg-bg-panel px-4 py-2.5 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-1.5 p-1 bg-bg-editor rounded-xl border border-border-main">
-              <button
-                onClick={() => setBackendlessTab('endpoints')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
-              >
-                <Code2 className="w-3.5 h-3.5" />
-                <span>API Endpoints</span>
-              </button>
-              <button
-                onClick={() => setBackendlessTab('sequence')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
-              >
-                <Hash className="w-3.5 h-3.5" />
-                <span>Auto-Number (Sequence)</span>
-              </button>
-              <button
-                onClick={() => setBackendlessTab('storage')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow-sm transition-all cursor-pointer"
-              >
-                <HardDrive className="w-3.5 h-3.5" />
-                <span>Storage &amp; Buckets</span>
-              </button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <StorageManagerView />
           </div>
         </div>
       );
@@ -1242,13 +1255,6 @@ export const ApiBuilderView: React.FC = () => {
           >
             <Hash className="w-3.5 h-3.5" />
             <span>Auto-Number (Sequence)</span>
-          </button>
-          <button
-            onClick={() => setBackendlessTab('storage')}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main transition-all cursor-pointer"
-          >
-            <HardDrive className="w-3.5 h-3.5" />
-            <span>Storage &amp; Buckets</span>
           </button>
         </div>
 
@@ -4618,6 +4624,220 @@ export const ApiBuilderView: React.FC = () => {
                   </div>
                 </div>
 
+                {/* SECTION 4.5: DIRECT DATABASE FILE / PHOTO UPLOAD & COMPRESSION */}
+                <div className="bg-bg-panel border border-border-main hover:border-emerald-500/30 rounded-2xl p-5 space-y-4 transition-all shadow-sm">
+                  {/* Section Title Header */}
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 shrink-0">
+                        <Camera className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-text-main flex items-center gap-2">
+                          Direct Database File / Photo Upload
+                          {currentApi.enableFileUpload ? (
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-text-muted bg-bg-main border border-border-main px-2 py-0.5 rounded-full font-mono">
+                              Disabled
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-[11px] text-text-muted">
+                          Upload foto/file langsung tersimpan ke database <strong className="text-emerald-400">{connections.find(c => c.id === currentApi.connectionId)?.name || 'terpilih'}</strong> (tanpa storage bucket fisik).
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={Boolean(currentApi.enableFileUpload)} 
+                        onChange={e => setCurrentApi({...currentApi, enableFileUpload: e.target.checked})}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-bg-main peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border-main after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                      <span className="ml-2 text-xs font-bold text-text-main">
+                        {currentApi.enableFileUpload ? 'Aktif' : 'Nonaktif'}
+                      </span>
+                    </label>
+                  </div>
+
+                  {currentApi.enableFileUpload && (
+                    <div className="space-y-4 pt-2">
+                      {/* Database Notice Card */}
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-start gap-3">
+                        <Database className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        <div className="text-xs text-emerald-200">
+                          <span className="font-bold text-emerald-300">Target Database: </span>
+                          File akan disimpan langsung ke tabel di koneksi <span className="font-bold underline text-white">{connections.find(c => c.id === currentApi.connectionId)?.name || currentApi.connectionId}</span> ({connections.find(c => c.id === currentApi.connectionId)?.type || 'RDBMS'}).
+                        </div>
+                      </div>
+
+                      {/* Settings Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                            Nama Field / Parameter Form
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full bg-bg-editor border border-border-main focus:border-emerald-500/60 rounded-xl px-3 py-2 text-xs outline-none text-text-main font-mono"
+                            value={currentApi.fileParamName || 'foto'}
+                            onChange={e => setCurrentApi({...currentApi, fileParamName: e.target.value})}
+                            placeholder="foto"
+                          />
+                          <span className="text-[10px] text-text-muted mt-0.5 block">Nama field saat client kirim multipart/form-data</span>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                            Format File Diizinkan
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full bg-bg-editor border border-border-main focus:border-emerald-500/60 rounded-xl px-3 py-2 text-xs outline-none text-text-main font-mono"
+                            value={currentApi.allowedExtensions || 'jpg,jpeg,png,webp'}
+                            onChange={e => setCurrentApi({...currentApi, allowedExtensions: e.target.value})}
+                            placeholder="jpg,jpeg,png,webp"
+                          />
+                          <span className="text-[10px] text-text-muted mt-0.5 block">Gunakan koma untuk pisahkan ekstensi (* untuk semua)</span>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                            Maksimal Ukuran File (MB)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            className="w-full bg-bg-editor border border-border-main focus:border-emerald-500/60 rounded-xl px-3 py-2 text-xs outline-none text-text-main font-mono"
+                            value={currentApi.maxFileSizeMb ?? 10}
+                            onChange={e => setCurrentApi({...currentApi, maxFileSizeMb: parseInt(e.target.value) || 10})}
+                          />
+                          <span className="text-[10px] text-text-muted mt-0.5 block">Batas maksimal ukuran payload file</span>
+                        </div>
+                      </div>
+
+                      {/* Image Compression Card */}
+                      <div className="bg-bg-main border border-border-main rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-xs font-bold text-text-main">Kompresi Gambar Otomatis (Image Optimizer)</span>
+                          </div>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={currentApi.autoCompressImage !== false}
+                              onChange={e => setCurrentApi({...currentApi, autoCompressImage: e.target.checked})}
+                              className="w-4 h-4 rounded border-border-main text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className="text-xs text-text-muted font-medium">Aktifkan</span>
+                          </label>
+                        </div>
+
+                        {currentApi.autoCompressImage !== false && (
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-border-main/50">
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[11px] font-bold text-text-muted">Kualitas Gambar</label>
+                                <span className="text-[11px] font-mono font-bold text-emerald-400">{currentApi.imageQualityPercent ?? 80}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="20"
+                                max="100"
+                                step="5"
+                                className="w-full accent-emerald-500 cursor-pointer"
+                                value={currentApi.imageQualityPercent ?? 80}
+                                onChange={e => setCurrentApi({...currentApi, imageQualityPercent: parseInt(e.target.value) || 80})}
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[11px] font-bold text-text-muted block mb-1">Maks Lebar (px)</label>
+                              <input
+                                type="number"
+                                min="320"
+                                max="3840"
+                                step="100"
+                                className="w-full bg-bg-editor border border-border-main rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none text-text-main"
+                                value={currentApi.imageMaxWidth ?? 1920}
+                                onChange={e => setCurrentApi({...currentApi, imageMaxWidth: parseInt(e.target.value) || 1920})}
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[11px] font-bold text-text-muted block mb-1">Maks Tinggi (px)</label>
+                              <input
+                                type="number"
+                                min="320"
+                                max="3840"
+                                step="100"
+                                className="w-full bg-bg-editor border border-border-main rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none text-text-main"
+                                value={currentApi.imageMaxHeight ?? 1920}
+                                onChange={e => setCurrentApi({...currentApi, imageMaxHeight: parseInt(e.target.value) || 1920})}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Cheatsheet of SQL Parameters */}
+                      <div className="bg-bg-editor border border-border-main rounded-xl p-3.5 space-y-2">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <span className="text-[11px] font-bold text-text-main flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                            Parameter SQL yang Otomatis Tersedia:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const p = currentApi.fileParamName || 'foto';
+                              const sample = `INSERT INTO sch_erp_system.trm_foto (filename, foto_blob, foto_base64, mime_type, ukuran_bytes, created_at)\nVALUES (:${p}_name, :${p}, :${p}_base64, :${p}_mime, :${p}_size, NOW());`;
+                              setCurrentApi({...currentApi, sqlQuery: sample});
+                            }}
+                            className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 cursor-pointer"
+                          >
+                            + Terapkan Contoh Query INSERT
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono">
+                          <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                            <span className="text-emerald-400 font-bold block">:{currentApi.fileParamName || 'foto'}</span>
+                            <span className="text-text-muted">Binary byte[] (BYTEA / BLOB)</span>
+                          </div>
+                          <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                            <span className="text-cyan-400 font-bold block">:{currentApi.fileParamName || 'foto'}_base64</span>
+                            <span className="text-text-muted">String Base64 (TEXT)</span>
+                          </div>
+                          <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                            <span className="text-amber-400 font-bold block">:{currentApi.fileParamName || 'foto'}_name</span>
+                            <span className="text-text-muted">Nama File Asli (VARCHAR)</span>
+                          </div>
+                          <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                            <span className="text-purple-400 font-bold block">:{currentApi.fileParamName || 'foto'}_mime</span>
+                            <span className="text-text-muted">MIME Type (VARCHAR)</span>
+                          </div>
+                          <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                            <span className="text-blue-400 font-bold block">:{currentApi.fileParamName || 'foto'}_size</span>
+                            <span className="text-text-muted">Ukuran Bytes (BIGINT)</span>
+                          </div>
+                          <div className="bg-bg-panel p-2 rounded-lg border border-border-main">
+                            <span className="text-rose-400 font-bold block">:{currentApi.fileParamName || 'foto'}_base64_data</span>
+                            <span className="text-text-muted">data:image/...;base64,...</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* SECTION 5: SCHEDULED TASK & NOTIFICATIONS (SPRING CRON, OPTIONAL WEBHOOK TARGET & ALERTS) */}
                 <div id="sec-cron-push" className="bg-bg-panel border border-border-main hover:border-cyan-500/30 rounded-2xl p-5 space-y-4 transition-all shadow-sm">
                   {/* Section Title Header */}
@@ -5280,9 +5500,76 @@ export const ApiBuilderView: React.FC = () => {
                     </div>
                   )}
 
-                  {Object.keys(testParams).length > 0 && (
+                  {currentApi.enableFileUpload && (
+                    <div className="mt-4 pt-3 border-t border-border-main/30 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] uppercase font-bold text-amber-400 tracking-wider flex items-center gap-1.5">
+                          <Camera className="w-3 h-3 text-amber-400" />
+                          File / Photo Input
+                        </p>
+                        <span className="text-[9px] font-mono text-slate-400">:{currentApi.fileParamName || 'file'}</span>
+                      </div>
+
+                      {testUploadedFile ? (
+                        <div className="bg-[#161f30] border border-amber-500/30 rounded-xl p-2.5 space-y-2">
+                          <div className="flex items-start gap-2.5">
+                            {testUploadedFile.previewUrl ? (
+                              <img 
+                                src={testUploadedFile.previewUrl} 
+                                alt="preview" 
+                                className="w-12 h-12 rounded-lg object-cover border border-amber-500/20 shadow-md shrink-0 bg-black/40"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg bg-black/40 border border-slate-700 flex items-center justify-center shrink-0">
+                                <UploadCloud className="w-5 h-5 text-amber-400" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-white truncate">{testUploadedFile.name}</p>
+                              <p className="text-[10px] font-mono text-slate-400">
+                                {(testUploadedFile.size / 1024).toFixed(1)} KB
+                              </p>
+                              {currentApi.autoCompressImage && (
+                                <span className="inline-block mt-0.5 text-[9px] text-amber-300/90 font-medium">
+                                  Auto-compress ({currentApi.imageQualityPercent || 80}%)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleClearTestFile}
+                            className="w-full py-1 text-[11px] font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors flex items-center justify-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" /> Remove File
+                          </button>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="flex flex-col items-center justify-center border-2 border-dashed border-[#2b3a55] hover:border-amber-500/50 rounded-xl p-3 cursor-pointer bg-[#161f30]/50 hover:bg-[#161f30] transition-colors group">
+                            <UploadCloud className="w-6 h-6 text-slate-400 group-hover:text-amber-400 transition-colors mb-1" />
+                            <span className="text-xs text-slate-300 font-medium group-hover:text-white">Choose File / Photo</span>
+                            <span className="text-[9px] text-slate-500 mt-0.5 font-mono">
+                              Max {currentApi.maxFileSizeMb || 5}MB • DB direct
+                            </span>
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              onChange={handleTestFileUpload}
+                              accept={currentApi.allowedExtensions ? currentApi.allowedExtensions.split(',').map(e => '.' + e.trim()).join(',') : 'image/*'}
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(Object.keys(testParams).length > 0 || testUploadedFile) && (
                     <button
-                      onClick={() => setTestParams({})}
+                      onClick={() => {
+                        setTestParams({});
+                        setTestUploadedFile(null);
+                      }}
                       className="mt-4 text-xs text-slate-400 hover:text-rose-400 flex items-center gap-1.5 font-bold transition-colors"
                     >
                       <Eraser className="w-3.5 h-3.5" /> Clear Values

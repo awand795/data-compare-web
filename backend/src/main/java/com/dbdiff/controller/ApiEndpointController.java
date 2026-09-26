@@ -71,6 +71,83 @@ public class ApiEndpointController {
         }
         params = result.getParams();
 
+        // ── Direct Database File / Photo Upload Processing for Test Console ──────
+        if (endpoint.isEnableFileUpload()) {
+            String fileParam = endpoint.getFileParamName() != null && !endpoint.getFileParamName().trim().isEmpty()
+                    ? endpoint.getFileParamName().trim() : "file";
+            
+            for (String fKey : new String[]{fileParam, "file", "foto", "image"}) {
+                Object rawFileObj = params.get(fKey);
+                if (rawFileObj instanceof String str && !str.trim().isEmpty()) {
+                    try {
+                        String base64Data = str;
+                        String detectedMime = "image/jpeg";
+                        if (str.startsWith("data:")) {
+                            int commaIdx = str.indexOf(",");
+                            if (commaIdx != -1) {
+                                String header = str.substring(5, commaIdx);
+                                if (header.contains(";")) {
+                                    detectedMime = header.split(";")[0];
+                                }
+                                base64Data = str.substring(commaIdx + 1);
+                            }
+                        }
+                        byte[] fileBytes = java.util.Base64.getDecoder().decode(base64Data.trim());
+                        int originalSize = fileBytes.length;
+
+                        // Auto compression if enabled
+                        if (endpoint.isAutoCompressImage() && (detectedMime.startsWith("image/") || isLikelyImage(fileBytes))) {
+                            try {
+                                java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                                int maxWidth = endpoint.getImageMaxWidth() != null ? endpoint.getImageMaxWidth() : 1920;
+                                int maxHeight = endpoint.getImageMaxHeight() != null ? endpoint.getImageMaxHeight() : 1920;
+                                int qualityPct = endpoint.getImageQualityPercent() != null ? endpoint.getImageQualityPercent() : 80;
+                                double quality = Math.min(1.0, Math.max(0.05, (double) qualityPct / 100.0));
+
+                                net.coobird.thumbnailator.Thumbnails.of(new java.io.ByteArrayInputStream(fileBytes))
+                                        .size(maxWidth, maxHeight)
+                                        .outputQuality(quality)
+                                        .toOutputStream(baos);
+
+                                byte[] comp = baos.toByteArray();
+                                if (comp.length > 0 && comp.length < fileBytes.length) {
+                                    fileBytes = comp;
+                                }
+                            } catch (Exception compressEx) {
+                                org.slf4j.LoggerFactory.getLogger(ApiEndpointController.class).warn("Test image compression failed: {}", compressEx.getMessage());
+                            }
+                        }
+
+                        String finalBase64 = java.util.Base64.getEncoder().encodeToString(fileBytes);
+                        String dataUri = "data:" + detectedMime + ";base64," + finalBase64;
+                        
+                        params.put(fKey, fileBytes);
+                        params.put(fKey + "_bytes", fileBytes);
+                        params.put(fKey + "_base64", finalBase64);
+                        params.put(fKey + "_base64_data", dataUri);
+                        params.put(fKey + "_mime", detectedMime);
+                        params.put(fKey + "_size", fileBytes.length);
+                        params.put(fKey + "_original_size", originalSize);
+                        params.putIfAbsent(fKey + "_name", "upload.jpg");
+
+                        if (!fKey.equals(fileParam)) {
+                            params.put(fileParam, fileBytes);
+                            params.put(fileParam + "_bytes", fileBytes);
+                            params.put(fileParam + "_base64", finalBase64);
+                            params.put(fileParam + "_base64_data", dataUri);
+                            params.put(fileParam + "_mime", detectedMime);
+                            params.put(fileParam + "_size", fileBytes.length);
+                            params.put(fileParam + "_original_size", originalSize);
+                            params.putIfAbsent(fileParam + "_name", "upload.jpg");
+                        }
+                        break;
+                    } catch (Exception decodeEx) {
+                        // Not base64 or failed to decode
+                    }
+                }
+            }
+        }
+
         // ── Auto-Inject System Variables ───────────────────────────────────────
         String nowTimestamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String todayDate = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
@@ -614,17 +691,41 @@ public class ApiEndpointController {
         } catch (Exception ignored) {}
     }
 
+    private boolean isLikelyImage(byte[] data) {
+        if (data == null || data.length < 4) return false;
+        // JPEG (FF D8 FF)
+        if ((data[0] & 0xFF) == 0xFF && (data[1] & 0xFF) == 0xD8 && (data[2] & 0xFF) == 0xFF) return true;
+        // PNG (89 50 4E 47)
+        if ((data[0] & 0xFF) == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47) return true;
+        // GIF (GIF8)
+        if (data[0] == 'G' && data[1] == 'I' && data[2] == 'F' && data[3] == '8') return true;
+        // WEBP (RIFF....WEBP)
+        if (data.length > 12 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F'
+                && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P') return true;
+        return false;
+    }
+
     private Object getSafeObject(java.sql.ResultSet rs, int colIdx) throws java.sql.SQLException {
         Object val = rs.getObject(colIdx);
         if (val == null) return null;
         if (val instanceof java.sql.Blob) {
-            java.sql.Blob b = (java.sql.Blob) val;
-            return "[BLOB Data: " + b.length() + " bytes]";
+            try {
+                java.sql.Blob b = (java.sql.Blob) val;
+                long len = b.length();
+                if (len > 0) {
+                    byte[] bytes = b.getBytes(1, (int) Math.min(len, 20_000_000));
+                    return java.util.Base64.getEncoder().encodeToString(bytes);
+                }
+                return "";
+            } catch (Exception ex) {
+                return "[BLOB Data]";
+            }
         } else if (val instanceof java.sql.Clob) {
             java.sql.Clob c = (java.sql.Clob) val;
             return "[CLOB Data: " + c.length() + " chars]";
         } else if (val instanceof byte[]) {
-            return "[BINARY Data: " + ((byte[]) val).length + " bytes]";
+            byte[] bytes = (byte[]) val;
+            return java.util.Base64.getEncoder().encodeToString(bytes);
         } else if (val instanceof java.sql.Timestamp) {
             return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format((java.util.Date) val);
         } else if (val instanceof java.sql.Date) {
