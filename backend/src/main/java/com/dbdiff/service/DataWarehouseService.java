@@ -3612,19 +3612,52 @@ public class DataWarehouseService {
                             try (java.sql.Connection conn = ds.getConnection();
                                  java.sql.Statement stmt = conn.createStatement()) {
                                  
-                                stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`v_" + targetTable + "`");
-                                
-                                String findMVs = "SELECT name FROM system.tables WHERE database = '" + db + "' AND name LIKE 'mv_%'";
+                                long remainingPipelines = pipelineMetadataRepository.countPipelinesForTargetTableExcept(targetTable, deployId);
+                                java.util.Set<String> thisConnIds = new java.util.LinkedHashSet<>();
+                                if (sourceConnectionId != null && !sourceConnectionId.isBlank()) thisConnIds.add(sourceConnectionId.trim());
+                                String multiSources = meta != null ? (String) meta.get("source_connection_ids") : null;
+                                if (multiSources != null && !multiSources.isBlank()) {
+                                    for (String s : multiSources.split(",")) if (!s.isBlank()) thisConnIds.add(s.trim());
+                                }
+
+                                List<ConnectionDetails> allConns = connectionRepository.findAll();
+                                Set<String> thisBaseNames = new HashSet<>();
+                                for (String cId : thisConnIds) {
+                                    ConnectionDetails cd = allConns.stream().filter(c -> String.valueOf(c.getId()).equals(cId)).findFirst().orElse(null);
+                                    if (cd != null) {
+                                        thisBaseNames.add(cd.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase());
+                                    }
+                                }
+
+                                String findMVs = "SELECT name FROM system.tables WHERE database = '" + db + "' AND name LIKE 'mv_" + targetTable + "_%'";
                                 java.util.List<String> mvsToDrop = new java.util.ArrayList<>();
                                 try (java.sql.ResultSet rs = stmt.executeQuery(findMVs)) {
                                     while (rs.next()) {
                                         String name = rs.getString("name");
-                                        if (name.startsWith("mv_" + targetTable + "_")) {
+                                        if (remainingPipelines == 0) {
                                             mvsToDrop.add(name);
+                                        } else {
+                                            // Hanya drop MV milik koneksi pipeline yang sedang dihapus
+                                            boolean belongsToThis = false;
+                                            for (String bn : thisBaseNames) {
+                                                if (name.contains("_" + bn + "_") || name.endsWith("_" + bn)) {
+                                                    belongsToThis = true;
+                                                    break;
+                                                }
+                                            }
+                                            for (String cid : thisConnIds) {
+                                                if (name.contains("_" + cid + "_") || name.endsWith("_" + cid)) {
+                                                    belongsToThis = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (belongsToThis) {
+                                                mvsToDrop.add(name);
+                                            }
                                         }
                                     }
                                 }
-                                
+
                                 for (String mv : mvsToDrop) {
                                     stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`" + mv + "`");
                                     String prefix = "mv_" + targetTable + "_";
@@ -3640,12 +3673,12 @@ public class DataWarehouseService {
                                         }
                                     }
                                 }
-                                
-                                long remainingPipelines = pipelineMetadataRepository.countPipelinesForTargetTableExcept(targetTable, deployId);
+
                                 if (remainingPipelines == 0) {
+                                    stmt.execute("DROP VIEW IF EXISTS `" + db + "`.`v_" + targetTable + "`");
                                     stmt.execute("DROP TABLE IF EXISTS `" + db + "`.`" + targetTable + "`");
                                 } else {
-                                    logger.info("Target table `" + targetTable + "` is still used by " + remainingPipelines + " other pipeline(s). Preserving table.");
+                                    logger.info("Target table `" + targetTable + "` is still used by " + remainingPipelines + " other pipeline(s). Preserving table and view.");
                                 }
                             }
                         }
@@ -4353,7 +4386,20 @@ public class DataWarehouseService {
                 throw new RuntimeException("Target table tidak valid pada metadata.");
             }
 
-            // 1. Kumpulkan seluruh ConnectionDetails source yang terdaftar
+            ConnectionDetails targetConn = enrichConnection(connectionRepository.findById(targetConnectionId));
+            if (targetConn == null) {
+                targetConn = connectionRepository.findAll().stream()
+                        .filter(c -> "clickhouse".equalsIgnoreCase(c.getType()))
+                        .findFirst().orElseThrow(() -> new RuntimeException("Target connection ClickHouse tidak ditemukan"));
+            }
+
+            String chDb = targetDatabase;
+            if (chDb == null || chDb.isEmpty()) chDb = targetConn.getDatabase();
+            if (chDb == null || chDb.isEmpty()) chDb = "default";
+
+            DataSource targetDs = connectionManagerService.getDataSource(targetConn);
+
+            // 1. Kumpulkan seluruh ConnectionDetails source yang terdaftar untuk target table ini
             Set<String> allSourceConnIds = new LinkedHashSet<>();
             if (primarySourceId != null && !primarySourceId.isBlank()) {
                 allSourceConnIds.add(primarySourceId.trim());
@@ -4364,23 +4410,48 @@ public class DataWarehouseService {
                 }
             }
 
-            // Fallback cari koneksi dari topics sink connector
+            // Tambahkan semua source connections dari SELURUH metadata pipeline yang mengarah ke targetTable yang sama
+            Set<String> tableSourceIds = pipelineMetadataRepository.getAllSourceConnectionIdsForTargetTable(targetTable);
+            allSourceConnIds.addAll(tableSourceIds);
+
+            List<ConnectionDetails> allKnownConns = connectionRepository.findAll();
+            String cleanTarget = targetTable.replaceAll("[^a-zA-Z0-9_-]", "");
+
+            // Tambahkan source connections yang terdeteksi dari Materialized Views ClickHouse yang sedang aktif untuk targetTable ini
+            try (Connection conn = targetDs.getConnection();
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT name FROM system.tables WHERE database = '" + chDb + "' AND name LIKE 'mv_" + targetTable + "_%'")) {
+                while (rs.next()) {
+                    String mvName = rs.getString("name");
+                    for (ConnectionDetails connItem : allKnownConns) {
+                        String bName = connItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                        String scId = String.valueOf(connItem.getId());
+                        if (mvName.contains("_" + bName + "_") || mvName.endsWith("_" + bName)
+                                || mvName.contains("_" + scId + "_") || mvName.endsWith("_" + scId)) {
+                            allSourceConnIds.add(scId);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                logger.warn("Could not inspect existing ClickHouse MVs for target table {}: {}", targetTable, ex.getMessage());
+            }
+
+            // Fallback cari koneksi dari topics sink connector Debezium untuk targetTable ini
             try {
                 String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
                 if (connectors != null) {
                     for (String c : connectors) {
-                        if (c.endsWith("-" + deployId) && c.startsWith("sink-")) {
+                        if (c.startsWith("sink-") && (c.endsWith("-" + deployId) || c.contains("-" + cleanTarget + "-"))) {
                             Map<String, Object> cfg = getConnectorConfig(c);
                             if (cfg != null && cfg.get("topics") != null) {
                                 String topicsStr = (String) cfg.get("topics");
                                 for (String topic : topicsStr.split(",")) {
-                                    if (topic.startsWith("cdc_")) {
-                                        String rem = topic.substring(4);
-                                        for (ConnectionDetails conn : connectionRepository.findAll()) {
-                                            String bName = conn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
-                                            if (rem.startsWith(bName + "_")) {
-                                                allSourceConnIds.add(String.valueOf(conn.getId()));
-                                            }
+                                    for (ConnectionDetails connItem : allKnownConns) {
+                                        String bName = connItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                                        String scId = String.valueOf(connItem.getId());
+                                        if (topic.contains("_" + bName + "_") || topic.endsWith("_" + bName)
+                                                || topic.contains("_" + scId + "_") || topic.endsWith("_" + scId)) {
+                                            allSourceConnIds.add(scId);
                                         }
                                     }
                                 }
@@ -4403,18 +4474,12 @@ public class DataWarehouseService {
                 throw new RuntimeException("Tidak ada source connection yang terdaftar untuk pipeline: " + deployId);
             }
 
-            ConnectionDetails targetConn = enrichConnection(connectionRepository.findById(targetConnectionId));
-            if (targetConn == null) {
-                targetConn = connectionRepository.findAll().stream()
-                        .filter(c -> "clickhouse".equalsIgnoreCase(c.getType()))
-                        .findFirst().orElseThrow(() -> new RuntimeException("Target connection ClickHouse tidak ditemukan"));
-            }
-
-            String chDb = targetDatabase;
-            if (chDb == null || chDb.isEmpty()) chDb = targetConn.getDatabase();
-            if (chDb == null || chDb.isEmpty()) chDb = "default";
-
-            DataSource targetDs = connectionManagerService.getDataSource(targetConn);
+            // Sinkronkan metadata agar daftar source connection lengkap tersimpan di Postgres
+            try {
+                String updatedSourcesStr = String.join(",", allSourceConnIds);
+                pipelineMetadataRepository.updateSourceConnectionIds(deployId, updatedSourcesStr);
+                pipelineMetadataRepository.updateSourceConnectionIdsForTargetTable(targetTable, updatedSourcesStr);
+            } catch (Exception ignored) {}
 
             if (isFullClean) {
                 // =========================================================================
@@ -4496,7 +4561,7 @@ public class DataWarehouseService {
                     String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
                     if (connectors != null) {
                         for (String c : connectors) {
-                            if (c.endsWith("-" + deployId) && c.startsWith("sink-")) {
+                            if (c.startsWith("sink-") && (c.endsWith("-" + deployId) || c.contains("-" + cleanTarget + "-"))) {
                                 sendLog(emitter, "Menghapus sink connector lama: " + c);
                                 deleteConnectorWithWait(c);
                             }
@@ -4867,7 +4932,7 @@ public class DataWarehouseService {
 
                 // 6. Cek Sink Connector dan Topics
                 boolean isPostgresTarget = "postgresql".equalsIgnoreCase(targetConn.getType());
-                String cleanTarget = targetTable.replaceAll("[\"``]", "");
+                cleanTarget = targetTable.replaceAll("[\"``]", "");
                 String sinkConnectorName = isPostgresTarget ?
                         "sink-postgres-" + cleanTarget + "-" + deployId :
                         "sink-clickhouse-" + cleanTarget + "-" + deployId;

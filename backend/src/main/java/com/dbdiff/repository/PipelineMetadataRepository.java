@@ -121,7 +121,7 @@ public class PipelineMetadataRepository {
         if (targetTable == null || targetTable.trim().isEmpty()) return result;
         try {
             java.util.List<Map<String, Object>> list = jdbcTemplate.queryForList(
-                "SELECT source_connection_id, source_connection_ids FROM data_warehouse_pipelines WHERE target_table = ? AND (target_database <> 'default' OR target_database IS NULL)",
+                "SELECT source_connection_id, source_connection_ids FROM data_warehouse_pipelines WHERE target_table = ?",
                 targetTable.trim()
             );
             for (Map<String, Object> row : list) {
@@ -136,6 +136,16 @@ public class PipelineMetadataRepository {
             }
         } catch (Exception ignored) {}
         return result;
+    }
+
+    public void updateSourceConnectionIdsForTargetTable(String targetTable, String sourceConnectionIds) {
+        if (targetTable == null || targetTable.trim().isEmpty()) return;
+        try {
+            jdbcTemplate.update(
+                "UPDATE data_warehouse_pipelines SET source_connection_ids = ? WHERE target_table = ?",
+                sourceConnectionIds, targetTable.trim()
+            );
+        } catch (Exception ignored) {}
     }
 
     public void updateSourceConnectionIds(String deployId, String sourceConnectionIds) {
