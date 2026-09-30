@@ -3943,35 +3943,12 @@ public class DataWarehouseService {
         result.put("deployId", deployId);
         result.put("targetTable", targetTable != null ? targetTable : deployId);
 
-        Set<String> activeConnIds = new LinkedHashSet<>();
-        if (targetTable != null) {
-            String thisQuery = meta != null ? (String) meta.get("query") : null;
-            if (thisQuery != null) {
-                List<Map<String, Object>> pipelines = pipelineMetadataRepository.findPipelinesByTargetTable(targetTable);
-                for (Map<String, Object> p : pipelines) {
-                    if (isSameQuery(thisQuery, (String) p.get("query"))) {
-                        String sId = (String) p.get("source_connection_id");
-                        if (sId != null && !sId.isBlank()) activeConnIds.add(sId.trim());
-                        String mId = (String) p.get("source_connection_ids");
-                        if (mId != null && !mId.isBlank()) {
-                            for (String s : mId.split(",")) if (!s.isBlank()) activeConnIds.add(s.trim());
-                        }
-                    }
-                }
-            }
-        }
-        if (meta != null) {
-            String single = (String) meta.get("source_connection_id");
-            if (single != null && !single.isBlank()) activeConnIds.add(single.trim());
-            String multi = (String) meta.get("source_connection_ids");
-            if (multi != null && !multi.isBlank()) {
-                for (String s : multi.split(",")) if (!s.isBlank()) activeConnIds.add(s.trim());
-            }
-        }
-
         List<ConnectionDetails> allConns = connectionRepository.findAll();
+        Set<String> activeConnIds = new LinkedHashSet<>();
+
+        // 1. Priority 1: Check live Debezium sink connector topics for THIS specific deployId
+        boolean foundConnector = false;
         try {
-            String cleanTarget = targetTable != null ? targetTable.replaceAll("[^a-zA-Z0-9_-]", "") : "";
             String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
             if (connectors != null) {
                 for (String c : connectors) {
@@ -3980,12 +3957,14 @@ public class DataWarehouseService {
                         if (cfg != null && cfg.get("topics") != null) {
                             String topicsStr = (String) cfg.get("topics");
                             for (String topic : topicsStr.split(",")) {
-                                if (topic.startsWith("cdc_")) {
-                                    String rem = topic.substring(4);
+                                String t = topic.trim();
+                                if (t.startsWith("cdc_")) {
+                                    String rem = t.substring(4);
                                     for (ConnectionDetails conn : allConns) {
                                         String bName = conn.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
-                                        if (rem.startsWith(bName + "_")) {
+                                        if (rem.startsWith(bName + "_") || rem.equals(bName)) {
                                             activeConnIds.add(String.valueOf(conn.getId()));
+                                            foundConnector = true;
                                         }
                                     }
                                 }
@@ -3995,6 +3974,23 @@ public class DataWarehouseService {
                 }
             }
         } catch (Exception ignored) {}
+
+        // 2. Priority 2: If connector topics not found, use metadata for THIS deployId
+        if (!foundConnector && meta != null) {
+            String single = (String) meta.get("source_connection_id");
+            if (single != null && !single.isBlank()) activeConnIds.add(single.trim());
+            String multi = (String) meta.get("source_connection_ids");
+            if (multi != null && !multi.isBlank()) {
+                for (String s : multi.split(",")) if (!s.isBlank()) activeConnIds.add(s.trim());
+            }
+        }
+
+        // 3. Keep database metadata in sync with active connector sources
+        if (foundConnector && !activeConnIds.isEmpty()) {
+            try {
+                pipelineMetadataRepository.updateSourceConnectionIds(deployId, String.join(",", activeConnIds));
+            } catch (Exception ignored) {}
+        }
 
         List<Map<String, Object>> activeSources = new ArrayList<>();
         for (String cid : activeConnIds) {
@@ -4410,38 +4406,15 @@ public class DataWarehouseService {
                 }
             }
 
-            // Tambahkan semua source connections dari SELURUH metadata pipeline yang mengarah ke targetTable yang sama
-            Set<String> tableSourceIds = pipelineMetadataRepository.getAllSourceConnectionIdsForTargetTable(targetTable);
-            allSourceConnIds.addAll(tableSourceIds);
-
             List<ConnectionDetails> allKnownConns = connectionRepository.findAll();
             String cleanTarget = targetTable.replaceAll("[^a-zA-Z0-9_-]", "");
 
-            // Tambahkan source connections yang terdeteksi dari Materialized Views ClickHouse yang sedang aktif untuk targetTable ini
-            try (Connection conn = targetDs.getConnection();
-                 Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT name FROM system.tables WHERE database = '" + chDb + "' AND name LIKE 'mv_" + targetTable + "_%'")) {
-                while (rs.next()) {
-                    String mvName = rs.getString("name");
-                    for (ConnectionDetails connItem : allKnownConns) {
-                        String bName = connItem.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
-                        String scId = String.valueOf(connItem.getId());
-                        if (mvName.contains("_" + bName + "_") || mvName.endsWith("_" + bName)
-                                || mvName.contains("_" + scId + "_") || mvName.endsWith("_" + scId)) {
-                            allSourceConnIds.add(scId);
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                logger.warn("Could not inspect existing ClickHouse MVs for target table {}: {}", targetTable, ex.getMessage());
-            }
-
-            // Fallback cari koneksi dari topics sink connector Debezium untuk targetTable ini
+            // Cari koneksi dari topics sink connector Debezium untuk deployId ini
             try {
                 String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
                 if (connectors != null) {
                     for (String c : connectors) {
-                        if (c.startsWith("sink-") && (c.endsWith("-" + deployId) || c.contains("-" + cleanTarget + "-"))) {
+                        if (c.startsWith("sink-") && c.endsWith("-" + deployId)) {
                             Map<String, Object> cfg = getConnectorConfig(c);
                             if (cfg != null && cfg.get("topics") != null) {
                                 String topicsStr = (String) cfg.get("topics");
@@ -4474,11 +4447,10 @@ public class DataWarehouseService {
                 throw new RuntimeException("Tidak ada source connection yang terdaftar untuk pipeline: " + deployId);
             }
 
-            // Sinkronkan metadata agar daftar source connection lengkap tersimpan di Postgres
+            // Sinkronkan metadata agar daftar source connection pipeline ini tersimpan di Postgres
             try {
                 String updatedSourcesStr = String.join(",", allSourceConnIds);
                 pipelineMetadataRepository.updateSourceConnectionIds(deployId, updatedSourcesStr);
-                pipelineMetadataRepository.updateSourceConnectionIdsForTargetTable(targetTable, updatedSourcesStr);
             } catch (Exception ignored) {}
 
             if (isFullClean) {
@@ -4561,7 +4533,7 @@ public class DataWarehouseService {
                     String[] connectors = restTemplate.getForObject(DEBEZIUM_URL, String[].class);
                     if (connectors != null) {
                         for (String c : connectors) {
-                            if (c.startsWith("sink-") && (c.endsWith("-" + deployId) || c.contains("-" + cleanTarget + "-"))) {
+                            if (c.startsWith("sink-") && c.endsWith("-" + deployId)) {
                                 sendLog(emitter, "Menghapus sink connector lama: " + c);
                                 deleteConnectorWithWait(c);
                             }

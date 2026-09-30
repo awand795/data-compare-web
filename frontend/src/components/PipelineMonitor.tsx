@@ -384,8 +384,8 @@ export const PipelineMonitor: React.FC = () => {
     return null;
   };
 
-  const fetchSourcesForDeployId = async (deployId: string) => {
-    if (deployId.startsWith('Shared:') || loadingSourcesRef.current[deployId] || pipelineSourcesRef.current[deployId]) return;
+  const fetchSourcesForDeployId = async (deployId: string, force = false) => {
+    if (deployId.startsWith('Shared:') || loadingSourcesRef.current[deployId] || (!force && pipelineSourcesRef.current[deployId])) return;
     loadingSourcesRef.current[deployId] = true;
     setLoadingSources(prev => ({ ...prev, [deployId]: true }));
     try {
@@ -1124,12 +1124,21 @@ export const PipelineMonitor: React.FC = () => {
 
               const isSpecialGroup = deployId.startsWith('Shared:');
 
-              // Compute list of Source DB names for this pipeline from its active sources
+              // Compute list of Source DB names for this pipeline from its active sources or metadata
               const sourcesInfo = pipelineSources[deployId];
               const isSourcesLoading = loadingSources[deployId];
+
+              const metadataSourceNames: string[] = (() => {
+                const sinkWithSources = groupPipelines.find(p => p.sourceConnectionIds || p.sourceConnectionId);
+                const idsStr = sinkWithSources?.sourceConnectionIds || sinkWithSources?.sourceConnectionId;
+                if (!idsStr) return [];
+                const ids = idsStr.split(',').map(s => s.trim()).filter(Boolean);
+                return ids.map(id => connections.find((c: any) => String(c.id) === id)?.name || id);
+              })();
+
               const displaySources: string[] = (sourcesInfo?.activeSources && sourcesInfo.activeSources.length > 0)
                 ? sourcesInfo.activeSources.map(s => s.name)
-                : [];
+                : metadataSourceNames;
 
               return (
               <div key={deployId} className="bg-bg-main border border-border-main rounded-xl overflow-hidden">
