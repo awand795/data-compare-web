@@ -817,8 +817,8 @@ public class DynamicApiController {
                         ? endpoint.getVerificationStatusColumn().trim() : "email_verifikasi";
                 userRow.putIfAbsent(statusCol, false);
                 userRow.putIfAbsent("email_verifikasi", false);
-                userRow.putIfAbsent("nommor_hp_verifikasi", true);
                 userRow.putIfAbsent("nomor_hp_verifikasi", true);
+                userRow.putIfAbsent("status_no_aktif", false);
 
                 JwtService.TokenPair tokenPair = (jwtService != null)
                     ? jwtService.issueDynamicTokenPair(userRow, endpoint.getRequiredAppId(), endpoint.getTokenTtlMinutes(), endpoint.getRefreshTokenTtlDays())
