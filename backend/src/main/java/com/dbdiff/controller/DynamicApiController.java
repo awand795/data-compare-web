@@ -59,6 +59,9 @@ public class DynamicApiController {
     @Autowired(required = false)
     private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
+    @Autowired(required = false)
+    private com.dbdiff.service.EmailService emailService;
+
     @RequestMapping(value = "/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE})
     public void handleRequest(
             HttpServletRequest request,
@@ -735,6 +738,14 @@ public class DynamicApiController {
                     allParams.put("password_hash", hashed);
                     allParams.put(passParam, hashed);
                 }
+
+                String verificationToken = java.util.UUID.randomUUID().toString().replace("-", "") 
+                        + java.util.UUID.randomUUID().toString().replace("-", "");
+                allParams.put("email_verification_token", verificationToken);
+                allParams.put("verification_token", verificationToken);
+                allParams.put("email_verifikasi", false);
+                allParams.put("nommor_hp_verifikasi", true);
+                allParams.put("nomor_hp_verifikasi", true);
             }
 
             // ── Auth Action: LOGIN ───────────────────────────────────────────────────
@@ -795,6 +806,10 @@ public class DynamicApiController {
                 userRow.remove("password");
                 userRow.remove("passwordHash");
                 userRow.remove("passwd");
+                userRow.remove("email_verification_token");
+                userRow.putIfAbsent("email_verifikasi", false);
+                userRow.putIfAbsent("nommor_hp_verifikasi", true);
+                userRow.putIfAbsent("nomor_hp_verifikasi", true);
 
                 JwtService.TokenPair tokenPair = (jwtService != null)
                     ? jwtService.issueDynamicTokenPair(userRow, endpoint.getRequiredAppId(), endpoint.getTokenTtlMinutes(), endpoint.getRefreshTokenTtlDays())
@@ -932,6 +947,22 @@ public class DynamicApiController {
                         respMap.put("data", returningRows);
                     }
                 }
+
+                // Trigger verification email asynchronously upon REGISTER
+                if ("REGISTER".equalsIgnoreCase(endpoint.getAuthAction())) {
+                    try {
+                        String regEmail = allParams.get("email") != null ? allParams.get("email").toString().trim() : null;
+                        String regName = allParams.get("nama_lengkap") != null ? allParams.get("nama_lengkap").toString().trim() : 
+                                (allParams.get("nama") != null ? allParams.get("nama").toString().trim() : "Mitra");
+                        String vToken = (String) allParams.get("email_verification_token");
+                        if (regEmail != null && !regEmail.isEmpty() && vToken != null && emailService != null) {
+                            emailService.sendVerificationEmailAsync(regEmail, regName, vToken);
+                        }
+                    } catch (Exception ex) {
+                        org.slf4j.LoggerFactory.getLogger(DynamicApiController.class).warn("Failed to trigger verification email: {}", ex.getMessage());
+                    }
+                }
+
                 response.getWriter().write(mapper.writeValueAsString(respMap));
                 response.getWriter().flush();
                 return;
