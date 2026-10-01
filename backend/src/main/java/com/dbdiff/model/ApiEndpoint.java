@@ -41,8 +41,8 @@ public class ApiEndpoint {
     // ── Dynamic Email Verification on Register ────────────────────────────
     private boolean enableEmailVerification = false;
     private String emailParam = "email";
-    private String verificationTokenColumn = "email_verification_token";
-    private String verificationStatusColumn = "email_verifikasi";
+    private String verificationTokenColumn;
+    private String verificationStatusColumn;
     private String verificationUserTable;
     private String verificationMailFrom;
     private String verificationEmailSubject;
@@ -232,10 +232,10 @@ public class ApiEndpoint {
     public String getEmailParam() { return (emailParam != null && !emailParam.trim().isEmpty()) ? emailParam.trim() : "email"; }
     public void setEmailParam(String emailParam) { this.emailParam = emailParam; }
 
-    public String getVerificationTokenColumn() { return (verificationTokenColumn != null && !verificationTokenColumn.trim().isEmpty()) ? verificationTokenColumn.trim() : "email_verification_token"; }
+    public String getVerificationTokenColumn() { return (verificationTokenColumn != null && !verificationTokenColumn.trim().isEmpty()) ? verificationTokenColumn.trim() : null; }
     public void setVerificationTokenColumn(String verificationTokenColumn) { this.verificationTokenColumn = verificationTokenColumn; }
 
-    public String getVerificationStatusColumn() { return (verificationStatusColumn != null && !verificationStatusColumn.trim().isEmpty()) ? verificationStatusColumn.trim() : "email_verifikasi"; }
+    public String getVerificationStatusColumn() { return (verificationStatusColumn != null && !verificationStatusColumn.trim().isEmpty()) ? verificationStatusColumn.trim() : null; }
     public void setVerificationStatusColumn(String verificationStatusColumn) { this.verificationStatusColumn = verificationStatusColumn; }
 
     public String getVerificationUserTable() { return verificationUserTable; }

@@ -139,18 +139,17 @@ public class EmailVerificationController {
                     candidateEndpoints.add(ep);
                 }
             }
-            if (candidateEndpoints.isEmpty()) {
-                ApiEndpoint dummy = new ApiEndpoint();
-                dummy.setName("PT Lotus Pradipta Mulia");
-                dummy.setVerificationUserTable("public.pengguna");
-                dummy.setVerificationTokenColumn("email_verification_token");
-                dummy.setVerificationStatusColumn("email_verifikasi");
-                candidateEndpoints.add(dummy);
-            }
+        }
+
+        if (candidateEndpoints.isEmpty()) {
+            response.setStatus(HttpStatus.OK.value());
+            response.getWriter().write(renderHtmlPage(false, "Tautan Tidak Dikenali", 
+                    "Sistem tidak menemukan konfigurasi verifikasi email yang aktif.", defaultLoginUrl, "Sistem Verifikasi Akun"));
+            return;
         }
 
         boolean verified = false;
-        String appName = "PT Lotus Pradipta Mulia";
+        String appName = "Sistem Verifikasi Akun";
         String loginUrl = defaultLoginUrl;
 
         for (ApiEndpoint ep : candidateEndpoints) {
@@ -158,9 +157,9 @@ public class EmailVerificationController {
             if (ds == null) continue;
 
             String table = extractTargetTable(ep);
-            String tokenCol = (ep.getVerificationTokenColumn() != null && !ep.getVerificationTokenColumn().isBlank()) ? ep.getVerificationTokenColumn().trim() : "email_verification_token";
-            String statusCol = (ep.getVerificationStatusColumn() != null && !ep.getVerificationStatusColumn().isBlank()) ? ep.getVerificationStatusColumn().trim() : "email_verifikasi";
-            appName = (ep.getName() != null && !ep.getName().isBlank()) ? ep.getName().trim() : "PT Lotus Pradipta Mulia";
+            String tokenCol = (ep.getVerificationTokenColumn() != null && !ep.getVerificationTokenColumn().isBlank()) ? ep.getVerificationTokenColumn().trim() : "verification_token";
+            String statusCol = (ep.getVerificationStatusColumn() != null && !ep.getVerificationStatusColumn().isBlank()) ? ep.getVerificationStatusColumn().trim() : "is_verified";
+            appName = (ep.getName() != null && !ep.getName().isBlank()) ? ep.getName().trim() : "Sistem Layanan";
             
             if (ep.getVerificationSuccessUrl() != null && !ep.getVerificationSuccessUrl().isBlank()) {
                 loginUrl = ep.getVerificationSuccessUrl().trim();
@@ -175,17 +174,24 @@ public class EmailVerificationController {
                 if (!rows.isEmpty()) {
                     Map<String, Object> user = rows.get(0);
                     Object userId = user.get("id");
-                    String nama = user.get("nama_lengkap") != null ? user.get("nama_lengkap").toString() : (user.get("nama") != null ? user.get("nama").toString() : "Pengguna");
+                    String nama = user.get("nama_lengkap") != null ? user.get("nama_lengkap").toString() : 
+                            (user.get("nama") != null ? user.get("nama").toString() : 
+                            (user.get("username") != null ? user.get("username").toString() : "Pengguna"));
                     String email = user.get("email") != null ? user.get("email").toString() : "";
 
-                    // Execute update
-                    String updateSql;
+                    // Execute update (gracefully handle email_verified_at column presence)
                     if (userId != null) {
-                        updateSql = "UPDATE " + table + " SET " + statusCol + " = TRUE, " + tokenCol + " = NULL, email_verified_at = NOW() WHERE id = :id";
-                        jdbc.update(updateSql, Map.of("id", userId));
+                        try {
+                            jdbc.update("UPDATE " + table + " SET " + statusCol + " = TRUE, " + tokenCol + " = NULL, email_verified_at = NOW() WHERE id = :id", Map.of("id", userId));
+                        } catch (Exception exNoCol) {
+                            jdbc.update("UPDATE " + table + " SET " + statusCol + " = TRUE, " + tokenCol + " = NULL WHERE id = :id", Map.of("id", userId));
+                        }
                     } else {
-                        updateSql = "UPDATE " + table + " SET " + statusCol + " = TRUE, " + tokenCol + " = NULL, email_verified_at = NOW() WHERE " + tokenCol + " = :token";
-                        jdbc.update(updateSql, Map.of("token", token.trim()));
+                        try {
+                            jdbc.update("UPDATE " + table + " SET " + statusCol + " = TRUE, " + tokenCol + " = NULL, email_verified_at = NOW() WHERE " + tokenCol + " = :token", Map.of("token", token.trim()));
+                        } catch (Exception exNoCol) {
+                            jdbc.update("UPDATE " + table + " SET " + statusCol + " = TRUE, " + tokenCol + " = NULL WHERE " + tokenCol + " = :token", Map.of("token", token.trim()));
+                        }
                     }
 
                     logger.info("Successfully verified email for user '{}' in table '{}' via endpoint '{}'", email, table, ep.getName());
@@ -256,14 +262,12 @@ public class EmailVerificationController {
                     candidateEndpoints.add(ep);
                 }
             }
-            if (candidateEndpoints.isEmpty()) {
-                ApiEndpoint dummy = new ApiEndpoint();
-                dummy.setName("PT Lotus Pradipta Mulia");
-                dummy.setVerificationUserTable("public.pengguna");
-                dummy.setVerificationTokenColumn("email_verification_token");
-                dummy.setVerificationStatusColumn("email_verifikasi");
-                candidateEndpoints.add(dummy);
-            }
+        }
+        if (candidateEndpoints.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Konfigurasi verifikasi email belum diaktifkan pada sistem."
+            ));
         }
 
         String baseUrl = getBaseUrl(request);
@@ -273,8 +277,8 @@ public class EmailVerificationController {
             if (ds == null) continue;
 
             String table = extractTargetTable(ep);
-            String tokenCol = (ep.getVerificationTokenColumn() != null && !ep.getVerificationTokenColumn().isBlank()) ? ep.getVerificationTokenColumn().trim() : "email_verification_token";
-            String statusCol = (ep.getVerificationStatusColumn() != null && !ep.getVerificationStatusColumn().isBlank()) ? ep.getVerificationStatusColumn().trim() : "email_verifikasi";
+            String tokenCol = (ep.getVerificationTokenColumn() != null && !ep.getVerificationTokenColumn().isBlank()) ? ep.getVerificationTokenColumn().trim() : "verification_token";
+            String statusCol = (ep.getVerificationStatusColumn() != null && !ep.getVerificationStatusColumn().isBlank()) ? ep.getVerificationStatusColumn().trim() : "is_verified";
             String emailCol = (ep.getEmailParam() != null && !ep.getEmailParam().isBlank()) ? ep.getEmailParam().trim() : "email";
             String appName = (ep.getName() != null && !ep.getName().isBlank()) ? ep.getName().trim() : "Layanan Web";
 
@@ -287,7 +291,6 @@ public class EmailVerificationController {
                 if (!rows.isEmpty()) {
                     Map<String, Object> user = rows.get(0);
                     Object isVerifiedObj = user.get(statusCol);
-                    if (isVerifiedObj == null) isVerifiedObj = user.get("email_verifikasi");
 
                     boolean isVerified = Boolean.TRUE.equals(isVerifiedObj);
                     if (isVerified) {

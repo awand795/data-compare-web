@@ -744,13 +744,12 @@ public class DynamicApiController {
                     String statusCol = endpoint.getVerificationStatusColumn();
                     String verificationToken = java.util.UUID.randomUUID().toString().replace("-", "") 
                             + java.util.UUID.randomUUID().toString().replace("-", "");
-                    allParams.put(tokenCol, verificationToken);
-                    allParams.put(statusCol, false);
-                    allParams.put("email_verification_token", verificationToken);
-                    allParams.put("verification_token", verificationToken);
-                    allParams.put("email_verifikasi", false);
-                    allParams.put("nommor_hp_verifikasi", true);
-                    allParams.put("nomor_hp_verifikasi", true);
+                    if (tokenCol != null && !tokenCol.isBlank()) {
+                        allParams.put(tokenCol.trim(), verificationToken);
+                    }
+                    if (statusCol != null && !statusCol.isBlank()) {
+                        allParams.put(statusCol.trim(), false);
+                    }
                 }
             }
 
@@ -812,13 +811,11 @@ public class DynamicApiController {
                 userRow.remove("password");
                 userRow.remove("passwordHash");
                 userRow.remove("passwd");
+                if (endpoint.getVerificationTokenColumn() != null && !endpoint.getVerificationTokenColumn().isBlank()) {
+                    userRow.remove(endpoint.getVerificationTokenColumn().trim());
+                }
                 userRow.remove("email_verification_token");
-                String statusCol = (endpoint.getVerificationStatusColumn() != null && !endpoint.getVerificationStatusColumn().isBlank())
-                        ? endpoint.getVerificationStatusColumn().trim() : "email_verifikasi";
-                userRow.putIfAbsent(statusCol, false);
-                userRow.putIfAbsent("email_verifikasi", false);
-                userRow.putIfAbsent("nomor_hp_verifikasi", true);
-                userRow.putIfAbsent("status_no_aktif", false);
+                userRow.remove("verification_token");
 
                 JwtService.TokenPair tokenPair = (jwtService != null)
                     ? jwtService.issueDynamicTokenPair(userRow, endpoint.getRequiredAppId(), endpoint.getTokenTtlMinutes(), endpoint.getRefreshTokenTtlDays())

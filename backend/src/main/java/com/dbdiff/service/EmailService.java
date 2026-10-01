@@ -34,7 +34,7 @@ public class EmailService {
     @Value("${app.mail.from-address:awand795@gmail.com}")
     private String defaultMailFromAddress;
 
-    @Value("${app.mail.from-name:PT Lotus Pradipta Mulia}")
+    @Value("${app.mail.from-name:Layanan Notifikasi}")
     private String defaultMailFromName;
 
     @Value("${app.backend.public-url:http://94.237.69.119:8081}")
@@ -87,7 +87,7 @@ public class EmailService {
 
     public CompletableFuture<Boolean> sendVerificationEmailAsync(String toEmail, String recipientName, String token) {
         String verifyUrl = getPublicBackendUrl().replaceAll("/+$", "") + "/api/auth/verify-email?token=" + token;
-        return sendDynamicVerificationEmailAsync(toEmail, recipientName, token, null, null, null, verifyUrl, "PT Lotus Pradipta Mulia");
+        return sendDynamicVerificationEmailAsync(toEmail, recipientName, token, null, null, null, verifyUrl, "Layanan Notifikasi");
     }
 
     public CompletableFuture<Boolean> sendDynamicVerificationEmailAsync(
