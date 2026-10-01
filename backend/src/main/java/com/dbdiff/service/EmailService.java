@@ -1,5 +1,6 @@
 package com.dbdiff.service;
 
+import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,25 +32,25 @@ public class EmailService {
     private String mailPassword;
 
     @Value("${app.mail.from-address:awand795@gmail.com}")
-    private String mailFromAddress;
+    private String defaultMailFromAddress;
 
     @Value("${app.mail.from-name:PT Lotus Pradipta Mulia}")
-    private String mailFromName;
+    private String defaultMailFromName;
 
     @Value("${app.backend.public-url:http://94.237.69.119:8081}")
-    private String publicBackendUrl;
+    private String defaultPublicBackendUrl;
 
     @Value("${app.frontend.url:http://localhost:3000}")
-    private String frontendUrl;
+    private String defaultFrontendUrl;
 
     private JavaMailSender mailSender;
 
     public String getFrontendUrl() {
-        return (frontendUrl != null && !frontendUrl.isBlank()) ? frontendUrl : "http://localhost:3000";
+        return (defaultFrontendUrl != null && !defaultFrontendUrl.isBlank()) ? defaultFrontendUrl : "http://localhost:3000";
     }
 
     public String getPublicBackendUrl() {
-        return (publicBackendUrl != null && !publicBackendUrl.isBlank()) ? publicBackendUrl : "http://94.237.69.119:8081";
+        return (defaultPublicBackendUrl != null && !defaultPublicBackendUrl.isBlank()) ? defaultPublicBackendUrl : "http://94.237.69.119:8081";
     }
 
     private synchronized JavaMailSender getMailSender() {
@@ -85,10 +86,33 @@ public class EmailService {
     }
 
     public CompletableFuture<Boolean> sendVerificationEmailAsync(String toEmail, String recipientName, String token) {
-        return CompletableFuture.supplyAsync(() -> sendVerificationEmail(toEmail, recipientName, token));
+        String verifyUrl = getPublicBackendUrl().replaceAll("/+$", "") + "/api/auth/verify-email?token=" + token;
+        return sendDynamicVerificationEmailAsync(toEmail, recipientName, token, null, null, null, verifyUrl, "PT Lotus Pradipta Mulia");
     }
 
-    public boolean sendVerificationEmail(String toEmail, String recipientName, String token) {
+    public CompletableFuture<Boolean> sendDynamicVerificationEmailAsync(
+            String toEmail,
+            String recipientName,
+            String token,
+            String customFrom,
+            String customSubject,
+            String customTemplate,
+            String verifyUrl,
+            String appName) {
+        return CompletableFuture.supplyAsync(() ->
+                sendDynamicVerificationEmail(toEmail, recipientName, token, customFrom, customSubject, customTemplate, verifyUrl, appName));
+    }
+
+    public boolean sendDynamicVerificationEmail(
+            String toEmail,
+            String recipientName,
+            String token,
+            String customFrom,
+            String customSubject,
+            String customTemplate,
+            String verifyUrl,
+            String appName) {
+
         if (toEmail == null || toEmail.trim().isEmpty() || token == null || token.trim().isEmpty()) {
             logger.warn("Skipping email verification: missing toEmail or token");
             return false;
@@ -99,20 +123,71 @@ public class EmailService {
             MimeMessage mimeMessage = sender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED, StandardCharsets.UTF_8.name());
 
-            String fromAddr = (mailFromAddress != null && !mailFromAddress.isBlank()) ? mailFromAddress.trim() : mailUsername;
-            String fromDisplay = (mailFromName != null && !mailFromName.isBlank()) ? mailFromName.trim() : "PT Lotus Pradipta Mulia";
+            // 1. Resolve From Address & Display Name
+            String fromAddr = mailUsername;
+            String fromDisplay = defaultMailFromName;
+
+            if (customFrom != null && !customFrom.isBlank()) {
+                String cf = customFrom.trim();
+                if (cf.contains("<") && cf.contains(">")) {
+                    try {
+                        InternetAddress parsed = new InternetAddress(cf);
+                        fromAddr = parsed.getAddress();
+                        if (parsed.getPersonal() != null && !parsed.getPersonal().isBlank()) {
+                            fromDisplay = parsed.getPersonal();
+                        }
+                    } catch (Exception e) {
+                        fromAddr = cf.replaceAll(".*<([^>]+)>.*", "$1").trim();
+                        fromDisplay = cf.replaceAll("<[^>]+>", "").trim();
+                    }
+                } else if (cf.contains("@")) {
+                    fromAddr = cf;
+                } else {
+                    fromDisplay = cf;
+                }
+            } else if (defaultMailFromAddress != null && !defaultMailFromAddress.isBlank()) {
+                fromAddr = defaultMailFromAddress.trim();
+            }
+
             helper.setFrom(fromAddr, fromDisplay);
             helper.setTo(toEmail.trim());
-            helper.setSubject("Verifikasi Alamat Email Anda - Web Fleet PT Lotus Pradipta Mulia");
 
-            String backendBase = getPublicBackendUrl().replaceAll("/+$", "");
-            String verifyUrl = backendBase + "/api/auth/verify-email?token=" + token;
+            // 2. Resolve Subject (Supports placeholders: {{nama}}, {{app_name}}, {{email}})
+            String cleanName = (recipientName != null && !recipientName.isBlank()) ? recipientName.trim() : "Pengguna";
+            String cleanApp = (appName != null && !appName.isBlank()) ? appName.trim() : fromDisplay;
+            String subject = (customSubject != null && !customSubject.isBlank()) ? customSubject : "Verifikasi Alamat Email Anda - {{app_name}}";
+            subject = subject
+                    .replace("{{app_name}}", cleanApp)
+                    .replace("{{nama}}", cleanName)
+                    .replace("{{nama_lengkap}}", cleanName)
+                    .replace("{{email}}", toEmail.trim());
+            helper.setSubject(subject);
 
-            String htmlBody = buildVerificationEmailHtml(recipientName, verifyUrl);
+            // 3. Resolve HTML Body Template (Supports placeholders)
+            String htmlBody;
+            if (customTemplate != null && !customTemplate.isBlank()) {
+                htmlBody = customTemplate
+                        .replace("{{verification_link}}", verifyUrl)
+                        .replace("{{link}}", verifyUrl)
+                        .replace("{{nama}}", cleanName)
+                        .replace("{{nama_lengkap}}", cleanName)
+                        .replace("{{email}}", toEmail.trim())
+                        .replace("{{app_name}}", cleanApp)
+                        .replace("{{token}}", token);
+                
+                // Jika custom template berupa teks biasa tanpa HTML, buat wrapper HTML sederhana
+                if (!htmlBody.toLowerCase().contains("<html") && !htmlBody.toLowerCase().contains("<body")) {
+                    htmlBody = "<div style=\"font-family: sans-serif; line-height: 1.6; color: #334155; padding: 20px;\">" 
+                            + htmlBody.replace("\n", "<br>") 
+                            + "<br><br><a href=\"" + verifyUrl + "\" style=\"display: inline-block; background: #0f766e; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;\">Verifikasi Email</a></div>";
+                }
+            } else {
+                htmlBody = buildDefaultVerificationEmailHtml(cleanName, cleanApp, verifyUrl);
+            }
+
             helper.setText(htmlBody, true);
-
             sender.send(mimeMessage);
-            logger.info("Verification email successfully sent to {}", toEmail);
+            logger.info("Verification email successfully sent to {} with subject '{}'", toEmail, subject);
             return true;
         } catch (Exception ex) {
             logger.error("Failed to send verification email to {}: {}", toEmail, ex.getMessage(), ex);
@@ -120,14 +195,13 @@ public class EmailService {
         }
     }
 
-    private String buildVerificationEmailHtml(String recipientName, String verifyUrl) {
-        String cleanName = (recipientName != null && !recipientName.isBlank()) ? recipientName.trim() : "Mitra";
+    private String buildDefaultVerificationEmailHtml(String recipientName, String appName, String verifyUrl) {
         return "<!DOCTYPE html>\n" +
             "<html lang=\"id\">\n" +
             "<head>\n" +
             "  <meta charset=\"UTF-8\">\n" +
             "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-            "  <title>Verifikasi Email - PT Lotus Pradipta Mulia</title>\n" +
+            "  <title>Verifikasi Email - " + appName + "</title>\n" +
             "  <style>\n" +
             "    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b; }\n" +
             "    .card { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }\n" +
@@ -147,20 +221,20 @@ public class EmailService {
             "<body>\n" +
             "  <div class=\"card\">\n" +
             "    <div class=\"header\">\n" +
-            "      <h1>PT LOTUS PRADIPTA MULIA</h1>\n" +
-            "      <p>Sistem Layanan &amp; Pemantauan Web Fleet Kendaraan Operasional</p>\n" +
+            "      <h1>" + appName + "</h1>\n" +
+            "      <p>Sistem Layanan Autentikasi &amp; Keamanan Akun</p>\n" +
             "    </div>\n" +
             "    <div class=\"content\">\n" +
-            "      <div class=\"greeting\">Halo, " + cleanName + "!</div>\n" +
+            "      <div class=\"greeting\">Halo, " + recipientName + "!</div>\n" +
             "      <p class=\"desc\">\n" +
-            "        Terima kasih telah melakukan pendaftaran akun kemitraan di <strong>Web Fleet PT Lotus Pradipta Mulia</strong>.<br><br>\n" +
-            "        Untuk memastikan keamanan akun serta mengaktifkan akses penuh pemantauan jadwal servis dan riwayat kendaraan Anda, silakan klik tombol verifikasi di bawah ini:\n" +
+            "        Terima kasih telah melakukan pendaftaran akun di <strong>" + appName + "</strong>.<br><br>\n" +
+            "        Untuk mengaktifkan akun Anda dan melanjutkan proses verifikasi keamanan, silakan klik tombol verifikasi di bawah ini:\n" +
             "      </p>\n" +
             "      <div class=\"btn-container\">\n" +
             "        <a href=\"" + verifyUrl + "\" class=\"btn\" target=\"_blank\">Verifikasi Email Sekarang</a>\n" +
             "      </div>\n" +
             "      <p class=\"desc\" style=\"font-size: 13px; color: #64748b;\">\n" +
-            "        Setelah tautan ditekan, akun Anda akan langsung terverifikasi dan Anda dapat langsung masuk ke sistem Web Fleet.\n" +
+            "        Setelah tombol ditekan, akun Anda akan langsung terverifikasi dan Anda dapat kembali ke halaman login.\n" +
             "      </p>\n" +
             "      <div class=\"alt-link\">\n" +
             "        Jika tombol di atas tidak dapat diklik, salin dan buka tautan berikut di browser Anda:<br>\n" +
@@ -168,9 +242,8 @@ public class EmailService {
             "      </div>\n" +
             "    </div>\n" +
             "    <div class=\"footer\">\n" +
-            "      PT Lotus Pradipta Mulia &bull; Distributor Otomotif, Suku Cadang &amp; Pelumas Resmi<br>\n" +
-            "      Kawasan Industri Medan (KIM 3), Medan, Sumatera Utara<br>\n" +
-            "      Email ini dibuat otomatis oleh sistem keamanan. Mohon untuk tidak membalas pesan ini.\n" +
+            "      &copy; " + java.time.Year.now().getValue() + " " + appName + ". Seluruh hak cipta dilindungi.<br>\n" +
+            "      Email ini dibuat secara otomatis oleh sistem keamanan. Mohon untuk tidak membalas pesan ini.\n" +
             "    </div>\n" +
             "  </div>\n" +
             "</body>\n" +

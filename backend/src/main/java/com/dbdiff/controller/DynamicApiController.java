@@ -739,13 +739,19 @@ public class DynamicApiController {
                     allParams.put(passParam, hashed);
                 }
 
-                String verificationToken = java.util.UUID.randomUUID().toString().replace("-", "") 
-                        + java.util.UUID.randomUUID().toString().replace("-", "");
-                allParams.put("email_verification_token", verificationToken);
-                allParams.put("verification_token", verificationToken);
-                allParams.put("email_verifikasi", false);
-                allParams.put("nommor_hp_verifikasi", true);
-                allParams.put("nomor_hp_verifikasi", true);
+                if (endpoint.isEnableEmailVerification()) {
+                    String tokenCol = endpoint.getVerificationTokenColumn();
+                    String statusCol = endpoint.getVerificationStatusColumn();
+                    String verificationToken = java.util.UUID.randomUUID().toString().replace("-", "") 
+                            + java.util.UUID.randomUUID().toString().replace("-", "");
+                    allParams.put(tokenCol, verificationToken);
+                    allParams.put(statusCol, false);
+                    allParams.put("email_verification_token", verificationToken);
+                    allParams.put("verification_token", verificationToken);
+                    allParams.put("email_verifikasi", false);
+                    allParams.put("nommor_hp_verifikasi", true);
+                    allParams.put("nomor_hp_verifikasi", true);
+                }
             }
 
             // ── Auth Action: LOGIN ───────────────────────────────────────────────────
@@ -807,6 +813,9 @@ public class DynamicApiController {
                 userRow.remove("passwordHash");
                 userRow.remove("passwd");
                 userRow.remove("email_verification_token");
+                String statusCol = (endpoint.getVerificationStatusColumn() != null && !endpoint.getVerificationStatusColumn().isBlank())
+                        ? endpoint.getVerificationStatusColumn().trim() : "email_verifikasi";
+                userRow.putIfAbsent(statusCol, false);
                 userRow.putIfAbsent("email_verifikasi", false);
                 userRow.putIfAbsent("nommor_hp_verifikasi", true);
                 userRow.putIfAbsent("nomor_hp_verifikasi", true);
@@ -948,15 +957,48 @@ public class DynamicApiController {
                     }
                 }
 
-                // Trigger verification email asynchronously upon REGISTER
-                if ("REGISTER".equalsIgnoreCase(endpoint.getAuthAction())) {
+                // Trigger dynamic verification email upon REGISTER
+                if ("REGISTER".equalsIgnoreCase(endpoint.getAuthAction()) && endpoint.isEnableEmailVerification() && emailService != null) {
                     try {
-                        String regEmail = allParams.get("email") != null ? allParams.get("email").toString().trim() : null;
+                        String emailKey = endpoint.getEmailParam();
+                        Object emailVal = allParams.get(emailKey);
+                        if (emailVal == null) emailVal = allParams.get("email");
+                        String regEmail = (emailVal != null) ? emailVal.toString().trim() : null;
+
                         String regName = allParams.get("nama_lengkap") != null ? allParams.get("nama_lengkap").toString().trim() : 
-                                (allParams.get("nama") != null ? allParams.get("nama").toString().trim() : "Mitra");
-                        String vToken = (String) allParams.get("email_verification_token");
-                        if (regEmail != null && !regEmail.isEmpty() && vToken != null && emailService != null) {
-                            emailService.sendVerificationEmailAsync(regEmail, regName, vToken);
+                                (allParams.get("nama") != null ? allParams.get("nama").toString().trim() : 
+                                (allParams.get("username") != null ? allParams.get("username").toString().trim() : "Pengguna"));
+                        
+                        String tokenCol = endpoint.getVerificationTokenColumn();
+                        Object vTokenObj = allParams.get(tokenCol);
+                        if (vTokenObj == null) vTokenObj = allParams.get("email_verification_token");
+                        String vToken = (vTokenObj != null) ? vTokenObj.toString() : null;
+
+                        if (regEmail != null && !regEmail.isEmpty() && vToken != null) {
+                            String proto = request.getHeader("X-Forwarded-Proto");
+                            if (proto == null || proto.isBlank()) proto = request.getScheme();
+                            String host = request.getHeader("X-Forwarded-Host");
+                            if (host == null || host.isBlank()) host = request.getHeader("Host");
+                            String baseUrl = proto + "://" + host;
+
+                            String verifyPath = (endpoint.getVerificationEndpointPath() != null && !endpoint.getVerificationEndpointPath().isBlank())
+                                    ? endpoint.getVerificationEndpointPath().trim()
+                                    : "/api/auth/verify-email";
+                            if (!verifyPath.startsWith("/")) verifyPath = "/" + verifyPath;
+
+                            String verifyUrl = baseUrl + verifyPath + "?token=" + vToken + "&endpoint_id=" + endpoint.getId();
+                            String appName = (endpoint.getName() != null && !endpoint.getName().isBlank()) ? endpoint.getName().trim() : "Layanan Web";
+
+                            emailService.sendDynamicVerificationEmailAsync(
+                                regEmail,
+                                regName,
+                                vToken,
+                                endpoint.getVerificationMailFrom(),
+                                endpoint.getVerificationEmailSubject(),
+                                endpoint.getVerificationEmailTemplate(),
+                                verifyUrl,
+                                appName
+                            );
                         }
                     } catch (Exception ex) {
                         org.slf4j.LoggerFactory.getLogger(DynamicApiController.class).warn("Failed to trigger verification email: {}", ex.getMessage());

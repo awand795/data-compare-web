@@ -93,6 +93,18 @@ interface ApiEndpoint {
   imageQualityPercent?: number;
   imageMaxWidth?: number;
   imageMaxHeight?: number;
+
+  // Dynamic Email Verification Settings
+  enableEmailVerification?: boolean;
+  emailParam?: string;
+  verificationTokenColumn?: string;
+  verificationStatusColumn?: string;
+  verificationUserTable?: string;
+  verificationMailFrom?: string;
+  verificationEmailSubject?: string;
+  verificationEmailTemplate?: string;
+  verificationSuccessUrl?: string;
+  verificationEndpointPath?: string;
 }
 
 type ValidationError = {
@@ -553,7 +565,17 @@ export const ApiBuilderView: React.FC = () => {
       autoCompressImage: true,
       imageQualityPercent: 80,
       imageMaxWidth: 1920,
-      imageMaxHeight: 1920
+      imageMaxHeight: 1920,
+      enableEmailVerification: false,
+      emailParam: 'email',
+      verificationTokenColumn: 'email_verification_token',
+      verificationStatusColumn: 'email_verifikasi',
+      verificationUserTable: '',
+      verificationMailFrom: '',
+      verificationEmailSubject: '',
+      verificationEmailTemplate: '',
+      verificationSuccessUrl: '',
+      verificationEndpointPath: ''
     };
     setCurrentApi(newApi);
     setTestParams({});
@@ -4260,6 +4282,162 @@ export const ApiBuilderView: React.FC = () => {
                                 placeholder="default: password_hash"
                               />
                             </div>
+                          </div>
+                        )}
+
+                        {/* Dynamic Email Verification Settings for REGISTER */}
+                        {currentApi.authAction === 'REGISTER' && (
+                          <div className="bg-bg-editor/50 border border-cyan-500/30 rounded-xl p-3.5 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-bold text-text-main flex items-center gap-2 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-border-main text-cyan-600 focus:ring-cyan-500 h-4 w-4 cursor-pointer"
+                                  checked={Boolean(currentApi.enableEmailVerification)}
+                                  onChange={e => setCurrentApi({ ...currentApi, enableEmailVerification: e.target.checked })}
+                                />
+                                <span>📧 Aktifkan Verifikasi Email (SMTP Verification Link)</span>
+                              </label>
+                              <span className={clsx(
+                                "text-[10px] font-black px-2 py-0.5 rounded-full border tracking-wider uppercase",
+                                currentApi.enableEmailVerification
+                                  ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/40"
+                                  : "bg-slate-500/10 text-text-muted border-border-main"
+                              )}>
+                                {currentApi.enableEmailVerification ? 'AKTIF' : 'NONAKTIF'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-text-muted leading-relaxed">
+                              Saat user mendaftar, backend akan otomatis membuat token verifikasi acak, menandai status verifikasi sebagai belum diverifikasi, dan mengirimkan email konfirmasi berisikan link verifikasi via SMTP.
+                            </p>
+
+                            {currentApi.enableEmailVerification && (
+                              <div className="space-y-3 pt-3 border-t border-border-main/50">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                      Nama Parameter Input Email
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-cyan-500"
+                                      value={currentApi.emailParam || 'email'}
+                                      onChange={e => setCurrentApi({ ...currentApi, emailParam: e.target.value })}
+                                      placeholder="default: email"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                      Tabel Pengguna di DB (Opsional)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-cyan-500"
+                                      value={currentApi.verificationUserTable || ''}
+                                      onChange={e => setCurrentApi({ ...currentApi, verificationUserTable: e.target.value })}
+                                      placeholder="Kosongkan jika auto-detect dari INSERT query"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                      Nama Kolom Token di DB
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-cyan-500"
+                                      value={currentApi.verificationTokenColumn || 'email_verification_token'}
+                                      onChange={e => setCurrentApi({ ...currentApi, verificationTokenColumn: e.target.value })}
+                                      placeholder="default: email_verification_token"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                      Nama Kolom Status Verifikasi di DB
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-cyan-500"
+                                      value={currentApi.verificationStatusColumn || 'email_verifikasi'}
+                                      onChange={e => setCurrentApi({ ...currentApi, verificationStatusColumn: e.target.value })}
+                                      placeholder="default: email_verifikasi"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                      Sender Email / From Header (Opsional)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-cyan-500"
+                                      value={currentApi.verificationMailFrom || ''}
+                                      onChange={e => setCurrentApi({ ...currentApi, verificationMailFrom: e.target.value })}
+                                      placeholder='Contoh: "PT Lotus Pradipta Mulia <awand795@gmail.com>"'
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                      Subjek Email Verifikasi (Opsional)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-cyan-500"
+                                      value={currentApi.verificationEmailSubject || ''}
+                                      onChange={e => setCurrentApi({ ...currentApi, verificationEmailSubject: e.target.value })}
+                                      placeholder="Default: Verifikasi Alamat Email Anda - {{app_name}}"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                      URL Redirect / Tombol Login Setelah Verifikasi Sukses
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-cyan-500"
+                                      value={currentApi.verificationSuccessUrl || ''}
+                                      onChange={e => setCurrentApi({ ...currentApi, verificationSuccessUrl: e.target.value })}
+                                      placeholder="Contoh: http://localhost:3000/#login atau https://fleet.lotuspradipta.co.id/login"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                      Custom Endpoint Verifikasi (Opsional)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-cyan-500"
+                                      value={currentApi.verificationEndpointPath || ''}
+                                      onChange={e => setCurrentApi({ ...currentApi, verificationEndpointPath: e.target.value })}
+                                      placeholder="Default: /api/auth/verify-email"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                    Custom HTML Template Email (Opsional)
+                                  </label>
+                                  <textarea
+                                    rows={4}
+                                    className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-cyan-500"
+                                    value={currentApi.verificationEmailTemplate || ''}
+                                    onChange={e => setCurrentApi({ ...currentApi, verificationEmailTemplate: e.target.value })}
+                                    placeholder="Kosongkan untuk menggunakan template bawaan yang profesional. Placeholder yang didukung: {{verification_link}}, {{nama}}, {{email}}, {{app_name}}, {{token}}"
+                                  />
+                                  <div className="text-[10px] text-text-muted mt-1">
+                                    Placeholder: <code className="text-cyan-500 font-mono">{"{{verification_link}}"}</code>, <code className="text-cyan-500 font-mono">{"{{nama}}"}</code>, <code className="text-cyan-500 font-mono">{"{{email}}"}</code>, <code className="text-cyan-500 font-mono">{"{{app_name}}"}</code>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 

@@ -38,6 +38,18 @@ public class ApiEndpoint {
     private Integer tokenTtlMinutes = 15;
     private Integer refreshTokenTtlDays = 30;
 
+    // ── Dynamic Email Verification on Register ────────────────────────────
+    private boolean enableEmailVerification = false;
+    private String emailParam = "email";
+    private String verificationTokenColumn = "email_verification_token";
+    private String verificationStatusColumn = "email_verifikasi";
+    private String verificationUserTable;
+    private String verificationMailFrom;
+    private String verificationEmailSubject;
+    private String verificationEmailTemplate;
+    private String verificationSuccessUrl;
+    private String verificationEndpointPath;
+
     // ── Direct Database File / Photo Upload & Compression ─────────────────
     private boolean enableFileUpload = false;
     private String fileParamName = "foto";
@@ -213,6 +225,36 @@ public class ApiEndpoint {
 
     public Integer getImageMaxHeight() { return imageMaxHeight != null && imageMaxHeight > 0 ? imageMaxHeight : 1920; }
     public void setImageMaxHeight(Integer imageMaxHeight) { this.imageMaxHeight = imageMaxHeight; }
+
+    public boolean isEnableEmailVerification() { return enableEmailVerification; }
+    public void setEnableEmailVerification(boolean enableEmailVerification) { this.enableEmailVerification = enableEmailVerification; }
+
+    public String getEmailParam() { return (emailParam != null && !emailParam.trim().isEmpty()) ? emailParam.trim() : "email"; }
+    public void setEmailParam(String emailParam) { this.emailParam = emailParam; }
+
+    public String getVerificationTokenColumn() { return (verificationTokenColumn != null && !verificationTokenColumn.trim().isEmpty()) ? verificationTokenColumn.trim() : "email_verification_token"; }
+    public void setVerificationTokenColumn(String verificationTokenColumn) { this.verificationTokenColumn = verificationTokenColumn; }
+
+    public String getVerificationStatusColumn() { return (verificationStatusColumn != null && !verificationStatusColumn.trim().isEmpty()) ? verificationStatusColumn.trim() : "email_verifikasi"; }
+    public void setVerificationStatusColumn(String verificationStatusColumn) { this.verificationStatusColumn = verificationStatusColumn; }
+
+    public String getVerificationUserTable() { return verificationUserTable; }
+    public void setVerificationUserTable(String verificationUserTable) { this.verificationUserTable = verificationUserTable; }
+
+    public String getVerificationMailFrom() { return verificationMailFrom; }
+    public void setVerificationMailFrom(String verificationMailFrom) { this.verificationMailFrom = verificationMailFrom; }
+
+    public String getVerificationEmailSubject() { return verificationEmailSubject; }
+    public void setVerificationEmailSubject(String verificationEmailSubject) { this.verificationEmailSubject = verificationEmailSubject; }
+
+    public String getVerificationEmailTemplate() { return verificationEmailTemplate; }
+    public void setVerificationEmailTemplate(String verificationEmailTemplate) { this.verificationEmailTemplate = verificationEmailTemplate; }
+
+    public String getVerificationSuccessUrl() { return verificationSuccessUrl; }
+    public void setVerificationSuccessUrl(String verificationSuccessUrl) { this.verificationSuccessUrl = verificationSuccessUrl; }
+
+    public String getVerificationEndpointPath() { return verificationEndpointPath; }
+    public void setVerificationEndpointPath(String verificationEndpointPath) { this.verificationEndpointPath = verificationEndpointPath; }
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }

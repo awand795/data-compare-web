@@ -54,7 +54,17 @@ public class ApiEndpointRepository {
                 "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS auto_compress_image BOOLEAN DEFAULT TRUE",
                 "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS image_quality_percent INT DEFAULT 80",
                 "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS image_max_width INT DEFAULT 1920",
-                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS image_max_height INT DEFAULT 1920"
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS image_max_height INT DEFAULT 1920",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS enable_email_verification BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS email_param VARCHAR(50) DEFAULT 'email'",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS verification_token_column VARCHAR(50) DEFAULT 'email_verification_token'",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS verification_status_column VARCHAR(50) DEFAULT 'email_verifikasi'",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS verification_user_table VARCHAR(100)",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS verification_mail_from TEXT",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS verification_email_subject TEXT",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS verification_email_template TEXT",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS verification_success_url TEXT",
+                "ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS verification_endpoint_path VARCHAR(255)"
             };
             for (String sql : alterSqls) {
                 try {
@@ -189,6 +199,37 @@ public class ApiEndpointRepository {
                 int mh = rs.getInt("image_max_height");
                 if (!rs.wasNull()) api.setImageMaxHeight(mh);
             } catch (SQLException ignored) {}
+
+            try {
+                api.setEnableEmailVerification(rs.getBoolean("enable_email_verification"));
+            } catch (SQLException ignored) {}
+            try {
+                api.setEmailParam(rs.getString("email_param"));
+            } catch (SQLException ignored) {}
+            try {
+                api.setVerificationTokenColumn(rs.getString("verification_token_column"));
+            } catch (SQLException ignored) {}
+            try {
+                api.setVerificationStatusColumn(rs.getString("verification_status_column"));
+            } catch (SQLException ignored) {}
+            try {
+                api.setVerificationUserTable(rs.getString("verification_user_table"));
+            } catch (SQLException ignored) {}
+            try {
+                api.setVerificationMailFrom(rs.getString("verification_mail_from"));
+            } catch (SQLException ignored) {}
+            try {
+                api.setVerificationEmailSubject(rs.getString("verification_email_subject"));
+            } catch (SQLException ignored) {}
+            try {
+                api.setVerificationEmailTemplate(rs.getString("verification_email_template"));
+            } catch (SQLException ignored) {}
+            try {
+                api.setVerificationSuccessUrl(rs.getString("verification_success_url"));
+            } catch (SQLException ignored) {}
+            try {
+                api.setVerificationEndpointPath(rs.getString("verification_endpoint_path"));
+            } catch (SQLException ignored) {}
             
             if (rs.getTimestamp("created_at") != null) {
                 api.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
@@ -220,8 +261,8 @@ public class ApiEndpointRepository {
         String groupName = (api.getGroupName() != null && !api.getGroupName().trim().isEmpty()) ? api.getGroupName().trim() : "General";
         try {
             return jdbcTemplate.update(
-                "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, required_app_id, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, success_message, validation_rules, auth_action, password_param, password_hash_column, token_ttl_minutes, refresh_token_ttl_days, security_mode, allowed_roles, enable_file_upload, file_param_name, allowed_extensions, max_file_size_mb, auto_compress_image, image_quality_percent, image_max_width, image_max_height, created_at, updated_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                "INSERT INTO api_endpoints (id, name, method, endpoint_path, connection_id, sql_query, parameters, enable_pagination, is_public, allow_raw_sql, ip_allowlist, group_name, auth_token, required_app_id, cron_enabled, cron_expression, target_endpoint_id, target_url, target_method, target_headers, notification_channel_id, notify_on_success, notify_on_failure, success_message, validation_rules, auth_action, password_param, password_hash_column, token_ttl_minutes, refresh_token_ttl_days, security_mode, allowed_roles, enable_file_upload, file_param_name, allowed_extensions, max_file_size_mb, auto_compress_image, image_quality_percent, image_max_width, image_max_height, enable_email_verification, email_param, verification_token_column, verification_status_column, verification_user_table, verification_mail_from, verification_email_subject, verification_email_template, verification_success_url, verification_endpoint_path, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 api.getId(), api.getName(), api.getMethod(), api.getEndpointPath(),
                 api.getConnectionId(), api.getSqlQuery(), api.getParameters(),
                 api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getRequiredAppId(),
@@ -231,7 +272,10 @@ public class ApiEndpointRepository {
                 api.getAuthAction(), api.getPasswordParam(), api.getPasswordHashColumn(), api.getTokenTtlMinutes(), api.getRefreshTokenTtlDays(),
                 api.getSecurityMode(), api.getAllowedRoles(),
                 api.isEnableFileUpload(), api.getFileParamName(), api.getAllowedExtensions(), api.getMaxFileSizeMb(),
-                api.isAutoCompressImage(), api.getImageQualityPercent(), api.getImageMaxWidth(), api.getImageMaxHeight()
+                api.isAutoCompressImage(), api.getImageQualityPercent(), api.getImageMaxWidth(), api.getImageMaxHeight(),
+                api.isEnableEmailVerification(), api.getEmailParam(), api.getVerificationTokenColumn(), api.getVerificationStatusColumn(),
+                api.getVerificationUserTable(), api.getVerificationMailFrom(), api.getVerificationEmailSubject(),
+                api.getVerificationEmailTemplate(), api.getVerificationSuccessUrl(), api.getVerificationEndpointPath()
             );
         } catch (Exception e0) {
             try {
@@ -267,7 +311,8 @@ public class ApiEndpointRepository {
                 "sql_query = ?, parameters = ?, enable_pagination = ?, is_public = ?, allow_raw_sql = ?, ip_allowlist = ?, group_name = ?, auth_token = ?, required_app_id = ?, " +
                 "cron_enabled = ?, cron_expression = ?, target_endpoint_id = ?, target_url = ?, target_method = ?, target_headers = ?, notification_channel_id = ?, " +
                 "notify_on_success = ?, notify_on_failure = ?, success_message = ?, validation_rules = ?, auth_action = ?, password_param = ?, password_hash_column = ?, token_ttl_minutes = ?, refresh_token_ttl_days = ?, security_mode = ?, allowed_roles = ?, " +
-                "enable_file_upload = ?, file_param_name = ?, allowed_extensions = ?, max_file_size_mb = ?, auto_compress_image = ?, image_quality_percent = ?, image_max_width = ?, image_max_height = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                "enable_file_upload = ?, file_param_name = ?, allowed_extensions = ?, max_file_size_mb = ?, auto_compress_image = ?, image_quality_percent = ?, image_max_width = ?, image_max_height = ?, " +
+                "enable_email_verification = ?, email_param = ?, verification_token_column = ?, verification_status_column = ?, verification_user_table = ?, verification_mail_from = ?, verification_email_subject = ?, verification_email_template = ?, verification_success_url = ?, verification_endpoint_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 api.getName(), api.getMethod(), api.getEndpointPath(), api.getConnectionId(),
                 api.getSqlQuery(), api.getParameters(), api.isEnablePagination(), api.isPublic(), api.isAllowRawSql(), api.getIpAllowlist(), groupName, api.getAuthToken(), api.getRequiredAppId(),
                 api.isCronEnabled(), api.getCronExpression(), api.getTargetEndpointId(), api.getTargetUrl(), api.getTargetMethod(), api.getTargetHeaders(), api.getNotificationChannelId(),
@@ -276,6 +321,9 @@ public class ApiEndpointRepository {
                 api.getSecurityMode(), api.getAllowedRoles(),
                 api.isEnableFileUpload(), api.getFileParamName(), api.getAllowedExtensions(), api.getMaxFileSizeMb(),
                 api.isAutoCompressImage(), api.getImageQualityPercent(), api.getImageMaxWidth(), api.getImageMaxHeight(),
+                api.isEnableEmailVerification(), api.getEmailParam(), api.getVerificationTokenColumn(), api.getVerificationStatusColumn(),
+                api.getVerificationUserTable(), api.getVerificationMailFrom(), api.getVerificationEmailSubject(),
+                api.getVerificationEmailTemplate(), api.getVerificationSuccessUrl(), api.getVerificationEndpointPath(),
                 api.getId()
             );
         } catch (Exception e0) {
