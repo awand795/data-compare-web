@@ -355,6 +355,13 @@ public class EmailVerificationController {
                 ? "<svg width=\"48\" height=\"48\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"" + iconColor + "\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M22 11.08V12a10 10 0 1 1-5.93-9.14\"></path><polyline points=\"22 4 12 14.01 9 11.01\"></polyline></svg>"
                 : "<svg width=\"48\" height=\"48\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"" + iconColor + "\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"12\" y1=\"8\" x2=\"12\" y2=\"12\"></line><line x1=\"12\" y1=\"16\" x2=\"12.01\" y2=\"16\"></line></svg>";
 
+        String cardBg = success ? "#f0fdf4" : "#fff7ed";
+        String cardBorder = success ? "#bbf7d0" : "#fed7aa";
+        String cardText = success ? "#166534" : "#9a3412";
+        String cardMessage = success
+                ? "Akun Anda telah aktif. Silakan kembali ke halaman login untuk masuk ke sistem."
+                : "Tautan tidak valid atau telah kedaluwarsa. Silakan lakukan pendaftaran ulang atau hubungi tim bantuan.";
+
         return "<!DOCTYPE html>\n" +
                 "<html lang=\"id\">\n" +
                 "<head>\n" +
@@ -370,9 +377,8 @@ public class EmailVerificationController {
                 "    .body { padding: 36px 30px; }\n" +
                 "    .icon-box { width: 84px; height: 84px; border-radius: 50%; background: " + iconBg + "; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px auto; }\n" +
                 "    h1 { font-size: 22px; font-weight: 700; color: #0f172a; margin: 0 0 14px 0; }\n" +
-                "    .desc { font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 32px 0; }\n" +
-                "    .btn-login { display: inline-flex; align-items: center; justify-content: center; background-color: #0f766e; color: #ffffff !important; text-decoration: none; padding: 14px 36px; font-size: 15px; font-weight: 600; border-radius: 10px; box-shadow: 0 4px 12px rgba(15, 118, 110, 0.25); transition: background 0.15s ease; }\n" +
-                "    .btn-login:hover { background-color: #115e59; }\n" +
+                "    .desc { font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0; }\n" +
+                "    .info-card { display: inline-block; background-color: " + cardBg + "; border: 1px solid " + cardBorder + "; border-radius: 10px; padding: 14px 20px; font-size: 13.5px; font-weight: 500; color: " + cardText + "; line-height: 1.5; max-width: 90%; }\n" +
                 "    .footer { border-top: 1px solid #f1f5f9; padding: 16px; font-size: 12px; color: #94a3b8; }\n" +
                 "  </style>\n" +
                 "</head>\n" +
@@ -386,7 +392,7 @@ public class EmailVerificationController {
                 "      <div class=\"icon-box\">" + iconSvg + "</div>\n" +
                 "      <h1>" + title + "</h1>\n" +
                 "      <p class=\"desc\">" + message + "</p>\n" +
-                "      <a href=\"" + loginUrl + "\" class=\"btn-login\">Kembali ke Halaman Login</a>\n" +
+                "      <div class=\"info-card\">" + cardMessage + "</div>\n" +
                 "    </div>\n" +
                 "    <div class=\"footer\">\n" +
                 "      &copy; " + java.time.Year.now().getValue() + " " + appName + ". Seluruh hak cipta dilindungi.\n" +
