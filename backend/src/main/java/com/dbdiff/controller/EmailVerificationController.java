@@ -472,7 +472,7 @@ public class EmailVerificationController {
             logger.error("Error processing forgot-password for email {}: {}", email, ex.getMessage(), ex);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                     "success", false,
-                    "message", "Terjadi kesalahan saat memproses permintaan OTP: " + ex.getMessage()
+                    "message", "Gagal memproses permintaan OTP. Silakan periksa kembali email Anda atau coba beberapa saat lagi."
             ));
         }
     }
@@ -546,7 +546,7 @@ public class EmailVerificationController {
             logger.error("Error verifying OTP for email {}: {}", email, ex.getMessage(), ex);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                     "success", false,
-                    "message", "Terjadi kesalahan saat memverifikasi OTP: " + ex.getMessage()
+                    "message", "Gagal memverifikasi kode OTP. Silakan periksa kembali kode Anda atau coba beberapa saat lagi."
             ));
         }
     }
@@ -622,17 +622,37 @@ public class EmailVerificationController {
 
             Object otpId = rows.get(0).get("id");
 
-            // 2. Update password in sch_fleet.pengguna using PostgreSQL crypt function
-            String updatePwdSql = "UPDATE sch_fleet.pengguna " +
-                    "SET password_hash = crypt(:password_baru, gen_salt('bf', 10)), " +
+            // 2. Hash password using Java BCrypt (does not depend on PostgreSQL pgcrypto extension)
+            String hashedPassword = org.springframework.security.crypto.bcrypt.BCrypt.hashpw(
+                    passwordBaru, org.springframework.security.crypto.bcrypt.BCrypt.gensalt(10)
+            );
+
+            String table = extractTargetTable(endpoint);
+            String hashCol = (endpoint != null && endpoint.getPasswordHashColumn() != null && !endpoint.getPasswordHashColumn().isBlank())
+                    ? endpoint.getPasswordHashColumn().trim() : "password_hash";
+
+            String updatePwdSql = "UPDATE " + table + " " +
+                    "SET " + hashCol + " = :password_hash, " +
                     "    update_by = 'RESET_PASSWORD_OTP', " +
                     "    update_dt = NOW() " +
                     "WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email))";
 
-            int updatedUsers = jdbc.update(updatePwdSql, Map.of(
-                    "password_baru", passwordBaru,
-                    "email", email
-            ));
+            int updatedUsers = 0;
+            try {
+                updatedUsers = jdbc.update(updatePwdSql, Map.of(
+                        "password_hash", hashedPassword,
+                        "email", email
+                ));
+            } catch (Exception colEx) {
+                logger.warn("Could not update with audit columns, falling back to simple hash update: {}", colEx.getMessage());
+                String fallbackSql = "UPDATE " + table + " " +
+                        "SET " + hashCol + " = :password_hash " +
+                        "WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email))";
+                updatedUsers = jdbc.update(fallbackSql, Map.of(
+                        "password_hash", hashedPassword,
+                        "email", email
+                ));
+            }
 
             if (updatedUsers == 0) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
@@ -660,7 +680,7 @@ public class EmailVerificationController {
             logger.error("Error resetting password for email {}: {}", email, ex.getMessage(), ex);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                     "success", false,
-                    "message", "Terjadi kesalahan saat mereset kata sandi: " + ex.getMessage()
+                    "message", "Gagal memperbarui kata sandi. Silakan coba beberapa saat lagi atau hubungi administrator."
             ));
         }
     }
