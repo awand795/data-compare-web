@@ -148,7 +148,10 @@ public class DynamicApiController {
         boolean isValidJwt = (jwtClaims != null);
         boolean isAuthAction = "LOGIN".equalsIgnoreCase(endpoint.getAuthAction())
                 || "REGISTER".equalsIgnoreCase(endpoint.getAuthAction())
-                || "REFRESH_TOKEN".equalsIgnoreCase(endpoint.getAuthAction());
+                || "REFRESH_TOKEN".equalsIgnoreCase(endpoint.getAuthAction())
+                || "FORGOT_PASSWORD".equalsIgnoreCase(endpoint.getAuthAction())
+                || "VERIFY_OTP".equalsIgnoreCase(endpoint.getAuthAction())
+                || "RESET_PASSWORD".equalsIgnoreCase(endpoint.getAuthAction());
 
         String secMode = endpoint.getSecurityMode();
         if (secMode == null || secMode.trim().isEmpty()) {
@@ -728,18 +731,30 @@ public class DynamicApiController {
                 String builtClause = buildFilterClause(filtersObj, allParams);
                 sql = sql.replace("{{filters}}", builtClause);
             }
-            // ── Auth Action: REGISTER ───────────────────────────────────────────────
-            if ("REGISTER".equalsIgnoreCase(endpoint.getAuthAction())) {
+            // ── Auth Action: REGISTER & RESET_PASSWORD ─────────────────────────────
+            if ("REGISTER".equalsIgnoreCase(endpoint.getAuthAction()) || "RESET_PASSWORD".equalsIgnoreCase(endpoint.getAuthAction())) {
                 String passParam = endpoint.getPasswordParam();
+                if (passParam == null || passParam.isBlank()) passParam = "password";
                 if (allParams.containsKey(passParam) && allParams.get(passParam) != null) {
                     String rawPass = allParams.get(passParam).toString();
                     String hashed = (passwordEncoder != null) ? passwordEncoder.encode(rawPass) : rawPass;
-                    allParams.put(endpoint.getPasswordHashColumn(), hashed);
+                    if (endpoint.getPasswordHashColumn() != null && !endpoint.getPasswordHashColumn().isBlank()) {
+                        allParams.put(endpoint.getPasswordHashColumn(), hashed);
+                    }
                     allParams.put("password_hash", hashed);
                     allParams.put(passParam, hashed);
                 }
+                if (allParams.containsKey("password_baru") && allParams.get("password_baru") != null) {
+                    String rawPass = allParams.get("password_baru").toString();
+                    String hashed = (passwordEncoder != null) ? passwordEncoder.encode(rawPass) : rawPass;
+                    allParams.put("password_hash", hashed);
+                    if (endpoint.getPasswordHashColumn() != null && !endpoint.getPasswordHashColumn().isBlank()) {
+                        allParams.put(endpoint.getPasswordHashColumn(), hashed);
+                    }
+                    allParams.put("password_baru", hashed);
+                }
 
-                if (endpoint.isEnableEmailVerification()) {
+                if ("REGISTER".equalsIgnoreCase(endpoint.getAuthAction()) && endpoint.isEnableEmailVerification()) {
                     String tokenCol = endpoint.getVerificationTokenColumn();
                     String statusCol = endpoint.getVerificationStatusColumn();
                     String verificationToken = java.util.UUID.randomUUID().toString().replace("-", "") 

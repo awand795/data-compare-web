@@ -76,7 +76,7 @@ interface ApiEndpoint {
   lastPushStatus?: string;
   lastPushMessage?: string;
   requiredAppId?: string;
-  authAction?: 'NONE' | 'LOGIN' | 'REGISTER' | 'REFRESH_TOKEN';
+  authAction?: 'NONE' | 'LOGIN' | 'REGISTER' | 'REFRESH_TOKEN' | 'FORGOT_PASSWORD' | 'VERIFY_OTP' | 'RESET_PASSWORD';
   passwordParam?: string;
   passwordHashColumn?: string;
   tokenTtlMinutes?: number;
@@ -112,8 +112,8 @@ type ValidationError = {
   message: string;
 };
 
-const getMethodBadgeClass = (method: string) => {
-  switch (method) {
+const getMethodBadgeClass = (method?: string | null) => {
+  switch ((method || '').toUpperCase()) {
     case 'GET': return 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
     case 'POST': return 'bg-blue-500/15 text-blue-400 border border-blue-500/30';
     case 'PUT': return 'bg-amber-500/15 text-amber-400 border border-amber-500/30';
@@ -980,7 +980,8 @@ export const ApiBuilderView: React.FC = () => {
 
   const RAW_SQL_PARAM_KEYS = ['where_condition', 'raw_sql', 'condition', 'whereCondition'];
 
-  const detectParams = (sql: string, excludeRawKeys = false): string[] => {
+  const detectParams = (sql?: string | null, excludeRawKeys = false): string[] => {
+    if (!sql || typeof sql !== 'string') return [];
     const matches = sql.match(/(?<!:):(\w+)/g);
     if (!matches) return [];
     let params = Array.from(new Set(matches.map(m => m.substring(1))));
@@ -1744,10 +1745,18 @@ export const ApiBuilderView: React.FC = () => {
                                         "inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full border",
                                         api.authAction === 'LOGIN' ? "text-amber-300 bg-amber-500/15 border-amber-500/30" :
                                         api.authAction === 'REGISTER' ? "text-cyan-300 bg-cyan-500/15 border-cyan-500/30" :
-                                        "text-emerald-300 bg-emerald-500/15 border-emerald-500/30"
+                                        api.authAction === 'REFRESH_TOKEN' ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/30" :
+                                        api.authAction === 'FORGOT_PASSWORD' ? "text-purple-300 bg-purple-500/15 border-purple-500/30" :
+                                        api.authAction === 'VERIFY_OTP' ? "text-indigo-300 bg-indigo-500/15 border-indigo-500/30" :
+                                        "text-teal-300 bg-teal-500/15 border-teal-500/30"
                                       )}>
                                         <KeyRound className="w-2.5 h-2.5" />
-                                        {api.authAction === 'LOGIN' ? 'AUTH LOGIN' : api.authAction === 'REGISTER' ? 'AUTH REG' : 'AUTH REFRESH'}
+                                        {api.authAction === 'LOGIN' ? 'AUTH LOGIN' :
+                                         api.authAction === 'REGISTER' ? 'AUTH REG' :
+                                         api.authAction === 'REFRESH_TOKEN' ? 'AUTH REFRESH' :
+                                         api.authAction === 'FORGOT_PASSWORD' ? 'AUTH FORGOT' :
+                                         api.authAction === 'VERIFY_OTP' ? 'AUTH OTP' :
+                                         api.authAction === 'RESET_PASSWORD' ? 'AUTH RESET' : 'AUTH'}
                                       </span>
                                     )}
                                   </div>
@@ -1768,11 +1777,21 @@ export const ApiBuilderView: React.FC = () => {
                                     <span className="truncate max-w-[120px]">{getConnectionName(api.connectionId)}</span>
                                   </span>
 
-                                  {api.parameters && JSON.parse(api.parameters || '[]').length > 0 && (
-                                    <span className="inline-flex items-center gap-1 text-[11px] text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20 font-mono">
-                                      {JSON.parse(api.parameters || '[]').length} params
-                                    </span>
-                                  )}
+                                  {(() => {
+                                    try {
+                                      if (api.parameters && typeof api.parameters === 'string' && api.parameters.trim() !== '') {
+                                        const p = JSON.parse(api.parameters);
+                                        if (Array.isArray(p) && p.length > 0) {
+                                          return (
+                                            <span className="inline-flex items-center gap-1 text-[11px] text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20 font-mono">
+                                              {p.length} params
+                                            </span>
+                                          );
+                                        }
+                                      }
+                                    } catch(e) {}
+                                    return null;
+                                  })()}
 
                                   {api.lastPushStatus && (
                                     <span className={clsx(
@@ -2071,9 +2090,17 @@ export const ApiBuilderView: React.FC = () => {
                                           "px-2 py-0.5 rounded text-[9px] font-extrabold uppercase border",
                                           api.authAction === 'LOGIN' ? "bg-amber-500/15 text-amber-300 border-amber-500/30" :
                                           api.authAction === 'REGISTER' ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" :
-                                          "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                          api.authAction === 'REFRESH_TOKEN' ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" :
+                                          api.authAction === 'FORGOT_PASSWORD' ? "bg-purple-500/15 text-purple-300 border-purple-500/30" :
+                                          api.authAction === 'VERIFY_OTP' ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" :
+                                          "bg-teal-500/15 text-teal-300 border-teal-500/30"
                                         )}>
-                                          {api.authAction === 'LOGIN' ? 'AUTH LOGIN' : api.authAction === 'REGISTER' ? 'AUTH REG' : 'AUTH REFRESH'}
+                                          {api.authAction === 'LOGIN' ? 'AUTH LOGIN' :
+                                           api.authAction === 'REGISTER' ? 'AUTH REG' :
+                                           api.authAction === 'REFRESH_TOKEN' ? 'AUTH REFRESH' :
+                                           api.authAction === 'FORGOT_PASSWORD' ? 'AUTH FORGOT' :
+                                           api.authAction === 'VERIFY_OTP' ? 'AUTH OTP' :
+                                           api.authAction === 'RESET_PASSWORD' ? 'AUTH RESET' : 'AUTH'}
                                         </span>
                                       )}
                                       <span className="text-text-muted">/api/data{api.endpointPath}</span>
@@ -2943,15 +2970,24 @@ export const ApiBuilderView: React.FC = () => {
   // 2. SPECIFICATION & DOCS VIEW
   // ─────────────────────────────────────────────
   if (viewMode === 'spec' && currentApi) {
-    const fullUrl = `${window.location.origin}/api/data${currentApi.endpointPath}`;
+    const method = (currentApi.method || 'GET').toUpperCase();
+    const endpointPath = currentApi.endpointPath || '';
+    const fullUrl = `${window.location.origin}/api/data${endpointPath}`;
     const detectedParams = detectParams(currentApi.sqlQuery);
     let parsedParams: ApiParameter[] = [];
     try {
-      parsedParams = JSON.parse(currentApi.parameters || '[]');
+      if (currentApi.parameters && typeof currentApi.parameters === 'string' && currentApi.parameters.trim() !== '') {
+        const parsed = JSON.parse(currentApi.parameters);
+        if (Array.isArray(parsed)) {
+          parsedParams = parsed;
+        }
+      } else if (Array.isArray(currentApi.parameters)) {
+        parsedParams = currentApi.parameters;
+      }
     } catch(e) {}
-    const connName = getConnectionName(currentApi.connectionId);
+    const connName = getConnectionName(currentApi.connectionId || '');
     
-    const qs = (detectedParams.length > 0 || currentApi.enablePagination) && currentApi.method === 'GET'
+    const qs = (detectedParams.length > 0 || currentApi.enablePagination) && method === 'GET'
       ? '?' + [...detectedParams.map(p => `${p}=value`), ...(currentApi.enablePagination ? ['limit=100', 'offset=0'] : [])].join('&')
       : '';
       
@@ -2960,15 +2996,15 @@ export const ApiBuilderView: React.FC = () => {
     const isJwt = (secMode === 'JWT_AUTH');
     const authHeaderVal = isPublic ? '' : isJwt ? 'Bearer <YOUR_USER_LOGIN_JWT_TOKEN>' : `Bearer ${currentApi.authToken || '<STATIC_API_KEY>'}`;
 
-    const curlExample = `curl -X ${currentApi.method} "${fullUrl}${qs}" \\\n  -H "Accept: application/json" ${!isPublic ? `\\\n  -H "Authorization: ${authHeaderVal}"` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '{\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }'` : ''}`;
+    const curlExample = `curl -X ${method} "${fullUrl}${qs}" \\\n  -H "Accept: application/json" ${!isPublic ? `\\\n  -H "Authorization: ${authHeaderVal}"` : ''}${method !== 'GET' && detectedParams.length > 0 ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '{\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }'` : ''}`;
 
-    const postmanExample = `${currentApi.method} ${fullUrl}${qs} HTTP/1.1\nHost: ${window.location.host}\nAccept: application/json${!isPublic ? `\nAuthorization: ${authHeaderVal}` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? `\nContent-Type: application/json\n\n{\n${detectedParams.map(p => `  "${p}": "value"`).join(',\n')}\n}` : ''}`;
+    const postmanExample = `${method} ${fullUrl}${qs} HTTP/1.1\nHost: ${window.location.host}\nAccept: application/json${!isPublic ? `\nAuthorization: ${authHeaderVal}` : ''}${method !== 'GET' && detectedParams.length > 0 ? `\nContent-Type: application/json\n\n{\n${detectedParams.map(p => `  "${p}": "value"`).join(',\n')}\n}` : ''}`;
 
-    const brunoExample = `meta {\n  name: ${currentApi.name}\n  type: http\n  seq: 1\n}\n\n${currentApi.method.toLowerCase()} {\n  url: ${fullUrl}${qs}\n  body: ${currentApi.method !== 'GET' && detectedParams.length > 0 ? 'json' : 'none'}\n  auth: ${!isPublic ? 'bearer' : 'none'}\n}\n${!isPublic ? `\nauth:bearer {\n  token: ${isJwt ? '<YOUR_USER_LOGIN_JWT_TOKEN>' : (currentApi.authToken || '<TOKEN>')}\n}` : ''}${(detectedParams.length > 0 || currentApi.enablePagination) && currentApi.method === 'GET' ? `\nquery {\n${detectedParams.map(p => `  ${p}: value`).join('\n')}${currentApi.enablePagination ? '\n  limit: 100\n  offset: 0' : ''}\n}` : ''}${currentApi.method !== 'GET' && detectedParams.length > 0 ? `\nbody:json {\n  {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }\n}` : ''}`;
+    const brunoExample = `meta {\n  name: ${currentApi.name || 'API'}\n  type: http\n  seq: 1\n}\n\n${method.toLowerCase()} {\n  url: ${fullUrl}${qs}\n  body: ${method !== 'GET' && detectedParams.length > 0 ? 'json' : 'none'}\n  auth: ${!isPublic ? 'bearer' : 'none'}\n}\n${!isPublic ? `\nauth:bearer {\n  token: ${isJwt ? '<YOUR_USER_LOGIN_JWT_TOKEN>' : (currentApi.authToken || '<TOKEN>')}\n}` : ''}${(detectedParams.length > 0 || currentApi.enablePagination) && method === 'GET' ? `\nquery {\n${detectedParams.map(p => `  ${p}: value`).join('\n')}${currentApi.enablePagination ? '\n  limit: 100\n  offset: 0' : ''}\n}` : ''}${method !== 'GET' && detectedParams.length > 0 ? `\nbody:json {\n  {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  }\n}` : ''}`;
     
-    const jsExample = `const response = await fetch("${fullUrl}${qs}", {\n  method: "${currentApi.method}",\n  headers: {\n    "Accept": "application/json",\n    ${!isPublic ? `"Authorization": "${authHeaderVal}",\n    ` : ''}${currentApi.method !== 'GET' ? `"Content-Type": "application/json"\n  },\n  body: JSON.stringify({\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  })` : '\n  }'}\n});\nconst data = await response.json();`;
+    const jsExample = `const response = await fetch("${fullUrl}${qs}", {\n  method: "${method}",\n  headers: {\n    "Accept": "application/json",\n    ${!isPublic ? `"Authorization": "${authHeaderVal}",\n    ` : ''}${method !== 'GET' ? `"Content-Type": "application/json"\n  },\n  body: JSON.stringify({\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n  })` : '\n  }'}\n});\nconst data = await response.json();`;
 
-    const pythonExample = `import requests\n\nurl = "${fullUrl}${qs}"\nheaders = {\n    "Accept": "application/json",\n    ${!isPublic ? `"Authorization": "${authHeaderVal}",\n    ` : ''}${currentApi.method !== 'GET' ? `"Content-Type": "application/json"` : ''}\n}\n${currentApi.method !== 'GET' && detectedParams.length > 0 ? `payload = {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n}\nresponse = requests.${currentApi.method.toLowerCase()}(url, headers=headers, json=payload)` : `response = requests.${currentApi.method.toLowerCase()}(url, headers=headers)`}\nprint(response.json())`;
+    const pythonExample = `import requests\n\nurl = "${fullUrl}${qs}"\nheaders = {\n    "Accept": "application/json",\n    ${!isPublic ? `"Authorization": "${authHeaderVal}",\n    ` : ''}${method !== 'GET' ? `"Content-Type": "application/json"` : ''}\n}\n${method !== 'GET' && detectedParams.length > 0 ? `payload = {\n${detectedParams.map(p => `    "${p}": "value"`).join(',\n')}\n}\nresponse = requests.${method.toLowerCase()}(url, headers=headers, json=payload)` : `response = requests.${method.toLowerCase()}(url, headers=headers)`}\nprint(response.json())`;
 
     return (
       <div className="h-full flex flex-col p-6 overflow-y-auto bg-bg-main min-h-0">
@@ -3087,10 +3123,13 @@ export const ApiBuilderView: React.FC = () => {
                       <p className="text-xs text-cyan-400/80 mt-0.5">Caller must provide a valid JWT access token obtained via user login in the Authorization header.</p>
                     </div>
                   </div>
-                  {currentApi.allowedRoles && currentApi.allowedRoles.trim() && (
+                  {currentApi.allowedRoles && String(currentApi.allowedRoles).trim() && (
                     <div className="flex items-center gap-2 bg-[#0d1117] p-2.5 rounded-xl border border-cyan-500/30">
                       <span className="text-xs text-text-muted font-bold">Allowed Roles:</span>
-                      {currentApi.allowedRoles.split(/[,;\s]+/).map(r => r.trim()).filter(Boolean).map((r, i) => (
+                      {(Array.isArray(currentApi.allowedRoles) 
+                        ? currentApi.allowedRoles 
+                        : String(currentApi.allowedRoles).split(/[,;\s]+/)
+                      ).map(r => String(r).trim()).filter(Boolean).map((r, i) => (
                         <span key={i} className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-xs font-bold border border-cyan-500/30">
                           {r.toUpperCase()}
                         </span>
@@ -3153,7 +3192,7 @@ export const ApiBuilderView: React.FC = () => {
                     </thead>
                     <tbody>
                       {detectedParams.map(p => {
-                        const meta = parsedParams.find(m => m.name === p) || {
+                        const meta = (Array.isArray(parsedParams) ? parsedParams : []).find(m => m.name === p) || {
                           name: p, type: 'string', required: true, defaultValue: '', description: ''
                         };
                         const paramDesc = meta.description?.trim() || getAutoGeneratedDescription(p, meta.type);
@@ -4183,12 +4222,15 @@ export const ApiBuilderView: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
                       {[
                         { id: 'NONE', label: 'Standard API', badge: 'CRUD', desc: 'Endpoint query data biasa tanpa aksi auth' },
                         { id: 'LOGIN', label: 'Auth: Login', badge: 'Login', desc: 'Verifikasi password hash & terbitkan JWT' },
                         { id: 'REGISTER', label: 'Auth: Register', badge: 'Register', desc: 'Auto-hash input password dengan BCrypt' },
                         { id: 'REFRESH_TOKEN', label: 'Auth: Refresh Token', badge: 'Refresh', desc: 'Tukar refresh token lama dengan token baru' },
+                        { id: 'FORGOT_PASSWORD', label: 'Auth: Lupa Sandi (OTP)', badge: 'OTP', desc: 'Kirim kode OTP reset kata sandi ke email pengguna via SMTP' },
+                        { id: 'VERIFY_OTP', label: 'Auth: Verifikasi OTP', badge: 'Verify', desc: 'Validasi kode OTP yang diinput pengguna sebelum reset password' },
+                        { id: 'RESET_PASSWORD', label: 'Auth: Reset Sandi', badge: 'Reset', desc: 'Perbarui kata sandi dengan BCrypt hash setelah OTP terverifikasi' },
                       ].map(mode => {
                         const isSelected = (currentApi.authAction || 'NONE') === mode.id;
                         return (
@@ -4235,7 +4277,7 @@ export const ApiBuilderView: React.FC = () => {
                       })}
                     </div>
 
-                    {/* Additional settings when Login / Register / Refresh is active */}
+                    {/* Additional settings when Login / Register / Refresh / Reset Password is active */}
                     {currentApi.authAction && currentApi.authAction !== 'NONE' && (
                       <div className="bg-bg-panel border border-amber-500/30 rounded-xl p-3.5 space-y-3 mt-2 shadow-sm">
                         {currentApi.authAction === 'LOGIN' && (
@@ -4256,7 +4298,25 @@ export const ApiBuilderView: React.FC = () => {
                           </div>
                         )}
 
-                        {(currentApi.authAction === 'LOGIN' || currentApi.authAction === 'REGISTER') && (
+                        {currentApi.authAction === 'FORGOT_PASSWORD' && (
+                          <div className="text-[11px] text-purple-900 dark:text-purple-200 leading-relaxed bg-purple-50 dark:bg-purple-500/10 p-3 rounded-lg border border-purple-200 dark:border-purple-500/30">
+                            💡 <strong>Cara Kerja Lupa Sandi (OTP):</strong> Endpoint ini menerima parameter email pengguna (contoh: <code className="bg-purple-100 dark:bg-purple-950/60 px-1.5 py-0.5 rounded font-mono font-bold">:email</code>), membuat 6 digit kode OTP acak, menyimpannya ke tabel OTP database dengan masa berlaku (15 menit), lalu otomatis mengirimkan email verifikasi OTP dinamis via SMTP.
+                          </div>
+                        )}
+
+                        {currentApi.authAction === 'VERIFY_OTP' && (
+                          <div className="text-[11px] text-indigo-900 dark:text-indigo-200 leading-relaxed bg-indigo-50 dark:bg-indigo-500/10 p-3 rounded-lg border border-indigo-200 dark:border-indigo-500/30">
+                            💡 <strong>Cara Kerja Verifikasi OTP:</strong> Endpoint ini memverifikasi kecocokan kode OTP dan email pengguna dari tabel OTP database, memeriksa apakah belum kedaluwarsa dan belum digunakan (<code className="font-mono font-bold">is_used = false</code>).
+                          </div>
+                        )}
+
+                        {currentApi.authAction === 'RESET_PASSWORD' && (
+                          <div className="text-[11px] text-teal-900 dark:text-teal-200 leading-relaxed bg-teal-50 dark:bg-teal-500/10 p-3 rounded-lg border border-teal-200 dark:border-teal-500/30">
+                            💡 <strong>Cara Kerja Reset Sandi:</strong> Endpoint ini memverifikasi OTP, lalu meng-hash input kata sandi baru secara otomatis menggunakan <strong>BCrypt</strong> dan memperbarui kolom kata sandi pengguna di database.
+                          </div>
+                        )}
+
+                        {(currentApi.authAction === 'LOGIN' || currentApi.authAction === 'REGISTER' || currentApi.authAction === 'RESET_PASSWORD') && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                               <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
