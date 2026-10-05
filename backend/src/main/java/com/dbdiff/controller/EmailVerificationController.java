@@ -348,6 +348,323 @@ public class EmailVerificationController {
         ));
     }
 
+    @PostMapping(value = {"/api/auth/forgot-password", "/api/data/kim3/auth/forgot-password"})
+    public ResponseEntity<Map<String, Object>> forgotPassword(
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestParam(value = "endpoint_id", required = false) String endpointIdParam,
+            HttpServletRequest request) {
+
+        String email = null;
+        if (body != null && body.containsKey("email") && body.get("email") != null) {
+            email = body.get("email").toString().trim();
+        }
+
+        if (email == null || email.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Alamat email wajib diisi untuk permintaan reset kata sandi."
+            ));
+        }
+
+        // 1. Resolve endpoint configuration from database (no hardcoding)
+        ApiEndpoint endpoint = null;
+        if (endpointIdParam != null && !endpointIdParam.isBlank()) {
+            endpoint = apiEndpointRepository.findById(endpointIdParam.trim()).orElse(null);
+        }
+        if (endpoint == null) {
+            endpoint = apiEndpointRepository.findByPathAndMethod("/kim3/auth/forgot-password", "POST").orElse(null);
+        }
+        if (endpoint == null) {
+            endpoint = apiEndpointRepository.findByPathAndMethod("/kim3/auth/register", "POST").orElse(null);
+        }
+
+        DataSource ds = getDataSourceForEndpoint(endpoint);
+        if (ds == null) {
+            ds = getFallbackDataSource();
+        }
+        if (ds == null) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Koneksi database tidak tersedia."
+            ));
+        }
+
+        String table = extractTargetTable(endpoint);
+        String appName = (endpoint != null && endpoint.getName() != null && !endpoint.getName().isBlank())
+                ? endpoint.getName().trim() : "Master Truck";
+
+        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(ds);
+
+        try {
+            String checkUserSql = "SELECT id, email, nama_lengkap, status_aktif, COALESCE(status_no_aktif, false) AS status_no_aktif " +
+                    "FROM " + table + " WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email)) LIMIT 1";
+            List<Map<String, Object>> rows = jdbc.queryForList(checkUserSql, Map.of("email", email));
+
+            if (rows.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                        "success", false,
+                        "message", "Alamat email tidak terdaftar dalam sistem."
+                ));
+            }
+
+            Map<String, Object> user = rows.get(0);
+            Boolean statusAktif = (Boolean) user.get("status_aktif");
+            Boolean statusNoAktif = (Boolean) user.get("status_no_aktif");
+
+            if (Boolean.FALSE.equals(statusAktif) || Boolean.TRUE.equals(statusNoAktif)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                        "success", false,
+                        "message", "Akun ini berstatus tidak aktif. Silakan hubungi tim administrasi."
+                ));
+            }
+
+            String namaLengkap = user.get("nama_lengkap") != null ? user.get("nama_lengkap").toString().trim() : "Mitra";
+
+            // Generate 6-digit random OTP
+            int randomCode = 100000 + new java.security.SecureRandom().nextInt(900000);
+            String otpCode = String.valueOf(randomCode);
+
+            // Invalidate prior unused OTPs for this email
+            try {
+                jdbc.update("UPDATE sch_fleet.password_reset_otp SET is_used = TRUE WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email)) AND is_used = FALSE",
+                        Map.of("email", email));
+            } catch (Exception ex) {
+                logger.warn("Could not invalidate previous OTPs: {}", ex.getMessage());
+            }
+
+            // Insert new OTP record (15 minutes expiration)
+            String insertOtpSql = "INSERT INTO sch_fleet.password_reset_otp (email, otp_code, expires_at, is_used, created_at) " +
+                    "VALUES (:email, :otp_code, NOW() + INTERVAL '15 minutes', FALSE, NOW())";
+            jdbc.update(insertOtpSql, Map.of(
+                    "email", email,
+                    "otp_code", otpCode
+            ));
+
+            // Send OTP email with dynamic subject and template from DB configuration
+            String customFrom = endpoint != null ? endpoint.getVerificationMailFrom() : null;
+            String customSubject = endpoint != null ? endpoint.getVerificationEmailSubject() : null;
+            String customTemplate = endpoint != null ? endpoint.getVerificationEmailTemplate() : null;
+
+            if (emailService != null) {
+                emailService.sendOtpPasswordResetEmailAsync(
+                        email,
+                        namaLengkap,
+                        otpCode,
+                        appName,
+                        customFrom,
+                        customSubject,
+                        customTemplate
+                );
+            }
+
+            // Message from DB configuration if present, otherwise fallback
+            String successMsg = (endpoint != null && endpoint.getSuccessMessage() != null && !endpoint.getSuccessMessage().isBlank())
+                    ? endpoint.getSuccessMessage().replace("{{email}}", email).replace("{{nama}}", namaLengkap).replace("{{app_name}}", appName)
+                    : "Kode OTP pemulihan kata sandi telah dikirim ke email " + email + ". Silakan periksa kotak masuk atau spam.";
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", successMsg,
+                    "email", email
+            ));
+
+        } catch (Exception ex) {
+            logger.error("Error processing forgot-password for email {}: {}", email, ex.getMessage(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Terjadi kesalahan saat memproses permintaan OTP: " + ex.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping(value = {"/api/auth/verify-otp", "/api/data/kim3/auth/verify-otp"})
+    public ResponseEntity<Map<String, Object>> verifyOtp(
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestParam(value = "endpoint_id", required = false) String endpointIdParam) {
+
+        String email = body != null && body.get("email") != null ? body.get("email").toString().trim() : "";
+        String otp = body != null && body.get("otp") != null ? body.get("otp").toString().trim() : "";
+
+        if (email.isEmpty() || otp.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Alamat email dan kode OTP wajib diisi."
+            ));
+        }
+
+        ApiEndpoint endpoint = null;
+        if (endpointIdParam != null && !endpointIdParam.isBlank()) {
+            endpoint = apiEndpointRepository.findById(endpointIdParam.trim()).orElse(null);
+        }
+        if (endpoint == null) {
+            endpoint = apiEndpointRepository.findByPathAndMethod("/kim3/auth/verify-otp", "POST").orElse(null);
+        }
+
+        DataSource ds = getDataSourceForEndpoint(endpoint);
+        if (ds == null) {
+            ds = getFallbackDataSource();
+        }
+        if (ds == null) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Koneksi database tidak tersedia."
+            ));
+        }
+
+        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(ds);
+
+        try {
+            String checkOtpSql = "SELECT id, email, otp_code, expires_at, is_used FROM sch_fleet.password_reset_otp " +
+                    "WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email)) " +
+                    "  AND otp_code = :otp " +
+                    "  AND is_used = FALSE " +
+                    "  AND expires_at > NOW() " +
+                    "ORDER BY id DESC LIMIT 1";
+
+            List<Map<String, Object>> rows = jdbc.queryForList(checkOtpSql, Map.of(
+                    "email", email,
+                    "otp", otp
+            ));
+
+            if (rows.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Kode OTP tidak valid atau telah kedaluwarsa. Silakan ajukan kode baru."
+                ));
+            }
+
+            String successMsg = (endpoint != null && endpoint.getSuccessMessage() != null && !endpoint.getSuccessMessage().isBlank())
+                    ? endpoint.getSuccessMessage().replace("{{email}}", email)
+                    : "Kode OTP valid. Silakan buat kata sandi baru Anda.";
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", successMsg
+            ));
+
+        } catch (Exception ex) {
+            logger.error("Error verifying OTP for email {}: {}", email, ex.getMessage(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Terjadi kesalahan saat memverifikasi OTP: " + ex.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping(value = {"/api/auth/reset-password", "/api/data/kim3/auth/reset-password"})
+    public ResponseEntity<Map<String, Object>> resetPassword(
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestParam(value = "endpoint_id", required = false) String endpointIdParam) {
+
+        String email = body != null && body.get("email") != null ? body.get("email").toString().trim() : "";
+        String otp = body != null && body.get("otp") != null ? body.get("otp").toString().trim() : "";
+        String passwordBaru = body != null && body.get("password_baru") != null ? body.get("password_baru").toString() : "";
+
+        if (passwordBaru.isEmpty() && body != null && body.get("password") != null) {
+            passwordBaru = body.get("password").toString();
+        }
+
+        if (email.isEmpty() || otp.isEmpty() || passwordBaru.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Email, kode OTP, dan kata sandi baru wajib diisi."
+            ));
+        }
+
+        if (passwordBaru.length() < 6) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Kata sandi baru minimal harus 6 karakter."
+            ));
+        }
+
+        ApiEndpoint endpoint = null;
+        if (endpointIdParam != null && !endpointIdParam.isBlank()) {
+            endpoint = apiEndpointRepository.findById(endpointIdParam.trim()).orElse(null);
+        }
+        if (endpoint == null) {
+            endpoint = apiEndpointRepository.findByPathAndMethod("/kim3/auth/reset-password", "POST").orElse(null);
+        }
+
+        DataSource ds = getDataSourceForEndpoint(endpoint);
+        if (ds == null) {
+            ds = getFallbackDataSource();
+        }
+        if (ds == null) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Koneksi database tidak tersedia."
+            ));
+        }
+
+        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(ds);
+
+        try {
+            // 1. Verify OTP record
+            String checkOtpSql = "SELECT id FROM sch_fleet.password_reset_otp " +
+                    "WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email)) " +
+                    "  AND otp_code = :otp " +
+                    "  AND is_used = FALSE " +
+                    "  AND expires_at > NOW() " +
+                    "ORDER BY id DESC LIMIT 1";
+
+            List<Map<String, Object>> rows = jdbc.queryForList(checkOtpSql, Map.of(
+                    "email", email,
+                    "otp", otp
+            ));
+
+            if (rows.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Kode OTP tidak valid atau telah kedaluwarsa. Silakan ajukan kode baru."
+                ));
+            }
+
+            Object otpId = rows.get(0).get("id");
+
+            // 2. Update password in sch_fleet.pengguna using PostgreSQL crypt function
+            String updatePwdSql = "UPDATE sch_fleet.pengguna " +
+                    "SET password_hash = crypt(:password_baru, gen_salt('bf', 10)), " +
+                    "    update_by = 'RESET_PASSWORD_OTP', " +
+                    "    update_dt = NOW() " +
+                    "WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email))";
+
+            int updatedUsers = jdbc.update(updatePwdSql, Map.of(
+                    "password_baru", passwordBaru,
+                    "email", email
+            ));
+
+            if (updatedUsers == 0) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                        "success", false,
+                        "message", "Pengguna dengan email tersebut tidak ditemukan."
+                ));
+            }
+
+            // 3. Mark OTP as used
+            jdbc.update("UPDATE sch_fleet.password_reset_otp SET is_used = TRUE WHERE id = :otp_id",
+                    Map.of("otp_id", otpId));
+
+            logger.info("Successfully reset password for user '{}' via OTP", email);
+
+            String successMsg = (endpoint != null && endpoint.getSuccessMessage() != null && !endpoint.getSuccessMessage().isBlank())
+                    ? endpoint.getSuccessMessage().replace("{{email}}", email)
+                    : "Kata sandi akun Anda berhasil diperbarui! Silakan login dengan kata sandi baru Anda.";
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", successMsg
+            ));
+
+        } catch (Exception ex) {
+            logger.error("Error resetting password for email {}: {}", email, ex.getMessage(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Terjadi kesalahan saat mereset kata sandi: " + ex.getMessage()
+            ));
+        }
+    }
+
     private String renderHtmlPage(boolean success, String title, String message, String loginUrl, String appName) {
         String iconBg = success ? "#ecfdf5" : "#fffbeb";
         String iconColor = success ? "#059669" : "#d97706";
