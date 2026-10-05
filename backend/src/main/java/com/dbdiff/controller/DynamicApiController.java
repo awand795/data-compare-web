@@ -768,6 +768,15 @@ public class DynamicApiController {
                 }
             }
 
+            // Auto-bind any named parameter present in the SQL that was not supplied in request
+            try {
+                java.util.regex.Matcher paramMatcher = java.util.regex.Pattern.compile("(?<!:):([a-zA-Z0-9_]+)").matcher(sql);
+                while (paramMatcher.find()) {
+                    String pName = paramMatcher.group(1);
+                    allParams.putIfAbsent(pName, null);
+                }
+            } catch (Exception ignored) {}
+
             // ── Auth Action: LOGIN ───────────────────────────────────────────────────
             if ("LOGIN".equalsIgnoreCase(endpoint.getAuthAction())) {
                 String passParam = endpoint.getPasswordParam();
@@ -859,7 +868,9 @@ public class DynamicApiController {
 
             // ── Mutation Check (INSERT, UPDATE, DELETE) ────────────────────────────
             String upperSql = sql.trim().toUpperCase();
+            boolean isCteMutation = upperSql.startsWith("WITH") && (upperSql.contains("INSERT ") || upperSql.contains("UPDATE ") || upperSql.contains("DELETE "));
             boolean isMutation = upperSql.startsWith("INSERT") || upperSql.startsWith("UPDATE") || upperSql.startsWith("DELETE")
+                    || isCteMutation
                     || (!upperSql.startsWith("SELECT") && !upperSql.startsWith("WITH") && !upperSql.startsWith("EXPLAIN") && (method.equals("POST") || method.equals("PUT") || method.equals("PATCH") || method.equals("DELETE")));
 
             if (isMutation) {
@@ -913,9 +924,9 @@ public class DynamicApiController {
                 }
 
                 String operation = "MUTATION";
-                if (upperSql.startsWith("INSERT")) operation = "INSERT";
-                else if (upperSql.startsWith("UPDATE")) operation = "UPDATE";
-                else if (upperSql.startsWith("DELETE")) operation = "DELETE";
+                if (upperSql.startsWith("INSERT") || (isCteMutation && upperSql.contains("INSERT "))) operation = "INSERT";
+                else if (upperSql.startsWith("UPDATE") || (isCteMutation && upperSql.contains("UPDATE "))) operation = "UPDATE";
+                else if (upperSql.startsWith("DELETE") || (isCteMutation && upperSql.contains("DELETE "))) operation = "DELETE";
                 else operation = method;
 
                 String successMsg = endpoint.getSuccessMessage();
