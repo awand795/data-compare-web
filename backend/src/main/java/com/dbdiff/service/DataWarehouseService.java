@@ -1160,18 +1160,21 @@ public class DataWarehouseService {
                         sendLog(emitter, "WARNING: Could not pre-create landing table `" + landingTable + "`: " + e.getMessage());
                     }
                     
-                    // Truncate existing landing table to ensure snapshot counts start fresh
+                    // Check if landing table already contains data to avoid redundant re-backfill
+                    long existingLandingRows = 0;
                     try (Connection conn = targetDs.getConnection();
-                         Statement stmt = conn.createStatement()) {
-                        stmt.execute("TRUNCATE TABLE `" + chDb + "`.`" + landingTable + "`");
-                        sendLog(emitter, "Truncated existing landing table `" + landingTable + "`.");
-                    } catch (Exception e) {
-                        // Ignore
+                         Statement stmt = conn.createStatement();
+                         ResultSet rs = stmt.executeQuery("SELECT count() FROM `" + chDb + "`.`" + landingTable + "`")) {
+                        if (rs.next()) existingLandingRows = rs.getLong(1);
+                    } catch (Exception ignored) {}
+
+                    if (existingLandingRows > 0) {
+                        sendLog(emitter, "Landing table `" + landingTable + "` already contains " + existingLandingRows + " rows. Skipping redundant backfill.");
+                    } else {
+                        // Backfill landing table directly from source DB for complete initial snapshot
+                        sendLog(emitter, "Populating initial snapshot for landing table `" + landingTable + "` directly from source DB...");
+                        backfillLandingTableFromSource(sourceDs, targetDs, t, landingTable, chDb, request.getSourceConnection(), emitter);
                     }
-                    
-                    // Backfill landing table directly from source DB for complete initial snapshot
-                    sendLog(emitter, "Populating initial snapshot for landing table `" + landingTable + "` directly from source DB...");
-                    backfillLandingTableFromSource(sourceDs, targetDs, t, landingTable, chDb, request.getSourceConnection(), emitter);
                 }
 
                 // 2b. Create Physical Target ReplacingMergeTree Table
@@ -1995,6 +1998,17 @@ public class DataWarehouseService {
                     try { stmt.execute("SET max_bytes_before_external_sort = 100000000"); } catch (Exception ignored) {}
 
                     String primaryTable = physicalTables.get(0);
+                    try {
+                        net.sf.jsqlparser.statement.Statement st = CCJSqlParserUtil.parse(originalQuery);
+                        if (st instanceof Select sel && sel.getPlainSelect() != null && sel.getPlainSelect().getFromItem() != null) {
+                            for (String pt : physicalTables) {
+                                if (isTableMatch(sel.getPlainSelect().getFromItem(), pt)) {
+                                    primaryTable = pt;
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
                     String rotatedSql = rotateQuery(originalQuery, primaryTable);
                     String sqlWithMeta = addMetadataColsToSelect(rotatedSql, primaryTable);
                     String rewrittenSql = rewriteQueryForClickHouse(sqlWithMeta, physicalTables, baseName, request.getSourceConnection(), chDb);
@@ -2912,6 +2926,34 @@ public class DataWarehouseService {
                                                 ldt = java.time.LocalDateTime.of(2105, 12, 31, 23, 59, 59);
                                             }
                                             val = ldt;
+                                        } else if (val instanceof java.sql.Time) {
+                                            java.sql.Time t = (java.sql.Time) val;
+                                            java.time.LocalTime lt = t.toLocalTime();
+                                            ColumnInfo colInfo = (k < activeCols.size()) ? activeCols.get(k) : null;
+                                            if (colInfo != null && colInfo.clickhouseType != null && colInfo.clickhouseType.contains("DateTime")) {
+                                                val = java.time.LocalDateTime.of(1970, 1, 1, lt.getHour(), lt.getMinute(), lt.getSecond(), lt.getNano());
+                                            } else {
+                                                val = lt.toString();
+                                            }
+                                        } else if (val instanceof java.time.LocalTime) {
+                                            java.time.LocalTime lt = (java.time.LocalTime) val;
+                                            ColumnInfo colInfo = (k < activeCols.size()) ? activeCols.get(k) : null;
+                                            if (colInfo != null && colInfo.clickhouseType != null && colInfo.clickhouseType.contains("DateTime")) {
+                                                val = java.time.LocalDateTime.of(1970, 1, 1, lt.getHour(), lt.getMinute(), lt.getSecond(), lt.getNano());
+                                            } else {
+                                                val = lt.toString();
+                                            }
+                                        } else if (val instanceof CharSequence) {
+                                            String strVal = val.toString().trim();
+                                            ColumnInfo colInfo = (k < activeCols.size()) ? activeCols.get(k) : null;
+                                            if (colInfo != null && colInfo.clickhouseType != null && colInfo.clickhouseType.contains("DateTime")) {
+                                                if (strVal.matches("^\\d{1,2}:\\d{2}(:\\d{2}(\\.\\d+)?)?$")) {
+                                                    try {
+                                                        java.time.LocalTime lt = java.time.LocalTime.parse(strVal);
+                                                        val = java.time.LocalDateTime.of(1970, 1, 1, lt.getHour(), lt.getMinute(), lt.getSecond(), lt.getNano());
+                                                    } catch (Exception ignored) {}
+                                                }
+                                            }
                                         }
                                         targetPs.setObject(k + 1, val);
                                     }
@@ -2926,7 +2968,7 @@ public class DataWarehouseService {
                                         sendLog(emitter, "Backfilled " + rowCount + " rows into landing table `" + landingTable + "`...");
                                     }
                                     
-                                    if (batchRows >= 2000) {
+                                    if (batchRows >= 5000) {
                                         targetPs.executeBatch();
                                         targetPs.clearBatch();
                                         batchRows = 0;
@@ -2953,6 +2995,16 @@ public class DataWarehouseService {
             logger.warn("Could not backfill landing table " + landingTable + " directly from source: " + e.getMessage(), e);
             try { sendLog(emitter, "WARNING: Could not backfill landing table `" + landingTable + "` directly from source: " + e.getMessage()); } catch (Exception ignored) {}
         }
+    }
+
+    private net.sf.jsqlparser.expression.Expression safeGetOnExpression(Join j) {
+        if (j == null) return null;
+        try {
+            if (j.getOnExpressions() != null && !j.getOnExpressions().isEmpty()) {
+                return j.getOnExpression();
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private String rotateQuery(String sql, String triggerTable) {
@@ -2999,8 +3051,9 @@ public class DataWarehouseService {
 
             // Collect all available ON conditions from original query
             List<net.sf.jsqlparser.expression.Expression> availableConditions = new ArrayList<>();
-            if (targetJoin.getOnExpression() != null) {
-                availableConditions.add(targetJoin.getOnExpression());
+            net.sf.jsqlparser.expression.Expression targetOnExpr = safeGetOnExpression(targetJoin);
+            if (targetOnExpr != null) {
+                availableConditions.add(targetOnExpr);
             }
 
             // Prepare candidate joins: old FROM table + other joins
@@ -3021,8 +3074,9 @@ public class DataWarehouseService {
                     else if (j.isFull()) jCopy.setFull(true);
                     else if (j.isCross()) jCopy.setCross(true);
                     else jCopy.setInner(true);
-                    if (j.getOnExpression() != null) {
-                        availableConditions.add(j.getOnExpression());
+                    net.sf.jsqlparser.expression.Expression jOnExpr = safeGetOnExpression(j);
+                    if (jOnExpr != null) {
+                        availableConditions.add(jOnExpr);
                     }
                     candidateJoins.add(jCopy);
                 }
@@ -3107,7 +3161,7 @@ public class DataWarehouseService {
 
             // ClickHouse safety check: any non-CROSS join without ON expression MUST be marked CROSS
             for (Join j : newJoins) {
-                if (j.getOnExpression() == null && !j.isCross()) {
+                if (safeGetOnExpression(j) == null && !j.isCross()) {
                     j.setInner(false);
                     j.setLeft(false);
                     j.setRight(false);
@@ -3173,7 +3227,7 @@ public class DataWarehouseService {
                     joinAlias = joinAlias.replaceAll("[\"``]", "").toLowerCase();
                 }
 
-                java.util.Set<String> referencedAliases = extractTableAliasesFromExpr(j.getOnExpression());
+                java.util.Set<String> referencedAliases = extractTableAliasesFromExpr(safeGetOnExpression(j));
                 if (joinAlias != null) {
                     referencedAliases.remove(joinAlias);
                 }
@@ -3191,8 +3245,8 @@ public class DataWarehouseService {
 
             if (!progress && !pendingJoins.isEmpty()) {
                 Join j = pendingJoins.remove(0);
-                if (j.getOnExpression() != null) {
-                    net.sf.jsqlparser.expression.Expression onExpr = j.getOnExpression();
+                net.sf.jsqlparser.expression.Expression onExpr = safeGetOnExpression(j);
+                if (onExpr != null) {
                     net.sf.jsqlparser.expression.Expression currentWhere = plain.getWhere();
                     if (currentWhere == null) {
                         plain.setWhere(onExpr);
@@ -3324,6 +3378,9 @@ public class DataWarehouseService {
         if (lowerName.contains("double") || lowerName.contains("numeric") || lowerName.contains("decimal") || jdbcType == java.sql.Types.DOUBLE || jdbcType == java.sql.Types.NUMERIC || jdbcType == java.sql.Types.DECIMAL) return "Float64";
         if (lowerName.contains("bool") || jdbcType == java.sql.Types.BOOLEAN || jdbcType == java.sql.Types.BIT) return "Bool";
         if (lowerName.contains("date") || jdbcType == java.sql.Types.DATE) return "Date32";
+        if (lowerName.equals("time") || lowerName.startsWith("time without") || lowerName.startsWith("time with") || jdbcType == java.sql.Types.TIME) {
+            return "String";
+        }
         if (lowerName.contains("timestamp") || lowerName.contains("datetime") || lowerName.contains("time") || jdbcType == java.sql.Types.TIMESTAMP || jdbcType == java.sql.Types.TIMESTAMP_WITH_TIMEZONE) {
             return "DateTime64(3, 'UTC')";
         }
