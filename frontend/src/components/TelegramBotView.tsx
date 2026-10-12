@@ -130,7 +130,7 @@ export const TelegramBotView: React.FC = () => {
 
   // Scheduler Options
   const [isCronEnabled, setIsCronEnabled] = useState(false);
-  const [formCronExpression, setFormCronExpression] = useState('0 0 8 * * *'); // default 08:00 WIB
+  const [cronTriggers, setCronTriggers] = useState<string[]>(['0 0 8 * * *']);
   const [formActive, setFormActive] = useState(true);
 
   // Preview & Run State
@@ -276,7 +276,7 @@ export const TelegramBotView: React.FC = () => {
     setFilterKodeNotifikasi('');
     setFilterKodeCabang('');
     setIsCronEnabled(false);
-    setFormCronExpression('0 0 8 * * *');
+    setCronTriggers(['0 0 8 * * *']);
     setFormMaxRows(50);
     setFormActive(true);
     setPreviewRows([]);
@@ -306,10 +306,11 @@ export const TelegramBotView: React.FC = () => {
 
     if (s.cronExpression && s.cronExpression.trim()) {
       setIsCronEnabled(true);
-      setFormCronExpression(s.cronExpression);
+      const list = s.cronExpression.split(/[\n,]+/).map(c => c.trim()).filter(Boolean);
+      setCronTriggers(list.length > 0 ? list : ['0 0 8 * * *']);
     } else {
       setIsCronEnabled(false);
-      setFormCronExpression('0 0 8 * * *');
+      setCronTriggers(['0 0 8 * * *']);
     }
 
     setPreviewRows([]);
@@ -380,7 +381,7 @@ export const TelegramBotView: React.FC = () => {
         filterSchedule: sourceMode === 'VIEW' ? filterSchedule : undefined,
         filterKodeNotifikasi: sourceMode === 'VIEW' ? filterKodeNotifikasi.trim() : undefined,
         filterKodeCabang: sourceMode === 'VIEW' ? filterKodeCabang.trim() : undefined,
-        cronExpression: isCronEnabled ? formCronExpression.trim() : '',
+        cronExpression: isCronEnabled ? cronTriggers.map(c => c.trim()).filter(Boolean).join(',') : '',
         maxRows: formMaxRows,
         active: formActive
       };
@@ -769,51 +770,82 @@ export const TelegramBotView: React.FC = () => {
               </div>
 
               {isCronEnabled && (
-                <div className="space-y-3 pt-2 border-t border-border-main">
-                  <div>
-                    <label className="block text-xs font-medium text-text-muted mb-1.5">
-                      Pilihan Waktu Cepat (Preset):
-                    </label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { label: 'Setiap Hari 08:00 WIB', cron: '0 0 8 * * *' },
-                        { label: 'Setiap Hari 12:00 WIB', cron: '0 0 12 * * *' },
-                        { label: 'Setiap Hari 18:00 WIB', cron: '0 0 18 * * *' },
-                        { label: 'Setiap Hari 21:00 WIB', cron: '0 0 21 * * *' },
-                        { label: 'Tiap 1 Jam', cron: '0 0 * * * *' },
-                      ].map(p => (
-                        <button
-                          key={p.cron}
-                          type="button"
-                          onClick={() => setFormCronExpression(p.cron)}
-                          className={clsx(
-                            "px-2.5 py-1 rounded text-xs transition-colors",
-                            formCronExpression === p.cron
-                              ? "bg-sky-500 text-white font-medium"
-                              : "bg-bg-editor text-text-muted hover:text-text-main border border-border-main"
-                          )}
-                        >
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
+                <div className="space-y-3 pt-3 border-t border-border-main">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-text-main flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-sky-400" />
+                      Jadwal Multi-Cron Triggers:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCronTriggers([...cronTriggers, '0 0 12 * * *'])}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 text-xs font-bold transition-colors border border-sky-500/30 shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Tambah Waktu Cron</span>
+                    </button>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-text-muted mb-1">
-                      Cron Expression:
-                    </label>
-                    <input
-                      type="text"
-                      value={formCronExpression}
-                      onChange={e => setFormCronExpression(e.target.value)}
-                      placeholder="0 0 8 * * *"
-                      className="w-full font-mono text-xs bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-sky-500"
-                    />
-                    <span className="text-[10px] text-text-muted block mt-1">
-                      Format 6-bagian Spring Cron: <code>detik menit jam hari bulan hari_dalam_minggu</code> (Contoh: <code>0 0 8 * * *</code> = Jam 08:00 pagi).
-                    </span>
+                  <div className="space-y-2">
+                    {cronTriggers.map((cron, cIdx) => (
+                      <div key={cIdx} className="flex items-center gap-2">
+                        <div className="flex-1 bg-bg-editor p-2 border border-border-main rounded-xl shadow-sm flex items-center gap-2 focus-within:border-sky-500">
+                          <Clock className="w-4 h-4 text-sky-400 shrink-0" />
+                          <input
+                            type="text"
+                            placeholder="e.g. 0 0 8 * * *"
+                            value={cron}
+                            onChange={(e) => {
+                              const copy = [...cronTriggers];
+                              copy[cIdx] = e.target.value;
+                              setCronTriggers(copy);
+                            }}
+                            className="w-full bg-transparent border-0 text-xs font-mono font-bold text-sky-300 focus:outline-none placeholder:text-text-muted"
+                          />
+                        </div>
+
+                        {/* Preset Dropdown */}
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              const copy = [...cronTriggers];
+                              copy[cIdx] = e.target.value;
+                              setCronTriggers(copy);
+                              e.target.value = "";
+                            }
+                          }}
+                          className="bg-bg-panel border border-border-main text-text-muted hover:text-text-main text-xs font-semibold rounded-xl px-2.5 py-2 focus:outline-none cursor-pointer shrink-0 shadow-sm"
+                          title="Pilih Preset Waktu"
+                        >
+                          <option value="" disabled>⚡ Preset Waktu ▾</option>
+                          <option value="0 0 8 * * *">Pagi 08:00 WIB</option>
+                          <option value="0 0 12 * * *">Siang 12:00 WIB</option>
+                          <option value="0 0 18 * * *">Sore 18:00 WIB</option>
+                          <option value="0 0 21 * * *">Malam 21:00 WIB</option>
+                          <option value="0 0 0 * * *">Tengah Malam (00:00)</option>
+                          <option value="0 0 * * * *">Tiap 1 Jam</option>
+                          <option value="0 */15 * * * *">Tiap 15 Menit</option>
+                          <option value="0 */5 * * * *">Tiap 5 Menit</option>
+                        </select>
+
+                        {cronTriggers.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setCronTriggers(cronTriggers.filter((_, i) => i !== cIdx))}
+                            className="p-2 text-text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer"
+                            title="Hapus Waktu Ini"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
+
+                  <span className="text-[10px] text-text-muted block">
+                    💡 Anda dapat menambahkan beberapa jadwal pengiriman sekaligus (misal: jam 08:00 dan jam 21:00).
+                  </span>
                 </div>
               )}
             </div>
@@ -1057,10 +1089,14 @@ export const TelegramBotView: React.FC = () => {
 
                         <td className="py-3.5 px-4">
                           {s.cronExpression && s.cronExpression.trim() ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                              <Clock className="w-3 h-3" />
-                              {s.cronExpression}
-                            </span>
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {s.cronExpression.split(/[\n,]+/).map((cr, idx) => (
+                                <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  {cr.trim()}
+                                </span>
+                              ))}
+                            </div>
                           ) : (
                             <span className="text-[11px] text-text-muted">Manual</span>
                           )}
