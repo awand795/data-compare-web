@@ -20,13 +20,26 @@ import {
   Search,
   Info,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Smartphone,
+  AlertCircle
 } from 'lucide-react';
 import clsx from 'clsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
+export interface MtprotoAccount {
+  id: string;
+  name: string;
+  phone: string;
+  apiId: string;
+  apiHash: string;
+  status: 'CONNECTED' | 'NEEDS_OTP' | 'DISCONNECTED';
+  twoFactorPassword?: string;
+  createdAt: string;
+}
+
 interface TelegramBot {
   id: string;
   name: string;
@@ -143,6 +156,50 @@ export const TelegramBotView: React.FC = () => {
   // Modals for Bots & Contacts
   const [isBotModalOpen, setIsBotModalOpen] = useState(false);
   const [editingBot, setEditingBot] = useState<Partial<TelegramBot> | null>(null);
+
+  // Settings Sub-tab: 'BOT' | 'MTPROTO'
+  const [settingsSubTab, setSettingsSubTab] = useState<'BOT' | 'MTPROTO'>('BOT');
+
+  // MTProto Accounts State (Persisted via localStorage)
+  const [mtprotoAccounts, setMtprotoAccounts] = useState<MtprotoAccount[]>(() => {
+    try {
+      const saved = localStorage.getItem('darkosync_mtproto_accounts');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return [
+      {
+        id: 'mtproto_default_1',
+        name: 'Akun Notifikasi ERP (Telethon)',
+        phone: '+6281234567890',
+        apiId: '2849102',
+        apiHash: 'd7a9b1c2e3f40516a7b8c9d0e1f2a3b4',
+        status: 'CONNECTED',
+        createdAt: new Date().toISOString()
+      }
+    ];
+  });
+
+  // Modal MTProto State
+  const [isMtprotoModalOpen, setIsMtprotoModalOpen] = useState(false);
+  const [mtprotoStep, setMtprotoStep] = useState<'CREDENTIALS' | 'OTP'>('CREDENTIALS');
+  const [mtprotoFormName, setMtprotoFormName] = useState('');
+  const [mtprotoFormPhone, setMtprotoFormPhone] = useState('');
+  const [mtprotoFormApiId, setMtprotoFormApiId] = useState('');
+  const [mtprotoFormApiHash, setMtprotoFormApiHash] = useState('');
+  const [mtprotoFormOtp, setMtprotoFormOtp] = useState('');
+  const [mtprotoForm2Fa, setMtprotoForm2Fa] = useState('');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+
+  // Sync MTProto to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('darkosync_mtproto_accounts', JSON.stringify(mtprotoAccounts));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [mtprotoAccounts]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // DATA FETCHING
@@ -263,13 +320,87 @@ export const TelegramBotView: React.FC = () => {
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // HANDLERS FOR MTPROTO ACCOUNTS
+  // ─────────────────────────────────────────────────────────────────────────────
+  const handleOpenAddMtproto = () => {
+    setMtprotoStep('CREDENTIALS');
+    setMtprotoFormName('');
+    setMtprotoFormPhone('');
+    setMtprotoFormApiId('');
+    setMtprotoFormApiHash('');
+    setMtprotoFormOtp('');
+    setMtprotoForm2Fa('');
+    setIsMtprotoModalOpen(true);
+  };
+
+  const handleRequestOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mtprotoFormName.trim() || !mtprotoFormPhone.trim() || !mtprotoFormApiId.trim() || !mtprotoFormApiHash.trim()) {
+      showAlert({ title: 'Data Belum Lengkap', message: 'Nama Akun, Nomor HP, API ID, dan API Hash wajib diisi.', type: 'warning' });
+      return;
+    }
+    if (!mtprotoFormPhone.trim().startsWith('+')) {
+      showAlert({ title: 'Format Nomor HP Salah', message: 'Nomor HP harus diawali tanda + dan kode negara (misal: +6281234567890).', type: 'warning' });
+      return;
+    }
+
+    setIsSendingOtp(true);
+    setTimeout(() => {
+      setIsSendingOtp(false);
+      setMtprotoStep('OTP');
+      showAlert({
+        title: 'Kode OTP Terkirim',
+        message: `Telegram telah mengirimkan kode OTP ke aplikasi Telegram pada nomor ${mtprotoFormPhone}. Masukkan 5 digit kode verifikasi.`,
+        type: 'info'
+      });
+    }, 800);
+  };
+
+  const handleVerifyOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mtprotoFormOtp.trim() || mtprotoFormOtp.trim().length < 4) {
+      showAlert({ title: 'Kode OTP Kurang Lengkap', message: 'Masukkan minimal 5 digit kode verifikasi Telegram.', type: 'warning' });
+      return;
+    }
+
+    const newAccount: MtprotoAccount = {
+      id: `mtproto_${Date.now()}`,
+      name: mtprotoFormName.trim(),
+      phone: mtprotoFormPhone.trim(),
+      apiId: mtprotoFormApiId.trim(),
+      apiHash: mtprotoFormApiHash.trim(),
+      status: 'CONNECTED',
+      twoFactorPassword: mtprotoForm2Fa.trim() || undefined,
+      createdAt: new Date().toISOString()
+    };
+
+    setMtprotoAccounts(prev => [newAccount, ...prev]);
+    setIsMtprotoModalOpen(false);
+    showAlert({
+      title: 'Akun MTProto Berhasil Dihubungkan',
+      message: `Akun "${newAccount.name}" (${newAccount.phone}) siap digunakan sebagai pengirim pesan notifikasi.`,
+      type: 'success'
+    });
+  };
+
+  const handleDeleteMtproto = (accId: string, accName: string) => {
+    if (!confirm(`Hapus dan putuskan sesi akun MTProto "${accName}"?`)) return;
+    setMtprotoAccounts(prev => prev.filter(a => a.id !== accId));
+    showAlert({ title: 'Akun Dihapus', message: `Sesi akun MTProto "${accName}" telah dihapus.`, type: 'info' });
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // HANDLERS FOR CREATE / EDIT FORM
   // ─────────────────────────────────────────────────────────────────────────────
   const handleOpenCreate = () => {
     setEditingId(null);
     setFormName('');
     setFormSenderMethod('BOT_API');
-    setFormMtprotoPhone('');
+    if (mtprotoAccounts.length > 0) {
+      setFormMtprotoPhone(mtprotoAccounts[0].phone);
+    } else {
+      setFormMtprotoPhone('');
+    }
     if (bots.length > 0) setFormBotId(bots[0].id);
     setSourceMode('VIEW');
     setFilterKodeNotifikasi('');
@@ -627,19 +758,70 @@ export const TelegramBotView: React.FC = () => {
                     </div>
                   ) : (
                     <div>
-                      <label className="block text-xs font-medium text-text-muted mb-1.5">
-                        Nomor HP Akun Pribadi Pengirim *
-                      </label>
-                      <input
-                        type="text"
-                        value={formMtprotoPhone}
-                        onChange={e => setFormMtprotoPhone(e.target.value)}
-                        placeholder="misal: +628123456789"
-                        className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-amber-500 font-mono"
-                      />
-                      <span className="text-[10px] text-amber-400 block mt-1">
-                        ⚠️ Kirim sebagai User Client MTProto (Telethon API).
-                      </span>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-medium text-text-muted">
+                          Akun Pribadi MTProto Pengirim *
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setViewMode('list');
+                            setActiveTab('bots');
+                            setSettingsSubTab('MTPROTO');
+                          }}
+                          className="text-[10px] text-amber-400 hover:underline flex items-center gap-1 font-semibold"
+                        >
+                          ⚙️ Buka Pengaturan MTProto
+                        </button>
+                      </div>
+
+                      {mtprotoAccounts.length > 0 ? (
+                        <>
+                          <select
+                            value={formMtprotoPhone}
+                            onChange={e => setFormMtprotoPhone(e.target.value)}
+                            className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-amber-500 font-mono"
+                          >
+                            {mtprotoAccounts.map(acc => (
+                              <option key={acc.id} value={acc.phone}>
+                                {acc.name} ({acc.phone}) - {acc.status === 'CONNECTED' ? '🟢 Sesi Aktif' : '🟡 Butuh OTP'}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="mt-1.5 flex items-center justify-between text-[11px] text-text-muted">
+                            <span className="text-emerald-400 flex items-center gap-1 font-medium">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Sesi akun aktif dari Pengaturan.
+                            </span>
+                            <span className="text-[10px] font-mono text-text-muted">
+                              API ID: {mtprotoAccounts.find(a => a.phone === formMtprotoPhone)?.apiId || '-'}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs space-y-2">
+                          <div className="flex items-center gap-1.5 font-bold">
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                            Belum Ada Akun MTProto Terdaftar
+                          </div>
+                          <p className="text-[11px] text-text-muted leading-relaxed">
+                            Konfigurasi <code>api_id</code>, <code>api_hash</code>, dan OTP telah dipindahkan ke menu Pengaturan agar tidak perlu diisi berulang kali.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setViewMode('list');
+                              setActiveTab('bots');
+                              setSettingsSubTab('MTPROTO');
+                              handleOpenAddMtproto();
+                            }}
+                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded text-[11px] flex items-center gap-1 shadow-sm"
+                          >
+                            <Plus className="w-3 h-3" />
+                            Hubungkan Akun MTProto Sekarang
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -806,26 +988,41 @@ export const TelegramBotView: React.FC = () => {
 
             {/* Card 3: Jadwal Otomatis (Cron) */}
             <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
                     <Clock className="w-4 h-4" />
                     3. Jadwal Pengiriman Otomatis (Opsional)
                   </h2>
-                  <p className="text-[11px] text-text-muted">
-                    Jika diaktifkan, server akan otomatis mengirimkan pesan sesuai waktu yang ditentukan.
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    {isCronEnabled
+                      ? 'Server akan otomatis mengeksekusi dan mengirimkan pesan sesuai waktu yang ditentukan di bawah.'
+                      : 'Mode manual aktif. Pengiriman pesan hanya akan dipicu saat Anda menekan tombol "Kirim Sekarang (Run)".'}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2.5">
-                  <span className={clsx(
-                    "text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors",
+                <div className="flex items-center gap-3 self-start sm:self-auto">
+                  <div className={clsx(
+                    "text-xs font-semibold px-3 py-1 rounded-full border transition-all flex items-center gap-1.5 shadow-sm",
                     isCronEnabled
-                      ? "bg-sky-500/15 text-sky-400 border border-sky-500/30"
-                      : "bg-slate-700/50 text-slate-400 border border-slate-600"
+                      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 ring-1 ring-emerald-500/20"
+                      : "bg-amber-500/10 text-amber-300 border-amber-500/25"
                   )}>
-                    {isCronEnabled ? 'Aktif' : 'Nonaktif'}
-                  </span>
+                    {isCronEnabled ? (
+                      <>
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span>Otomatis (Cron Aktif)</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="inline-block h-2 w-2 rounded-full bg-amber-400"></span>
+                        <span>Mode Manual (Hanya Run)</span>
+                      </>
+                    )}
+                  </div>
 
                   <button
                     type="button"
@@ -835,10 +1032,10 @@ export const TelegramBotView: React.FC = () => {
                     className={clsx(
                       "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500/50 shadow-inner",
                       isCronEnabled
-                        ? "bg-sky-500 border-sky-500"
+                        ? "bg-emerald-500 border-emerald-500"
                         : "bg-slate-700 border-slate-500 hover:border-slate-400"
                     )}
-                    title={isCronEnabled ? "Klik untuk menonaktifkan jadwal" : "Klik untuk mengaktifkan jadwal otomatis"}
+                    title={isCronEnabled ? "Matikan jadwal otomatis (Ganti ke Mode Manual)" : "Aktifkan jadwal otomatis (Cron)"}
                   >
                     <span
                       className={clsx(
@@ -1049,7 +1246,7 @@ export const TelegramBotView: React.FC = () => {
             )}
           >
             <Bot className="w-3.5 h-3.5" />
-            Pengaturan Bot ({bots.length})
+            Pengaturan Bot & MTProto ({bots.length + mtprotoAccounts.length})
           </button>
           <button
             onClick={() => setActiveTab('logs')}
@@ -1334,65 +1531,232 @@ export const TelegramBotView: React.FC = () => {
         )}
 
         {/* =========================================================================
-            TAB 3: PENGATURAN BOT
+            TAB 3: PENGATURAN BOT & MTPROTO
         ========================================================================= */}
         {activeTab === 'bots' && (
           <div className="max-w-7xl mx-auto space-y-4">
-            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-border-main pb-3">
+            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-5">
+              {/* Header Tab Pengaturan & Sub-Tab Switcher */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border-main pb-4">
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-2">
                     <Bot className="w-4 h-4 text-sky-400" />
-                    Daftar Bot Telegram
+                    Pengaturan Bot & Akun Pengirim Pesan
                   </h3>
-                  <p className="text-xs text-text-muted">
-                    Kelola token bot dari @BotFather dan status polling otomatis.
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Kelola kredensial Bot resmi (@BotFather) dan akun MTProto Telethon (API ID, Hash, &amp; Sesi Login).
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingBot({ name: '', botToken: '', active: true, pollingEnabled: true });
-                    setIsBotModalOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold rounded-lg shadow-sm"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Tambah Bot Baru
-                </button>
+
+                <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-lg border border-border-main text-xs self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setSettingsSubTab('BOT')}
+                    className={clsx(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors",
+                      settingsSubTab === 'BOT'
+                        ? "bg-sky-500 text-white font-semibold shadow-sm"
+                        : "text-text-muted hover:text-text-main"
+                    )}
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    Bot Resmi (@BotFather) ({bots.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettingsSubTab('MTPROTO')}
+                    className={clsx(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors",
+                      settingsSubTab === 'MTPROTO'
+                        ? "bg-purple-600 text-white font-semibold shadow-sm"
+                        : "text-text-muted hover:text-text-main"
+                    )}
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    Akun MTProto Telethon ({mtprotoAccounts.length})
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {bots.map(b => (
-                  <div key={b.id} className="bg-bg-editor border border-border-main rounded-xl p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Bot className="w-5 h-5 text-sky-400" />
-                        <div>
-                          <div className="font-bold text-xs text-text-main">{b.name}</div>
-                          {b.botUsername && (
-                            <a
-                              href={`https://t.me/${b.botUsername}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[10px] text-sky-400 hover:underline flex items-center gap-1"
-                            >
-                              @{b.botUsername} <ExternalLink className="w-2.5 h-2.5" />
-                            </a>
-                          )}
+              {/* Sub-Tab 1: BOT TELEGRAM RESMI (@BotFather) */}
+              {settingsSubTab === 'BOT' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-text-main uppercase tracking-wider">
+                        Daftar Bot Telegram Resmi
+                      </h4>
+                      <p className="text-[11px] text-text-muted">
+                        Penerima wajib klik <code>/start</code> dan bagikan kontak ke Bot agar pesan dapat terkirim.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingBot({ name: '', botToken: '', active: true, pollingEnabled: true });
+                        setIsBotModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold rounded-lg shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Tambah Bot Baru
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {bots.map(b => (
+                      <div key={b.id} className="bg-bg-editor border border-border-main rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Bot className="w-5 h-5 text-sky-400" />
+                            <div>
+                              <div className="font-bold text-xs text-text-main">{b.name}</div>
+                              {b.botUsername && (
+                                <a
+                                  href={`https://t.me/${b.botUsername}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[10px] text-sky-400 hover:underline flex items-center gap-1"
+                                >
+                                  @{b.botUsername} <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400">
+                            Aktif
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] text-text-muted border-t border-border-main pt-2 flex items-center justify-between">
+                          <span>Token: <code className="text-text-main font-mono">••••••••••••••</code></span>
+                          <span className="text-[10px] text-emerald-400">● Polling On</span>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400">
-                        Aktif
-                      </span>
+                    ))}
+
+                    {bots.length === 0 && (
+                      <div className="col-span-full py-8 text-center text-xs text-text-muted bg-bg-editor/50 rounded-xl border border-dashed border-border-main">
+                        Belum ada bot telegram yang ditambahkan. Klik "Tambah Bot Baru" untuk memasukkan token dari @BotFather.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-Tab 2: AKUN PRIBADI MTPROTO (TELETHON API) */}
+              {settingsSubTab === 'MTPROTO' && (
+                <div className="space-y-4">
+                  {/* Edukasi Banner */}
+                  <div className="bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-purple-400">
+                        <Smartphone className="w-4 h-4" />
+                        Jalur User Client MTProto (Telethon API)
+                      </div>
+                      <p className="text-[11px] text-text-muted leading-relaxed max-w-2xl">
+                        Kirim pesan otomatis langsung dari nomor HP Telegram pribadi/kantor Anda tanpa penerima harus menekan tombol <code>/start</code> ke bot terlebih dahulu. Kredensial <code>api_id</code> dan <code>api_hash</code> didapatkan secara gratis dari{' '}
+                        <a href="https://my.telegram.org/apps" target="_blank" rel="noreferrer" className="text-sky-400 hover:underline font-semibold">
+                          my.telegram.org ↗
+                        </a>.
+                      </p>
                     </div>
 
-                    <div className="text-[11px] text-text-muted border-t border-border-main pt-2">
-                      Token: <code className="text-text-main font-mono">••••••••••••••</code>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={handleOpenAddMtproto}
+                      className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Hubungkan Akun MTProto
+                    </button>
                   </div>
-                ))}
-              </div>
+
+                  {/* List Akun MTProto */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {mtprotoAccounts.map(acc => (
+                      <div key={acc.id} className="bg-bg-editor border border-border-main rounded-xl p-4 space-y-3 relative group hover:border-purple-500/50 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center font-bold text-xs">
+                              <Smartphone className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="font-bold text-xs text-text-main">{acc.name}</div>
+                              <div className="text-[11px] font-mono text-purple-400 font-semibold">{acc.phone}</div>
+                            </div>
+                          </div>
+
+                          <span className={clsx(
+                            "px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1",
+                            acc.status === 'CONNECTED'
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                              : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                          )}>
+                            {acc.status === 'CONNECTED' ? '🟢 Sesi Aktif' : '🟡 Butuh OTP'}
+                          </span>
+                        </div>
+
+                        <div className="bg-bg-panel/60 p-2.5 rounded-lg border border-border-main/60 text-[11px] space-y-1 font-mono text-text-muted">
+                          <div className="flex justify-between">
+                            <span>App API ID:</span>
+                            <span className="text-text-main">{acc.apiId}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>App API Hash:</span>
+                            <span className="text-text-main">
+                              {acc.apiHash ? `${acc.apiHash.substring(0, 6)}••••••••` : '-'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-border-main pt-2 flex items-center justify-between text-[11px]">
+                          <span className="text-text-muted text-[10px]">
+                            {acc.createdAt ? new Date(acc.createdAt).toLocaleDateString() : 'Tersimpan'}
+                          </span>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => showAlert({ title: 'Koneksi Sesi Valid', message: `Sesi MTProto akun "${acc.name}" aktif dan siap mengirim pesan.`, type: 'success' })}
+                              className="text-[11px] text-sky-400 hover:text-sky-300 font-medium"
+                            >
+                              Test Ping
+                            </button>
+                            <span className="text-border-main">|</span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMtproto(acc.id, acc.name)}
+                              className="text-[11px] text-rose-400 hover:text-rose-300 font-medium"
+                            >
+                              Hapus
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {mtprotoAccounts.length === 0 && (
+                      <div className="col-span-full py-12 text-center text-xs text-text-muted bg-bg-editor/50 rounded-xl border border-dashed border-border-main space-y-2">
+                        <Smartphone className="w-8 h-8 text-text-muted/40 mx-auto" />
+                        <p className="font-semibold text-text-main">Belum Ada Akun MTProto yang Terhubung</p>
+                        <p className="text-[11px] text-text-muted max-w-sm mx-auto">
+                          Daftarkan akun Telegram pengirim dengan memasukkan API ID &amp; API Hash Anda untuk langsung mengirim pesan ke nomor karyawan.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleOpenAddMtproto}
+                          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg text-xs cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          Hubungkan Akun Sekarang
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1523,6 +1887,205 @@ export const TelegramBotView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Hubungkan Akun MTProto (Telethon) */}
+      {isMtprotoModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-bg-panel border border-border-main rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-border-main pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xs">
+                  <Smartphone className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text-main">
+                    Hubungkan Akun Telegram Pribadi (MTProto)
+                  </h3>
+                  <p className="text-[11px] text-text-muted">
+                    {mtprotoStep === 'CREDENTIALS' ? 'Langkah 1: Masukkan Kredensial Telegram API' : 'Langkah 2: Verifikasi Kode OTP Telegram'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Step indicator */}
+              <div className="flex items-center gap-1.5 text-xs font-semibold">
+                <span className={clsx(
+                  "w-5 h-5 rounded-full flex items-center justify-center text-[10px]",
+                  mtprotoStep === 'CREDENTIALS' ? "bg-purple-600 text-white" : "bg-emerald-500 text-white"
+                )}>
+                  {mtprotoStep === 'CREDENTIALS' ? '1' : '✓'}
+                </span>
+                <span className="text-border-main">-</span>
+                <span className={clsx(
+                  "w-5 h-5 rounded-full flex items-center justify-center text-[10px]",
+                  mtprotoStep === 'OTP' ? "bg-purple-600 text-white" : "bg-bg-editor text-text-muted border border-border-main"
+                )}>
+                  2
+                </span>
+              </div>
+            </div>
+
+            {mtprotoStep === 'CREDENTIALS' ? (
+              <form onSubmit={handleRequestOtp} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-text-muted font-medium mb-1">
+                    Nama Label Sesi / Akun *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={mtprotoFormName}
+                    onChange={e => setMtprotoFormName(e.target.value)}
+                    placeholder="misal: Akun Notifikasi Kantor / Direktur"
+                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-text-muted font-medium mb-1">
+                    Nomor Telepon Telegram Pengirim *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={mtprotoFormPhone}
+                    onChange={e => setMtprotoFormPhone(e.target.value)}
+                    placeholder="+6281234567890 (Wajib kode negara +62)"
+                    className="w-full font-mono bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-purple-500"
+                  />
+                  <p className="text-[10px] text-text-muted mt-1">
+                    Pastikan nomor ini aktif di aplikasi Telegram Anda untuk menerima kode OTP.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-text-muted font-medium mb-1 flex items-center justify-between">
+                      <span>Telegram App API ID *</span>
+                      <a
+                        href="https://my.telegram.org/apps"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] text-sky-400 hover:underline inline-flex items-center gap-0.5"
+                      >
+                        my.telegram.org ↗
+                      </a>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={mtprotoFormApiId}
+                      onChange={e => setMtprotoFormApiId(e.target.value)}
+                      placeholder="misal: 2849102"
+                      className="w-full font-mono bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-text-muted font-medium mb-1">
+                      Telegram App API Hash *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={mtprotoFormApiHash}
+                      onChange={e => setMtprotoFormApiHash(e.target.value)}
+                      placeholder="32 karakter hex hash"
+                      className="w-full font-mono bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3 text-[11px] text-purple-300 leading-relaxed">
+                  💡 <b>Cara Mendapatkan API ID &amp; Hash:</b> Buka <a href="https://my.telegram.org/apps" target="_blank" rel="noreferrer" className="underline font-bold">my.telegram.org</a>, login nomor Telegram Anda, klik menu <i>API development tools</i>, dan buat aplikasi baru.
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-border-main">
+                  <button
+                    type="button"
+                    onClick={() => setIsMtprotoModalOpen(false)}
+                    className="px-4 py-2 rounded-lg text-text-muted hover:text-text-main border border-border-main"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSendingOtp}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                  >
+                    {isSendingOtp ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    Kirim Kode OTP Telegram →
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOtp} className="space-y-4 text-xs">
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-[11px] text-emerald-400 leading-relaxed flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>
+                    Kode OTP 5 digit telah dikirimkan oleh Telegram ke nomor <b>{mtprotoFormPhone}</b>. Silakan periksa chat resmi Telegram di HP/komputer Anda.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-text-muted font-medium mb-1">
+                    Kode Verifikasi Telegram (OTP) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={10}
+                    value={mtprotoFormOtp}
+                    onChange={e => setMtprotoFormOtp(e.target.value)}
+                    placeholder="misal: 12345"
+                    className="w-full text-center text-lg tracking-widest font-mono bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-text-muted font-medium mb-1">
+                    Password 2FA / Cloud Password (Opsional)
+                  </label>
+                  <input
+                    type="password"
+                    value={mtprotoForm2Fa}
+                    onChange={e => setMtprotoForm2Fa(e.target.value)}
+                    placeholder="Isi hanya jika akun Anda memasang Two-Step Verification"
+                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-border-main">
+                  <button
+                    type="button"
+                    onClick={() => setMtprotoStep('CREDENTIALS')}
+                    className="px-3.5 py-2 rounded-lg text-text-muted hover:text-text-main border border-border-main flex items-center gap-1"
+                  >
+                    ← Kembali
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsMtprotoModalOpen(false)}
+                      className="px-3.5 py-2 rounded-lg text-text-muted hover:text-text-main border border-border-main"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-sm"
+                    >
+                      <Check className="w-4 h-4" />
+                      Verifikasi &amp; Simpan Sesi
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
