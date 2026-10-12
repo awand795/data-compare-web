@@ -583,7 +583,7 @@ export const TelegramBotView: React.FC = () => {
         filterKodeNotifikasi: sourceMode === 'VIEW' ? filterKodeNotifikasi.trim() : undefined,
         filterKodeCabang: sourceMode === 'VIEW' ? filterKodeCabang.trim() : undefined,
         cronExpression: isCronEnabled ? cronTriggers.map(c => c.trim()).filter(Boolean).join(',') : '',
-        maxRows: formMaxRows,
+        maxRows: sourceMode === 'VIEW' ? 0 : (formMaxRows || 0),
         active: formActive
       };
 
@@ -1478,13 +1478,6 @@ export const TelegramBotView: React.FC = () => {
                         <td className="py-3.5 px-4 text-text-muted">
                           <div className="font-mono text-xs text-text-main">
                             {s.viewName ? `${s.schemaName || 'public'}.${s.viewName}` : 'Custom SQL'}
-                          </div>
-                          <div className="text-[10px] text-text-muted">
-                            {s.maxRows && s.maxRows > 0 ? (
-                              `Maks ${s.maxRows} baris`
-                            ) : (
-                              <span className="text-emerald-400 font-medium">Semua baris (Unlimited)</span>
-                            )}
                           </div>
                         </td>
 
