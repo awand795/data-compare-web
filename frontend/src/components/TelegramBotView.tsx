@@ -22,9 +22,7 @@ import {
   CheckCircle2,
   ExternalLink,
   Smartphone,
-  AlertCircle,
-  Copy,
-  Link2
+  AlertCircle
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -103,7 +101,8 @@ interface TelegramLog {
   messagesFailed: number;
   details?: string;
   triggerType: string;
-  executedAt: string;
+  createdAt?: string;
+  executedAt?: string;
 }
 
 export const TelegramBotView: React.FC = () => {
@@ -203,10 +202,6 @@ export const TelegramBotView: React.FC = () => {
     }
   }, [mtprotoAccounts]);
 
-  // Quick Registration Link Generator
-  const [quickLinkPhone, setQuickLinkPhone] = useState('');
-  const [quickLinkCopied, setQuickLinkCopied] = useState(false);
-
   // ─────────────────────────────────────────────────────────────────────────────
   // DATA FETCHING
   // ─────────────────────────────────────────────────────────────────────────────
@@ -295,13 +290,38 @@ export const TelegramBotView: React.FC = () => {
     }
   };
 
+  const [isRefreshingLogs, setIsRefreshingLogs] = useState(false);
+
   const fetchLogs = async () => {
+    setIsRefreshingLogs(true);
     try {
       const res = await axios.get('/api/telegram/logs');
       setLogs(res.data);
     } catch (e) {
       console.error('Failed to fetch logs', e);
+      showAlert({ title: 'Gagal Memuat Log', message: 'Tidak dapat mengambil data riwayat log pengiriman.', type: 'error' });
+    } finally {
+      setIsRefreshingLogs(false);
     }
+  };
+
+  const handleClearLogs = () => {
+    showAlert({
+      title: 'Bersihkan Riwayat Pengiriman',
+      message: 'Apakah Anda yakin ingin menghapus seluruh catatan riwayat pengiriman pesan?\n\nTindakan ini tidak dapat dibatalkan.',
+      type: 'error',
+      confirmLabel: 'Bersihkan Log',
+      cancelLabel: 'Batal',
+      onConfirm: async () => {
+        try {
+          await axios.delete('/api/telegram/logs');
+          setLogs([]);
+          showAlert({ title: 'Riwayat Dibersihkan', message: 'Seluruh catatan riwayat pengiriman berhasil dihapus.', type: 'info' });
+        } catch (err: any) {
+          showAlert({ title: 'Gagal Menghapus Log', message: err.message, type: 'error' });
+        }
+      }
+    });
   };
 
   const loadSchemas = async (connId: string) => {
@@ -1591,104 +1611,6 @@ export const TelegramBotView: React.FC = () => {
         ========================================================================= */}
         {activeTab === 'contacts' && (
           <div className="max-w-7xl mx-auto space-y-4">
-            {/* Guide & Deep-Link Generator */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm space-y-2.5">
-                <div className="flex items-center gap-2 text-xs font-bold text-text-main">
-                  <Info className="w-4 h-4 text-sky-400" />
-                  <span>2 Cara Mendaftarkan Nomor HP ke Bot Telegram</span>
-                </div>
-                <div className="text-[11px] text-text-muted space-y-2 leading-relaxed">
-                  <div className="p-2.5 rounded-lg bg-bg-editor border border-border-main/50 space-y-1">
-                    <span className="font-semibold text-text-main text-xs flex items-center gap-1.5 text-sky-400">
-                      ⭐ Cara 1: Link Registrasi Otomatis (Tanpa Klik Bagikan Kontak)
-                    </span>
-                    <p>
-                      Kirimkan link pendaftaran yang sudah memuat nomor HP ke karyawan. Begitu karyawan klik link dan tekan tombol <b>START</b> di Telegram, nomor HP <b>langsung otomatis terdaftar</b>!
-                    </p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-bg-editor border border-border-main/50 space-y-1">
-                    <span className="font-semibold text-text-main text-xs">
-                      Cara 2: Buka Bot Manual (@darkoreportbot)
-                    </span>
-                    <p>
-                      Karyawan membuka bot dan klik <code>/start</code>. Selanjutnya cukup tekan tombol <b>📱 Bagikan Nomor Telepon Saya</b> ATAU langsung ketik nomor HP-nya di pesan chat bot.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-text-main flex items-center gap-2">
-                    <Link2 className="w-4 h-4 text-emerald-400" />
-                    Generator Link Registrasi Cepat
-                  </span>
-                  <span className="text-[10px] text-text-muted">Direct Deep-Link</span>
-                </div>
-                
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-text-muted block">
-                    Masukkan Nomor HP Karyawan (contoh: <code>082362851796</code>):
-                  </label>
-                  <input
-                    type="text"
-                    value={quickLinkPhone}
-                    onChange={(e) => {
-                      setQuickLinkPhone(e.target.value);
-                      setQuickLinkCopied(false);
-                    }}
-                    placeholder="Contoh: 082362851796 atau 6282362851796"
-                    className="w-full px-3 py-1.5 text-xs bg-bg-input border border-border-input rounded-lg focus:border-sky-500 focus:outline-none font-mono"
-                  />
-                </div>
-
-                {(() => {
-                  const clean = quickLinkPhone.replaceAll(/[^0-9]/g, '');
-                  const formatted = clean.startsWith('08') ? ('62' + clean.substring(1)) : clean;
-                  const activeBot = bots.find(b => b.botUsername) || bots[0];
-                  const botUser = activeBot?.botUsername || activeBot?.name || 'darkoreportbot';
-                  const link = formatted ? `https://t.me/${botUser}?start=${formatted}` : `https://t.me/${botUser}`;
-
-                  return (
-                    <div className="p-2.5 rounded-lg bg-bg-editor border border-border-main space-y-2">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-text-muted font-medium truncate max-w-[240px]">
-                          Bot: <strong className="text-text-main">@{botUser}</strong>
-                        </span>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(link);
-                              setQuickLinkCopied(true);
-                              setTimeout(() => setQuickLinkCopied(false), 2000);
-                            }}
-                            className="px-2 py-1 rounded bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                          >
-                            {quickLinkCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                            {quickLinkCopied ? 'Tersalin!' : 'Salin Link'}
-                          </button>
-                          <a
-                            href={link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-2 py-1 rounded bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main text-[11px] flex items-center gap-1 transition-colors border border-border-main"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            Buka
-                          </a>
-                        </div>
-                      </div>
-                      <div className="text-[11px] font-mono text-emerald-400 select-all break-all bg-black/20 p-1.5 rounded">
-                        {link}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-
             {/* Master Contacts Table */}
             <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-border-main pb-3">
@@ -2049,14 +1971,27 @@ export const TelegramBotView: React.FC = () => {
                     Catatan lengkap status pengiriman, pesan terkirim, dan rincian kontak yang belum klik START.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={fetchLogs}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-editor hover:bg-bg-hover text-xs font-semibold rounded-lg border border-border-main"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Refresh Log
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleClearLogs}
+                    disabled={logs.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold rounded-lg border border-rose-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-sm"
+                    title="Hapus semua riwayat pengiriman pesan"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Bersihkan Log
+                  </button>
+                  <button
+                    type="button"
+                    onClick={fetchLogs}
+                    disabled={isRefreshingLogs}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-editor hover:bg-bg-hover text-xs font-semibold rounded-lg border border-border-main transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className={clsx("w-3.5 h-3.5", isRefreshingLogs && "animate-spin text-sky-400")} />
+                    Refresh Log
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
@@ -2073,8 +2008,26 @@ export const TelegramBotView: React.FC = () => {
                   <tbody className="divide-y divide-border-main/50">
                     {logs.map(log => (
                       <tr key={log.id} className="hover:bg-bg-hover/50">
-                        <td className="py-3 px-3 text-text-muted font-mono text-[11px]">
-                          {log.executedAt ? new Date(log.executedAt).toLocaleString() : '-'}
+                        <td className="py-3 px-3 text-text-muted font-mono text-[11px] whitespace-nowrap">
+                          {(() => {
+                            const timeVal = log.createdAt || log.executedAt;
+                            if (!timeVal) return '-';
+                            try {
+                              const d = new Date(timeVal);
+                              if (isNaN(d.getTime())) return timeVal;
+                              return d.toLocaleString('id-ID', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: false
+                              });
+                            } catch {
+                              return timeVal;
+                            }
+                          })()}
                         </td>
                         <td className="py-3 px-3 font-semibold text-text-main">
                           {log.scheduleName || 'Manual Execution'}
