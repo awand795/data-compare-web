@@ -134,8 +134,8 @@ export const TelegramBotView: React.FC = () => {
   const [formMtprotoPhone, setFormMtprotoPhone] = useState('');
   const [formConnectionId, setFormConnectionId] = useState('');
   const [sourceMode, setSourceMode] = useState<'VIEW' | 'CUSTOM_SQL'>('VIEW');
-  const [formSchema, setFormSchema] = useState('sch_erp_system');
-  const [formView, setFormView] = useState('view_all_notifikasi');
+  const [formSchema, setFormSchema] = useState('');
+  const [formView, setFormView] = useState('');
   const [filterKodeNotifikasi, setFilterKodeNotifikasi] = useState('');
   const [filterKodeCabang, setFilterKodeCabang] = useState('');
   const [formSqlQuery, setFormSqlQuery] = useState('');
@@ -211,38 +211,44 @@ export const TelegramBotView: React.FC = () => {
     fetchLogs();
   }, []);
 
-  // Pick default connection
-  useEffect(() => {
-    if (connections.length > 0 && !formConnectionId) {
-      const devPos = connections.find(c => c.name.toLowerCase().includes('dev-pos') || c.database?.toLowerCase().includes('dev_pos'));
-      setFormConnectionId(devPos ? devPos.id : connections[0].id);
-    }
-  }, [connections]);
-
+  // Connection schemas loader
   useEffect(() => {
     if (formConnectionId) {
       loadSchemas(formConnectionId);
+    } else {
+      setSchemas([]);
+      setFormSchema('');
+      setViews([]);
+      setFormView('');
     }
   }, [formConnectionId]);
 
+  // Schema views loader
   useEffect(() => {
     if (formConnectionId && formSchema) {
       loadViews(formConnectionId, formSchema);
+    } else {
+      setViews([]);
+      setFormView('');
     }
   }, [formConnectionId, formSchema]);
 
   // Synchronize SQL Query based on View & Filters
   useEffect(() => {
-    if (sourceMode === 'VIEW' && formSchema && formView) {
-      let q = `SELECT kode_notifikasi, kode_cabang, no_tran, user_id, user_name, user_hp, pesan FROM ${formSchema}.${formView} WHERE 1=1`;
-      if (filterKodeNotifikasi.trim()) {
-        q += ` AND kode_notifikasi = '${filterKodeNotifikasi.trim()}'`;
+    if (sourceMode === 'VIEW') {
+      if (formSchema && formView) {
+        let q = `SELECT kode_notifikasi, kode_cabang, no_tran, user_id, user_name, user_hp, pesan FROM ${formSchema}.${formView} WHERE 1=1`;
+        if (filterKodeNotifikasi.trim()) {
+          q += ` AND kode_notifikasi = '${filterKodeNotifikasi.trim()}'`;
+        }
+        if (filterKodeCabang.trim()) {
+          q += ` AND kode_cabang = '${filterKodeCabang.trim()}'`;
+        }
+        setFormSqlQuery(q);
+        setFormPhoneColumn('user_hp');
+      } else {
+        setFormSqlQuery('');
       }
-      if (filterKodeCabang.trim()) {
-        q += ` AND kode_cabang = '${filterKodeCabang.trim()}'`;
-      }
-      setFormSqlQuery(q);
-      setFormPhoneColumn('user_hp');
     }
   }, [sourceMode, formSchema, formView, filterKodeNotifikasi, filterKodeCabang]);
 
@@ -250,9 +256,6 @@ export const TelegramBotView: React.FC = () => {
     try {
       const res = await axios.get('/api/telegram/bots');
       setBots(res.data);
-      if (res.data.length > 0 && !formBotId) {
-        setFormBotId(res.data[0].id);
-      }
     } catch (e) {
       console.error('Failed to fetch bots', e);
     }
@@ -290,11 +293,6 @@ export const TelegramBotView: React.FC = () => {
       const res = await axios.get(`/api/connections/${connId}/schemas`);
       if (Array.isArray(res.data)) {
         setSchemas(res.data);
-        if (res.data.includes('sch_erp_system')) {
-          setFormSchema('sch_erp_system');
-        } else if (res.data.length > 0) {
-          setFormSchema(res.data[0]);
-        }
       }
     } catch (e) {
       console.error('Failed to load schemas', e);
@@ -307,12 +305,6 @@ export const TelegramBotView: React.FC = () => {
       if (Array.isArray(res.data)) {
         const viewList = res.data.map(t => typeof t === 'string' ? { name: t, type: 'VIEW' } : t);
         setViews(viewList);
-        const hasNotifView = viewList.some(v => v.name.toLowerCase().includes('view_all_notifikasi'));
-        if (hasNotifView) {
-          setFormView('view_all_notifikasi');
-        } else if (viewList.length > 0) {
-          setFormView(viewList[0].name);
-        }
       }
     } catch (e) {
       console.error('Failed to load views', e);
@@ -396,15 +388,17 @@ export const TelegramBotView: React.FC = () => {
     setEditingId(null);
     setFormName('');
     setFormSenderMethod('BOT_API');
-    if (mtprotoAccounts.length > 0) {
-      setFormMtprotoPhone(mtprotoAccounts[0].phone);
-    } else {
-      setFormMtprotoPhone('');
-    }
-    if (bots.length > 0) setFormBotId(bots[0].id);
+    setFormBotId('');
+    setFormMtprotoPhone('');
+    setFormConnectionId('');
+    setSchemas([]);
+    setFormSchema('');
+    setViews([]);
+    setFormView('');
     setSourceMode('VIEW');
     setFilterKodeNotifikasi('');
     setFilterKodeCabang('');
+    setFormSqlQuery('');
     setIsCronEnabled(false);
     setCronTriggers(['0 0 8 * * *']);
     setFormMaxRows(50);
@@ -454,8 +448,16 @@ export const TelegramBotView: React.FC = () => {
   };
 
   const handlePreviewData = async () => {
-    if (!formConnectionId || !formSqlQuery) {
-      showAlert({ title: 'Parameter Belum Siap', message: 'Pilih database dan pastikan query/view sudah dipilih.', type: 'warning' });
+    if (!formConnectionId) {
+      showAlert({ title: 'Database Belum Dipilih', message: 'Silakan pilih Database Sumber terlebih dahulu.', type: 'warning' });
+      return;
+    }
+    if (sourceMode === 'VIEW' && (!formSchema || !formView)) {
+      showAlert({ title: 'View Belum Dipilih', message: 'Silakan pilih Schema Database dan View Notifikasi terlebih dahulu.', type: 'warning' });
+      return;
+    }
+    if (!formSqlQuery) {
+      showAlert({ title: 'Parameter Belum Siap', message: 'Pastikan query SQL atau view sudah siap.', type: 'warning' });
       return;
     }
     setPreviewLoading(true);
@@ -494,16 +496,31 @@ export const TelegramBotView: React.FC = () => {
       return;
     }
     if (formSenderMethod === 'BOT_API' && !formBotId) {
-      showAlert({ title: 'Bot Pengirim Kosong', message: 'Silakan pilih Bot Telegram pengirim.', type: 'warning' });
+      showAlert({ title: 'Bot Pengirim Belum Dipilih', message: 'Silakan pilih Bot Telegram pengirim.', type: 'warning' });
       return;
     }
     if (formSenderMethod === 'MTPROTO_USER' && !formMtprotoPhone.trim()) {
-      showAlert({ title: 'Nomor HP Pengirim Kosong', message: 'Masukkan nomor HP akun Telegram pengirim untuk MTProto.', type: 'warning' });
+      showAlert({ title: 'Akun MTProto Belum Dipilih', message: 'Silakan pilih Akun Pribadi MTProto pengirim.', type: 'warning' });
       return;
     }
     if (!formConnectionId) {
-      showAlert({ title: 'Koneksi Database Kosong', message: 'Silakan pilih koneksi database sumber.', type: 'warning' });
+      showAlert({ title: 'Database Belum Dipilih', message: 'Silakan pilih Database Sumber.', type: 'warning' });
       return;
+    }
+    if (sourceMode === 'VIEW') {
+      if (!formSchema) {
+        showAlert({ title: 'Schema Belum Dipilih', message: 'Silakan pilih Schema Database terlebih dahulu.', type: 'warning' });
+        return;
+      }
+      if (!formView) {
+        showAlert({ title: 'View Belum Dipilih', message: 'Silakan pilih View Notifikasi terlebih dahulu.', type: 'warning' });
+        return;
+      }
+    } else {
+      if (!formSqlQuery.trim()) {
+        showAlert({ title: 'Query SQL Kosong', message: 'Masukkan Query SQL kustom yang valid.', type: 'warning' });
+        return;
+      }
     }
 
     const resolvedBotId = formSenderMethod === 'MTPROTO_USER'
@@ -748,12 +765,12 @@ export const TelegramBotView: React.FC = () => {
                         onChange={e => setFormBotId(e.target.value)}
                         className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
                       >
+                        <option value="">-- Pilih Bot Pengirim --</option>
                         {bots.map(b => (
                           <option key={b.id} value={b.id}>
                             {b.name} {b.botUsername ? `(@${b.botUsername})` : ''}
                           </option>
                         ))}
-                        {bots.length === 0 && <option value="">(Belum ada bot terdaftar)</option>}
                       </select>
                     </div>
                   ) : (
@@ -782,6 +799,7 @@ export const TelegramBotView: React.FC = () => {
                             onChange={e => setFormMtprotoPhone(e.target.value)}
                             className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-amber-500 font-mono"
                           >
+                            <option value="">-- Pilih Akun MTProto Pengirim --</option>
                             {mtprotoAccounts.map(acc => (
                               <option key={acc.id} value={acc.phone}>
                                 {acc.name} ({acc.phone}) - {acc.status === 'CONNECTED' ? '🟢 Sesi Aktif' : '🟡 Butuh OTP'}
@@ -831,9 +849,18 @@ export const TelegramBotView: React.FC = () => {
                     </label>
                     <select
                       value={formConnectionId}
-                      onChange={e => setFormConnectionId(e.target.value)}
+                      onChange={e => {
+                        const newConn = e.target.value;
+                        setFormConnectionId(newConn);
+                        setFormSchema('');
+                        setSchemas([]);
+                        setFormView('');
+                        setViews([]);
+                        setFormSqlQuery('');
+                      }}
                       className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
                     >
+                      <option value="">-- Pilih Database Sumber --</option>
                       {connections.map(c => (
                         <option key={c.id} value={c.id}>
                           {c.name} ({c.database})
@@ -886,13 +913,22 @@ export const TelegramBotView: React.FC = () => {
                       </label>
                       <select
                         value={formSchema}
-                        onChange={e => setFormSchema(e.target.value)}
-                        className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                        onChange={e => {
+                          const newSchema = e.target.value;
+                          setFormSchema(newSchema);
+                          setFormView('');
+                          setViews([]);
+                          setFormSqlQuery('');
+                        }}
+                        disabled={!formConnectionId}
+                        className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
+                        <option value="">
+                          {!formConnectionId ? '-- Pilih Database Sumber Terlebih Dahulu --' : '-- Pilih Schema Database --'}
+                        </option>
                         {schemas.map(s => (
                           <option key={s} value={s}>{s}</option>
                         ))}
-                        {schemas.length === 0 && <option value="sch_erp_system">sch_erp_system</option>}
                       </select>
                     </div>
 
@@ -903,12 +939,15 @@ export const TelegramBotView: React.FC = () => {
                       <select
                         value={formView}
                         onChange={e => setFormView(e.target.value)}
-                        className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                        disabled={!formSchema}
+                        className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
+                        <option value="">
+                          {!formSchema ? '-- Pilih Schema Terlebih Dahulu --' : '-- Pilih View Notifikasi --'}
+                        </option>
                         {views.map(v => (
                           <option key={v.name} value={v.name}>{v.name}</option>
                         ))}
-                        {views.length === 0 && <option value="view_all_notifikasi">view_all_notifikasi</option>}
                       </select>
                     </div>
                   </div>
@@ -1186,7 +1225,11 @@ export const TelegramBotView: React.FC = () => {
               ) : (
                 <div className="py-16 text-center text-xs text-text-muted space-y-2">
                   <Eye className="w-8 h-8 text-text-muted/30 mx-auto" />
-                  <p>Klik tombol <b>"Muat Data"</b> untuk melihat live preview pesan dari view saat ini.</p>
+                  <p>
+                    {!formConnectionId || !formSchema || !formView
+                      ? 'Pilih Database Sumber, Schema Database, dan View Notifikasi terlebih dahulu untuk memuat live preview pesan.'
+                      : 'Klik tombol "Muat Data" untuk melihat live preview pesan dari view saat ini.'}
+                  </p>
                 </div>
               )}
             </div>
