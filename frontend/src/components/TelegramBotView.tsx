@@ -116,7 +116,9 @@ export const TelegramBotView: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────────
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formName, setFormName] = useState('');
+  const [formSenderMethod, setFormSenderMethod] = useState<'BOT_API' | 'MTPROTO_USER'>('BOT_API');
   const [formBotId, setFormBotId] = useState('');
+  const [formMtprotoPhone, setFormMtprotoPhone] = useState('');
   const [formConnectionId, setFormConnectionId] = useState('');
   const [sourceMode, setSourceMode] = useState<'VIEW' | 'CUSTOM_SQL'>('VIEW');
   const [formSchema, setFormSchema] = useState('sch_erp_system');
@@ -266,6 +268,8 @@ export const TelegramBotView: React.FC = () => {
   const handleOpenCreate = () => {
     setEditingId(null);
     setFormName('');
+    setFormSenderMethod('BOT_API');
+    setFormMtprotoPhone('');
     if (bots.length > 0) setFormBotId(bots[0].id);
     setSourceMode('VIEW');
     setFilterKodeNotifikasi('');
@@ -281,7 +285,14 @@ export const TelegramBotView: React.FC = () => {
   const handleOpenEdit = (s: TelegramSchedule) => {
     setEditingId(s.id);
     setFormName(s.name);
-    setFormBotId(s.botId);
+    if (s.botId && s.botId.startsWith('mtproto:')) {
+      setFormSenderMethod('MTPROTO_USER');
+      setFormMtprotoPhone(s.botId.replace('mtproto:', ''));
+    } else {
+      setFormSenderMethod('BOT_API');
+      setFormBotId(s.botId);
+      setFormMtprotoPhone('');
+    }
     setFormConnectionId(s.connectionId);
     setFormSqlQuery(s.sqlQuery);
     setFormPhoneColumn(s.phoneColumnName || 'user_hp');
@@ -351,8 +362,12 @@ export const TelegramBotView: React.FC = () => {
       showAlert({ title: 'Nama Wajib Diisi', message: 'Berikan nama atau judul untuk pesan notifikasi ini.', type: 'warning' });
       return;
     }
-    if (!formBotId) {
+    if (formSenderMethod === 'BOT_API' && !formBotId) {
       showAlert({ title: 'Bot Pengirim Kosong', message: 'Silakan pilih Bot Telegram pengirim.', type: 'warning' });
+      return;
+    }
+    if (formSenderMethod === 'MTPROTO_USER' && !formMtprotoPhone.trim()) {
+      showAlert({ title: 'Nomor HP Pengirim Kosong', message: 'Masukkan nomor HP akun Telegram pengirim untuk MTProto.', type: 'warning' });
       return;
     }
     if (!formConnectionId) {
@@ -360,11 +375,15 @@ export const TelegramBotView: React.FC = () => {
       return;
     }
 
+    const resolvedBotId = formSenderMethod === 'MTPROTO_USER'
+      ? `mtproto:${formMtprotoPhone.trim()}`
+      : formBotId;
+
     setSavingForm(true);
     try {
       const payload: Partial<TelegramSchedule> = {
         name: formName.trim(),
-        botId: formBotId,
+        botId: resolvedBotId,
         connectionId: formConnectionId,
         sqlQuery: formSqlQuery,
         templateMessage: '{{pesan}}', // selalu kirim isi asli kolom pesan dari view
@@ -517,8 +536,8 @@ export const TelegramBotView: React.FC = () => {
                 1. Informasi Dasar & Bot
               </h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
+              <div className="space-y-4">
+                <div>
                   <label className="block text-xs font-medium text-text-muted mb-1.5">
                     Nama / Judul Notifikasi *
                   </label>
@@ -531,39 +550,115 @@ export const TelegramBotView: React.FC = () => {
                   />
                 </div>
 
+                {/* Selector Metode Pengirim: Bot API vs MTProto */}
                 <div>
                   <label className="block text-xs font-medium text-text-muted mb-1.5">
-                    Bot Telegram Pengirim *
+                    Pilih Jalur Pengirim Pesan *
                   </label>
-                  <select
-                    value={formBotId}
-                    onChange={e => setFormBotId(e.target.value)}
-                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
-                  >
-                    {bots.map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.name} {b.botUsername ? `(@${b.botUsername})` : ''}
-                      </option>
-                    ))}
-                    {bots.length === 0 && <option value="">(Belum ada bot terdaftar)</option>}
-                  </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFormSenderMethod('BOT_API')}
+                      className={clsx(
+                        "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between",
+                        formSenderMethod === 'BOT_API'
+                          ? "bg-sky-500/10 border-sky-500 ring-1 ring-sky-500/30 text-white shadow-sm"
+                          : "bg-bg-editor border-border-main text-text-muted hover:text-text-main hover:border-slate-500"
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold flex items-center gap-1.5 text-sky-400">
+                          <Bot className="w-4 h-4" />
+                          Bot Telegram Resmi
+                        </span>
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300">
+                          Anti-Banned
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-text-muted leading-relaxed">
+                        Kirim via Bot (@BotFather). Kontak karyawan menghubungkan via klik START 1x. Stabil, resmi, &amp; bebas blokir.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFormSenderMethod('MTPROTO_USER')}
+                      className={clsx(
+                        "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between",
+                        formSenderMethod === 'MTPROTO_USER'
+                          ? "bg-amber-500/10 border-amber-500 ring-1 ring-amber-500/30 text-white shadow-sm"
+                          : "bg-bg-editor border-border-main text-text-muted hover:text-text-main hover:border-slate-500"
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold flex items-center gap-1.5 text-amber-400">
+                          <Send className="w-4 h-4" />
+                          Akun Pribadi / MTProto
+                        </span>
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                          Telethon
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-text-muted leading-relaxed">
+                        Kirim langsung dari akun Telegram pribadi Anda tanpa penerima harus klik START bot terlebih dahulu.
+                      </p>
+                    </button>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1.5">
-                    Database Sumber *
-                  </label>
-                  <select
-                    value={formConnectionId}
-                    onChange={e => setFormConnectionId(e.target.value)}
-                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
-                  >
-                    {connections.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.database})
-                      </option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                  {formSenderMethod === 'BOT_API' ? (
+                    <div>
+                      <label className="block text-xs font-medium text-text-muted mb-1.5">
+                        Bot Telegram Pengirim *
+                      </label>
+                      <select
+                        value={formBotId}
+                        onChange={e => setFormBotId(e.target.value)}
+                        className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                      >
+                        {bots.map(b => (
+                          <option key={b.id} value={b.id}>
+                            {b.name} {b.botUsername ? `(@${b.botUsername})` : ''}
+                          </option>
+                        ))}
+                        {bots.length === 0 && <option value="">(Belum ada bot terdaftar)</option>}
+                      </select>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-medium text-text-muted mb-1.5">
+                        Nomor HP Akun Pribadi Pengirim *
+                      </label>
+                      <input
+                        type="text"
+                        value={formMtprotoPhone}
+                        onChange={e => setFormMtprotoPhone(e.target.value)}
+                        placeholder="misal: +628123456789"
+                        className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-amber-500 font-mono"
+                      />
+                      <span className="text-[10px] text-amber-400 block mt-1">
+                        ⚠️ Kirim sebagai User Client MTProto (Telethon API).
+                      </span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-medium text-text-muted mb-1.5">
+                      Database Sumber *
+                    </label>
+                    <select
+                      value={formConnectionId}
+                      onChange={e => setFormConnectionId(e.target.value)}
+                      className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                    >
+                      {connections.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.database})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1057,13 +1152,27 @@ export const TelegramBotView: React.FC = () => {
                         </td>
 
                         <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-1.5 text-text-main font-medium">
-                            <Bot className="w-3.5 h-3.5 text-sky-400" />
-                            {bot?.name || 'Bot'}
-                          </div>
-                          {bot?.botUsername && (
-                            <div className="text-[10px] text-text-muted font-mono">
-                              @{bot.botUsername}
+                          {s.botId && s.botId.startsWith('mtproto:') ? (
+                            <div>
+                              <div className="flex items-center gap-1.5 text-amber-400 font-medium">
+                                <Send className="w-3.5 h-3.5" />
+                                MTProto (Telethon)
+                              </div>
+                              <div className="text-[10px] text-text-muted font-mono">
+                                📱 {s.botId.replace('mtproto:', '')}
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="flex items-center gap-1.5 text-text-main font-medium">
+                                <Bot className="w-3.5 h-3.5 text-sky-400" />
+                                {bot?.name || 'Bot'}
+                              </div>
+                              {bot?.botUsername && (
+                                <div className="text-[10px] text-text-muted font-mono">
+                                  @{bot.botUsername}
+                                </div>
+                              )}
                             </div>
                           )}
                         </td>
