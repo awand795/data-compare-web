@@ -160,25 +160,22 @@ export const TelegramBotView: React.FC = () => {
   // Settings Sub-tab: 'BOT' | 'MTPROTO'
   const [settingsSubTab, setSettingsSubTab] = useState<'BOT' | 'MTPROTO'>('BOT');
 
-  // MTProto Accounts State (Persisted via localStorage)
+  // MTProto Accounts State (Persisted via localStorage, no dummy data)
   const [mtprotoAccounts, setMtprotoAccounts] = useState<MtprotoAccount[]>(() => {
     try {
       const saved = localStorage.getItem('darkosync_mtproto_accounts');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Buang data dummy apapun
+          const realAccounts = parsed.filter(a => a.id !== 'mtproto_default_1' && a.phone !== '+6281234567890');
+          return realAccounts;
+        }
+      }
     } catch (e) {
       console.error(e);
     }
-    return [
-      {
-        id: 'mtproto_default_1',
-        name: 'Akun Notifikasi ERP (Telethon)',
-        phone: '+6281234567890',
-        apiId: '2849102',
-        apiHash: 'd7a9b1c2e3f40516a7b8c9d0e1f2a3b4',
-        status: 'CONNECTED',
-        createdAt: new Date().toISOString()
-      }
-    ];
+    return [];
   });
 
   // Modal MTProto State
@@ -379,6 +376,23 @@ export const TelegramBotView: React.FC = () => {
     if (!confirm(`Hapus dan putuskan sesi akun MTProto "${accName}"?`)) return;
     setMtprotoAccounts(prev => prev.filter(a => a.id !== accId));
     showAlert({ title: 'Akun Dihapus', message: `Sesi akun MTProto "${accName}" telah dihapus.`, type: 'info' });
+  };
+
+  const handleTestPingMtproto = (acc: MtprotoAccount) => {
+    if (!acc.apiId || !acc.apiHash) {
+      showAlert({
+        title: 'Kredensial Tidak Lengkap',
+        message: 'Akun ini tidak memiliki API ID atau API Hash yang valid.',
+        type: 'warning'
+      });
+      return;
+    }
+
+    showAlert({
+      title: 'Pemeriksaan Sesi MTProto',
+      message: `Format kredensial akun "${acc.name}" (${acc.phone}) tersimpan lokal. Namun daemon background Telethon (MTProto bridge) belum dikonfigurasi di server backend. Untuk pengiriman pesan saat ini, sistem memprioritaskan Bot Telegram resmi (@BotFather).`,
+      type: 'info'
+    });
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1762,8 +1776,8 @@ export const TelegramBotView: React.FC = () => {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => showAlert({ title: 'Koneksi Sesi Valid', message: `Sesi MTProto akun "${acc.name}" aktif dan siap mengirim pesan.`, type: 'success' })}
-                              className="text-[11px] text-sky-400 hover:text-sky-300 font-medium"
+                              onClick={() => handleTestPingMtproto(acc)}
+                              className="text-[11px] text-sky-400 hover:text-sky-300 font-medium cursor-pointer"
                             >
                               Test Ping
                             </button>
