@@ -40,7 +40,7 @@ public class TelegramScheduleRepository {
                     "master_recipient_ids TEXT, " +
                     "phone_column_name VARCHAR(255), " +
                     "cron_expression VARCHAR(255), " +
-                    "max_rows INTEGER DEFAULT 50, " +
+                    "max_rows INTEGER DEFAULT 0, " +
                     "is_active BOOLEAN DEFAULT TRUE, " +
                     "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
                     "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +

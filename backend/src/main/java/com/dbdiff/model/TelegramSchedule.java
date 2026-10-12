@@ -18,7 +18,7 @@ public class TelegramSchedule {
     private String filterKodeNotifikasi; // e.g. "DAILY-REPORT-SALES"
     private String filterKodeCabang; // e.g. "P001"
     private String cronExpression; // Single or comma-separated multi-cron expressions
-    private int maxRows = 50;
+    private int maxRows = 0; // 0 = Unlimited
     private boolean active = true;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

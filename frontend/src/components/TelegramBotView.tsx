@@ -144,7 +144,7 @@ export const TelegramBotView: React.FC = () => {
   const [filterKodeCabang, setFilterKodeCabang] = useState('');
   const [formSqlQuery, setFormSqlQuery] = useState('');
   const [formPhoneColumn, setFormPhoneColumn] = useState('user_hp');
-  const [formMaxRows, setFormMaxRows] = useState(50);
+  const [formMaxRows, setFormMaxRows] = useState(0); // 0 = Unlimited (tanpa batas baris)
 
   // Scheduler Options
   const [isCronEnabled, setIsCronEnabled] = useState(false);
@@ -442,7 +442,7 @@ export const TelegramBotView: React.FC = () => {
     setFormSqlQuery('');
     setIsCronEnabled(false);
     setCronTriggers(['0 0 8 * * *']);
-    setFormMaxRows(50);
+    setFormMaxRows(0);
     setFormActive(true);
     setPreviewRows([]);
     setViewMode('create_edit');
@@ -462,7 +462,7 @@ export const TelegramBotView: React.FC = () => {
     setFormConnectionId(s.connectionId);
     setFormSqlQuery(s.sqlQuery);
     setFormPhoneColumn(s.phoneColumnName || 'user_hp');
-    setFormMaxRows(s.maxRows || 50);
+    setFormMaxRows(s.maxRows !== undefined ? s.maxRows : 0);
     setFormActive(s.active);
 
     if (s.viewName) {
