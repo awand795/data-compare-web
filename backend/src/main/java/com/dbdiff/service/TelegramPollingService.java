@@ -143,6 +143,20 @@ public class TelegramPollingService {
                 }
                 saveContactAndReply(bot, chatId, phoneParam, firstName, lastName, username, false);
             } else {
+                // Check if user is already registered with a phone number
+                TelegramContact existing = contactRepository.findByBotIdAndChatId(bot.getId(), chatId);
+                if (existing != null && existing.getPhoneNumber() != null && !existing.getPhoneNumber().trim().isEmpty()) {
+                    String alreadyMsg = String.format(
+                            "✅ <b>Anda Sudah Terdaftar!</b>\n\n" +
+                            "Halo <b>%s</b>, akun Telegram Anda sudah terdaftar dan terhubung dengan nomor <code>%s</code> di bot <b>%s</b>.\n\n" +
+                            "Status: 🟢 <b>Aktif</b>\n" +
+                            "Anda akan otomatis menerima pesan notifikasi dan laporan sistem di sini.",
+                            escapeHtml(firstName), existing.getPhoneNumber(), escapeHtml(bot.getName())
+                    );
+                    sendSimpleMessage(bot.getBotToken(), chatId, alreadyMsg);
+                    return;
+                }
+
                 // Save contact without phone, then send greeting with request_contact button
                 TelegramContact c = new TelegramContact();
                 c.setBotId(bot.getId());
