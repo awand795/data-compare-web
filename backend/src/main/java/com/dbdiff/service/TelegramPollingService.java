@@ -138,6 +138,9 @@ public class TelegramPollingService {
             }
 
             if (phoneParam != null) {
+                if (phoneParam.startsWith("08")) {
+                    phoneParam = "62" + phoneParam.substring(1);
+                }
                 saveContactAndReply(bot, chatId, phoneParam, firstName, lastName, username, false);
             } else {
                 // Save contact without phone, then send greeting with request_contact button
@@ -152,6 +155,18 @@ public class TelegramPollingService {
 
                 sendGreetingWithContactButton(bot, chatId, firstName);
             }
+            return;
+        }
+
+        // 3. Check if user typed their phone number directly as a regular message (e.g. "082362851796" or "+6282362851796")
+        String cleanPhone = text.replaceAll("[^0-9]", "");
+        if (cleanPhone.length() >= 9 && cleanPhone.length() <= 15 &&
+                (text.startsWith("08") || text.startsWith("+62") || text.startsWith("62") || text.startsWith("+"))) {
+            if (cleanPhone.startsWith("08")) {
+                cleanPhone = "62" + cleanPhone.substring(1);
+            }
+            saveContactAndReply(bot, chatId, cleanPhone, firstName, lastName, username, false);
+            return;
         }
     }
 
@@ -183,8 +198,9 @@ public class TelegramPollingService {
 
             String greetingText = String.format(
                     "👋 Halo <b>%s</b>! Selamat datang di <b>%s</b>.\n\n" +
-                    "Agar sistem kami dapat mengirimkan pesan dan notifikasi ke nomor Anda, " +
-                    "silakan klik tombol di bawah untuk membagikan nomor telepon Anda:",
+                    "Agar sistem kami dapat mengirimkan pesan dan notifikasi ke nomor Anda, silakan:\n" +
+                    "1️⃣ Klik tombol <b>📱 Bagikan Nomor Telepon Saya</b> di bawah, ATAU\n" +
+                    "2️⃣ Ketik langsung nomor HP Anda di chat ini (contoh: <code>081234567890</code>)",
                     escapeHtml(firstName), escapeHtml(bot.getName())
             );
 

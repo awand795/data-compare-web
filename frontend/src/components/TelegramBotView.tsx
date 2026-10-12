@@ -22,7 +22,9 @@ import {
   CheckCircle2,
   ExternalLink,
   Smartphone,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Link2
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -54,12 +56,14 @@ interface TelegramContact {
   id: string;
   botId: string;
   chatId: string;
-  phone: string;
+  phoneNumber?: string;
+  phone?: string;
   username?: string;
   firstName?: string;
   lastName?: string;
   registeredVia?: string;
   active: boolean;
+  registeredAt?: string;
   createdAt?: string;
 }
 
@@ -199,6 +203,10 @@ export const TelegramBotView: React.FC = () => {
     }
   }, [mtprotoAccounts]);
 
+  // Quick Registration Link Generator
+  const [quickLinkPhone, setQuickLinkPhone] = useState('');
+  const [quickLinkCopied, setQuickLinkCopied] = useState(false);
+
   // ─────────────────────────────────────────────────────────────────────────────
   // DATA FETCHING
   // ─────────────────────────────────────────────────────────────────────────────
@@ -208,6 +216,16 @@ export const TelegramBotView: React.FC = () => {
     fetchSchedules();
     fetchLogs();
   }, []);
+
+  // Auto refresh contacts in real-time when looking at contacts tab
+  useEffect(() => {
+    if (activeTab === 'contacts') {
+      const interval = setInterval(() => {
+        fetchContacts();
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
 
   // Connection schemas loader
   useEffect(() => {
@@ -666,6 +684,25 @@ export const TelegramBotView: React.FC = () => {
           showAlert({ title: 'Bot Dihapus', message: `Bot "${botName}" berhasil dihapus.`, type: 'info' });
         } catch (err: any) {
           showAlert({ title: 'Gagal Menghapus Bot', message: err.response?.data?.message || err.message, type: 'error' });
+        }
+      }
+    });
+  };
+
+  const handleDeleteContact = (contactId: string, contactName: string) => {
+    showAlert({
+      title: 'Hapus Kontak Telegram',
+      message: `Apakah Anda yakin ingin menghapus kontak "${contactName}"?\n\nTindakan ini tidak dapat dibatalkan.`,
+      type: 'error',
+      confirmLabel: 'Hapus Kontak',
+      cancelLabel: 'Batal',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`/api/telegram/contacts/${contactId}`);
+          fetchContacts();
+          showAlert({ title: 'Kontak Dihapus', message: `Kontak "${contactName}" berhasil dihapus.`, type: 'info' });
+        } catch (err: any) {
+          showAlert({ title: 'Gagal Menghapus Kontak', message: err.response?.data?.message || err.message, type: 'error' });
         }
       }
     });
@@ -1557,21 +1594,120 @@ export const TelegramBotView: React.FC = () => {
         ========================================================================= */}
         {activeTab === 'contacts' && (
           <div className="max-w-7xl mx-auto space-y-4">
+            {/* Guide & Deep-Link Generator */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm space-y-2.5">
+                <div className="flex items-center gap-2 text-xs font-bold text-text-main">
+                  <Info className="w-4 h-4 text-sky-400" />
+                  <span>2 Cara Mendaftarkan Nomor HP ke Bot Telegram</span>
+                </div>
+                <div className="text-[11px] text-text-muted space-y-2 leading-relaxed">
+                  <div className="p-2.5 rounded-lg bg-bg-editor border border-border-main/50 space-y-1">
+                    <span className="font-semibold text-text-main text-xs flex items-center gap-1.5 text-sky-400">
+                      ⭐ Cara 1: Link Registrasi Otomatis (Tanpa Klik Bagikan Kontak)
+                    </span>
+                    <p>
+                      Kirimkan link pendaftaran yang sudah memuat nomor HP ke karyawan. Begitu karyawan klik link dan tekan tombol <b>START</b> di Telegram, nomor HP <b>langsung otomatis terdaftar</b>!
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-bg-editor border border-border-main/50 space-y-1">
+                    <span className="font-semibold text-text-main text-xs">
+                      Cara 2: Buka Bot Manual (@darkoreportbot)
+                    </span>
+                    <p>
+                      Karyawan membuka bot dan klik <code>/start</code>. Selanjutnya cukup tekan tombol <b>📱 Bagikan Nomor Telepon Saya</b> ATAU langsung ketik nomor HP-nya di pesan chat bot.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-text-main flex items-center gap-2">
+                    <Link2 className="w-4 h-4 text-emerald-400" />
+                    Generator Link Registrasi Cepat
+                  </span>
+                  <span className="text-[10px] text-text-muted">Direct Deep-Link</span>
+                </div>
+                
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-text-muted block">
+                    Masukkan Nomor HP Karyawan (contoh: <code>082362851796</code>):
+                  </label>
+                  <input
+                    type="text"
+                    value={quickLinkPhone}
+                    onChange={(e) => {
+                      setQuickLinkPhone(e.target.value);
+                      setQuickLinkCopied(false);
+                    }}
+                    placeholder="Contoh: 082362851796 atau 6282362851796"
+                    className="w-full px-3 py-1.5 text-xs bg-bg-input border border-border-input rounded-lg focus:border-sky-500 focus:outline-none font-mono"
+                  />
+                </div>
+
+                {(() => {
+                  const clean = quickLinkPhone.replaceAll(/[^0-9]/g, '');
+                  const formatted = clean.startsWith('08') ? ('62' + clean.substring(1)) : clean;
+                  const activeBot = bots.find(b => b.botUsername) || bots[0];
+                  const botUser = activeBot?.botUsername || activeBot?.name || 'darkoreportbot';
+                  const link = formatted ? `https://t.me/${botUser}?start=${formatted}` : `https://t.me/${botUser}`;
+
+                  return (
+                    <div className="p-2.5 rounded-lg bg-bg-editor border border-border-main space-y-2">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-text-muted font-medium truncate max-w-[240px]">
+                          Bot: <strong className="text-text-main">@{botUser}</strong>
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(link);
+                              setQuickLinkCopied(true);
+                              setTimeout(() => setQuickLinkCopied(false), 2000);
+                            }}
+                            className="px-2 py-1 rounded bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            {quickLinkCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                            {quickLinkCopied ? 'Tersalin!' : 'Salin Link'}
+                          </button>
+                          <a
+                            href={link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 rounded bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main text-[11px] flex items-center gap-1 transition-colors border border-border-main"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Buka
+                          </a>
+                        </div>
+                      </div>
+                      <div className="text-[11px] font-mono text-emerald-400 select-all break-all bg-black/20 p-1.5 rounded">
+                        {link}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Master Contacts Table */}
             <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-border-main pb-3">
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-2">
                     <Users className="w-4 h-4 text-sky-400" />
-                    Master Kontak Telegram Terdaftar
+                    Master Kontak Telegram Terdaftar ({contacts.length})
                   </h3>
                   <p className="text-xs text-text-muted">
-                    Daftar pengguna yang sudah menekan <code>/start</code> dan membagikan kontak ke Bot Telegram.
+                    Daftar pengguna yang sudah terhubung dengan Bot Telegram (diperbarui otomatis secara real-time).
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={fetchContacts}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-editor hover:bg-bg-hover text-xs font-semibold rounded-lg border border-border-main"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-editor hover:bg-bg-hover text-xs font-semibold rounded-lg border border-border-main cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   Refresh Kontak
@@ -1587,18 +1723,24 @@ export const TelegramBotView: React.FC = () => {
                       <th className="py-2.5 px-3 font-semibold">Chat ID Telegram</th>
                       <th className="py-2.5 px-3 font-semibold">Bot Terkait</th>
                       <th className="py-2.5 px-3 font-semibold">Status</th>
+                      <th className="py-2.5 px-3 font-semibold text-right">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-main/50">
                     {contacts.map(c => {
                       const b = bots.find(bot => bot.id === c.botId);
+                      const displayPhone = c.phoneNumber || c.phone;
                       return (
                         <tr key={c.id} className="hover:bg-bg-hover/50">
                           <td className="py-3 px-3 font-semibold text-text-main">
                             {c.firstName || ''} {c.lastName || ''} {c.username ? `(@${c.username})` : ''}
                           </td>
                           <td className="py-3 px-3 font-mono text-sky-400">
-                            📱 {c.phone}
+                            {displayPhone ? (
+                              <span>📱 {displayPhone}</span>
+                            ) : (
+                              <span className="text-amber-400/80 italic text-[11px]">Belum bagikan nomor</span>
+                            )}
                           </td>
                           <td className="py-3 px-3 font-mono text-text-muted">
                             {c.chatId}
@@ -1611,13 +1753,23 @@ export const TelegramBotView: React.FC = () => {
                               Terdaftar
                             </span>
                           </td>
+                          <td className="py-3 px-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteContact(c.id, `${c.firstName || ''} (${displayPhone || c.chatId})`.trim())}
+                              title="Hapus Kontak"
+                              className="p-1.5 hover:bg-rose-500/10 text-text-muted hover:text-rose-400 rounded transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
 
                     {contacts.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-text-muted">
+                        <td colSpan={6} className="py-8 text-center text-text-muted">
                           Belum ada kontak terdaftar. Karyawan dapat membuka bot dan klik <b>/start</b> untuk mendaftarkan nomor HP mereka secara otomatis.
                         </td>
                       </tr>
