@@ -121,7 +121,6 @@ export const TelegramBotView: React.FC = () => {
   const [sourceMode, setSourceMode] = useState<'VIEW' | 'CUSTOM_SQL'>('VIEW');
   const [formSchema, setFormSchema] = useState('sch_erp_system');
   const [formView, setFormView] = useState('view_all_notifikasi');
-  const [filterSchedule, setFilterSchedule] = useState('ALL'); // 'ALL' | 'Y' | 'N'
   const [filterKodeNotifikasi, setFilterKodeNotifikasi] = useState('');
   const [filterKodeCabang, setFilterKodeCabang] = useState('');
   const [formSqlQuery, setFormSqlQuery] = useState('');
@@ -176,10 +175,7 @@ export const TelegramBotView: React.FC = () => {
   // Synchronize SQL Query based on View & Filters
   useEffect(() => {
     if (sourceMode === 'VIEW' && formSchema && formView) {
-      let q = `SELECT kode_notifikasi, kode_cabang, no_tran, user_id, user_name, user_hp, pesan, schedule FROM ${formSchema}.${formView} WHERE 1=1`;
-      if (filterSchedule === 'Y' || filterSchedule === 'N') {
-        q += ` AND schedule = '${filterSchedule}'`;
-      }
+      let q = `SELECT kode_notifikasi, kode_cabang, no_tran, user_id, user_name, user_hp, pesan FROM ${formSchema}.${formView} WHERE 1=1`;
       if (filterKodeNotifikasi.trim()) {
         q += ` AND kode_notifikasi = '${filterKodeNotifikasi.trim()}'`;
       }
@@ -189,7 +185,7 @@ export const TelegramBotView: React.FC = () => {
       setFormSqlQuery(q);
       setFormPhoneColumn('user_hp');
     }
-  }, [sourceMode, formSchema, formView, filterSchedule, filterKodeNotifikasi, filterKodeCabang]);
+  }, [sourceMode, formSchema, formView, filterKodeNotifikasi, filterKodeCabang]);
 
   const fetchBots = async () => {
     try {
@@ -272,7 +268,6 @@ export const TelegramBotView: React.FC = () => {
     setFormName('');
     if (bots.length > 0) setFormBotId(bots[0].id);
     setSourceMode('VIEW');
-    setFilterSchedule('ALL');
     setFilterKodeNotifikasi('');
     setFilterKodeCabang('');
     setIsCronEnabled(false);
@@ -297,7 +292,6 @@ export const TelegramBotView: React.FC = () => {
       setSourceMode('VIEW');
       setFormSchema(s.schemaName || 'sch_erp_system');
       setFormView(s.viewName);
-      setFilterSchedule(s.filterSchedule || 'ALL');
       setFilterKodeNotifikasi(s.filterKodeNotifikasi || '');
       setFilterKodeCabang(s.filterKodeCabang || '');
     } else {
@@ -378,7 +372,6 @@ export const TelegramBotView: React.FC = () => {
         phoneColumnName: formPhoneColumn || 'user_hp',
         schemaName: sourceMode === 'VIEW' ? formSchema : undefined,
         viewName: sourceMode === 'VIEW' ? formView : undefined,
-        filterSchedule: sourceMode === 'VIEW' ? filterSchedule : undefined,
         filterKodeNotifikasi: sourceMode === 'VIEW' ? filterKodeNotifikasi.trim() : undefined,
         filterKodeCabang: sourceMode === 'VIEW' ? filterKodeCabang.trim() : undefined,
         cronExpression: isCronEnabled ? cronTriggers.map(c => c.trim()).filter(Boolean).join(',') : '',
@@ -647,38 +640,10 @@ export const TelegramBotView: React.FC = () => {
                   <div className="bg-bg-editor/50 border border-border-main rounded-lg p-3.5 space-y-3">
                     <span className="text-xs font-semibold text-text-main flex items-center gap-1.5">
                       <Filter className="w-3.5 h-3.5 text-sky-400" />
-                      Filter Cepat Baris Data
+                      Filter Cepat Baris Data (Opsional)
                     </span>
 
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-[11px] text-text-muted mb-1.5">
-                          Tipe Jadwal (Field <code>schedule</code>):
-                        </label>
-                        <div className="flex items-center gap-1.5">
-                          {[
-                            { id: 'ALL', label: 'Semua Notifikasi' },
-                            { id: 'Y', label: 'Terjadwal / Laporan (Y)' },
-                            { id: 'N', label: 'Realtime / Alert (N)' }
-                          ].map(pill => (
-                            <button
-                              key={pill.id}
-                              type="button"
-                              onClick={() => setFilterSchedule(pill.id)}
-                              className={clsx(
-                                "px-2.5 py-1 rounded text-xs transition-colors",
-                                filterSchedule === pill.id
-                                  ? "bg-sky-500 text-white font-medium"
-                                  : "bg-bg-panel text-text-muted hover:text-text-main border border-border-main"
-                              )}
-                            >
-                              {pill.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[11px] text-text-muted mb-1">
                             Filter Kode Notifikasi (Opsional):
@@ -706,7 +671,6 @@ export const TelegramBotView: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                  </div>
 
                   <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5 flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -1075,11 +1039,6 @@ export const TelegramBotView: React.FC = () => {
                             <span className="px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 font-mono text-[10px]">
                               {s.viewName ? 'VIEW' : 'CUSTOM SQL'}
                             </span>
-                            {s.filterSchedule && s.filterSchedule !== 'ALL' && (
-                              <span className="text-text-muted">
-                                • Sched: {s.filterSchedule}
-                              </span>
-                            )}
                             {s.filterKodeNotifikasi && (
                               <span className="text-text-muted">
                                 • {s.filterKodeNotifikasi}
