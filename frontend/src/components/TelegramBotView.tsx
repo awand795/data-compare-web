@@ -374,9 +374,17 @@ export const TelegramBotView: React.FC = () => {
   };
 
   const handleDeleteMtproto = (accId: string, accName: string) => {
-    if (!confirm(`Hapus dan putuskan sesi akun MTProto "${accName}"?`)) return;
-    setMtprotoAccounts(prev => prev.filter(a => a.id !== accId));
-    showAlert({ title: 'Akun Dihapus', message: `Sesi akun MTProto "${accName}" telah dihapus.`, type: 'info' });
+    showAlert({
+      title: 'Hapus Sesi MTProto',
+      message: `Apakah Anda yakin ingin menghapus dan memutuskan sesi akun MTProto "${accName}"?\n\nTindakan ini tidak dapat dibatalkan.`,
+      type: 'error',
+      confirmLabel: 'Hapus Sesi',
+      cancelLabel: 'Batal',
+      onConfirm: () => {
+        setMtprotoAccounts(prev => prev.filter(a => a.id !== accId));
+        showAlert({ title: 'Akun Dihapus', message: `Sesi akun MTProto "${accName}" telah dihapus.`, type: 'info' });
+      }
+    });
   };
 
   const handleTestPingMtproto = (acc: MtprotoAccount) => {
@@ -597,15 +605,23 @@ export const TelegramBotView: React.FC = () => {
     }
   };
 
-  const handleDeleteSchedule = async (scheduleId: string, name: string) => {
-    if (!confirm(`Hapus konfigurasi pesan "${name}"?`)) return;
-    try {
-      await axios.delete(`/api/telegram/schedules/${scheduleId}`);
-      fetchSchedules();
-      showAlert({ title: 'Dihapus', message: 'Pesan notifikasi berhasil dihapus.', type: 'info' });
-    } catch (err: any) {
-      showAlert({ title: 'Gagal Menghapus', message: err.message, type: 'error' });
-    }
+  const handleDeleteSchedule = (scheduleId: string, name: string) => {
+    showAlert({
+      title: 'Hapus Konfigurasi Pesan',
+      message: `Apakah Anda yakin ingin menghapus konfigurasi pesan "${name}"?\n\nTindakan ini tidak dapat dibatalkan.`,
+      type: 'error',
+      confirmLabel: 'Hapus Pesan',
+      cancelLabel: 'Batal',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`/api/telegram/schedules/${scheduleId}`);
+          fetchSchedules();
+          showAlert({ title: 'Berhasil Dihapus', message: `Konfigurasi pesan "${name}" berhasil dihapus.`, type: 'info' });
+        } catch (err: any) {
+          showAlert({ title: 'Gagal Menghapus', message: err.message, type: 'error' });
+        }
+      }
+    });
   };
 
   // Bot Management Handlers
@@ -636,15 +652,23 @@ export const TelegramBotView: React.FC = () => {
     }
   };
 
-  const handleDeleteBot = async (botId: string, botName: string) => {
-    if (!confirm(`Hapus Bot Telegram "${botName}"?\nBot yang dihapus tidak akan dapat menerima atau mengirim pesan.`)) return;
-    try {
-      await axios.delete(`/api/telegram/bots/${botId}`);
-      fetchBots();
-      showAlert({ title: 'Bot Dihapus', message: `Bot "${botName}" berhasil dihapus.`, type: 'info' });
-    } catch (err: any) {
-      showAlert({ title: 'Gagal Menghapus Bot', message: err.response?.data?.message || err.message, type: 'error' });
-    }
+  const handleDeleteBot = (botId: string, botName: string) => {
+    showAlert({
+      title: 'Hapus Bot Telegram',
+      message: `Apakah Anda yakin ingin menghapus Bot "${botName}"?\n\nBot yang dihapus tidak akan dapat menerima atau mengirim pesan lagi. Tindakan ini tidak dapat dibatalkan.`,
+      type: 'error',
+      confirmLabel: 'Hapus Bot',
+      cancelLabel: 'Batal',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`/api/telegram/bots/${botId}`);
+          fetchBots();
+          showAlert({ title: 'Bot Dihapus', message: `Bot "${botName}" berhasil dihapus.`, type: 'info' });
+        } catch (err: any) {
+          showAlert({ title: 'Gagal Menghapus Bot', message: err.response?.data?.message || err.message, type: 'error' });
+        }
+      }
+    });
   };
 
   // Filtered list
@@ -1826,8 +1850,9 @@ export const TelegramBotView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleDeleteMtproto(acc.id, acc.name)}
-                              className="text-[11px] text-rose-400 hover:text-rose-300 font-medium"
+                              className="text-[11px] text-rose-400 hover:text-rose-300 font-medium cursor-pointer flex items-center gap-1"
                             >
+                              <Trash2 className="w-3 h-3" />
                               Hapus
                             </button>
                           </div>
