@@ -33,6 +33,16 @@ public class TelegramPollingService {
     // Track last update_id per botId to prevent processing duplicate updates
     private final Map<String, Long> lastUpdateIds = new ConcurrentHashMap<>();
 
+    // Deduplicate processed messages to prevent any duplicate replies
+    private final Set<String> processedMessageKeys = Collections.synchronizedSet(
+            Collections.newSetFromMap(new LinkedHashMap<String, Boolean>() {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+                    return size() > 2000;
+                }
+            })
+    );
+
     @Autowired
     public TelegramPollingService(TelegramBotConfigRepository botConfigRepository,
                                   TelegramContactRepository contactRepository) {
@@ -113,6 +123,12 @@ public class TelegramPollingService {
         String chatId = chat.path("id").asText();
         if (chatId == null || chatId.isEmpty()) return;
 
+        long messageId = message.path("message_id").asLong();
+        String msgKey = bot.getId() + ":" + chatId + ":" + messageId;
+        if (messageId > 0 && !processedMessageKeys.add(msgKey)) {
+            return;
+        }
+
         String firstName = from.path("first_name").asText("");
         String lastName = from.path("last_name").asText("");
         String username = from.path("username").asText("");
@@ -150,7 +166,7 @@ public class TelegramPollingService {
                             "✅ <b>Anda Sudah Terdaftar!</b>\n\n" +
                             "Halo <b>%s</b>, akun Telegram Anda sudah terdaftar dan terhubung dengan nomor <code>%s</code> di bot <b>%s</b>.\n\n" +
                             "Status: 🟢 <b>Aktif</b>\n" +
-                            "Anda akan otomatis menerima pesan notifikasi dan laporan sistem di sini.",
+                            "Anda akan otomatis menerima pesan notifikasi dan laporan di sini.",
                             escapeHtml(firstName), existing.getPhoneNumber(), escapeHtml(bot.getName())
                     );
                     sendSimpleMessage(bot.getBotToken(), chatId, alreadyMsg);
