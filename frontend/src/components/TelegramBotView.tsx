@@ -1,20 +1,39 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
 import {
-  Send, Bot, Users, CalendarClock, Settings2, History, Play, Pause, Trash2, Edit3,
-  Plus, CheckCircle2, AlertCircle, RefreshCw, Copy, ExternalLink, Code2, Database,
-  Sparkles, ShieldAlert, MessageSquare, ChevronRight, Check, X, Info, Filter, Layers, Eye
+  Bot,
+  Send,
+  Users,
+  History,
+  Plus,
+  ArrowLeft,
+  Play,
+  Check,
+  Trash2,
+  Pencil,
+  Eye,
+  RefreshCw,
+  Database,
+  Filter,
+  Clock,
+  Search,
+  Info,
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 import clsx from 'clsx';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────────────────────
 interface TelegramBot {
   id: string;
   name: string;
   botToken: string;
   botUsername?: string;
-  isPollingActive: boolean;
+  pollingEnabled?: boolean;
+  active: boolean;
   createdAt?: string;
 }
 
@@ -22,12 +41,13 @@ interface TelegramContact {
   id: string;
   botId: string;
   chatId: string;
-  phoneNumber?: string;
+  phone: string;
+  username?: string;
   firstName?: string;
   lastName?: string;
-  username?: string;
-  isActive: boolean;
-  registeredAt?: string;
+  registeredVia?: string;
+  active: boolean;
+  createdAt?: string;
 }
 
 interface TelegramSchedule {
@@ -35,17 +55,17 @@ interface TelegramSchedule {
   name: string;
   botId: string;
   connectionId: string;
-  schemaName?: string;
-  viewName?: string;
-  filterSchedule?: string;
-  filterKodeNotifikasi?: string;
-  filterKodeCabang?: string;
   sqlQuery: string;
   templateMessage: string;
   recipientMode: 'MASTER' | 'DYNAMIC_COLUMN';
   masterRecipientIds?: string;
   phoneColumnName?: string;
-  cronExpression: string;
+  schemaName?: string;
+  viewName?: string;
+  filterSchedule?: string;
+  filterKodeNotifikasi?: string;
+  filterKodeCabang?: string;
+  cronExpression?: string;
   maxRows: number;
   active: boolean;
   createdAt?: string;
@@ -60,71 +80,72 @@ interface TelegramLog {
   scheduleName?: string;
   botId?: string;
   botName?: string;
-  triggerType: string;
+  status: string;
   totalRows: number;
   messagesSent: number;
   messagesFailed: number;
-  status: string;
   details?: string;
-  createdAt?: string;
+  triggerType: string;
+  executedAt: string;
 }
 
 export const TelegramBotView: React.FC = () => {
   const { connections, showAlert } = useAppStore();
 
-  const [activeTab, setActiveTab] = useState<'editor' | 'scheduler' | 'contacts' | 'settings' | 'logs'>('editor');
+  // Top Level Navigation
+  // 'messages' = List View | 'create_edit' = Form View
+  const [viewMode, setViewMode] = useState<'list' | 'create_edit'>('list');
+  const [activeTab, setActiveTab] = useState<'messages' | 'contacts' | 'bots' | 'logs'>('messages');
 
-  // Data states
+  // Master Data
   const [bots, setBots] = useState<TelegramBot[]>([]);
   const [contacts, setContacts] = useState<TelegramContact[]>([]);
   const [schedules, setSchedules] = useState<TelegramSchedule[]>([]);
   const [logs, setLogs] = useState<TelegramLog[]>([]);
 
-  // Source View Mode vs Custom SQL Mode
-  const [sourceMode, setSourceMode] = useState<'VIEW' | 'CUSTOM_SQL'>('VIEW');
+  // Search & Filter in List View
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterBotId, setFilterBotId] = useState('ALL');
 
-  // Connection & Schema & View states
-  const [selectedBotId, setSelectedBotId] = useState<string>('');
-  const [selectedConnectionId, setSelectedConnectionId] = useState<string>('');
+  // Schema & Views
   const [schemas, setSchemas] = useState<string[]>([]);
-  const [selectedSchema, setSelectedSchema] = useState<string>('sch_erp_system');
   const [views, setViews] = useState<{ name: string; type: string }[]>([]);
-  const [selectedView, setSelectedView] = useState<string>('view_all_notifikasi');
 
-  // Filters for View
-  const [filterSchedule, setFilterSchedule] = useState<string>('ALL'); // ALL, Y, N
-  const [filterKodeNotifikasi, setFilterKodeNotifikasi] = useState<string>('');
-  const [filterKodeCabang, setFilterKodeCabang] = useState<string>('');
+  // ─────────────────────────────────────────────────────────────────────────────
+  // CREATE / EDIT FORM STATE
+  // ─────────────────────────────────────────────────────────────────────────────
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formBotId, setFormBotId] = useState('');
+  const [formConnectionId, setFormConnectionId] = useState('');
+  const [sourceMode, setSourceMode] = useState<'VIEW' | 'CUSTOM_SQL'>('VIEW');
+  const [formSchema, setFormSchema] = useState('sch_erp_system');
+  const [formView, setFormView] = useState('view_all_notifikasi');
+  const [filterSchedule, setFilterSchedule] = useState('ALL'); // 'ALL' | 'Y' | 'N'
+  const [filterKodeNotifikasi, setFilterKodeNotifikasi] = useState('');
+  const [filterKodeCabang, setFilterKodeCabang] = useState('');
+  const [formSqlQuery, setFormSqlQuery] = useState('');
+  const [formPhoneColumn, setFormPhoneColumn] = useState('user_hp');
+  const [formMaxRows, setFormMaxRows] = useState(50);
 
-  // SQL & Template states
-  const [sqlQuery, setSqlQuery] = useState<string>(
-    "SELECT kode_notifikasi, kode_cabang, no_tran, user_id, user_name, user_hp, pesan, schedule FROM sch_erp_system.view_all_notifikasi"
-  );
-  const [templateMessage, setTemplateMessage] = useState<string>('{{pesan}}');
-  const [recipientMode, setRecipientMode] = useState<'MASTER' | 'DYNAMIC_COLUMN'>('DYNAMIC_COLUMN');
-  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
-  const [phoneColumnName, setPhoneColumnName] = useState<string>('user_hp');
-  const [maxRows, setMaxRows] = useState<number>(50);
+  // Scheduler Options
+  const [isCronEnabled, setIsCronEnabled] = useState(false);
+  const [formCronExpression, setFormCronExpression] = useState('0 0 8 * * *'); // default 08:00 WIB
+  const [formActive, setFormActive] = useState(true);
 
-  // Preview & View Data states
+  // Preview & Run State
   const [previewRows, setPreviewRows] = useState<any[]>([]);
-  const [previewColumns, setPreviewColumns] = useState<string[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [sendingManual, setSendingManual] = useState(false);
-  const [senderMethod, setSenderMethod] = useState<'BOT_API' | 'MTPROTO_USER'>('BOT_API');
+  const [savingForm, setSavingForm] = useState(false);
+  const [runningAction, setRunningAction] = useState<string | null>(null);
 
-  // Modals
+  // Modals for Bots & Contacts
   const [isBotModalOpen, setIsBotModalOpen] = useState(false);
   const [editingBot, setEditingBot] = useState<Partial<TelegramBot> | null>(null);
-  const [testBotResult, setTestBotResult] = useState<{ success: boolean; message?: string; info?: any } | null>(null);
 
-  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  const [editingSchedule, setEditingSchedule] = useState<Partial<TelegramSchedule> | null>(null);
-
-  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
-  const [editingContact, setEditingContact] = useState<Partial<TelegramContact> | null>(null);
-
-  // Initial Load
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DATA FETCHING
+  // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     fetchBots();
     fetchContacts();
@@ -132,32 +153,30 @@ export const TelegramBotView: React.FC = () => {
     fetchLogs();
   }, []);
 
-  // Pick default connection (prefer DEV-POS if available)
+  // Pick default connection
   useEffect(() => {
-    if (connections.length > 0 && !selectedConnectionId) {
+    if (connections.length > 0 && !formConnectionId) {
       const devPos = connections.find(c => c.name.toLowerCase().includes('dev-pos') || c.database?.toLowerCase().includes('dev_pos'));
-      setSelectedConnectionId(devPos ? devPos.id : connections[0].id);
+      setFormConnectionId(devPos ? devPos.id : connections[0].id);
     }
   }, [connections]);
 
-  // Load schemas when selected connection changes
   useEffect(() => {
-    if (selectedConnectionId) {
-      loadSchemas(selectedConnectionId);
+    if (formConnectionId) {
+      loadSchemas(formConnectionId);
     }
-  }, [selectedConnectionId]);
+  }, [formConnectionId]);
 
-  // Load views/tables when schema changes
   useEffect(() => {
-    if (selectedConnectionId && selectedSchema) {
-      loadViews(selectedConnectionId, selectedSchema);
+    if (formConnectionId && formSchema) {
+      loadViews(formConnectionId, formSchema);
     }
-  }, [selectedConnectionId, selectedSchema]);
+  }, [formConnectionId, formSchema]);
 
-  // Automatically update SQL Query when in VIEW mode
+  // Synchronize SQL Query based on View & Filters
   useEffect(() => {
-    if (sourceMode === 'VIEW' && selectedSchema && selectedView) {
-      let q = `SELECT kode_notifikasi, kode_cabang, no_tran, user_id, user_name, user_hp, pesan, schedule FROM ${selectedSchema}.${selectedView} WHERE 1=1`;
+    if (sourceMode === 'VIEW' && formSchema && formView) {
+      let q = `SELECT kode_notifikasi, kode_cabang, no_tran, user_id, user_name, user_hp, pesan, schedule FROM ${formSchema}.${formView} WHERE 1=1`;
       if (filterSchedule === 'Y' || filterSchedule === 'N') {
         q += ` AND schedule = '${filterSchedule}'`;
       }
@@ -167,62 +186,26 @@ export const TelegramBotView: React.FC = () => {
       if (filterKodeCabang.trim()) {
         q += ` AND kode_cabang = '${filterKodeCabang.trim()}'`;
       }
-      setSqlQuery(q);
-      setPhoneColumnName('user_hp');
-      setRecipientMode('DYNAMIC_COLUMN');
+      setFormSqlQuery(q);
+      setFormPhoneColumn('user_hp');
     }
-  }, [sourceMode, selectedSchema, selectedView, filterSchedule, filterKodeNotifikasi, filterKodeCabang]);
-
-  const loadSchemas = async (connId: string) => {
-    try {
-      const res = await axios.get(`/api/connections/${connId}/schemas`);
-      if (Array.isArray(res.data)) {
-        setSchemas(res.data);
-        if (res.data.includes('sch_erp_system')) {
-          setSelectedSchema('sch_erp_system');
-        } else if (res.data.length > 0) {
-          setSelectedSchema(res.data[0]);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load schemas', e);
-    }
-  };
-
-  const loadViews = async (connId: string, schemaName: string) => {
-    try {
-      const res = await axios.get(`/api/connections/${connId}/schemas/${schemaName}/tables`);
-      if (Array.isArray(res.data)) {
-        const viewList = res.data.map(t => typeof t === 'string' ? { name: t, type: 'VIEW' } : t);
-        setViews(viewList);
-        const hasNotifView = viewList.some(v => v.name.toLowerCase().includes('view_all_notifikasi'));
-        if (hasNotifView) {
-          setSelectedView('view_all_notifikasi');
-        } else if (viewList.length > 0) {
-          setSelectedView(viewList[0].name);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load views', e);
-    }
-  };
+  }, [sourceMode, formSchema, formView, filterSchedule, filterKodeNotifikasi, filterKodeCabang]);
 
   const fetchBots = async () => {
     try {
       const res = await axios.get('/api/telegram/bots');
       setBots(res.data);
-      if (res.data.length > 0 && !selectedBotId) {
-        setSelectedBotId(res.data[0].id);
+      if (res.data.length > 0 && !formBotId) {
+        setFormBotId(res.data[0].id);
       }
     } catch (e) {
       console.error('Failed to fetch bots', e);
     }
   };
 
-  const fetchContacts = async (botId?: string) => {
+  const fetchContacts = async () => {
     try {
-      const url = botId ? `/api/telegram/contacts?botId=${botId}` : '/api/telegram/contacts';
-      const res = await axios.get(url);
+      const res = await axios.get('/api/telegram/contacts');
       setContacts(res.data);
     } catch (e) {
       console.error('Failed to fetch contacts', e);
@@ -247,439 +230,320 @@ export const TelegramBotView: React.FC = () => {
     }
   };
 
-  const activeBot = bots.find(b => b.id === selectedBotId);
-  const botContacts = contacts.filter(c => !selectedBotId || c.botId === selectedBotId);
+  const loadSchemas = async (connId: string) => {
+    try {
+      const res = await axios.get(`/api/connections/${connId}/schemas`);
+      if (Array.isArray(res.data)) {
+        setSchemas(res.data);
+        if (res.data.includes('sch_erp_system')) {
+          setFormSchema('sch_erp_system');
+        } else if (res.data.length > 0) {
+          setFormSchema(res.data[0]);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load schemas', e);
+    }
+  };
+
+  const loadViews = async (connId: string, schemaName: string) => {
+    try {
+      const res = await axios.get(`/api/connections/${connId}/schemas/${schemaName}/tables`);
+      if (Array.isArray(res.data)) {
+        const viewList = res.data.map(t => typeof t === 'string' ? { name: t, type: 'VIEW' } : t);
+        setViews(viewList);
+        const hasNotifView = viewList.some(v => v.name.toLowerCase().includes('view_all_notifikasi'));
+        if (hasNotifView) {
+          setFormView('view_all_notifikasi');
+        } else if (viewList.length > 0) {
+          setFormView(viewList[0].name);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load views', e);
+    }
+  };
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // PREVIEW DATA FROM VIEW / QUERY
+  // HANDLERS FOR CREATE / EDIT FORM
   // ─────────────────────────────────────────────────────────────────────────────
-  const handleLoadAndPreview = async () => {
-    if (!selectedConnectionId) {
-      showAlert({ title: 'Koneksi Belum Dipilih', message: 'Silakan pilih koneksi database terlebih dahulu.', type: 'warning' });
+  const handleOpenCreate = () => {
+    setEditingId(null);
+    setFormName('');
+    if (bots.length > 0) setFormBotId(bots[0].id);
+    setSourceMode('VIEW');
+    setFilterSchedule('ALL');
+    setFilterKodeNotifikasi('');
+    setFilterKodeCabang('');
+    setIsCronEnabled(false);
+    setFormCronExpression('0 0 8 * * *');
+    setFormMaxRows(50);
+    setFormActive(true);
+    setPreviewRows([]);
+    setViewMode('create_edit');
+  };
+
+  const handleOpenEdit = (s: TelegramSchedule) => {
+    setEditingId(s.id);
+    setFormName(s.name);
+    setFormBotId(s.botId);
+    setFormConnectionId(s.connectionId);
+    setFormSqlQuery(s.sqlQuery);
+    setFormPhoneColumn(s.phoneColumnName || 'user_hp');
+    setFormMaxRows(s.maxRows || 50);
+    setFormActive(s.active);
+
+    if (s.viewName) {
+      setSourceMode('VIEW');
+      setFormSchema(s.schemaName || 'sch_erp_system');
+      setFormView(s.viewName);
+      setFilterSchedule(s.filterSchedule || 'ALL');
+      setFilterKodeNotifikasi(s.filterKodeNotifikasi || '');
+      setFilterKodeCabang(s.filterKodeCabang || '');
+    } else {
+      setSourceMode('CUSTOM_SQL');
+    }
+
+    if (s.cronExpression && s.cronExpression.trim()) {
+      setIsCronEnabled(true);
+      setFormCronExpression(s.cronExpression);
+    } else {
+      setIsCronEnabled(false);
+      setFormCronExpression('0 0 8 * * *');
+    }
+
+    setPreviewRows([]);
+    setViewMode('create_edit');
+  };
+
+  const handlePreviewData = async () => {
+    if (!formConnectionId || !formSqlQuery) {
+      showAlert({ title: 'Parameter Belum Siap', message: 'Pilih database dan pastikan query/view sudah dipilih.', type: 'warning' });
       return;
     }
     setPreviewLoading(true);
     try {
       const res = await axios.post('/api/telegram/preview', {
-        connectionId: selectedConnectionId,
-        sqlQuery,
-        templateMessage
+        connectionId: formConnectionId,
+        sqlQuery: formSqlQuery,
+        templateMessage: '{{pesan}}'
       });
 
-      if (res.data.columns) {
-        setPreviewColumns(res.data.columns);
-      }
       if (res.data.sampleRow) {
         setPreviewRows([res.data.sampleRow]);
+        showAlert({
+          title: 'Data Berhasil Dimuat',
+          message: `Berhasil mengambil preview data dari view. Kolom pesan & penerima siap dikirim.`,
+          type: 'success'
+        });
       } else {
         setPreviewRows([]);
+        showAlert({
+          title: 'Data Kosong',
+          message: 'Query view berhasil dijalankan, namun saat ini tidak ada baris data (0 rows).',
+          type: 'info'
+        });
       }
-
-      showAlert({
-        title: 'Data Berhasil Dimuat',
-        message: res.data.rowCount > 0 ? `Ditemukan baris data dari view ${selectedView}.` : 'Query berhasil dijalankan, tetapi data saat ini kosong (0 baris).',
-        type: res.data.rowCount > 0 ? 'success' : 'info'
-      });
     } catch (err: any) {
-      showAlert({
-        title: 'Gagal Memuat Data',
-        message: err.response?.data?.message || err.message,
-        type: 'error'
-      });
+      showAlert({ title: 'Gagal Memuat Data', message: err.response?.data?.message || err.message, type: 'error' });
     } finally {
       setPreviewLoading(false);
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // SEND MANUAL (SATU PER SATU)
-  // ─────────────────────────────────────────────────────────────────────────────
-  const handleSendManual = async () => {
-    if (!selectedBotId) {
-      showAlert({ title: 'Bot Belum Dipilih', message: 'Silakan pilih bot Telegram pengirim.', type: 'warning' });
+  const handleSaveMessage = async () => {
+    if (!formName.trim()) {
+      showAlert({ title: 'Nama Wajib Diisi', message: 'Berikan nama atau judul untuk pesan notifikasi ini.', type: 'warning' });
       return;
     }
-    if (!selectedConnectionId) {
-      showAlert({ title: 'Koneksi Belum Dipilih', message: 'Silakan pilih koneksi database.', type: 'warning' });
+    if (!formBotId) {
+      showAlert({ title: 'Bot Pengirim Kosong', message: 'Silakan pilih Bot Telegram pengirim.', type: 'warning' });
+      return;
+    }
+    if (!formConnectionId) {
+      showAlert({ title: 'Koneksi Database Kosong', message: 'Silakan pilih koneksi database sumber.', type: 'warning' });
       return;
     }
 
-    setSendingManual(true);
+    setSavingForm(true);
     try {
-      const payload = {
-        botId: selectedBotId,
-        connectionId: selectedConnectionId,
-        sqlQuery,
-        templateMessage,
-        recipientMode,
-        masterRecipientIds: recipientMode === 'MASTER' ? selectedContactIds.join(',') : null,
-        phoneColumnName: recipientMode === 'DYNAMIC_COLUMN' ? phoneColumnName : null,
-        maxRows
+      const payload: Partial<TelegramSchedule> = {
+        name: formName.trim(),
+        botId: formBotId,
+        connectionId: formConnectionId,
+        sqlQuery: formSqlQuery,
+        templateMessage: '{{pesan}}', // selalu kirim isi asli kolom pesan dari view
+        recipientMode: 'DYNAMIC_COLUMN',
+        phoneColumnName: formPhoneColumn || 'user_hp',
+        schemaName: sourceMode === 'VIEW' ? formSchema : undefined,
+        viewName: sourceMode === 'VIEW' ? formView : undefined,
+        filterSchedule: sourceMode === 'VIEW' ? filterSchedule : undefined,
+        filterKodeNotifikasi: sourceMode === 'VIEW' ? filterKodeNotifikasi.trim() : undefined,
+        filterKodeCabang: sourceMode === 'VIEW' ? filterKodeCabang.trim() : undefined,
+        cronExpression: isCronEnabled ? formCronExpression.trim() : '',
+        maxRows: formMaxRows,
+        active: formActive
       };
 
-      const res = await axios.post('/api/telegram/send-manual', payload);
-      const log = res.data;
-
-      if (log.status === 'SUCCESS') {
-        showAlert({
-          title: 'Pengiriman Berhasil!',
-          message: `Berhasil mengirim ${log.messagesSent} pesan untuk ${log.totalRows} baris data ke Telegram.`,
-          type: 'success'
-        });
-      } else if (log.status === 'PARTIAL') {
-        showAlert({
-          title: 'Terkirim Sebagian',
-          message: `Terkirim: ${log.messagesSent}, Gagal: ${log.messagesFailed}. ${log.details || ''}`,
-          type: 'warning'
-        });
+      if (editingId) {
+        await axios.put(`/api/telegram/schedules/${editingId}`, payload);
+        showAlert({ title: 'Berhasil Diperbarui', message: 'Pesan notifikasi berhasil diperbarui.', type: 'success' });
       } else {
-        showAlert({
-          title: 'Pengiriman Gagal / Belum Terdaftar',
-          message: log.details || 'Gagal mengirim pesan.',
-          type: 'error'
-        });
+        await axios.post('/api/telegram/schedules', payload);
+        showAlert({ title: 'Berhasil Dibuat', message: 'Pesan notifikasi baru berhasil disimpan.', type: 'success' });
       }
-      fetchLogs();
+
+      fetchSchedules();
+      setViewMode('list');
     } catch (err: any) {
-      showAlert({
-        title: 'Error Pengiriman',
-        message: err.response?.data?.message || err.message,
-        type: 'error'
-      });
+      showAlert({ title: 'Gagal Menyimpan', message: err.response?.data?.message || err.message, type: 'error' });
     } finally {
-      setSendingManual(false);
+      setSavingForm(false);
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // OPEN SCHEDULE FROM VIEW
-  // ─────────────────────────────────────────────────────────────────────────────
-  const handleOpenScheduleFromEditor = () => {
-    const defaultScheduleName = sourceMode === 'VIEW'
-      ? `Jadwal View ${selectedView} (${filterSchedule === 'Y' ? 'Terjadwal' : filterSchedule === 'N' ? 'Realtime' : 'All'})`
-      : `Jadwal Broadcast ${activeBot?.name || 'Telegram'}`;
-
-    setEditingSchedule({
-      name: defaultScheduleName,
-      botId: selectedBotId,
-      connectionId: selectedConnectionId,
-      schemaName: selectedSchema,
-      viewName: selectedView,
-      filterSchedule,
-      filterKodeNotifikasi,
-      filterKodeCabang,
-      sqlQuery,
-      templateMessage,
-      recipientMode,
-      masterRecipientIds: selectedContactIds.join(','),
-      phoneColumnName,
-      cronExpression: '0 0 8 * * ?',
-      maxRows,
-      active: true
-    });
-    setIsScheduleModalOpen(true);
-  };
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // SAVE SCHEDULE
-  // ─────────────────────────────────────────────────────────────────────────────
-  const handleSaveSchedule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingSchedule?.name || !editingSchedule?.botId || !editingSchedule?.connectionId || !editingSchedule?.cronExpression) {
-      showAlert({ title: 'Input Kurang', message: 'Semua field konfigurasi jadwal wajib diisi.', type: 'warning' });
-      return;
-    }
+  const handleRunNow = async (scheduleId: string) => {
+    setRunningAction(scheduleId);
     try {
-      if (editingSchedule.id) {
-        await axios.put(`/api/telegram/schedules/${editingSchedule.id}`, editingSchedule);
-        showAlert({ title: 'Jadwal Diperbarui', message: 'Jadwal berhasil diperbarui.', type: 'success' });
-      } else {
-        await axios.post('/api/telegram/schedules', editingSchedule);
-        showAlert({ title: 'Jadwal Dibuat', message: 'Jadwal baru berhasil didaftarkan ke background scheduler.', type: 'success' });
-      }
-      setIsScheduleModalOpen(false);
-      setEditingSchedule(null);
-      fetchSchedules();
-    } catch (err: any) {
-      showAlert({ title: 'Gagal Menyimpan Jadwal', message: err.response?.data?.message || err.message, type: 'error' });
-    }
-  };
-
-  const handleToggleSchedule = async (schedule: TelegramSchedule) => {
-    try {
-      await axios.put(`/api/telegram/schedules/${schedule.id}/toggle`, { active: !schedule.active });
-      fetchSchedules();
-    } catch (err: any) {
-      showAlert({ title: 'Gagal Ubah Status', message: err.message, type: 'error' });
-    }
-  };
-
-  const handleRunScheduleNow = async (scheduleId: string) => {
-    try {
-      showAlert({ title: 'Memulai Tugas', message: 'Menjalankan jadwal Telegram sekarang...', type: 'info' });
       const res = await axios.post(`/api/telegram/schedules/${scheduleId}/run-now`);
       fetchSchedules();
       fetchLogs();
+      const log = res.data;
       showAlert({
-        title: 'Tugas Selesai',
-        message: `Status: ${res.data.status}. Pesan terkirim: ${res.data.messagesSent || 0}`,
-        type: res.data.status === 'SUCCESS' ? 'success' : 'warning'
+        title: log.status === 'SUCCESS' ? 'Pengiriman Selesai' : 'Pengiriman Parsial / Selesai',
+        message: `Terkirim: ${log.messagesSent || 0}, Gagal: ${log.messagesFailed || 0}. ${log.details || ''}`,
+        type: log.status === 'SUCCESS' ? 'success' : (log.status === 'PARTIAL' ? 'warning' : 'error')
       });
     } catch (err: any) {
-      showAlert({ title: 'Gagal Menjalankan', message: err.message, type: 'error' });
+      showAlert({ title: 'Gagal Mengirim', message: err.message, type: 'error' });
+    } finally {
+      setRunningAction(null);
     }
   };
 
-  const handleDeleteSchedule = async (scheduleId: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus jadwal ini?')) return;
+  const handleDeleteSchedule = async (scheduleId: string, name: string) => {
+    if (!confirm(`Hapus konfigurasi pesan "${name}"?`)) return;
     try {
       await axios.delete(`/api/telegram/schedules/${scheduleId}`);
       fetchSchedules();
+      showAlert({ title: 'Dihapus', message: 'Pesan notifikasi berhasil dihapus.', type: 'info' });
     } catch (err: any) {
       showAlert({ title: 'Gagal Menghapus', message: err.message, type: 'error' });
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // SAVE BOT CONFIG
-  // ─────────────────────────────────────────────────────────────────────────────
+  // Bot Management Handlers
   const handleSaveBot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingBot?.name || !editingBot?.botToken) {
-      showAlert({ title: 'Input Tidak Lengkap', message: 'Nama bot dan Token Bot wajib diisi.', type: 'warning' });
+      showAlert({ title: 'Input Kurang', message: 'Nama bot dan Token wajib diisi.', type: 'warning' });
       return;
     }
     try {
       if (editingBot.id) {
         await axios.put(`/api/telegram/bots/${editingBot.id}`, editingBot);
-        showAlert({ title: 'Bot Diperbarui', message: 'Konfigurasi bot berhasil disimpan.', type: 'success' });
       } else {
-        const res = await axios.post('/api/telegram/bots', editingBot);
-        setSelectedBotId(res.data.id);
-        showAlert({ title: 'Bot Ditambahkan', message: `Bot ${editingBot.name} berhasil didaftarkan.`, type: 'success' });
+        await axios.post('/api/telegram/bots', editingBot);
       }
       setIsBotModalOpen(false);
       setEditingBot(null);
-      setTestBotResult(null);
       fetchBots();
+      showAlert({ title: 'Berhasil', message: 'Bot Telegram berhasil disimpan.', type: 'success' });
     } catch (err: any) {
-      showAlert({ title: 'Gagal Menyimpan Bot', message: err.response?.data?.message || err.message, type: 'error' });
+      showAlert({ title: 'Gagal', message: err.response?.data?.message || err.message, type: 'error' });
     }
   };
 
-  const handleTestBotToken = async () => {
-    if (!editingBot?.botToken) {
-      showAlert({ title: 'Token Kosong', message: 'Masukkan Token Bot terlebih dahulu.', type: 'warning' });
-      return;
-    }
-    try {
-      const res = await axios.post('/api/telegram/bots/test', { botToken: editingBot.botToken });
-      setTestBotResult(res.data);
-      if (res.data.info?.username) {
-        setEditingBot(prev => ({ ...prev, botUsername: res.data.info.username }));
-      }
-    } catch (err: any) {
-      setTestBotResult({ success: false, message: err.response?.data?.message || 'Token tidak valid' });
-    }
-  };
+  // Filtered list
+  const filteredSchedules = schedules.filter(s => {
+    const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.viewName && s.viewName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (s.sqlQuery && s.sqlQuery.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesBot = filterBotId === 'ALL' || s.botId === filterBotId;
+    return matchesSearch && matchesBot;
+  });
 
-  return (
-    <div className="h-full flex flex-col bg-bg-main text-text-main overflow-hidden">
-      {/* Top Banner Navigation */}
-      <div className="bg-bg-panel border-b border-border-main px-4 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20">
-            <Send className="w-5 h-5 -rotate-12 translate-x-0.5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold bg-gradient-to-r from-sky-400 to-blue-500 bg-clip-text text-transparent">
-                Bot Telegram Notifikasi & Broadcast
-              </h2>
-              <span className="px-2 py-0.5 text-[11px] font-semibold bg-sky-500/10 text-sky-400 rounded-full border border-sky-500/20">
-                View-Based Integration
-              </span>
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RENDER: LAYAR 2 (CREATE / EDIT FORM)
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (viewMode === 'create_edit') {
+    return (
+      <div className="flex flex-col h-full bg-bg-main text-text-main overflow-y-auto">
+        {/* Top Header Bar */}
+        <div className="border-b border-border-main bg-bg-panel px-6 py-4 flex items-center justify-between sticky top-0 z-20">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className="p-2 hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Kembali ke Daftar
+            </button>
+            <div className="h-4 w-px bg-border-main" />
+            <div>
+              <h1 className="text-base font-bold flex items-center gap-2">
+                <Bot className="w-5 h-5 text-sky-400" />
+                {editingId ? `Edit Pesan: ${formName}` : 'Buat Pesan Notifikasi Baru'}
+              </h1>
+              <p className="text-xs text-text-muted">
+                Pesan akan dibaca langsung dari data View dan dikirimkan satu per satu ke nomor HP penerima.
+              </p>
             </div>
-            <p className="text-xs text-text-muted">
-              Baca otomatis dari View (misal: <code>sch_erp_system.view_all_notifikasi</code>), kirim pesan per baris ke nomor tujuan.
-            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-text-main border border-border-main hover:bg-bg-hover transition-colors"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveMessage}
+              disabled={savingForm}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm shadow-sky-500/20 transition-all disabled:opacity-50"
+            >
+              {savingForm ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {editingId ? 'Simpan Perubahan' : 'Simpan Pesan'}
+            </button>
           </div>
         </div>
 
-        {/* Tab switcher */}
-        <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-lg border border-border-main">
-          <button
-            onClick={() => setActiveTab('editor')}
-            className={clsx(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              activeTab === 'editor'
-                ? "bg-sky-500 text-white shadow-sm"
-                : "text-text-muted hover:text-text-main hover:bg-bg-hover"
-            )}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            Kirim Pesan (View)
-          </button>
-          <button
-            onClick={() => setActiveTab('scheduler')}
-            className={clsx(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              activeTab === 'scheduler'
-                ? "bg-sky-500 text-white shadow-sm"
-                : "text-text-muted hover:text-text-main hover:bg-bg-hover"
-            )}
-          >
-            <CalendarClock className="w-3.5 h-3.5" />
-            Jadwal ({schedules.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('contacts')}
-            className={clsx(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              activeTab === 'contacts'
-                ? "bg-sky-500 text-white shadow-sm"
-                : "text-text-muted hover:text-text-main hover:bg-bg-hover"
-            )}
-          >
-            <Users className="w-3.5 h-3.5" />
-            Master Kontak ({contacts.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={clsx(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              activeTab === 'settings'
-                ? "bg-sky-500 text-white shadow-sm"
-                : "text-text-muted hover:text-text-main hover:bg-bg-hover"
-            )}
-          >
-            <Bot className="w-3.5 h-3.5" />
-            Daftar Bot ({bots.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('logs')}
-            className={clsx(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              activeTab === 'logs'
-                ? "bg-sky-500 text-white shadow-sm"
-                : "text-text-muted hover:text-text-main hover:bg-bg-hover"
-            )}
-          >
-            <History className="w-3.5 h-3.5" />
-            Riwayat Log ({logs.length})
-          </button>
-        </div>
-      </div>
-
-      {/* Main Tab Content */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-        {/* =========================================================================
-            TAB 1: KIRIM PESAN DARI VIEW (EDITOR)
-        ========================================================================= */}
-        {activeTab === 'editor' && (
-          <div className="space-y-6">
-            {/* Top Config Card */}
+        {/* Form Body: 2 Columns */}
+        <div className="p-6 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Kolom Kiri: Form Konfigurasi (7 cols) */}
+          <div className="lg:col-span-7 space-y-5">
+            {/* Card 1: Informasi Dasar & Bot */}
             <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-border-main pb-3">
-                <div className="flex items-center gap-2">
-                  <Database className="w-4 h-4 text-sky-400" />
-                  <h3 className="text-sm font-semibold">
-                    1. Pilih Sumber View & Bot Telegram
-                  </h3>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                <Info className="w-4 h-4" />
+                1. Informasi Dasar & Bot
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-medium text-text-muted mb-1.5">
+                    Nama / Judul Notifikasi *
+                  </label>
+                  <input
+                    type="text"
+                    value={formName}
+                    onChange={e => setFormName(e.target.value)}
+                    placeholder="misal: Laporan Harian Tutup Periode ERP"
+                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                  />
                 </div>
 
-                {/* Switcher: Mode View vs Custom SQL */}
-                <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-lg border border-border-main text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setSourceMode('VIEW')}
-                    className={clsx(
-                      "px-2.5 py-1 rounded font-medium transition-colors",
-                      sourceMode === 'VIEW' ? "bg-sky-500 text-white" : "text-text-muted hover:text-text-main"
-                    )}
-                  >
-                    Mode View (Rekomendasi)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSourceMode('CUSTOM_SQL')}
-                    className={clsx(
-                      "px-2.5 py-1 rounded font-medium transition-colors",
-                      sourceMode === 'CUSTOM_SQL' ? "bg-sky-500 text-white" : "text-text-muted hover:text-text-main"
-                    )}
-                  >
-                    Mode Custom SQL
-                  </button>
-                </div>
-              </div>
-
-              {/* Selector Metode Pengiriman: Bot API vs Akun Pribadi (Telethon) */}
-              <div className="bg-bg-editor/40 border border-border-main/60 rounded-xl p-3 space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-text-muted flex items-center gap-1.5">
-                    ⚙️ Jalur Pengiriman:
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSenderMethod('BOT_API')}
-                      className={clsx(
-                        "px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all",
-                        senderMethod === 'BOT_API'
-                          ? "bg-sky-500 text-white shadow-sm shadow-sky-500/20 font-semibold"
-                          : "bg-bg-panel text-text-muted hover:text-text-main border border-border-main"
-                      )}
-                    >
-                      <Bot className="w-3.5 h-3.5" />
-                      Bot Telegram Resmi (Anti-Banned & Stabil)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSenderMethod('MTPROTO_USER')}
-                      className={clsx(
-                        "px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all",
-                        senderMethod === 'MTPROTO_USER'
-                          ? "bg-amber-500 text-white shadow-sm shadow-amber-500/20 font-semibold"
-                          : "bg-bg-panel text-text-muted hover:text-text-main border border-border-main"
-                      )}
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      Akun Pribadi / MTProto (Telethon)
-                    </button>
-                  </div>
-                </div>
-
-                {senderMethod === 'BOT_API' ? (
-                  <div className="text-[11px] text-text-muted flex items-center gap-1.5 bg-sky-500/10 border border-sky-500/20 rounded-lg px-3 py-2 text-sky-300">
-                    <span className="font-semibold text-sky-400">💡 Mode Bot API:</span>
-                    Pesan dikirim melalui Bot Telegram Resmi. Mengirim ke nomor HP penerima secara otomatis jika penerima sudah klik <code>/start</code> 1x pada bot. Aman 100% dari banned akun Telegram.
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-amber-300/90 flex flex-col gap-1 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
-                    <div className="font-semibold text-amber-400 flex items-center gap-1.5">
-                      ⚠️ Mode Akun Pribadi (Telethon / MTProto Client):
-                    </div>
-                    <div>
-                      Mode ini mengirim pesan seolah-olah dari akun Telegram pribadi Anda langsung ke nomor HP kontak.
-                      <strong> Perhatian:</strong> Telegram membatasi pengiriman pesan langsung dari akun pribadi ke banyak nomor baru tanpa riwayat obrolan (risiko batasan PeerFlood / Akun Spambot). Untuk notifikasi otomatis sistem ERP harian, disarankan tetap menggunakan <strong>Bot Telegram Resmi</strong>.
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Grid 4 Dropdowns */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* 1. Bot Telegram */}
                 <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">
-                    🤖 Bot Telegram Pengirim *
+                  <label className="block text-xs font-medium text-text-muted mb-1.5">
+                    Bot Telegram Pengirim *
                   </label>
                   <select
-                    value={selectedBotId}
-                    onChange={e => {
-                      setSelectedBotId(e.target.value);
-                      fetchContacts(e.target.value);
-                    }}
+                    value={formBotId}
+                    onChange={e => setFormBotId(e.target.value)}
                     className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
                   >
                     {bots.map(b => (
@@ -687,18 +551,17 @@ export const TelegramBotView: React.FC = () => {
                         {b.name} {b.botUsername ? `(@${b.botUsername})` : ''}
                       </option>
                     ))}
-                    {bots.length === 0 && <option value="">(Belum ada bot)</option>}
+                    {bots.length === 0 && <option value="">(Belum ada bot terdaftar)</option>}
                   </select>
                 </div>
 
-                {/* 2. Database Connection */}
                 <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">
-                    🗄️ Database Sumber *
+                  <label className="block text-xs font-medium text-text-muted mb-1.5">
+                    Database Sumber *
                   </label>
                   <select
-                    value={selectedConnectionId}
-                    onChange={e => setSelectedConnectionId(e.target.value)}
+                    value={formConnectionId}
+                    onChange={e => setFormConnectionId(e.target.value)}
                     className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
                   >
                     {connections.map(c => (
@@ -708,412 +571,539 @@ export const TelegramBotView: React.FC = () => {
                     ))}
                   </select>
                 </div>
+              </div>
+            </div>
 
-                {/* 3. Schema */}
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">
-                    📁 Schema Database *
-                  </label>
-                  <select
-                    value={selectedSchema}
-                    onChange={e => setSelectedSchema(e.target.value)}
-                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
-                  >
-                    {schemas.map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                    {schemas.length === 0 && <option value="sch_erp_system">sch_erp_system</option>}
-                  </select>
-                </div>
+            {/* Card 2: Sumber Data (View vs Custom SQL) */}
+            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-border-main pb-3">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                  <Database className="w-4 h-4" />
+                  2. Sumber Data & Filter
+                </h2>
 
-                {/* 4. View */}
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">
-                    📊 View Notifikasi *
-                  </label>
-                  <select
-                    value={selectedView}
-                    onChange={e => setSelectedView(e.target.value)}
-                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-lg border border-border-main text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSourceMode('VIEW')}
+                    className={clsx(
+                      "px-3 py-1 rounded-md font-medium transition-colors",
+                      sourceMode === 'VIEW' ? "bg-sky-500 text-white shadow-sm" : "text-text-muted hover:text-text-main"
+                    )}
                   >
-                    {views.map(v => (
-                      <option key={v.name} value={v.name}>{v.name}</option>
-                    ))}
-                    {views.length === 0 && <option value="view_all_notifikasi">view_all_notifikasi</option>}
-                  </select>
+                    📊 Dari View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSourceMode('CUSTOM_SQL')}
+                    className={clsx(
+                      "px-3 py-1 rounded-md font-medium transition-colors",
+                      sourceMode === 'CUSTOM_SQL' ? "bg-sky-500 text-white shadow-sm" : "text-text-muted hover:text-text-main"
+                    )}
+                  >
+                    ⚡ Custom SQL
+                  </button>
                 </div>
               </div>
 
-              {/* View Filters (Only shown when sourceMode === 'VIEW') */}
-              {sourceMode === 'VIEW' && (
-                <div className="bg-bg-editor/60 border border-border-main rounded-xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-sky-400 flex items-center gap-1.5">
-                      <Filter className="w-3.5 h-3.5" />
-                      Filter View Notifikasi
-                    </span>
-                    <span className="text-[11px] text-text-muted">
-                      Kolom View: <code>user_hp</code>, <code>user_name</code>, <code>pesan</code>, <code>schedule</code>
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {/* Filter Schedule */}
+              {sourceMode === 'VIEW' ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[11px] font-medium text-text-muted mb-1">
-                        Jenis Notifikasi (Field <code>schedule</code>):
+                      <label className="block text-xs font-medium text-text-muted mb-1.5">
+                        Schema Database
                       </label>
                       <select
-                        value={filterSchedule}
-                        onChange={e => setFilterSchedule(e.target.value)}
-                        className="w-full bg-bg-panel border border-border-main rounded-lg px-2.5 py-1.5 text-xs text-text-main focus:outline-none"
+                        value={formSchema}
+                        onChange={e => setFormSchema(e.target.value)}
+                        className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
                       >
-                        <option value="ALL">Semua Notifikasi (Schedule = 'Y' & 'N')</option>
-                        <option value="Y">Hanya Terjadwal / Periodic Report (Schedule = 'Y')</option>
-                        <option value="N">Hanya Real-Time / Event Alert (Schedule = 'N')</option>
+                        {schemas.map(s => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                        {schemas.length === 0 && <option value="sch_erp_system">sch_erp_system</option>}
                       </select>
-                      <span className="text-[10px] text-text-muted block mt-0.5">
-                        * 'Y' = Daily Report / Reminder Tutup Periode. 'N' = Berhasil Tutup Periode / Event Instan.
-                      </span>
                     </div>
 
-                    {/* Filter Kode Notifikasi */}
                     <div>
-                      <label className="block text-[11px] font-medium text-text-muted mb-1">
-                        Filter Kode Notifikasi (Opsional):
+                      <label className="block text-xs font-medium text-text-muted mb-1.5">
+                        View Notifikasi
                       </label>
-                      <input
-                        type="text"
-                        value={filterKodeNotifikasi}
-                        onChange={e => setFilterKodeNotifikasi(e.target.value)}
-                        placeholder="misal: DAILY-REPORT-SALES, INFO-TUTUP-INVENTORY"
-                        className="w-full bg-bg-panel border border-border-main rounded-lg px-2.5 py-1.5 text-xs text-text-main focus:outline-none"
-                      />
-                      <span className="text-[10px] text-text-muted block mt-0.5">
-                        Kosongkan jika ingin menyertakan semua kode notifikasi.
-                      </span>
+                      <select
+                        value={formView}
+                        onChange={e => setFormView(e.target.value)}
+                        className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                      >
+                        {views.map(v => (
+                          <option key={v.name} value={v.name}>{v.name}</option>
+                        ))}
+                        {views.length === 0 && <option value="view_all_notifikasi">view_all_notifikasi</option>}
+                      </select>
                     </div>
+                  </div>
 
-                    {/* Filter Kode Cabang */}
-                    <div>
-                      <label className="block text-[11px] font-medium text-text-muted mb-1">
-                        Filter Kode Cabang (Opsional):
-                      </label>
-                      <input
-                        type="text"
-                        value={filterKodeCabang}
-                        onChange={e => setFilterKodeCabang(e.target.value)}
-                        placeholder="misal: P001, P002, MBI"
-                        className="w-full bg-bg-panel border border-border-main rounded-lg px-2.5 py-1.5 text-xs text-text-main focus:outline-none"
-                      />
-                      <span className="text-[10px] text-text-muted block mt-0.5">
-                        Kosongkan untuk mengambil dari seluruh cabang.
-                      </span>
+                  {/* Filter View Card */}
+                  <div className="bg-bg-editor/50 border border-border-main rounded-lg p-3.5 space-y-3">
+                    <span className="text-xs font-semibold text-text-main flex items-center gap-1.5">
+                      <Filter className="w-3.5 h-3.5 text-sky-400" />
+                      Filter Cepat Baris Data
+                    </span>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[11px] text-text-muted mb-1.5">
+                          Tipe Jadwal (Field <code>schedule</code>):
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          {[
+                            { id: 'ALL', label: 'Semua Notifikasi' },
+                            { id: 'Y', label: 'Terjadwal / Laporan (Y)' },
+                            { id: 'N', label: 'Realtime / Alert (N)' }
+                          ].map(pill => (
+                            <button
+                              key={pill.id}
+                              type="button"
+                              onClick={() => setFilterSchedule(pill.id)}
+                              className={clsx(
+                                "px-2.5 py-1 rounded text-xs transition-colors",
+                                filterSchedule === pill.id
+                                  ? "bg-sky-500 text-white font-medium"
+                                  : "bg-bg-panel text-text-muted hover:text-text-main border border-border-main"
+                              )}
+                            >
+                              {pill.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] text-text-muted mb-1">
+                            Filter Kode Notifikasi (Opsional):
+                          </label>
+                          <input
+                            type="text"
+                            value={filterKodeNotifikasi}
+                            onChange={e => setFilterKodeNotifikasi(e.target.value)}
+                            placeholder="misal: DAILY-REPORT-SALES"
+                            className="w-full bg-bg-panel border border-border-main rounded px-2.5 py-1.5 text-xs text-text-main focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] text-text-muted mb-1">
+                            Filter Kode Cabang (Opsional):
+                          </label>
+                          <input
+                            type="text"
+                            value={filterKodeCabang}
+                            onChange={e => setFilterKodeCabang(e.target.value)}
+                            placeholder="misal: P001, MBI, SSI"
+                            className="w-full bg-bg-panel border border-border-main rounded px-2.5 py-1.5 text-xs text-text-main focus:outline-none"
+                          />
+                        </div>
+                      </div>
                     </div>
+                  </div>
+
+                  <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>
+                      <b>Otomatis:</b> Isi pesan dibaca langsung dari kolom <code>pesan</code>, dan nomor tujuan dibaca dari <code>user_hp</code>.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-text-muted mb-1">
+                      Query SQL Kustom *
+                    </label>
+                    <textarea
+                      rows={5}
+                      value={formSqlQuery}
+                      onChange={e => setFormSqlQuery(e.target.value)}
+                      placeholder="SELECT user_name, user_hp, pesan FROM your_table"
+                      className="w-full font-mono text-xs bg-bg-editor border border-border-main rounded-lg p-3 text-text-main focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-text-muted mb-1">
+                      Nama Kolom Nomor HP Penerima *
+                    </label>
+                    <input
+                      type="text"
+                      value={formPhoneColumn}
+                      onChange={e => setFormPhoneColumn(e.target.value)}
+                      placeholder="user_hp"
+                      className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none"
+                    />
                   </div>
                 </div>
               )}
-
-              {/* Custom SQL Box if sourceMode === 'CUSTOM_SQL' */}
-              {sourceMode === 'CUSTOM_SQL' && (
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">
-                    Ketik Query SQL Kustom:
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={sqlQuery}
-                    onChange={e => setSqlQuery(e.target.value)}
-                    className="w-full font-mono text-xs bg-bg-editor border border-border-main rounded-lg p-3 text-text-main focus:outline-none"
-                  />
-                </div>
-              )}
-
-              {/* Load & Preview Button */}
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-xs text-text-muted">
-                  Query Aktif: <code className="text-sky-400 font-mono text-[11px]">{sqlQuery.substring(0, 70)}...</code>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleLoadAndPreview}
-                  disabled={previewLoading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs font-semibold rounded-lg border border-sky-500/30 transition-colors"
-                >
-                  {previewLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-                  Muat Data & Preview View
-                </button>
-              </div>
             </div>
 
-            {/* Bottom 2 Columns: Table Preview & Message Dispatcher */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column: Data Rows Preview (7 cols) */}
-              <div className="lg:col-span-7 bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-border-main pb-3">
-                  <h3 className="text-sm font-semibold flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-sky-400" />
-                    2. Data yang Siap Dikirim dari View
-                  </h3>
-                  <span className="text-xs text-text-muted">
-                    {previewRows.length > 0 ? `Menampilkan ${previewRows.length} contoh baris` : 'Belum memuat data'}
-                  </span>
+            {/* Card 3: Jadwal Otomatis (Cron) */}
+            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" />
+                    3. Jadwal Pengiriman Otomatis (Opsional)
+                  </h2>
+                  <p className="text-[11px] text-text-muted">
+                    Jika diaktifkan, server akan otomatis mengirimkan pesan sesuai waktu yang ditentukan.
+                  </p>
                 </div>
 
-                {previewRows.length > 0 ? (
-                  <div className="space-y-3">
-                    {previewRows.map((row, idx) => (
-                      <div key={idx} className="bg-bg-editor border border-border-main rounded-lg p-3.5 space-y-2 text-xs">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                              {row.kode_notifikasi || 'NOTIF'}
-                            </span>
-                            <span className="font-semibold text-text-main">
-                              Cabang: {row.kode_cabang || '-'}
-                            </span>
-                          </div>
-                          <span className={clsx(
-                            "px-2 py-0.5 rounded text-[10px] font-semibold",
-                            row.schedule === 'Y' ? "bg-purple-500/10 text-purple-400" : "bg-emerald-500/10 text-emerald-400"
-                          )}>
-                            Schedule: {row.schedule === 'Y' ? 'Y (Terjadwal)' : 'N (Realtime)'}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-[11px] text-text-muted">
-                          <div>
-                            Penerima: <b className="text-text-main">{row.user_name || '-'}</b>
-                          </div>
-                          <div>
-                            Nomor HP: <b className="text-sky-400 font-mono">📱 {row.user_hp || '-'}</b>
-                          </div>
-                        </div>
-
-                        <div className="p-2.5 bg-bg-panel rounded border border-border-main font-mono text-[11px] text-text-main whitespace-pre-wrap max-h-40 overflow-y-auto">
-                          {row.pesan || '-'}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-12 text-center text-xs text-text-muted space-y-2">
-                    <Eye className="w-8 h-8 text-text-muted/40 mx-auto" />
-                    <p>Klik tombol <b>"Muat Data & Preview View"</b> di atas untuk melihat data yang ada di view saat ini.</p>
-                  </div>
-                )}
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isCronEnabled}
+                    onChange={e => setIsCronEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-bg-editor peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
+                </label>
               </div>
 
-              {/* Right Column: Dispatch Config & Send Button (5 cols) */}
-              <div className="lg:col-span-5 space-y-4">
-                <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
-                  <h3 className="text-sm font-semibold flex items-center gap-2 border-b border-border-main pb-3">
-                    <Send className="w-4 h-4 text-sky-400" />
-                    3. Pengiriman Satu per Satu ke Nomor HP
-                  </h3>
-
-                  <div className="space-y-3 text-xs">
-                    <div className="p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg text-text-main space-y-1">
-                      <span className="font-semibold text-sky-400 block">
-                        ⚙️ Mekanisme Otomatis View:
-                      </span>
-                      <p className="text-[11px] text-text-muted">
-                        Setiap baris data yang ada di view akan dibaca nomor HP-nya (kolom <code>user_hp</code>) dan pesannya (kolom <code>pesan</code>). Pesan akan dikirimkan satu per satu ke chat Telegram masing-masing pengguna via Bot terpilih.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-text-muted mb-1">
-                        Template Wrapper (Biarkan <code>{`{{pesan}}`}</code> untuk kirim isi asli):
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={templateMessage}
-                        onChange={e => setTemplateMessage(e.target.value)}
-                        className="w-full font-mono text-xs bg-bg-editor border border-border-main rounded-lg p-2.5 text-text-main focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
-                      <div>
-                        <label className="text-xs font-medium text-text-main block">
-                          Maksimal Baris per Kirim
-                        </label>
-                        <span className="text-[10px] text-text-muted">Pengaman batas eksekusi (Max Rows)</span>
-                      </div>
-                      <input
-                        type="number"
-                        min={1}
-                        max={500}
-                        value={maxRows}
-                        onChange={e => setMaxRows(Number(e.target.value))}
-                        className="w-20 bg-bg-editor border border-border-main rounded-lg px-2.5 py-1.5 text-xs text-center font-mono focus:outline-none"
-                      />
+              {isCronEnabled && (
+                <div className="space-y-3 pt-2 border-t border-border-main">
+                  <div>
+                    <label className="block text-xs font-medium text-text-muted mb-1.5">
+                      Pilihan Waktu Cepat (Preset):
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: 'Setiap Hari 08:00 WIB', cron: '0 0 8 * * *' },
+                        { label: 'Setiap Hari 12:00 WIB', cron: '0 0 12 * * *' },
+                        { label: 'Setiap Hari 18:00 WIB', cron: '0 0 18 * * *' },
+                        { label: 'Setiap Hari 21:00 WIB', cron: '0 0 21 * * *' },
+                        { label: 'Tiap 1 Jam', cron: '0 0 * * * *' },
+                      ].map(p => (
+                        <button
+                          key={p.cron}
+                          type="button"
+                          onClick={() => setFormCronExpression(p.cron)}
+                          className={clsx(
+                            "px-2.5 py-1 rounded text-xs transition-colors",
+                            formCronExpression === p.cron
+                              ? "bg-sky-500 text-white font-medium"
+                              : "bg-bg-editor text-text-muted hover:text-text-main border border-border-main"
+                          )}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  {/* Action Buttons */}
-                  <div className="space-y-2 pt-2 border-t border-border-main">
-                    <button
-                      type="button"
-                      onClick={handleSendManual}
-                      disabled={sendingManual}
-                      className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-semibold py-2.5 px-4 rounded-lg text-xs shadow-md shadow-sky-500/20 transition-all disabled:opacity-50"
-                    >
-                      {sendingManual ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                      Kirim Pesan Sekarang (Satu per Satu)
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleOpenScheduleFromEditor}
-                      className="w-full flex items-center justify-center gap-2 bg-bg-editor hover:bg-bg-hover text-text-main border border-border-main font-semibold py-2.5 px-4 rounded-lg text-xs transition-colors"
-                    >
-                      <CalendarClock className="w-4 h-4 text-sky-400" />
-                      Jadwalkan Pengiriman Otomatis (Multi-Cron)
-                    </button>
+                  <div>
+                    <label className="block text-xs font-medium text-text-muted mb-1">
+                      Cron Expression:
+                    </label>
+                    <input
+                      type="text"
+                      value={formCronExpression}
+                      onChange={e => setFormCronExpression(e.target.value)}
+                      placeholder="0 0 8 * * *"
+                      className="w-full font-mono text-xs bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-sky-500"
+                    />
+                    <span className="text-[10px] text-text-muted block mt-1">
+                      Format 6-bagian Spring Cron: <code>detik menit jam hari bulan hari_dalam_minggu</code> (Contoh: <code>0 0 8 * * *</code> = Jam 08:00 pagi).
+                    </span>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
-        )}
 
-        {/* =========================================================================
-            TAB 2: JADWAL PENGIRIMAN (SCHEDULER)
-        ========================================================================= */}
-        {activeTab === 'scheduler' && (
-          <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-border-main pb-4">
-              <div>
-                <h3 className="text-base font-bold flex items-center gap-2">
-                  <CalendarClock className="w-5 h-5 text-sky-400" />
-                  Daftar Jadwal Pengiriman Otomatis (Multi-Cron)
-                </h3>
-                <p className="text-xs text-text-muted">
-                  Tugas otomatis yang mengeksekusi view dan mengirim notifikasi secara berkala di latar belakang server.
-                </p>
+          {/* Kolom Kanan: Live Preview Data (5 cols) */}
+          <div className="lg:col-span-5 space-y-5">
+            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4 sticky top-24">
+              <div className="flex items-center justify-between border-b border-border-main pb-3">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                  <Eye className="w-4 h-4" />
+                  Live Preview Pesan View
+                </h2>
+
+                <button
+                  type="button"
+                  onClick={handlePreviewData}
+                  disabled={previewLoading}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs font-semibold rounded-lg border border-sky-500/30 transition-colors"
+                >
+                  {previewLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                  Muat Data
+                </button>
               </div>
+
+              {previewRows.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="text-[11px] text-text-muted flex items-center justify-between">
+                    <span>Contoh data baris pertama dari view:</span>
+                    <span className="font-semibold text-text-main">
+                      {previewRows[0].user_name || 'User'}
+                    </span>
+                  </div>
+
+                  {/* Telegram Bubble Chat Preview */}
+                  <div className="bg-[#182533] border border-[#243447] rounded-2xl p-4 shadow-lg space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-sky-300 border-b border-white/10 pb-2">
+                      <span className="font-semibold">
+                        👤 {previewRows[0].user_name || '-'}
+                      </span>
+                      <span className="font-mono text-emerald-400">
+                        📱 {previewRows[0].user_hp || '-'}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-white/95 whitespace-pre-wrap font-sans leading-relaxed pt-1">
+                      {previewRows[0].pesan || '(Kolom pesan kosong)'}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 text-[10px] text-white/40">
+                      <span>Cabang: {previewRows[0].kode_cabang || '-'}</span>
+                      <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ✓✓</span>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-text-muted text-center pt-2">
+                    💡 Pesan ini akan dikirimkan otomatis ke nomor di atas tanpa terpotong.
+                  </div>
+                </div>
+              ) : (
+                <div className="py-16 text-center text-xs text-text-muted space-y-2">
+                  <Eye className="w-8 h-8 text-text-muted/30 mx-auto" />
+                  <p>Klik tombol <b>"Muat Data"</b> untuk melihat live preview pesan dari view saat ini.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RENDER: LAYAR 1 (LIST VIEW - SEPERTI API BUILDER / SCHEDULER)
+  // ─────────────────────────────────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col h-full bg-bg-main text-text-main overflow-hidden">
+      {/* Top Header */}
+      <div className="border-b border-border-main bg-bg-panel px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <Bot className="w-6 h-6 text-sky-400" />
+            <h1 className="text-lg font-bold">Bot Telegram Notifikasi & Scheduler</h1>
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold">
+              View Integration
+            </span>
+          </div>
+          <p className="text-xs text-text-muted mt-0.5">
+            Kirim notifikasi otomatis dari View Database (<code>sch_erp_system.view_all_notifikasi</code>) langsung ke chat Telegram karyawan.
+          </p>
+        </div>
+
+        {/* Top Tab Navigation */}
+        <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-lg border border-border-main text-xs">
+          <button
+            onClick={() => setActiveTab('messages')}
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors",
+              activeTab === 'messages' ? "bg-sky-500 text-white shadow-sm font-semibold" : "text-text-muted hover:text-text-main"
+            )}
+          >
+            <Send className="w-3.5 h-3.5" />
+            Daftar Pesan ({schedules.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('contacts')}
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors",
+              activeTab === 'contacts' ? "bg-sky-500 text-white shadow-sm font-semibold" : "text-text-muted hover:text-text-main"
+            )}
+          >
+            <Users className="w-3.5 h-3.5" />
+            Master Kontak ({contacts.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('bots')}
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors",
+              activeTab === 'bots' ? "bg-sky-500 text-white shadow-sm font-semibold" : "text-text-muted hover:text-text-main"
+            )}
+          >
+            <Bot className="w-3.5 h-3.5" />
+            Pengaturan Bot ({bots.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('logs')}
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors",
+              activeTab === 'logs' ? "bg-sky-500 text-white shadow-sm font-semibold" : "text-text-muted hover:text-text-main"
+            )}
+          >
+            <History className="w-3.5 h-3.5" />
+            Riwayat Log ({logs.length})
+          </button>
+        </div>
+      </div>
+
+      {/* Main Container */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {/* =========================================================================
+            TAB 1: DAFTAR PESAN & JADWAL (LIST VIEW UTAMA)
+        ========================================================================= */}
+        {activeTab === 'messages' && (
+          <div className="max-w-7xl mx-auto space-y-4">
+            {/* Filter & Action Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-bg-panel border border-border-main p-3.5 rounded-xl">
+              <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Cari nama notifikasi atau view..."
+                    className="w-full bg-bg-editor border border-border-main rounded-lg pl-9 pr-3 py-1.5 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                <select
+                  value={filterBotId}
+                  onChange={e => setFilterBotId(e.target.value)}
+                  className="bg-bg-editor border border-border-main rounded-lg px-3 py-1.5 text-xs text-text-main focus:outline-none"
+                >
+                  <option value="ALL">Semua Bot</option>
+                  {bots.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tombol Utama: CREATE MESSAGE */}
               <button
-                onClick={() => {
-                  setEditingSchedule({
-                    name: `Jadwal View ${selectedView}`,
-                    botId: selectedBotId || (bots[0]?.id || ''),
-                    connectionId: selectedConnectionId || (connections[0]?.id || ''),
-                    schemaName: selectedSchema,
-                    viewName: selectedView,
-                    filterSchedule,
-                    filterKodeNotifikasi,
-                    filterKodeCabang,
-                    sqlQuery,
-                    templateMessage: '{{pesan}}',
-                    recipientMode: 'DYNAMIC_COLUMN',
-                    phoneColumnName: 'user_hp',
-                    cronExpression: '0 0 8 * * ?',
-                    maxRows: 50,
-                    active: true
-                  });
-                  setIsScheduleModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-colors"
+                type="button"
+                onClick={handleOpenCreate}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-lg text-xs font-bold shadow-md shadow-sky-500/20 transition-all cursor-pointer"
               >
-                <Plus className="w-4 h-4" /> Tambah Jadwal Baru
+                <Plus className="w-4 h-4" />
+                Create Message
               </button>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* List Table */}
+            <div className="bg-bg-panel border border-border-main rounded-xl overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-border-main text-text-muted">
-                    <th className="py-2.5 px-3">Nama Jadwal</th>
-                    <th className="py-2.5 px-3">Bot & View / Sumber</th>
-                    <th className="py-2.5 px-3">Cron Expression</th>
-                    <th className="py-2.5 px-3">Filter Schedule</th>
-                    <th className="py-2.5 px-3">Status</th>
-                    <th className="py-2.5 px-3">Terakhir Jalan</th>
-                    <th className="py-2.5 px-3 text-right">Aksi</th>
+                  <tr className="border-b border-border-main bg-bg-editor/50 text-text-muted uppercase text-[10px] tracking-wider">
+                    <th className="py-3 px-4 font-semibold">Nama Notifikasi</th>
+                    <th className="py-3 px-4 font-semibold">Sumber View / DB</th>
+                    <th className="py-3 px-4 font-semibold">Bot Pengirim</th>
+                    <th className="py-3 px-4 font-semibold">Jadwal (Cron)</th>
+                    <th className="py-3 px-4 font-semibold">Status Terakhir</th>
+                    <th className="py-3 px-4 font-semibold text-right">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border-main">
-                  {schedules.map(s => {
-                    const botObj = bots.find(b => b.id === s.botId);
+                <tbody className="divide-y divide-border-main/50">
+                  {filteredSchedules.map(s => {
+                    const bot = bots.find(b => b.id === s.botId);
+                    const isRunning = runningAction === s.id;
+
                     return (
-                      <tr key={s.id} className="hover:bg-bg-hover/50">
-                        <td className="py-3 px-3 font-semibold text-text-main">
-                          {s.name}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="block text-sky-400 font-medium">🤖 {botObj?.name || s.botId}</span>
-                          <span className="text-[11px] text-text-muted">
-                            📊 {s.viewName ? `${s.schemaName}.${s.viewName}` : 'Custom SQL'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 font-mono text-[11px]">
-                          <span className="px-2 py-0.5 bg-bg-editor rounded border border-border-main">
-                            {s.cronExpression}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className={clsx(
-                            "px-2 py-0.5 rounded text-[10px] font-semibold",
-                            s.filterSchedule === 'Y' ? "bg-purple-500/10 text-purple-400" :
-                            s.filterSchedule === 'N' ? "bg-emerald-500/10 text-emerald-400" : "bg-blue-500/10 text-blue-400"
-                          )}>
-                            {s.filterSchedule === 'Y' ? 'Terjadwal (Y)' : s.filterSchedule === 'N' ? 'Realtime (N)' : 'Semua'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3">
-                          <button
-                            onClick={() => handleToggleSchedule(s)}
-                            className={clsx(
-                              "px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1 transition-colors",
-                              s.active
-                                ? "bg-green-500/10 text-green-400 border border-green-500/30"
-                                : "bg-amber-500/10 text-amber-400 border border-amber-500/30"
-                            )}
-                          >
-                            {s.active ? <CheckCircle2 className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
-                            {s.active ? 'Aktif' : 'Pause'}
-                          </button>
-                        </td>
-                        <td className="py-3 px-3 text-[11px]">
-                          {s.lastRunAt ? (
-                            <div>
-                              <span className="block text-text-main">{s.lastRunAt.replace('T', ' ')}</span>
-                              <span className={clsx(
-                                "text-[10px] font-semibold",
-                                s.lastRunStatus === 'SUCCESS' ? "text-green-400" : "text-rose-400"
-                              )}>
-                                {s.lastRunStatus}
+                      <tr key={s.id} className="hover:bg-bg-hover/50 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="font-semibold text-text-main text-xs">{s.name}</div>
+                          <div className="text-[11px] text-text-muted mt-0.5 flex items-center gap-1.5">
+                            <span className="px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 font-mono text-[10px]">
+                              {s.viewName ? 'VIEW' : 'CUSTOM SQL'}
+                            </span>
+                            {s.filterSchedule && s.filterSchedule !== 'ALL' && (
+                              <span className="text-text-muted">
+                                • Sched: {s.filterSchedule}
                               </span>
+                            )}
+                            {s.filterKodeNotifikasi && (
+                              <span className="text-text-muted">
+                                • {s.filterKodeNotifikasi}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-text-muted">
+                          <div className="font-mono text-xs text-text-main">
+                            {s.viewName ? `${s.schemaName || 'public'}.${s.viewName}` : 'Custom SQL'}
+                          </div>
+                          <div className="text-[10px] text-text-muted">
+                            Maks {s.maxRows || 50} baris
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5 text-text-main font-medium">
+                            <Bot className="w-3.5 h-3.5 text-sky-400" />
+                            {bot?.name || 'Bot'}
+                          </div>
+                          {bot?.botUsername && (
+                            <div className="text-[10px] text-text-muted font-mono">
+                              @{bot.botUsername}
                             </div>
-                          ) : (
-                            <span className="text-text-muted">Belum pernah</span>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-right">
+
+                        <td className="py-3.5 px-4">
+                          {s.cronExpression && s.cronExpression.trim() ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                              <Clock className="w-3 h-3" />
+                              {s.cronExpression}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-text-muted">Manual</span>
+                          )}
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          {s.lastRunStatus ? (
+                            <span className={clsx(
+                              "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold",
+                              s.lastRunStatus === 'SUCCESS' ? "bg-emerald-500/10 text-emerald-400" :
+                              s.lastRunStatus === 'PARTIAL' ? "bg-amber-500/10 text-amber-400" : "bg-rose-500/10 text-rose-400"
+                            )}>
+                              {s.lastRunStatus}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-text-muted">Belum pernah dijalankan</span>
+                          )}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
-                              onClick={() => handleRunScheduleNow(s.id)}
-                              title="Jalankan Sekarang"
-                              className="p-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 rounded transition-colors"
+                              type="button"
+                              onClick={() => handleRunNow(s.id)}
+                              disabled={isRunning}
+                              title="Kirim Sekarang"
+                              className="p-1.5 hover:bg-sky-500/10 text-sky-400 hover:text-sky-300 rounded border border-border-main transition-colors disabled:opacity-50"
                             >
-                              <Play className="w-3.5 h-3.5" />
+                              {isRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                             </button>
                             <button
-                              onClick={() => {
-                                setEditingSchedule(s);
-                                setIsScheduleModalOpen(true);
-                              }}
-                              title="Edit"
-                              className="p-1.5 bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-text-main rounded transition-colors"
+                              type="button"
+                              onClick={() => handleOpenEdit(s)}
+                              title="Edit Pesan"
+                              className="p-1.5 hover:bg-bg-hover text-text-muted hover:text-text-main rounded border border-border-main transition-colors"
                             >
-                              <Edit3 className="w-3.5 h-3.5" />
+                              <Pencil className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => handleDeleteSchedule(s.id)}
+                              type="button"
+                              onClick={() => handleDeleteSchedule(s.id, s.name)}
                               title="Hapus"
-                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded transition-colors"
+                              className="p-1.5 hover:bg-rose-500/10 text-text-muted hover:text-rose-400 rounded border border-border-main transition-colors"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1122,10 +1112,15 @@ export const TelegramBotView: React.FC = () => {
                       </tr>
                     );
                   })}
-                  {schedules.length === 0 && (
+
+                  {filteredSchedules.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-text-muted">
-                        Belum ada jadwal yang didaftarkan. Klik "Tambah Jadwal Baru" untuk memulai.
+                      <td colSpan={6} className="py-12 text-center text-text-muted">
+                        <Bot className="w-8 h-8 text-text-muted/30 mx-auto mb-2" />
+                        <div className="font-semibold text-xs">Belum ada Pesan Notifikasi</div>
+                        <p className="text-[11px] mt-0.5">
+                          Klik tombol <b>"+ Create Message"</b> di atas untuk membuat notifikasi baru dari view database.
+                        </p>
                       </td>
                     </tr>
                   )}
@@ -1136,156 +1131,72 @@ export const TelegramBotView: React.FC = () => {
         )}
 
         {/* =========================================================================
-            TAB 3: MASTER KONTAK
+            TAB 2: MASTER KONTAK
         ========================================================================= */}
         {activeTab === 'contacts' && (
-          <div className="space-y-4">
-            {activeBot && (
-              <div className="bg-gradient-to-r from-sky-500/10 to-blue-500/10 border border-sky-500/20 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Bot className="w-4 h-4 text-sky-400" />
-                    <h4 className="text-xs font-bold text-sky-400">
-                      Link Aktivasi Bot: {activeBot.name}
-                    </h4>
-                  </div>
+          <div className="max-w-7xl mx-auto space-y-4">
+            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-border-main pb-3">
+                <div>
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <Users className="w-4 h-4 text-sky-400" />
+                    Master Kontak Telegram Terdaftar
+                  </h3>
                   <p className="text-xs text-text-muted">
-                    Bagikan tautan ini ke staf atau tim Anda. Saat mereka klik tautan ini di HP dan menekan <b>START</b>, bot akan meminta nomor telepon dan menyimpannya secara otomatis ke daftar kontak ini!
+                    Daftar pengguna yang sudah menekan <code>/start</code> dan membagikan kontak ke Bot Telegram.
                   </p>
                 </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="bg-bg-editor border border-border-main px-3 py-1.5 rounded-lg text-xs font-mono text-text-main flex items-center gap-2">
-                    <span>{`https://t.me/${activeBot.botUsername || 'bot'}`}</span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(`https://t.me/${activeBot.botUsername || ''}`);
-                      showAlert({ title: 'Tersalin', message: 'Tautan Telegram bot berhasil disalin ke clipboard.', type: 'success' });
-                    }}
-                    className="p-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg shadow-sm transition-colors"
-                    title="Copy Link"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                  {activeBot.botUsername && (
-                    <a
-                      href={`https://t.me/${activeBot.botUsername}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 bg-bg-editor hover:bg-bg-hover text-text-main border border-border-main rounded-lg transition-colors"
-                      title="Buka Telegram"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-border-main pb-4">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-semibold flex items-center gap-2">
-                    <Users className="w-4 h-4 text-sky-400" />
-                    Daftar Kontak Terdaftar
-                  </h3>
-                  <select
-                    value={selectedBotId}
-                    onChange={e => {
-                      setSelectedBotId(e.target.value);
-                      fetchContacts(e.target.value);
-                    }}
-                    className="bg-bg-editor border border-border-main rounded-lg px-2.5 py-1 text-xs text-text-main focus:outline-none"
-                  >
-                    <option value="">Semua Bot</option>
-                    {bots.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
-                </div>
-
                 <button
-                  onClick={() => {
-                    setEditingContact({
-                      botId: selectedBotId || (bots[0]?.id || ''),
-                      chatId: '',
-                      phoneNumber: '',
-                      firstName: '',
-                      isActive: true
-                    });
-                    setIsContactModalOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 bg-bg-editor hover:bg-bg-hover text-text-main border border-border-main text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                  type="button"
+                  onClick={fetchContacts}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-editor hover:bg-bg-hover text-xs font-semibold rounded-lg border border-border-main"
                 >
-                  <Plus className="w-3.5 h-3.5 text-sky-400" /> Tambah Kontak Manual
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Refresh Kontak
                 </button>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
+                <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="border-b border-border-main text-text-muted">
-                      <th className="py-2.5 px-3">Nama</th>
-                      <th className="py-2.5 px-3">Nomor Telepon</th>
-                      <th className="py-2.5 px-3">Chat ID</th>
-                      <th className="py-2.5 px-3">Username</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3">Terdaftar Pada</th>
-                      <th className="py-2.5 px-3 text-right">Aksi</th>
+                    <tr className="border-b border-border-main text-text-muted uppercase text-[10px]">
+                      <th className="py-2.5 px-3 font-semibold">Nama Pengguna</th>
+                      <th className="py-2.5 px-3 font-semibold">Nomor Telepon (HP)</th>
+                      <th className="py-2.5 px-3 font-semibold">Chat ID Telegram</th>
+                      <th className="py-2.5 px-3 font-semibold">Bot Terkait</th>
+                      <th className="py-2.5 px-3 font-semibold">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border-main">
-                    {botContacts.map(c => (
-                      <tr key={c.id} className="hover:bg-bg-hover/50">
-                        <td className="py-3 px-3 font-semibold text-text-main">
-                          {c.firstName} {c.lastName || ''}
-                        </td>
-                        <td className="py-3 px-3 font-mono font-medium text-sky-400">
-                          {c.phoneNumber ? `📱 ${c.phoneNumber}` : <span className="text-text-muted italic">(Belum kirim kontak)</span>}
-                        </td>
-                        <td className="py-3 px-3 font-mono text-text-muted">
-                          {c.chatId}
-                        </td>
-                        <td className="py-3 px-3">
-                          {c.username ? `@${c.username}` : '-'}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className={clsx(
-                            "px-2 py-0.5 rounded text-[10px] font-semibold",
-                            c.isActive ? "bg-green-500/10 text-green-400" : "bg-zinc-500/10 text-zinc-400"
-                          )}>
-                            {c.isActive ? 'Aktif' : 'Non-aktif'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-text-muted text-[11px]">
-                          {c.registeredAt?.replace('T', ' ') || '-'}
-                        </td>
-                        <td className="py-3 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => {
-                                setEditingContact(c);
-                                setIsContactModalOpen(true);
-                              }}
-                              className="p-1.5 bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-text-main rounded"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteContact(c.id)}
-                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {botContacts.length === 0 && (
+                  <tbody className="divide-y divide-border-main/50">
+                    {contacts.map(c => {
+                      const b = bots.find(bot => bot.id === c.botId);
+                      return (
+                        <tr key={c.id} className="hover:bg-bg-hover/50">
+                          <td className="py-3 px-3 font-semibold text-text-main">
+                            {c.firstName || ''} {c.lastName || ''} {c.username ? `(@${c.username})` : ''}
+                          </td>
+                          <td className="py-3 px-3 font-mono text-sky-400">
+                            📱 {c.phone}
+                          </td>
+                          <td className="py-3 px-3 font-mono text-text-muted">
+                            {c.chatId}
+                          </td>
+                          <td className="py-3 px-3 text-text-muted">
+                            {b?.name || 'Bot'}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400">
+                              Terdaftar
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {contacts.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="text-center py-8 text-text-muted">
-                          Belum ada kontak terdaftar.
+                        <td colSpan={5} className="py-8 text-center text-text-muted">
+                          Belum ada kontak terdaftar. Karyawan dapat membuka bot dan klik <b>/start</b> untuk mendaftarkan nomor HP mereka secara otomatis.
                         </td>
                       </tr>
                     )}
@@ -1297,547 +1208,192 @@ export const TelegramBotView: React.FC = () => {
         )}
 
         {/* =========================================================================
-            TAB 4: PENGATURAN BOT
+            TAB 3: PENGATURAN BOT
         ========================================================================= */}
-        {activeTab === 'settings' && (
-          <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-border-main pb-4">
-              <div>
-                <h3 className="text-base font-bold flex items-center gap-2">
-                  <Bot className="w-5 h-5 text-sky-400" />
-                  Daftar Konfigurasi Bot Telegram
-                </h3>
-                <p className="text-xs text-text-muted">
-                  Kelola token Bot Telegram yang digunakan untuk pengiriman pesan dan listener background polling.
-                </p>
+        {activeTab === 'bots' && (
+          <div className="max-w-7xl mx-auto space-y-4">
+            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-border-main pb-3">
+                <div>
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <Bot className="w-4 h-4 text-sky-400" />
+                    Daftar Bot Telegram
+                  </h3>
+                  <p className="text-xs text-text-muted">
+                    Kelola token bot dari @BotFather dan status polling otomatis.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingBot({ name: '', botToken: '', active: true, pollingEnabled: true });
+                    setIsBotModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold rounded-lg shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Tambah Bot Baru
+                </button>
               </div>
-              <button
-                onClick={() => {
-                  setEditingBot({ name: '', botToken: '', isPollingActive: true });
-                  setIsBotModalOpen(true);
-                  setTestBotResult(null);
-                }}
-                className="flex items-center gap-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" /> Daftarkan Bot Baru
-              </button>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {bots.map(b => (
-                <div key={b.id} className="bg-bg-editor border border-border-main rounded-xl p-4 space-y-3 relative group">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="text-sm font-bold text-text-main">{b.name}</h4>
-                      {b.botUsername ? (
-                        <span className="text-xs text-sky-400 font-mono">@{b.botUsername}</span>
-                      ) : (
-                        <span className="text-xs text-text-muted italic">(Username belum disinkron)</span>
-                      )}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {bots.map(b => (
+                  <div key={b.id} className="bg-bg-editor border border-border-main rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Bot className="w-5 h-5 text-sky-400" />
+                        <div>
+                          <div className="font-bold text-xs text-text-main">{b.name}</div>
+                          {b.botUsername && (
+                            <a
+                              href={`https://t.me/${b.botUsername}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[10px] text-sky-400 hover:underline flex items-center gap-1"
+                            >
+                              @{b.botUsername} <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400">
+                        Aktif
+                      </span>
                     </div>
-                    <span className={clsx(
-                      "px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1",
-                      b.isPollingActive ? "bg-green-500/10 text-green-400" : "bg-zinc-500/10 text-zinc-400"
-                    )}>
-                      <span className={clsx("w-1.5 h-1.5 rounded-full", b.isPollingActive ? "bg-green-500 animate-pulse" : "bg-zinc-500")} />
-                      {b.isPollingActive ? 'Polling Aktif' : 'Polling Nonaktif'}
-                    </span>
-                  </div>
 
-                  <div className="text-[11px] text-text-muted font-mono bg-bg-panel p-2 rounded border border-border-main truncate">
-                    Token: {b.botToken.substring(0, 10)}...{b.botToken.substring(b.botToken.length - 5)}
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-border-main">
-                    <span className="text-[11px] text-text-muted">
-                      ID: {b.id.substring(0, 8)}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => {
-                          setEditingBot(b);
-                          setIsBotModalOpen(true);
-                          setTestBotResult(null);
-                        }}
-                        className="p-1.5 bg-bg-panel hover:bg-bg-hover text-text-muted hover:text-text-main rounded"
-                        title="Edit Bot"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!confirm(`Hapus bot "${b.name}"?`)) return;
-                          await axios.delete(`/api/telegram/bots/${b.id}`);
-                          fetchBots();
-                        }}
-                        className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded"
-                        title="Hapus Bot"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <div className="text-[11px] text-text-muted border-t border-border-main pt-2">
+                      Token: <code className="text-text-main font-mono">••••••••••••••</code>
                     </div>
                   </div>
-                </div>
-              ))}
-              {bots.length === 0 && (
-                <div className="col-span-full text-center py-8 text-text-muted text-xs">
-                  Belum ada Bot yang didaftarkan. Klik "Daftarkan Bot Baru" untuk mulai menambahkan bot dari BotFather.
-                </div>
-              )}
+                ))}
+              </div>
             </div>
           </div>
         )}
 
         {/* =========================================================================
-            TAB 5: RIWAYAT LOG
+            TAB 4: RIWAYAT LOG
         ========================================================================= */}
         {activeTab === 'logs' && (
-          <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-border-main pb-4">
-              <div>
-                <h3 className="text-base font-bold flex items-center gap-2">
-                  <History className="w-5 h-5 text-sky-400" />
-                  Riwayat Pengiriman Pesan
-                </h3>
-                <p className="text-xs text-text-muted">
-                  Log pengiriman manual dan tugas terjadwal (scheduler).
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
+          <div className="max-w-7xl mx-auto space-y-4">
+            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-border-main pb-3">
+                <div>
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <History className="w-4 h-4 text-sky-400" />
+                    Riwayat Pengiriman Pesan
+                  </h3>
+                  <p className="text-xs text-text-muted">
+                    Catatan lengkap status pengiriman, pesan terkirim, dan rincian kontak yang belum klik START.
+                  </p>
+                </div>
                 <button
+                  type="button"
                   onClick={fetchLogs}
-                  className="flex items-center gap-1.5 bg-bg-editor hover:bg-bg-hover text-text-main text-xs font-semibold px-3 py-1.5 rounded-lg border border-border-main transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-editor hover:bg-bg-hover text-xs font-semibold rounded-lg border border-border-main"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Refresh Log
                 </button>
               </div>
-            </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-border-main text-text-muted">
-                    <th className="py-2.5 px-3">Waktu</th>
-                    <th className="py-2.5 px-3">Pemicu</th>
-                    <th className="py-2.5 px-3">Bot</th>
-                    <th className="py-2.5 px-3">Total Row</th>
-                    <th className="py-2.5 px-3">Terkirim / Gagal</th>
-                    <th className="py-2.5 px-3">Status</th>
-                    <th className="py-2.5 px-3">Keterangan</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-main">
-                  {logs.map(l => (
-                    <tr key={l.id} className="hover:bg-bg-hover/50">
-                      <td className="py-3 px-3 text-text-main whitespace-nowrap">
-                        {l.createdAt?.replace('T', ' ')}
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className={clsx(
-                          "px-2 py-0.5 rounded text-[10px] font-semibold",
-                          l.triggerType === 'MANUAL' ? "bg-sky-500/10 text-sky-400" : "bg-purple-500/10 text-purple-400"
-                        )}>
-                          {l.triggerType}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 font-medium text-text-main">
-                        {l.botName || '-'}
-                      </td>
-                      <td className="py-3 px-3 font-mono">
-                        {l.totalRows}
-                      </td>
-                      <td className="py-3 px-3 font-mono">
-                        <span className="text-green-400 font-semibold">{l.messagesSent}</span> / <span className="text-rose-400 font-semibold">{l.messagesFailed}</span>
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className={clsx(
-                          "px-2 py-0.5 rounded text-[10px] font-semibold",
-                          l.status === 'SUCCESS' ? "bg-green-500/10 text-green-400" :
-                          l.status === 'PARTIAL' ? "bg-amber-500/10 text-amber-400" : "bg-rose-500/10 text-rose-400"
-                        )}>
-                          {l.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-text-muted max-w-xs truncate" title={l.details}>
-                        {l.details || '-'}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-border-main text-text-muted uppercase text-[10px]">
+                      <th className="py-2.5 px-3 font-semibold">Waktu Eksekusi</th>
+                      <th className="py-2.5 px-3 font-semibold">Nama Notifikasi</th>
+                      <th className="py-2.5 px-3 font-semibold">Bot</th>
+                      <th className="py-2.5 px-3 font-semibold">Terkirim / Gagal</th>
+                      <th className="py-2.5 px-3 font-semibold">Status & Rincian</th>
                     </tr>
-                  ))}
-                  {logs.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="text-center py-8 text-text-muted">
-                        Belum ada riwayat pengiriman.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-border-main/50">
+                    {logs.map(log => (
+                      <tr key={log.id} className="hover:bg-bg-hover/50">
+                        <td className="py-3 px-3 text-text-muted font-mono text-[11px]">
+                          {log.executedAt ? new Date(log.executedAt).toLocaleString() : '-'}
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-text-main">
+                          {log.scheduleName || 'Manual Execution'}
+                        </td>
+                        <td className="py-3 px-3 text-text-muted">
+                          {log.botName || 'Bot'}
+                        </td>
+                        <td className="py-3 px-3 font-mono">
+                          <span className="text-emerald-400">{log.messagesSent} Berhasil</span>
+                          {log.messagesFailed > 0 && (
+                            <span className="text-rose-400 ml-1.5">• {log.messagesFailed} Gagal</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-[11px] text-text-muted max-w-md truncate" title={log.details}>
+                          {log.details || '-'}
+                        </td>
+                      </tr>
+                    ))}
+
+                    {logs.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-text-muted">
+                          Belum ada riwayat pengiriman pesan.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* =========================================================================
-          MODAL: TAMBAH / EDIT BOT TELEGRAM
-      ========================================================================= */}
-      {isBotModalOpen && editingBot && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-bg-panel border border-border-main rounded-2xl w-full max-w-md shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-border-main pb-3">
-              <h3 className="text-sm font-bold flex items-center gap-2">
-                <Bot className="w-4 h-4 text-sky-400" />
-                {editingBot.id ? 'Edit Konfigurasi Bot' : 'Daftarkan Bot Telegram Baru'}
-              </h3>
-              <button onClick={() => setIsBotModalOpen(false)} className="text-text-muted hover:text-text-main">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {/* Modal: Tambah Bot Baru */}
+      {isBotModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-bg-panel border border-border-main rounded-xl max-w-md w-full p-5 space-y-4 shadow-xl">
+            <h3 className="text-sm font-bold flex items-center gap-2">
+              <Bot className="w-4 h-4 text-sky-400" />
+              Tambah Bot Telegram Baru
+            </h3>
 
-            <form onSubmit={handleSaveBot} className="space-y-3">
+            <form onSubmit={handleSaveBot} className="space-y-3 text-xs">
               <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  Nama Bot (Pengenal di Dashboard) *
-                </label>
+                <label className="block text-text-muted mb-1">Nama Bot *</label>
                 <input
                   type="text"
                   required
-                  value={editingBot.name || ''}
-                  onChange={e => setEditingBot({ ...editingBot, name: e.target.value })}
-                  placeholder="misal: Bot Notifikasi POS"
-                  className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                  value={editingBot?.name || ''}
+                  onChange={e => setEditingBot(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="misal: Bot Notifikasi ERP"
+                  className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  Bot Token (dari @BotFather) *
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    required
-                    value={editingBot.botToken || ''}
-                    onChange={e => setEditingBot({ ...editingBot, botToken: e.target.value })}
-                    placeholder="123456789:ABCdefGhI..."
-                    className="flex-1 bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs font-mono text-text-main focus:outline-none focus:border-sky-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleTestBotToken}
-                    className="px-3 py-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs font-medium rounded-lg border border-sky-500/20 transition-colors shrink-0"
-                  >
-                    Uji Token
-                  </button>
-                </div>
-              </div>
-
-              {testBotResult && (
-                <div className={clsx(
-                  "p-2.5 rounded-lg border text-xs",
-                  testBotResult.success
-                    ? "bg-green-500/10 border-green-500/20 text-green-400"
-                    : "bg-rose-500/10 border-rose-500/20 text-rose-400"
-                )}>
-                  {testBotResult.success ? (
-                    <div>
-                      ✅ Token Valid! Terhubung ke bot: <b>@{testBotResult.info?.username}</b> ({testBotResult.info?.firstName})
-                    </div>
-                  ) : (
-                    <div>❌ {testBotResult.message}</div>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  Username Bot (Opsional)
-                </label>
+                <label className="block text-text-muted mb-1">Bot Token (dari @BotFather) *</label>
                 <input
                   type="text"
-                  value={editingBot.botUsername || ''}
-                  onChange={e => setEditingBot({ ...editingBot, botUsername: e.target.value })}
-                  placeholder="misal: my_pos_bot (tanpa @)"
-                  className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                  required
+                  value={editingBot?.botToken || ''}
+                  onChange={e => setEditingBot(prev => ({ ...prev, botToken: e.target.value }))}
+                  placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                  className="w-full font-mono bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none"
                 />
-              </div>
-
-              <div className="pt-2">
-                <label className="flex items-center gap-2 cursor-pointer text-xs">
-                  <input
-                    type="checkbox"
-                    checked={editingBot.isPollingActive ?? true}
-                    onChange={e => setEditingBot({ ...editingBot, isPollingActive: e.target.checked })}
-                    className="rounded text-sky-500 focus:ring-sky-400"
-                  />
-                  <span className="text-text-main font-medium">
-                    Aktifkan Background Polling (Mendengarkan /start otomatis)
-                  </span>
-                </label>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-border-main">
                 <button
                   type="button"
                   onClick={() => setIsBotModalOpen(false)}
-                  className="px-4 py-2 bg-bg-editor hover:bg-bg-hover text-text-muted rounded-lg text-xs"
+                  className="px-3.5 py-1.5 rounded-lg text-text-muted hover:text-text-main border border-border-main"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-xs font-semibold shadow-sm"
+                  className="px-4 py-1.5 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg"
                 >
                   Simpan Bot
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODAL: BUAT / EDIT JADWAL (SCHEDULER)
-      ========================================================================= */}
-      {isScheduleModalOpen && editingSchedule && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-bg-panel border border-border-main rounded-2xl w-full max-w-xl shadow-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-border-main pb-3">
-              <h3 className="text-sm font-bold flex items-center gap-2">
-                <CalendarClock className="w-4 h-4 text-sky-400" />
-                {editingSchedule.id ? 'Edit Jadwal Telegram' : 'Konfigurasi Jadwal Baru'}
-              </h3>
-              <button onClick={() => setIsScheduleModalOpen(false)} className="text-text-muted hover:text-text-main">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveSchedule} className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  Nama Jadwal *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingSchedule.name || ''}
-                  onChange={e => setEditingSchedule({ ...editingSchedule, name: e.target.value })}
-                  placeholder="misal: Alert Notifikasi ERP Harian"
-                  className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">
-                    Bot Telegram *
-                  </label>
-                  <select
-                    value={editingSchedule.botId || ''}
-                    onChange={e => setEditingSchedule({ ...editingSchedule, botId: e.target.value })}
-                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none"
-                  >
-                    {bots.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">
-                    Database *
-                  </label>
-                  <select
-                    value={editingSchedule.connectionId || ''}
-                    onChange={e => setEditingSchedule({ ...editingSchedule, connectionId: e.target.value })}
-                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none"
-                  >
-                    {connections.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  Cron Expression (Dukungan Multi-Cron dipisahkan koma) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingSchedule.cronExpression || ''}
-                  onChange={e => setEditingSchedule({ ...editingSchedule, cronExpression: e.target.value })}
-                  placeholder="0 0 8 * * ? (Tiap jam 8 pagi), 0 0 17 * * ?"
-                  className="w-full font-mono text-xs bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-sky-500"
-                />
-                <div className="flex gap-2 pt-1 text-[10px] text-text-muted">
-                  <span className="font-semibold">Preset:</span>
-                  <button type="button" onClick={() => setEditingSchedule({ ...editingSchedule, cronExpression: '0 0 8 * * ?' })} className="text-sky-400 hover:underline">Jam 08:00</button>
-                  <button type="button" onClick={() => setEditingSchedule({ ...editingSchedule, cronExpression: '0 0 */1 * * ?' })} className="text-sky-400 hover:underline">Tiap Jam</button>
-                  <button type="button" onClick={() => setEditingSchedule({ ...editingSchedule, cronExpression: '0 */15 * * * ?' })} className="text-sky-400 hover:underline">Tiap 15 Menit</button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  SQL Query View *
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  value={editingSchedule.sqlQuery || ''}
-                  onChange={e => setEditingSchedule({ ...editingSchedule, sqlQuery: e.target.value })}
-                  className="w-full font-mono text-xs bg-bg-editor border border-border-main rounded-lg p-2.5 text-text-main focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">
-                    Kolom Nomor HP Penerima
-                  </label>
-                  <input
-                    type="text"
-                    value={editingSchedule.phoneColumnName || 'user_hp'}
-                    onChange={e => setEditingSchedule({ ...editingSchedule, phoneColumnName: e.target.value })}
-                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs font-mono text-text-main focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">
-                    Max Rows
-                  </label>
-                  <input
-                    type="number"
-                    value={editingSchedule.maxRows || 50}
-                    onChange={e => setEditingSchedule({ ...editingSchedule, maxRows: Number(e.target.value) })}
-                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border-main">
-                <button
-                  type="button"
-                  onClick={() => setIsScheduleModalOpen(false)}
-                  className="px-4 py-2 bg-bg-editor hover:bg-bg-hover text-text-muted rounded-lg text-xs"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-xs font-semibold shadow-sm"
-                >
-                  Simpan Jadwal
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODAL: TAMBAH KONTAK MANUAL
-      ========================================================================= */}
-      {isContactModalOpen && editingContact && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-bg-panel border border-border-main rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-border-main pb-3">
-              <h3 className="text-sm font-bold flex items-center gap-2">
-                <Users className="w-4 h-4 text-sky-400" />
-                {editingContact.id ? 'Edit Kontak' : 'Tambah Kontak Manual'}
-              </h3>
-              <button onClick={() => setIsContactModalOpen(false)} className="text-text-muted hover:text-text-main">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              if (!editingContact?.botId || !editingContact?.chatId) return;
-              try {
-                if (editingContact.id) {
-                  await axios.put(`/api/telegram/contacts/${editingContact.id}`, editingContact);
-                } else {
-                  await axios.post('/api/telegram/contacts', editingContact);
-                }
-                setIsContactModalOpen(false);
-                setEditingContact(null);
-                fetchContacts(selectedBotId);
-                showAlert({ title: 'Kontak Disimpan', message: 'Kontak berhasil disimpan.', type: 'success' });
-              } catch (err: any) {
-                showAlert({ title: 'Gagal Menyimpan', message: err.message, type: 'error' });
-              }
-            }} className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  Bot Telegram *
-                </label>
-                <select
-                  value={editingContact.botId || ''}
-                  onChange={e => setEditingContact({ ...editingContact, botId: e.target.value })}
-                  className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none"
-                >
-                  {bots.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  Chat ID Telegram *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingContact.chatId || ''}
-                  onChange={e => setEditingContact({ ...editingContact, chatId: e.target.value })}
-                  placeholder="misal: 123456789"
-                  className="w-full font-mono text-xs bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  Nomor Telepon
-                </label>
-                <input
-                  type="text"
-                  value={editingContact.phoneNumber || ''}
-                  onChange={e => setEditingContact({ ...editingContact, phoneNumber: e.target.value })}
-                  placeholder="misal: 08123456789"
-                  className="w-full font-mono text-xs bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  Nama Penerima
-                </label>
-                <input
-                  type="text"
-                  value={editingContact.firstName || ''}
-                  onChange={e => setEditingContact({ ...editingContact, firstName: e.target.value })}
-                  placeholder="misal: Budi Santoso"
-                  className="w-full text-xs bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-text-main focus:outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border-main">
-                <button
-                  type="button"
-                  onClick={() => setIsContactModalOpen(false)}
-                  className="px-4 py-2 bg-bg-editor hover:bg-bg-hover text-text-muted rounded-lg text-xs"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-xs font-semibold shadow-sm"
-                >
-                  Simpan Kontak
                 </button>
               </div>
             </form>
