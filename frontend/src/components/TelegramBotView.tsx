@@ -758,15 +758,37 @@ export const TelegramBotView: React.FC = () => {
                   </p>
                 </div>
 
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isCronEnabled}
-                    onChange={e => setIsCronEnabled(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-bg-editor peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
-                </label>
+                <div className="flex items-center gap-2.5">
+                  <span className={clsx(
+                    "text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors",
+                    isCronEnabled
+                      ? "bg-sky-500/15 text-sky-400 border border-sky-500/30"
+                      : "bg-slate-700/50 text-slate-400 border border-slate-600"
+                  )}>
+                    {isCronEnabled ? 'Aktif' : 'Nonaktif'}
+                  </span>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isCronEnabled}
+                    onClick={() => setIsCronEnabled(!isCronEnabled)}
+                    className={clsx(
+                      "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500/50 shadow-inner",
+                      isCronEnabled
+                        ? "bg-sky-500 border-sky-500"
+                        : "bg-slate-700 border-slate-500 hover:border-slate-400"
+                    )}
+                    title={isCronEnabled ? "Klik untuk menonaktifkan jadwal" : "Klik untuk mengaktifkan jadwal otomatis"}
+                  >
+                    <span
+                      className={clsx(
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out",
+                        isCronEnabled ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                </div>
               </div>
 
               {isCronEnabled && (
