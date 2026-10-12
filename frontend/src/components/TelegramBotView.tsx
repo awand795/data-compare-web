@@ -156,6 +156,7 @@ export const TelegramBotView: React.FC = () => {
   // Modals for Bots & Contacts
   const [isBotModalOpen, setIsBotModalOpen] = useState(false);
   const [editingBot, setEditingBot] = useState<Partial<TelegramBot> | null>(null);
+  const [isSavingBot, setIsSavingBot] = useState(false);
 
   // Settings Sub-tab: 'BOT' | 'MTPROTO'
   const [settingsSubTab, setSettingsSubTab] = useState<'BOT' | 'MTPROTO'>('BOT');
@@ -614,18 +615,35 @@ export const TelegramBotView: React.FC = () => {
       showAlert({ title: 'Input Kurang', message: 'Nama bot dan Token wajib diisi.', type: 'warning' });
       return;
     }
+    if (isSavingBot) return;
+
+    setIsSavingBot(true);
     try {
       if (editingBot.id) {
         await axios.put(`/api/telegram/bots/${editingBot.id}`, editingBot);
+        showAlert({ title: 'Berhasil Diperbarui', message: `Bot "${editingBot.name}" berhasil diperbarui.`, type: 'success' });
       } else {
         await axios.post('/api/telegram/bots', editingBot);
+        showAlert({ title: 'Berhasil Ditambahkan', message: `Bot "${editingBot.name}" berhasil disimpan.`, type: 'success' });
       }
       setIsBotModalOpen(false);
       setEditingBot(null);
       fetchBots();
-      showAlert({ title: 'Berhasil', message: 'Bot Telegram berhasil disimpan.', type: 'success' });
     } catch (err: any) {
-      showAlert({ title: 'Gagal', message: err.response?.data?.message || err.message, type: 'error' });
+      showAlert({ title: 'Gagal Menyimpan Bot', message: err.response?.data?.message || err.message, type: 'error' });
+    } finally {
+      setIsSavingBot(false);
+    }
+  };
+
+  const handleDeleteBot = async (botId: string, botName: string) => {
+    if (!confirm(`Hapus Bot Telegram "${botName}"?\nBot yang dihapus tidak akan dapat menerima atau mengirim pesan.`)) return;
+    try {
+      await axios.delete(`/api/telegram/bots/${botId}`);
+      fetchBots();
+      showAlert({ title: 'Bot Dihapus', message: `Bot "${botName}" berhasil dihapus.`, type: 'info' });
+    } catch (err: any) {
+      showAlert({ title: 'Gagal Menghapus Bot', message: err.response?.data?.message || err.message, type: 'error' });
     }
   };
 
@@ -1690,6 +1708,29 @@ export const TelegramBotView: React.FC = () => {
                           <span>Token: <code className="text-text-main font-mono">••••••••••••••</code></span>
                           <span className="text-[10px] text-emerald-400">● Polling On</span>
                         </div>
+
+                        <div className="border-t border-border-main/60 pt-2 flex items-center justify-end gap-2 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingBot(b);
+                              setIsBotModalOpen(true);
+                            }}
+                            className="px-2 py-1 rounded hover:bg-bg-hover text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            Edit
+                          </button>
+                          <span className="text-border-main">|</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBot(b.id, b.name)}
+                            className="px-2 py-1 rounded hover:bg-rose-500/10 text-rose-400 hover:text-rose-300 font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Hapus
+                          </button>
+                        </div>
                       </div>
                     ))}
 
@@ -1900,7 +1941,7 @@ export const TelegramBotView: React.FC = () => {
           <div className="bg-bg-panel border border-border-main rounded-xl max-w-md w-full p-5 space-y-4 shadow-xl">
             <h3 className="text-sm font-bold flex items-center gap-2">
               <Bot className="w-4 h-4 text-sky-400" />
-              Tambah Bot Telegram Baru
+              {editingBot?.id ? 'Edit Bot Telegram' : 'Tambah Bot Telegram Baru'}
             </h3>
 
             <form onSubmit={handleSaveBot} className="space-y-3 text-xs">
@@ -1938,9 +1979,11 @@ export const TelegramBotView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg"
+                  disabled={isSavingBot}
+                  className="flex items-center gap-1.5 px-4 py-1.5 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg disabled:opacity-50 cursor-pointer shadow-sm"
                 >
-                  Simpan Bot
+                  {isSavingBot && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  {isSavingBot ? 'Menyimpan...' : (editingBot?.id ? 'Simpan Perubahan' : 'Simpan Bot')}
                 </button>
               </div>
             </form>
