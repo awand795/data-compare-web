@@ -1480,7 +1480,11 @@ export const TelegramBotView: React.FC = () => {
                             {s.viewName ? `${s.schemaName || 'public'}.${s.viewName}` : 'Custom SQL'}
                           </div>
                           <div className="text-[10px] text-text-muted">
-                            Maks {s.maxRows || 50} baris
+                            {s.maxRows && s.maxRows > 0 ? (
+                              `Maks ${s.maxRows} baris`
+                            ) : (
+                              <span className="text-emerald-400 font-medium">Semua baris (Unlimited)</span>
+                            )}
                           </div>
                         </td>
 
