@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -22,7 +22,10 @@ import {
   CheckCircle2,
   ExternalLink,
   Smartphone,
-  AlertCircle
+  AlertCircle,
+  Calendar,
+  X,
+  MessageSquare
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -101,6 +104,9 @@ interface TelegramLog {
   messagesFailed: number;
   details?: string;
   triggerType: string;
+  recipientName?: string;
+  recipientPhone?: string;
+  messageText?: string;
   createdAt?: string;
   executedAt?: string;
 }
@@ -118,6 +124,96 @@ export const TelegramBotView: React.FC = () => {
   const [contacts, setContacts] = useState<TelegramContact[]>([]);
   const [schedules, setSchedules] = useState<TelegramSchedule[]>([]);
   const [logs, setLogs] = useState<TelegramLog[]>([]);
+
+  // Tab 4 Logs Filters & Detail Modal
+  const [logSearch, setLogSearch] = useState('');
+  const [logStatusFilter, setLogStatusFilter] = useState<'ALL' | 'BERHASIL' | 'GAGAL'>('ALL');
+  const [logStartDate, setLogStartDate] = useState('');
+  const [logEndDate, setLogEndDate] = useState('');
+  const [selectedLogModal, setSelectedLogModal] = useState<TelegramLog | null>(null);
+
+  const filteredLogs = useMemo(() => {
+    return logs.filter(log => {
+      // Status filter
+      if (logStatusFilter === 'BERHASIL') {
+        const isSuccess = log.status === 'BERHASIL' || log.status === 'SUCCESS' || (log.messagesSent > 0 && log.messagesFailed === 0);
+        if (!isSuccess) return false;
+      } else if (logStatusFilter === 'GAGAL') {
+        const isFailed = log.status === 'GAGAL' || log.status === 'FAILED' || log.messagesFailed > 0;
+        if (!isFailed) return false;
+      }
+
+      // Date filter
+      const timeVal = log.createdAt || log.executedAt;
+      if (timeVal) {
+        const logDate = timeVal.substring(0, 10);
+        if (logStartDate && logDate < logStartDate) return false;
+        if (logEndDate && logDate > logEndDate) return false;
+      }
+
+      // Search query (phone, name, messageText, scheduleName, botName, details)
+      if (logSearch.trim()) {
+        const q = logSearch.toLowerCase().trim();
+        const phone = (log.recipientPhone || '').toLowerCase();
+        const name = (log.recipientName || '').toLowerCase();
+        const msg = (log.messageText || '').toLowerCase();
+        const sched = (log.scheduleName || '').toLowerCase();
+        const bot = (log.botName || '').toLowerCase();
+        const details = (log.details || '').toLowerCase();
+
+        const match = phone.includes(q) || name.includes(q) || msg.includes(q) || sched.includes(q) || bot.includes(q) || details.includes(q);
+        if (!match) return false;
+      }
+
+      return true;
+    });
+  }, [logs, logSearch, logStatusFilter, logStartDate, logEndDate]);
+
+  const formatLogDate = (timeVal?: string) => {
+    if (!timeVal) return '-';
+    try {
+      const d = new Date(timeVal);
+      if (isNaN(d.getTime())) return timeVal;
+      return d.toLocaleString('id-ID', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+    } catch {
+      return timeVal;
+    }
+  };
+
+  const setTodayDateFilter = () => {
+    const today = new Date().toISOString().substring(0, 10);
+    setLogStartDate(today);
+    setLogEndDate(today);
+  };
+
+  const setLast7DaysFilter = () => {
+    const today = new Date();
+    const past7 = new Date();
+    past7.setDate(today.getDate() - 7);
+    setLogStartDate(past7.toISOString().substring(0, 10));
+    setLogEndDate(today.toISOString().substring(0, 10));
+  };
+
+  const resetDateFilter = () => {
+    setLogStartDate('');
+    setLogEndDate('');
+  };
+
+  const countSuccess = useMemo(() => {
+    return logs.filter(l => l.status === 'BERHASIL' || l.status === 'SUCCESS' || (l.messagesSent > 0 && l.messagesFailed === 0)).length;
+  }, [logs]);
+
+  const countFailed = useMemo(() => {
+    return logs.filter(l => l.status === 'GAGAL' || l.status === 'FAILED' || l.messagesFailed > 0).length;
+  }, [logs]);
 
   // Search & Filter in List View
   const [searchQuery, setSearchQuery] = useState('');
@@ -1960,23 +2056,110 @@ export const TelegramBotView: React.FC = () => {
         ========================================================================= */}
         {activeTab === 'logs' && (
           <div className="max-w-7xl mx-auto space-y-4">
-            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-border-main pb-3">
+            {/* Header & Stats Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-bold flex items-center gap-2">
-                    <History className="w-4 h-4 text-sky-400" />
-                    Riwayat Pengiriman Pesan
-                  </h3>
-                  <p className="text-xs text-text-muted">
-                    Catatan lengkap status pengiriman, pesan terkirim, dan rincian kontak yang belum klik START.
-                  </p>
+                  <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">Total Catatan Log</div>
+                  <div className="text-xl font-bold text-text-main mt-0.5">{logs.length} <span className="text-xs font-normal text-text-muted">pesan</span></div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                  <History className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">Terkirim Berhasil</div>
+                  <div className="text-xl font-bold text-emerald-400 mt-0.5">{countSuccess} <span className="text-xs font-normal text-text-muted">pesan</span></div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">Gagal Terkirim</div>
+                  <div className="text-xl font-bold text-rose-400 mt-0.5">{countFailed} <span className="text-xs font-normal text-text-muted">isu</span></div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm space-y-3">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                {/* Search Input */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={logSearch}
+                    onChange={e => setLogSearch(e.target.value)}
+                    placeholder="Cari nomor HP, nama penerima, isi pesan, notifikasi..."
+                    className="w-full bg-bg-editor border border-border-main rounded-xl pl-9 pr-8 py-2 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:border-sky-500 transition-colors"
+                  />
+                  {logSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setLogSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main p-0.5 rounded-full cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Status Pills */}
+                <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-xl border border-border-main shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setLogStatusFilter('ALL')}
+                    className={clsx(
+                      "px-3 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer",
+                      logStatusFilter === 'ALL'
+                        ? "bg-bg-panel text-sky-400 shadow-sm border border-sky-500/30"
+                        : "text-text-muted hover:text-text-main"
+                    )}
+                  >
+                    Semua ({logs.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLogStatusFilter('BERHASIL')}
+                    className={clsx(
+                      "px-3 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer",
+                      logStatusFilter === 'BERHASIL'
+                        ? "bg-emerald-500/15 text-emerald-400 shadow-sm border border-emerald-500/30"
+                        : "text-text-muted hover:text-text-main"
+                    )}
+                  >
+                    Berhasil ({countSuccess})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLogStatusFilter('GAGAL')}
+                    className={clsx(
+                      "px-3 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer",
+                      logStatusFilter === 'GAGAL'
+                        ? "bg-rose-500/15 text-rose-400 shadow-sm border border-rose-500/30"
+                        : "text-text-muted hover:text-text-main"
+                    )}
+                  >
+                    Gagal ({countFailed})
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={handleClearLogs}
                     disabled={logs.length === 0}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold rounded-lg border border-rose-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-sm"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold rounded-xl border border-rose-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-sm"
                     title="Hapus semua riwayat pengiriman pesan"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1986,71 +2169,183 @@ export const TelegramBotView: React.FC = () => {
                     type="button"
                     onClick={fetchLogs}
                     disabled={isRefreshingLogs}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-editor hover:bg-bg-hover text-xs font-semibold rounded-lg border border-border-main transition-colors cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-bg-editor hover:bg-bg-hover text-xs font-semibold rounded-xl border border-border-main transition-colors cursor-pointer text-text-main shadow-sm"
                   >
                     <RefreshCw className={clsx("w-3.5 h-3.5", isRefreshingLogs && "animate-spin text-sky-400")} />
-                    Refresh Log
+                    Refresh
                   </button>
                 </div>
+              </div>
+
+              {/* Date Filters Row */}
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border-main/60 text-xs">
+                <span className="text-text-muted flex items-center gap-1 shrink-0 font-medium text-[11px]">
+                  <Calendar className="w-3.5 h-3.5 text-sky-400" />
+                  Filter Tanggal:
+                </span>
+                <div className="flex items-center gap-1.5 bg-bg-editor px-2.5 py-1 rounded-lg border border-border-main">
+                  <span className="text-[10px] text-text-muted">Dari:</span>
+                  <input
+                    type="date"
+                    value={logStartDate}
+                    onChange={e => setLogStartDate(e.target.value)}
+                    className="bg-transparent text-xs text-text-main focus:outline-none cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 bg-bg-editor px-2.5 py-1 rounded-lg border border-border-main">
+                  <span className="text-[10px] text-text-muted">Sampai:</span>
+                  <input
+                    type="date"
+                    value={logEndDate}
+                    onChange={e => setLogEndDate(e.target.value)}
+                    className="bg-transparent text-xs text-text-main focus:outline-none cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center gap-1 ml-auto">
+                  <button
+                    type="button"
+                    onClick={setTodayDateFilter}
+                    className="px-2.5 py-1 text-[11px] font-semibold bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg border border-border-main transition-colors cursor-pointer"
+                  >
+                    Hari Ini
+                  </button>
+                  <button
+                    type="button"
+                    onClick={setLast7DaysFilter}
+                    className="px-2.5 py-1 text-[11px] font-semibold bg-bg-editor hover:bg-bg-hover text-text-muted hover:text-text-main rounded-lg border border-border-main transition-colors cursor-pointer"
+                  >
+                    7 Hari Terakhir
+                  </button>
+                  {(logStartDate || logEndDate) && (
+                    <button
+                      type="button"
+                      onClick={resetDateFilter}
+                      className="px-2.5 py-1 text-[11px] font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/30 transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <X className="w-3 h-3" />
+                      Reset Tanggal
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Logs Table */}
+            <div className="bg-bg-panel border border-border-main rounded-xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between text-xs text-text-muted">
+                <span>
+                  Menampilkan <b className="text-text-main font-semibold">{filteredLogs.length}</b> pesan log
+                  {(logSearch || logStatusFilter !== 'ALL' || logStartDate || logEndDate) && ' (hasil filter)'}
+                </span>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="border-b border-border-main text-text-muted uppercase text-[10px]">
-                      <th className="py-2.5 px-3 font-semibold">Waktu Eksekusi</th>
-                      <th className="py-2.5 px-3 font-semibold">Nama Notifikasi</th>
-                      <th className="py-2.5 px-3 font-semibold">Bot</th>
-                      <th className="py-2.5 px-3 font-semibold">Terkirim / Gagal</th>
-                      <th className="py-2.5 px-3 font-semibold">Status & Rincian</th>
+                    <tr className="border-b border-border-main text-text-muted uppercase text-[10px] bg-bg-editor/50">
+                      <th className="py-2.5 px-3 font-semibold">Waktu</th>
+                      <th className="py-2.5 px-3 font-semibold">Notifikasi & Bot</th>
+                      <th className="py-2.5 px-3 font-semibold">Penerima</th>
+                      <th className="py-2.5 px-3 font-semibold">Status</th>
+                      <th className="py-2.5 px-3 font-semibold">Isi Pesan</th>
+                      <th className="py-2.5 px-3 font-semibold">Rincian / Error</th>
+                      <th className="py-2.5 px-3 font-semibold text-right">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-main/50">
-                    {logs.map(log => (
-                      <tr key={log.id} className="hover:bg-bg-hover/50">
-                        <td className="py-3 px-3 text-text-muted font-mono text-[11px] whitespace-nowrap">
-                          {(() => {
-                            const timeVal = log.createdAt || log.executedAt;
-                            if (!timeVal) return '-';
-                            try {
-                              const d = new Date(timeVal);
-                              if (isNaN(d.getTime())) return timeVal;
-                              return d.toLocaleString('id-ID', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                                hour12: false
-                              });
-                            } catch {
-                              return timeVal;
-                            }
-                          })()}
-                        </td>
-                        <td className="py-3 px-3 font-semibold text-text-main">
-                          {log.scheduleName || 'Manual Execution'}
-                        </td>
-                        <td className="py-3 px-3 text-text-muted">
-                          {log.botName || 'Bot'}
-                        </td>
-                        <td className="py-3 px-3 font-mono">
-                          <span className="text-emerald-400">{log.messagesSent} Berhasil</span>
-                          {log.messagesFailed > 0 && (
-                            <span className="text-rose-400 ml-1.5">• {log.messagesFailed} Gagal</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 text-[11px] text-text-muted max-w-md truncate" title={log.details}>
-                          {log.details || '-'}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredLogs.map(log => {
+                      const isSuccess = log.status === 'BERHASIL' || log.status === 'SUCCESS' || (log.messagesSent > 0 && log.messagesFailed === 0);
+                      const isFailed = log.status === 'GAGAL' || log.status === 'FAILED' || log.messagesFailed > 0;
+                      return (
+                        <tr key={log.id} className="hover:bg-bg-hover/50 transition-colors">
+                          <td className="py-3 px-3 text-text-muted font-mono text-[11px] whitespace-nowrap">
+                            {formatLogDate(log.createdAt || log.executedAt)}
+                            {log.triggerType && (
+                              <span className="block text-[9px] text-text-muted font-sans mt-0.5">
+                                {log.triggerType === 'SCHEDULER' ? '⏰ Otomatis (Cron)' : '⚡ Manual (Run)'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="font-semibold text-text-main">{log.scheduleName || 'Manual Execution'}</div>
+                            <div className="text-[10px] text-text-muted flex items-center gap-1 mt-0.5">
+                              <Bot className="w-3 h-3 text-sky-400" />
+                              <span>{log.botName || 'Bot'}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="font-medium text-text-main">
+                              {log.recipientName && log.recipientName !== '-' ? log.recipientName : (log.recipientPhone && log.recipientPhone !== '-' ? 'Karyawan' : '-')}
+                            </div>
+                            {log.recipientPhone && log.recipientPhone !== '-' ? (
+                              <div className="text-[11px] font-mono text-emerald-400 flex items-center gap-1 mt-0.5 font-semibold">
+                                <Smartphone className="w-3 h-3 text-text-muted" />
+                                <span>{log.recipientPhone}</span>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-text-muted">-</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            {isSuccess ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Berhasil
+                              </span>
+                            ) : isFailed ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                                <AlertCircle className="w-3 h-3" />
+                                Gagal
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/30">
+                                {log.status || '-'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 max-w-xs truncate" title={log.messageText || '-'}>
+                            {log.messageText && log.messageText !== '-' ? (
+                              <div className="text-[11px] text-text-muted font-mono truncate max-w-xs bg-bg-editor px-2 py-1 rounded border border-border-main/50">
+                                {log.messageText}
+                              </div>
+                            ) : (
+                              <span className="text-text-muted text-[11px]">-</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-[11px] max-w-xs truncate" title={log.details || '-'}>
+                            <span className={isFailed ? "text-rose-400 font-medium" : "text-text-muted"}>
+                              {log.details || '-'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-right whitespace-nowrap">
+                            {log.messageText && log.messageText !== '-' ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedLogModal(log)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-[11px] font-bold border border-sky-500/30 transition-colors cursor-pointer shadow-sm"
+                                title="Lihat rincian pesan lengkap"
+                              >
+                                <Eye className="w-3 h-3" />
+                                Rincian
+                              </button>
+                            ) : (
+                              <span className="text-text-muted text-[11px]">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
 
-                    {logs.length === 0 && (
+                    {filteredLogs.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-text-muted">
-                          Belum ada riwayat pengiriman pesan.
+                        <td colSpan={7} className="py-12 text-center text-text-muted space-y-2">
+                          <History className="w-8 h-8 text-text-muted/30 mx-auto" />
+                          <p className="font-semibold text-text-main text-xs">Tidak Ada Log Pesan yang Sesuai</p>
+                          <p className="text-[11px] text-text-muted">
+                            {logs.length === 0
+                              ? 'Belum ada riwayat pengiriman pesan yang tercatat.'
+                              : 'Tidak ada data log yang cocok dengan filter pencarian Anda.'}
+                          </p>
                         </td>
                       </tr>
                     )}
@@ -2061,6 +2356,77 @@ export const TelegramBotView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal: Detail Pesan Log Lengkap */}
+      {selectedLogModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-bg-panel border border-border-main rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl animate-in fade-in duration-200">
+            <div className="flex items-center justify-between border-b border-border-main pb-3">
+              <div>
+                <h3 className="text-sm font-bold flex items-center gap-2 text-text-main">
+                  <MessageSquare className="w-4 h-4 text-sky-400" />
+                  Rincian Pesan Terkirim
+                </h3>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  {selectedLogModal.scheduleName || 'Manual Execution'} • {selectedLogModal.botName || 'Bot'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedLogModal(null)}
+                className="p-1.5 rounded-lg text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Target recipient info */}
+            <div className="bg-bg-editor p-3 rounded-xl border border-border-main flex items-center justify-between text-xs">
+              <div>
+                <span className="text-text-muted block text-[10px] uppercase font-bold">Penerima</span>
+                <span className="font-semibold text-text-main">{selectedLogModal.recipientName || '-'}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-text-muted block text-[10px] uppercase font-bold">Nomor HP</span>
+                <span className="font-mono text-emerald-400 font-bold">{selectedLogModal.recipientPhone || '-'}</span>
+              </div>
+            </div>
+
+            {/* Telegram Bubble Chat Preview */}
+            <div className="bg-[#182533] border border-[#243447] rounded-2xl p-4 shadow-inner space-y-2 max-h-80 overflow-y-auto">
+              <div className="text-xs text-white/95 whitespace-pre-wrap font-sans leading-relaxed select-text">
+                {selectedLogModal.messageText || '(Pesan kosong)'}
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-white/10 text-[10px] text-white/50">
+                <span className={clsx(
+                  "font-bold",
+                  selectedLogModal.status === 'BERHASIL' || selectedLogModal.status === 'SUCCESS' ? "text-emerald-400" : "text-rose-400"
+                )}>
+                  Status: {selectedLogModal.status}
+                </span>
+                <span>{formatLogDate(selectedLogModal.createdAt || selectedLogModal.executedAt)} ✓✓</span>
+              </div>
+            </div>
+
+            {selectedLogModal.details && (
+              <div className="text-[11px] text-text-muted bg-bg-editor/50 p-2.5 rounded-xl border border-border-main">
+                <span className="font-semibold text-text-main">Keterangan: </span>
+                {selectedLogModal.details}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedLogModal(null)}
+                className="px-4 py-2 bg-bg-editor hover:bg-bg-hover text-text-main text-xs font-semibold rounded-xl border border-border-main transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Tambah Bot Baru */}
       {isBotModalOpen && (

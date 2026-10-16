@@ -12,8 +12,11 @@ public class TelegramLog {
     private int totalRows;
     private int messagesSent;
     private int messagesFailed;
-    private String status; // "SUCCESS", "PARTIAL", "FAILED"
+    private String status; // "SUCCESS", "PARTIAL", "FAILED", "BERHASIL", "GAGAL"
     private String details;
+    private String recipientName;
+    private String recipientPhone;
+    private String messageText;
     private LocalDateTime createdAt;
 
     public String getId() {
@@ -102,6 +105,30 @@ public class TelegramLog {
 
     public void setDetails(String details) {
         this.details = details;
+    }
+
+    public String getRecipientName() {
+        return recipientName;
+    }
+
+    public void setRecipientName(String recipientName) {
+        this.recipientName = recipientName;
+    }
+
+    public String getRecipientPhone() {
+        return recipientPhone;
+    }
+
+    public void setRecipientPhone(String recipientPhone) {
+        this.recipientPhone = recipientPhone;
+    }
+
+    public String getMessageText() {
+        return messageText;
+    }
+
+    public void setMessageText(String messageText) {
+        this.messageText = messageText;
     }
 
     public LocalDateTime getCreatedAt() {

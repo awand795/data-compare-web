@@ -261,7 +261,15 @@ public class TelegramController {
     // ─────────────────────────────────────────────────────────────────────────────
 
     @GetMapping("/logs")
-    public ResponseEntity<List<TelegramLog>> getLogs() {
+    public ResponseEntity<List<TelegramLog>> getLogs(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate
+    ) {
+        if (search != null || status != null || startDate != null || endDate != null) {
+            return ResponseEntity.ok(logRepository.findWithFilters(search, status, startDate, endDate));
+        }
         return ResponseEntity.ok(logRepository.findAll());
     }
 

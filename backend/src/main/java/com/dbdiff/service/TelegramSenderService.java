@@ -204,15 +204,21 @@ public class TelegramSenderService {
             rows = executeQuery(connectionId, sqlQuery, limit);
         } catch (Exception e) {
             logger.error("Failed to execute query for Telegram send: {}", e.getMessage(), e);
-            log.setStatus("FAILED");
+            log.setStatus("GAGAL");
+            log.setRecipientName("-");
+            log.setRecipientPhone("-");
+            log.setMessageText("-");
             log.setDetails("Query execution failed: " + e.getMessage());
             return logRepository.save(log);
         }
 
         log.setTotalRows(rows.size());
         if (rows.isEmpty()) {
-            log.setStatus("SUCCESS");
-            log.setDetails("Query executed successfully, returned 0 rows. No messages sent.");
+            log.setStatus("BERHASIL");
+            log.setRecipientName("-");
+            log.setRecipientPhone("-");
+            log.setMessageText("-");
+            log.setDetails("Query dieksekusi berhasil, namun tidak ada baris data (0 baris). Tidak ada pesan yang dikirim.");
             return logRepository.save(log);
         }
 
@@ -243,11 +249,62 @@ public class TelegramSenderService {
             String renderedMsg = renderTemplate(template, row);
             List<String> msgChunks = splitMessageIfNeeded(renderedMsg);
 
-            List<String> targetChatIds = new ArrayList<>();
-
             if ("MASTER".equalsIgnoreCase(recipientMode)) {
-                for (TelegramContact c : masterContacts) {
-                    targetChatIds.add(c.getChatId());
+                if (masterContacts.isEmpty()) {
+                    failedCount++;
+                    TelegramLog rowLog = new TelegramLog();
+                    rowLog.setScheduleId(scheduleId);
+                    rowLog.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
+                    rowLog.setBotId(botId);
+                    rowLog.setBotName(bot.getName());
+                    rowLog.setTriggerType(triggerType);
+                    rowLog.setRecipientName("Master Mode");
+                    rowLog.setRecipientPhone("-");
+                    rowLog.setMessageText(renderedMsg);
+                    rowLog.setStatus("GAGAL");
+                    rowLog.setDetails("Belum ada kontak master yang dipilih/aktif");
+                    rowLog.setMessagesSent(0);
+                    rowLog.setMessagesFailed(1);
+                    rowLog.setTotalRows(1);
+                    logRepository.save(rowLog);
+                } else {
+                    for (TelegramContact c : masterContacts) {
+                        boolean allChunksSuccess = true;
+                        String sendErr = null;
+                        for (String chunk : msgChunks) {
+                            boolean success = sendTelegramMessage(bot.getBotToken(), c.getChatId(), chunk);
+                            if (!success) {
+                                allChunksSuccess = false;
+                                sendErr = "Gagal kirim ke Telegram API (chat_id: " + c.getChatId() + ")";
+                            }
+                            try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+                        }
+
+                        TelegramLog rowLog = new TelegramLog();
+                        rowLog.setScheduleId(scheduleId);
+                        rowLog.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
+                        rowLog.setBotId(botId);
+                        rowLog.setBotName(bot.getName());
+                        rowLog.setTriggerType(triggerType);
+                        rowLog.setRecipientName(c.getFirstName() != null ? c.getFirstName() : "Master Contact");
+                        rowLog.setRecipientPhone(c.getPhoneNumber() != null ? c.getPhoneNumber() : "-");
+                        rowLog.setMessageText(renderedMsg);
+                        if (allChunksSuccess) {
+                            sentCount++;
+                            rowLog.setStatus("BERHASIL");
+                            rowLog.setDetails("Terkirim ke Telegram (chat_id: " + c.getChatId() + ")");
+                            rowLog.setMessagesSent(1);
+                            rowLog.setMessagesFailed(0);
+                        } else {
+                            failedCount++;
+                            rowLog.setStatus("GAGAL");
+                            rowLog.setDetails(sendErr != null ? sendErr : "Gagal kirim via Telegram API");
+                            rowLog.setMessagesSent(0);
+                            rowLog.setMessagesFailed(1);
+                        }
+                        rowLog.setTotalRows(1);
+                        logRepository.save(rowLog);
+                    }
                 }
             } else if ("DYNAMIC_COLUMN".equalsIgnoreCase(recipientMode)) {
                 String targetCol = (phoneColumnName != null && !phoneColumnName.trim().isEmpty()) ? phoneColumnName : "user_hp";
@@ -264,38 +321,91 @@ public class TelegramSenderService {
                     }
                 }
 
-                    Object userName = row.get("user_name");
-                    if (userName == null) userName = row.get("USER_NAME");
-                    String userLabel = userName != null ? String.valueOf(userName) : ("Row " + (rowIndex + 1));
+                Object userName = row.get("user_name");
+                if (userName == null) userName = row.get("USER_NAME");
+                String userLabel = userName != null ? String.valueOf(userName) : ("Row " + (rowIndex + 1));
 
-                    if (rawPhone != null && !String.valueOf(rawPhone).trim().isEmpty()) {
-                        String cleanPhone = String.valueOf(rawPhone).replaceAll("[^0-9]", "");
-                        TelegramContact c = contactRepository.findByBotIdAndPhone(botId, cleanPhone);
-                        if (c != null && c.isActive() && c.getChatId() != null && !c.getChatId().trim().isEmpty()) {
-                            targetChatIds.add(c.getChatId());
+                if (rawPhone != null && !String.valueOf(rawPhone).trim().isEmpty()) {
+                    String cleanPhone = String.valueOf(rawPhone).replaceAll("[^0-9]", "");
+                    TelegramContact c = contactRepository.findByBotIdAndPhone(botId, cleanPhone);
+                    if (c != null && c.isActive() && c.getChatId() != null && !c.getChatId().trim().isEmpty()) {
+                        boolean allChunksSuccess = true;
+                        String sendErr = null;
+                        for (String chunk : msgChunks) {
+                            boolean success = sendTelegramMessage(bot.getBotToken(), c.getChatId(), chunk);
+                            if (!success) {
+                                allChunksSuccess = false;
+                                sendErr = "Gagal kirim ke Telegram API (chat_id: " + c.getChatId() + ")";
+                            }
+                            try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+                        }
+
+                        TelegramLog rowLog = new TelegramLog();
+                        rowLog.setScheduleId(scheduleId);
+                        rowLog.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
+                        rowLog.setBotId(botId);
+                        rowLog.setBotName(bot.getName());
+                        rowLog.setTriggerType(triggerType);
+                        rowLog.setRecipientName(userLabel);
+                        rowLog.setRecipientPhone(cleanPhone);
+                        rowLog.setMessageText(renderedMsg);
+                        if (allChunksSuccess) {
+                            sentCount++;
+                            rowLog.setStatus("BERHASIL");
+                            rowLog.setDetails("Terkirim ke Telegram (chat_id: " + c.getChatId() + ")");
+                            rowLog.setMessagesSent(1);
+                            rowLog.setMessagesFailed(0);
                         } else {
                             failedCount++;
-                            errorDetails.add(String.format("[%s - HP: %s]: GAGAL - Belum klik START pada bot Telegram ini", userLabel, cleanPhone));
+                            errorDetails.add(String.format("[%s - HP: %s]: GAGAL - %s", userLabel, cleanPhone, sendErr));
+                            rowLog.setStatus("GAGAL");
+                            rowLog.setDetails(sendErr != null ? sendErr : "Gagal kirim via Telegram API");
+                            rowLog.setMessagesSent(0);
+                            rowLog.setMessagesFailed(1);
                         }
+                        rowLog.setTotalRows(1);
+                        logRepository.save(rowLog);
                     } else {
                         failedCount++;
-                        errorDetails.add(String.format("[%s]: GAGAL - Nomor HP kosong di data view", userLabel));
-                    }
-            }
+                        String err = "Belum klik START pada bot Telegram ini";
+                        errorDetails.add(String.format("[%s - HP: %s]: GAGAL - %s", userLabel, cleanPhone, err));
 
-            for (String chatId : targetChatIds) {
-                for (String chunk : msgChunks) {
-                    boolean success = sendTelegramMessage(bot.getBotToken(), chatId, chunk);
-                    if (success) {
-                        sentCount++;
-                    } else {
-                        failedCount++;
-                        errorDetails.add(String.format("Row %d: Failed to send to chat_id %s", rowIndex + 1, chatId));
+                        TelegramLog rowLog = new TelegramLog();
+                        rowLog.setScheduleId(scheduleId);
+                        rowLog.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
+                        rowLog.setBotId(botId);
+                        rowLog.setBotName(bot.getName());
+                        rowLog.setTriggerType(triggerType);
+                        rowLog.setRecipientName(userLabel);
+                        rowLog.setRecipientPhone(cleanPhone);
+                        rowLog.setMessageText(renderedMsg);
+                        rowLog.setStatus("GAGAL");
+                        rowLog.setDetails(err);
+                        rowLog.setMessagesSent(0);
+                        rowLog.setMessagesFailed(1);
+                        rowLog.setTotalRows(1);
+                        logRepository.save(rowLog);
                     }
-                    // Rate limiting throttle 100ms
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException ignored) {}
+                } else {
+                    failedCount++;
+                    String err = "Nomor HP kosong di data view";
+                    errorDetails.add(String.format("[%s]: GAGAL - %s", userLabel, err));
+
+                    TelegramLog rowLog = new TelegramLog();
+                    rowLog.setScheduleId(scheduleId);
+                    rowLog.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
+                    rowLog.setBotId(botId);
+                    rowLog.setBotName(bot.getName());
+                    rowLog.setTriggerType(triggerType);
+                    rowLog.setRecipientName(userLabel);
+                    rowLog.setRecipientPhone("-");
+                    rowLog.setMessageText(renderedMsg);
+                    rowLog.setStatus("GAGAL");
+                    rowLog.setDetails(err);
+                    rowLog.setMessagesSent(0);
+                    rowLog.setMessagesFailed(1);
+                    rowLog.setTotalRows(1);
+                    logRepository.save(rowLog);
                 }
             }
         }
@@ -303,18 +413,18 @@ public class TelegramSenderService {
         log.setMessagesSent(sentCount);
         log.setMessagesFailed(failedCount);
         if (failedCount == 0 && sentCount > 0) {
-            log.setStatus("SUCCESS");
+            log.setStatus("BERHASIL");
             log.setDetails(String.format("Successfully sent %d message(s) across %d row(s).", sentCount, rows.size()));
         } else if (sentCount > 0 && failedCount > 0) {
             log.setStatus("PARTIAL");
             log.setDetails(String.format("Sent %d message(s), %d failed. Issues: %s",
                     sentCount, failedCount, String.join("; ", errorDetails.subList(0, Math.min(5, errorDetails.size())))));
         } else {
-            log.setStatus(sentCount == 0 && failedCount == 0 ? "SUCCESS" : "FAILED");
+            log.setStatus(sentCount == 0 && failedCount == 0 ? "BERHASIL" : "GAGAL");
             log.setDetails(errorDetails.isEmpty() ? "No recipients matched or found." : String.join("; ", errorDetails));
         }
 
-        return logRepository.save(log);
+        return log;
     }
 
     private boolean sendTelegramMessage(String botToken, String chatId, String message) {
