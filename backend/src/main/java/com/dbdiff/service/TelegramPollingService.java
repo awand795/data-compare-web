@@ -138,6 +138,9 @@ public class TelegramPollingService {
         JsonNode contactNode = message.path("contact");
         if (!contactNode.isMissingNode()) {
             String phoneNumber = contactNode.path("phone_number").asText("").replaceAll("[^0-9]", "");
+            if (phoneNumber.startsWith("08")) {
+                phoneNumber = "62" + phoneNumber.substring(1);
+            }
             saveContactAndReply(bot, chatId, phoneNumber, firstName, lastName, username, true);
             return;
         }
@@ -183,7 +186,7 @@ public class TelegramPollingService {
                 c.setActive(true);
                 contactRepository.upsertContact(c);
 
-                sendGreeting(bot, chatId, firstName);
+                sendGreetingWithContactButton(bot, chatId, firstName);
             }
             return;
         }
@@ -219,18 +222,65 @@ public class TelegramPollingService {
                 escapeHtml(firstName), phone, escapeHtml(bot.getName())
         );
 
-        sendSimpleMessage(bot.getBotToken(), chatId, replyMsg);
+        sendSimpleMessageWithRemoveKeyboard(bot.getBotToken(), chatId, replyMsg);
     }
 
-    private void sendGreeting(TelegramBotConfig bot, String chatId, String firstName) {
-        String greetingText = String.format(
-                "👋 Halo <b>%s</b>! Selamat datang di <b>%s</b>.\n\n" +
-                "Akun Anda terdeteksi. Untuk menghubungkan nomor HP Anda secara otomatis:\n" +
-                "• Buka link registrasi bot yang dibagikan admin, ATAU\n" +
-                "• Ketik langsung nomor HP Anda di chat ini (contoh: <code>082362851796</code>)",
-                escapeHtml(firstName), escapeHtml(bot.getName())
-        );
-        sendSimpleMessage(bot.getBotToken(), chatId, greetingText);
+    private void sendGreetingWithContactButton(TelegramBotConfig bot, String chatId, String firstName) {
+        try {
+            String url = String.format("https://api.telegram.org/bot%s/sendMessage", bot.getBotToken());
+
+            String greetingText = String.format(
+                    "👋 Halo <b>%s</b>! Selamat datang di <b>%s</b>.\n\n" +
+                    "Agar sistem kami dapat mengirimkan notifikasi dan laporan ke akun Anda, " +
+                    "silakan klik tombol <b>📱 Bagikan Nomor Telepon Saya</b> di bawah ini:\n\n" +
+                    "<i>(Atau langsung ketik nomor HP Anda di chat ini jika tombol tidak muncul)</i>",
+                    escapeHtml(firstName), escapeHtml(bot.getName())
+            );
+
+            Map<String, Object> contactBtn = new HashMap<>();
+            contactBtn.put("text", "📱 Bagikan Nomor Telepon Saya");
+            contactBtn.put("request_contact", true);
+
+            List<List<Map<String, Object>>> keyboard = new ArrayList<>();
+            keyboard.add(Collections.singletonList(contactBtn));
+
+            Map<String, Object> replyMarkup = new HashMap<>();
+            replyMarkup.put("keyboard", keyboard);
+            replyMarkup.put("one_time_keyboard", true);
+            replyMarkup.put("resize_keyboard", true);
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("chat_id", chatId);
+            payload.put("text", greetingText);
+            payload.put("parse_mode", "HTML");
+            payload.put("reply_markup", replyMarkup);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            restTemplate.postForEntity(url, new HttpEntity<>(payload, headers), String.class);
+        } catch (Exception e) {
+            logger.warn("Failed to send greeting keyboard to chat {}: {}", chatId, e.getMessage());
+        }
+    }
+
+    public void sendSimpleMessageWithRemoveKeyboard(String botToken, String chatId, String text) {
+        try {
+            String url = String.format("https://api.telegram.org/bot%s/sendMessage", botToken);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("chat_id", chatId);
+            payload.put("text", text);
+            payload.put("parse_mode", "HTML");
+
+            Map<String, Object> replyMarkup = new HashMap<>();
+            replyMarkup.put("remove_keyboard", true);
+            payload.put("reply_markup", replyMarkup);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            restTemplate.postForEntity(url, new HttpEntity<>(payload, headers), String.class);
+        } catch (Exception e) {
+            logger.warn("Failed to send simple message with remove keyboard to chat {}: {}", chatId, e.getMessage());
+        }
     }
 
     public void sendSimpleMessage(String botToken, String chatId, String text) {
