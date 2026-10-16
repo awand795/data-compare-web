@@ -167,12 +167,12 @@ public class TelegramPollingService {
                 if (existing != null && existing.getPhoneNumber() != null && !existing.getPhoneNumber().trim().isEmpty()) {
                     String alreadyMsg = String.format(
                             "✅ <b>Anda Sudah Terdaftar!</b>\n\n" +
-                            "Halo <b>%s</b>, akun Telegram Anda sudah terdaftar dan terhubung dengan nomor <code>%s</code> di bot <b>%s</b>.\n\n" +
-                            "Status: 🟢 <b>Aktif</b>\n" +
-                            "Anda akan otomatis menerima pesan notifikasi dan laporan di sini.",
+                            "Halo <b>%s</b>, akun Telegram Anda sudah terdaftar dengan nomor <code>%s</code> di bot <b>%s</b>.\n\n" +
+                            "Status: 🟢 <b>Aktif</b>\n\n" +
+                            "<i>Jika ingin memperbarui nomor telepon yang terhubung, silakan klik tombol di bawah:</i>",
                             escapeHtml(firstName), existing.getPhoneNumber(), escapeHtml(bot.getName())
                     );
-                    sendSimpleMessage(bot.getBotToken(), chatId, alreadyMsg);
+                    sendGreetingWithContactButton(bot, chatId, firstName, alreadyMsg);
                     return;
                 }
 
@@ -186,7 +186,7 @@ public class TelegramPollingService {
                 c.setActive(true);
                 contactRepository.upsertContact(c);
 
-                sendGreetingWithContactButton(bot, chatId, firstName);
+                sendGreetingWithContactButton(bot, chatId, firstName, null);
             }
             return;
         }
@@ -225,11 +225,11 @@ public class TelegramPollingService {
         sendSimpleMessageWithRemoveKeyboard(bot.getBotToken(), chatId, replyMsg);
     }
 
-    private void sendGreetingWithContactButton(TelegramBotConfig bot, String chatId, String firstName) {
+    private void sendGreetingWithContactButton(TelegramBotConfig bot, String chatId, String firstName, String customText) {
         try {
             String url = String.format("https://api.telegram.org/bot%s/sendMessage", bot.getBotToken());
 
-            String greetingText = String.format(
+            String greetingText = (customText != null && !customText.isEmpty()) ? customText : String.format(
                     "👋 Halo <b>%s</b>! Selamat datang di <b>%s</b>.\n\n" +
                     "Agar sistem kami dapat mengirimkan notifikasi dan laporan ke akun Anda, " +
                     "silakan klik tombol <b>📱 Bagikan Nomor Telepon Saya</b> di bawah ini:\n\n" +
@@ -246,8 +246,9 @@ public class TelegramPollingService {
 
             Map<String, Object> replyMarkup = new HashMap<>();
             replyMarkup.put("keyboard", keyboard);
-            replyMarkup.put("one_time_keyboard", true);
             replyMarkup.put("resize_keyboard", true);
+            replyMarkup.put("is_persistent", true);
+            replyMarkup.put("one_time_keyboard", false);
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("chat_id", chatId);
