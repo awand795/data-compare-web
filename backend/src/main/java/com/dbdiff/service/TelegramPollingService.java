@@ -167,10 +167,10 @@ public class TelegramPollingService {
                 if (existing != null && existing.getPhoneNumber() != null && !existing.getPhoneNumber().trim().isEmpty()) {
                     String alreadyMsg = String.format(
                             "✅ <b>Anda Sudah Terdaftar!</b>\n\n" +
-                            "Halo <b>%s</b>, akun Telegram Anda sudah terdaftar dengan nomor <code>%s</code> di bot <b>%s</b>.\n\n" +
+                            "Halo <b>%s</b>, akun Telegram Anda sudah terdaftar dengan nomor <code>%s</code> di Darko Report.\n\n" +
                             "Status: 🟢 <b>Aktif</b>\n\n" +
                             "<i>Jika ingin memperbarui nomor telepon yang terhubung, silakan klik tombol di bawah:</i>",
-                            escapeHtml(firstName), existing.getPhoneNumber(), escapeHtml(bot.getName())
+                            escapeHtml(firstName), existing.getPhoneNumber()
                     );
                     sendGreetingWithContactButton(bot, chatId, firstName, alreadyMsg);
                     return;
@@ -217,9 +217,9 @@ public class TelegramPollingService {
 
         String replyMsg = String.format(
                 "✅ <b>Pendaftaran Berhasil!</b>\n\n" +
-                "Halo <b>%s</b>, nomor Anda <code>%s</code> telah berhasil terhubung dengan <b>%s</b> di Darkosync Studio.\n\n" +
+                "Halo <b>%s</b>, nomor Anda <code>%s</code> telah berhasil terdaftar di Darko Report.\n\n" +
                 "Anda akan otomatis menerima notifikasi dan laporan di sini.",
-                escapeHtml(firstName), phone, escapeHtml(bot.getName())
+                escapeHtml(firstName), phone
         );
 
         sendSimpleMessageWithRemoveKeyboard(bot.getBotToken(), chatId, replyMsg);
@@ -230,11 +230,11 @@ public class TelegramPollingService {
             String url = String.format("https://api.telegram.org/bot%s/sendMessage", bot.getBotToken());
 
             String greetingText = (customText != null && !customText.isEmpty()) ? customText : String.format(
-                    "👋 Halo <b>%s</b>! Selamat datang di <b>%s</b>.\n\n" +
+                    "👋 Halo <b>%s</b>! Selamat datang di <b>Darko Report</b>.\n\n" +
                     "Agar sistem kami dapat mengirimkan notifikasi dan laporan ke akun Anda, " +
                     "silakan klik tombol <b>📱 Bagikan Nomor Telepon Saya</b> di bawah ini:\n\n" +
                     "<i>(Atau langsung ketik nomor HP Anda di chat ini jika tombol tidak muncul)</i>",
-                    escapeHtml(firstName), escapeHtml(bot.getName())
+                    escapeHtml(firstName)
             );
 
             Map<String, Object> contactBtn = new HashMap<>();
