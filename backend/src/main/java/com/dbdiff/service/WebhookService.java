@@ -44,6 +44,7 @@ public class WebhookService {
     private final ConnectionManagerService connectionManagerService;
     private final NotificationService notificationService;
     private final ApiSchedulerService apiSchedulerService;
+    private final WebhookRedisQueueService webhookRedisQueueService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -55,12 +56,14 @@ public class WebhookService {
                           ConnectionRepository connectionRepository,
                           ConnectionManagerService connectionManagerService,
                           NotificationService notificationService,
-                          @org.springframework.context.annotation.Lazy ApiSchedulerService apiSchedulerService) {
+                          @org.springframework.context.annotation.Lazy ApiSchedulerService apiSchedulerService,
+                          @Autowired(required = false) WebhookRedisQueueService webhookRedisQueueService) {
         this.webhookRepository = webhookRepository;
         this.connectionRepository = connectionRepository;
         this.connectionManagerService = connectionManagerService;
         this.notificationService = notificationService;
         this.apiSchedulerService = apiSchedulerService;
+        this.webhookRedisQueueService = webhookRedisQueueService;
     }
 
     public static class WebhookProcessResult {
@@ -139,7 +142,16 @@ public class WebhookService {
             }
         }
 
-        // 4. Extract and normalize records to insert
+        // 4. Buffer into Redis Queue if available (darkosync-redis for Zero-Downtime & High Throughput)
+        if (webhookRedisQueueService != null && webhookRedisQueueService.isRedisAvailable()) {
+            boolean queued = webhookRedisQueueService.pushWebhook(slug, payload, headersJson, clientIp, httpMethod);
+            if (queued) {
+                long duration = System.currentTimeMillis() - startTime;
+                return new WebhookProcessResult(true, 200, "Webhook received and buffered in darkosync-redis queue successfully", 1, duration);
+            }
+        }
+
+        // 5. Fallback or direct: Extract and normalize records to insert
         List<String> recordsToInsert = new ArrayList<>();
         String trimmedPayload = (payload != null) ? payload.trim() : "{}";
         if (trimmedPayload.isEmpty()) {
@@ -205,6 +217,77 @@ public class WebhookService {
             sendFailureAlert(config, errorMsg, clientIp);
 
             return new WebhookProcessResult(false, 400, errorMsg, 0, duration);
+        }
+    }
+
+    /**
+     * Process webhook popped from darkosync-redis queue asynchronously
+     */
+    public void processQueuedWebhook(String slug, String payload, String headersJson, String clientIp, String httpMethod) {
+        long startTime = System.currentTimeMillis();
+        Optional<WebhookConfig> optConfig = webhookRepository.findBySlug(slug);
+        if (optConfig.isEmpty()) {
+            logger.warn("Queued webhook slug '{}' not found in database", slug);
+            return;
+        }
+
+        WebhookConfig config = optConfig.get();
+        String webhookId = config.getId();
+
+        List<String> recordsToInsert = new ArrayList<>();
+        String trimmedPayload = (payload != null) ? payload.trim() : "{}";
+        if (trimmedPayload.isEmpty()) {
+            trimmedPayload = "{}";
+        }
+
+        if (trimmedPayload.startsWith("\"") && trimmedPayload.endsWith("\"")) {
+            try {
+                JsonNode unwrapped = objectMapper.readTree(trimmedPayload);
+                if (unwrapped != null && unwrapped.isTextual()) {
+                    trimmedPayload = unwrapped.asText().trim();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        String bundledPayload;
+        if (trimmedPayload.startsWith("[") && trimmedPayload.endsWith("]")) {
+            bundledPayload = trimmedPayload;
+        } else if (trimmedPayload.startsWith("{") && trimmedPayload.endsWith("}")) {
+            bundledPayload = "[" + trimmedPayload + "]";
+        } else {
+            try {
+                JsonNode parsed = objectMapper.readTree(trimmedPayload);
+                bundledPayload = "[" + objectMapper.writeValueAsString(parsed) + "]";
+            } catch (Exception e) {
+                bundledPayload = "[\"" + trimmedPayload.replace("\"", "\\\"") + "\"]";
+            }
+        }
+        recordsToInsert.add(bundledPayload);
+
+        try {
+            int inserted = insertIntoTargetDatabase(config, recordsToInsert);
+            long duration = System.currentTimeMillis() - startTime;
+
+            webhookRepository.updateStats(webhookId, "SUCCESS", "Processed " + inserted + " records via Redis queue successfully", true);
+            recordLog(webhookId, slug, clientIp, httpMethod, headersJson, payload, "SUCCESS", 200, "Diproses via Redis Queue (darkosync-redis)", duration, config.getTargetTable(), inserted);
+
+            logger.info("Queued Webhook [{}] processed: {} records inserted into '{}'", config.getName(), inserted, config.getTargetTable());
+
+            if (config.isEnableEnrichment()) {
+                triggerAsyncEnrichment(config, recordsToInsert, payload);
+            }
+        } catch (Exception ex) {
+            long duration = System.currentTimeMillis() - startTime;
+            String errorMsg = ex.getMessage() != null ? ex.getMessage() : "Unknown database error";
+            logger.error("Queued Webhook [{}] ingestion error: {}", config.getName(), errorMsg, ex);
+
+            String status = errorMsg.contains("does not conform to standard schema") || errorMsg.contains("does not exist")
+                    ? "INVALID_SCHEMA" : "FAILED";
+
+            webhookRepository.updateStats(webhookId, status, errorMsg, false);
+            recordLog(webhookId, slug, clientIp, httpMethod, headersJson, payload, status, 400, errorMsg, duration, config.getTargetTable(), 0);
+
+            sendFailureAlert(config, errorMsg, clientIp);
         }
     }
 
