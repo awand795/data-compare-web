@@ -33,6 +33,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
@@ -472,18 +474,62 @@ public class ApiSchedulerService {
         return target;
     }
 
+    private String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
+    }
+
     private void sendNotificationIfConfigured(ApiSchedulerConfig config, String status, String message) {
         if (!"FAILED".equalsIgnoreCase(status) || config.getNotificationChannelId() == null || config.getNotificationChannelId().trim().isEmpty()) {
             return;
         }
-        String[] channelIds = config.getNotificationChannelId().split("[;,\\n]+");
-        String notificationMsg = String.format("❌ [API Failure Alert] Job: %s, Error: %s", config.getName(), message);
 
+        String nowStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String method = (config.getMethod() != null ? config.getMethod().toUpperCase() : "GET");
+        String safeUrl = escapeHtml(config.getUrl() != null ? config.getUrl() : "-");
+        String safeName = escapeHtml(config.getName() != null ? config.getName() : "API Scheduler Job");
+        String safeGroup = (config.getGroupName() != null && !config.getGroupName().trim().isEmpty())
+                ? " (" + escapeHtml(config.getGroupName().trim()) + ")" : "";
+        String targetTable = (config.getTargetTable() != null && !config.getTargetTable().trim().isEmpty())
+                ? "• <b>Target Table:</b> <code>" + escapeHtml(config.getTargetTable().trim()) + "</code>\n" : "";
+        String kodeData = (config.getKodeData() != null && !config.getKodeData().trim().isEmpty())
+                ? "• <b>Kode Data:</b> <code>" + escapeHtml(config.getKodeData().trim()) + "</code>\n" : "";
+
+        // Truncate error message if excessively long for notification
+        String safeError = message != null ? message : "Unknown error";
+        if (safeError.length() > 800) {
+            safeError = safeError.substring(0, 800) + "\n... (truncated)";
+        }
+        safeError = escapeHtml(safeError);
+
+        String notificationMsg = String.format(
+                "🚨 <b>[API Scheduler Alert] Jadwal Eksekusi Gagal</b>\n\n" +
+                "• <b>Job Name:</b> %s%s\n" +
+                "• <b>Target API:</b> [<code>%s</code>] %s\n" +
+                "%s" +
+                "%s" +
+                "• <b>Waktu:</b> %s WIB\n" +
+                "• <b>Status / Error:</b>\n<pre>%s</pre>\n\n" +
+                "<i>Mohon periksa status target service atau koneksi database Anda.</i>",
+                safeName, safeGroup,
+                method, safeUrl,
+                targetTable,
+                kodeData,
+                nowStr,
+                safeError
+        );
+
+        String[] channelIds = config.getNotificationChannelId().split("[;,\\n]+");
         for (String chanId : channelIds) {
-            try {
-                notificationService.sendToChannel(chanId.trim(), notificationMsg);
-            } catch (Exception e) {
-                logger.warn("Failed to send notification to [{}]: {}", chanId, e.getMessage());
+            String clean = chanId.trim();
+            if (!clean.isEmpty()) {
+                try {
+                    notificationService.sendToChannel(clean, notificationMsg);
+                } catch (Exception e) {
+                    logger.warn("Failed to send notification to [{}]: {}", clean, e.getMessage());
+                }
             }
         }
     }
