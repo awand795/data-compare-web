@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 public class TelegramLog {
     private String id;
+    private String executionId;
     private String scheduleId;
     private String scheduleName;
     private String botId;
@@ -25,6 +26,14 @@ public class TelegramLog {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public String getExecutionId() {
+        return executionId;
+    }
+
+    public void setExecutionId(String executionId) {
+        this.executionId = executionId;
     }
 
     public String getScheduleId() {

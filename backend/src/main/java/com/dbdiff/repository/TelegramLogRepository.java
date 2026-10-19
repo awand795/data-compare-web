@@ -32,6 +32,7 @@ public class TelegramLogRepository {
         try {
             String sql = "CREATE TABLE IF NOT EXISTS telegram_logs (" +
                     "id VARCHAR(255) PRIMARY KEY, " +
+                    "execution_id VARCHAR(255), " +
                     "schedule_id VARCHAR(255), " +
                     "schedule_name VARCHAR(255), " +
                     "bot_id VARCHAR(255), " +
@@ -50,11 +51,12 @@ public class TelegramLogRepository {
             jdbcTemplate.execute(sql);
 
             // Ensure new columns exist on existing database tables
+            try { jdbcTemplate.execute("ALTER TABLE telegram_logs ADD COLUMN IF NOT EXISTS execution_id VARCHAR(255)"); } catch (Exception ignored) {}
             try { jdbcTemplate.execute("ALTER TABLE telegram_logs ADD COLUMN IF NOT EXISTS recipient_name VARCHAR(255)"); } catch (Exception ignored) {}
             try { jdbcTemplate.execute("ALTER TABLE telegram_logs ADD COLUMN IF NOT EXISTS recipient_phone VARCHAR(50)"); } catch (Exception ignored) {}
             try { jdbcTemplate.execute("ALTER TABLE telegram_logs ADD COLUMN IF NOT EXISTS message_text TEXT"); } catch (Exception ignored) {}
 
-            logger.info("Successfully initialized table telegram_logs with per-message columns");
+            logger.info("Successfully initialized table telegram_logs with execution_id and per-message columns");
         } catch (Exception e) {
             logger.warn("Initialization of table telegram_logs failed: {}", e.getMessage());
         }
@@ -63,6 +65,7 @@ public class TelegramLogRepository {
     private final RowMapper<TelegramLog> mapper = (rs, rowNum) -> {
         TelegramLog l = new TelegramLog();
         l.setId(rs.getString("id"));
+        try { l.setExecutionId(rs.getString("execution_id")); } catch (Exception ignored) {}
         l.setScheduleId(rs.getString("schedule_id"));
         l.setScheduleName(rs.getString("schedule_name"));
         l.setBotId(rs.getString("bot_id"));
@@ -102,7 +105,8 @@ public class TelegramLogRepository {
 
         if (search != null && !search.trim().isEmpty()) {
             String q = "%" + search.trim() + "%";
-            sql.append("AND (recipient_phone ILIKE ? OR recipient_name ILIKE ? OR message_text ILIKE ? OR schedule_name ILIKE ? OR details ILIKE ?) ");
+            sql.append("AND (bot_name ILIKE ? OR recipient_phone ILIKE ? OR recipient_name ILIKE ? OR message_text ILIKE ? OR schedule_name ILIKE ? OR details ILIKE ?) ");
+            params.add(q);
             params.add(q);
             params.add(q);
             params.add(q);
@@ -138,11 +142,11 @@ public class TelegramLogRepository {
             log.setCreatedAt(LocalDateTime.now());
         }
 
-        String sql = "INSERT INTO telegram_logs (id, schedule_id, schedule_name, bot_id, bot_name, " +
+        String sql = "INSERT INTO telegram_logs (id, execution_id, schedule_id, schedule_name, bot_id, bot_name, " +
                 "trigger_type, total_rows, messages_sent, messages_failed, status, details, " +
                 "recipient_name, recipient_phone, message_text, created_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        jdbcTemplate.update(sql, log.getId(), log.getScheduleId(), log.getScheduleName(), log.getBotId(), log.getBotName(),
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        jdbcTemplate.update(sql, log.getId(), log.getExecutionId(), log.getScheduleId(), log.getScheduleName(), log.getBotId(), log.getBotName(),
                 log.getTriggerType(), log.getTotalRows(), log.getMessagesSent(), log.getMessagesFailed(),
                 log.getStatus(), log.getDetails(),
                 log.getRecipientName(), log.getRecipientPhone(), log.getMessageText(),

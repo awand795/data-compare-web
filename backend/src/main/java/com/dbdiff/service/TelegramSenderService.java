@@ -183,7 +183,9 @@ public class TelegramSenderService {
                                       String recipientMode, String masterRecipientIds,
                                       String phoneColumnName, int maxRows, String triggerType) {
 
+        String executionId = UUID.randomUUID().toString();
         TelegramLog log = new TelegramLog();
+        log.setExecutionId(executionId);
         log.setScheduleId(scheduleId);
         log.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
         log.setBotId(botId);
@@ -253,6 +255,7 @@ public class TelegramSenderService {
                 if (masterContacts.isEmpty()) {
                     failedCount++;
                     TelegramLog rowLog = new TelegramLog();
+                    rowLog.setExecutionId(executionId);
                     rowLog.setScheduleId(scheduleId);
                     rowLog.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
                     rowLog.setBotId(botId);
@@ -281,6 +284,7 @@ public class TelegramSenderService {
                         }
 
                         TelegramLog rowLog = new TelegramLog();
+                        rowLog.setExecutionId(executionId);
                         rowLog.setScheduleId(scheduleId);
                         rowLog.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
                         rowLog.setBotId(botId);
@@ -341,6 +345,7 @@ public class TelegramSenderService {
                         }
 
                         TelegramLog rowLog = new TelegramLog();
+                        rowLog.setExecutionId(executionId);
                         rowLog.setScheduleId(scheduleId);
                         rowLog.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
                         rowLog.setBotId(botId);
@@ -371,6 +376,7 @@ public class TelegramSenderService {
                         errorDetails.add(String.format("[%s - HP: %s]: GAGAL - %s", userLabel, cleanPhone, err));
 
                         TelegramLog rowLog = new TelegramLog();
+                        rowLog.setExecutionId(executionId);
                         rowLog.setScheduleId(scheduleId);
                         rowLog.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
                         rowLog.setBotId(botId);
@@ -392,6 +398,7 @@ public class TelegramSenderService {
                     errorDetails.add(String.format("[%s]: GAGAL - %s", userLabel, err));
 
                     TelegramLog rowLog = new TelegramLog();
+                    rowLog.setExecutionId(executionId);
                     rowLog.setScheduleId(scheduleId);
                     rowLog.setScheduleName(scheduleName != null ? scheduleName : "Manual Execution");
                     rowLog.setBotId(botId);
