@@ -27,13 +27,29 @@ import {
   X,
   MessageSquare,
   Layers,
-  List
+  List,
+  Code2,
+  Key,
+  Copy,
+  Terminal,
+  EyeOff,
+  PlayCircle,
+  ShieldCheck
 } from 'lucide-react';
 import clsx from 'clsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
+export interface TelegramApiToken {
+  id: string;
+  name: string;
+  token: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  lastUsedAt?: string;
+}
 export interface MtprotoAccount {
   id: string;
   name: string;
@@ -136,13 +152,36 @@ export const TelegramBotView: React.FC = () => {
   // Top Level Navigation
   // 'messages' = List View | 'create_edit' = Form View
   const [viewMode, setViewMode] = useState<'list' | 'create_edit'>('list');
-  const [activeTab, setActiveTab] = useState<'messages' | 'contacts' | 'bots' | 'logs'>('messages');
+  const [activeTab, setActiveTab] = useState<'messages' | 'contacts' | 'bots' | 'logs' | 'api_spec'>('messages');
 
   // Master Data
   const [bots, setBots] = useState<TelegramBot[]>([]);
   const [contacts, setContacts] = useState<TelegramContact[]>([]);
   const [schedules, setSchedules] = useState<TelegramSchedule[]>([]);
   const [logs, setLogs] = useState<TelegramLog[]>([]);
+
+  // Tab 5 API Integration & Tokens
+  const [tokens, setTokens] = useState<TelegramApiToken[]>([]);
+  const [isLoadingTokens, setIsLoadingTokens] = useState(false);
+  const [isGeneratingToken, setIsGeneratingToken] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [copiedToken, setCopiedToken] = useState(false);
+  const [copiedCurl, setCopiedCurl] = useState(false);
+  const [activeCodeSnippet, setActiveCodeSnippet] = useState<'curl' | 'javascript' | 'python' | 'php'>('curl');
+
+  // API Playground State
+  const [testDb, setTestDb] = useState('');
+  const [testBot, setTestBot] = useState('');
+  const [testQueryType, setTestQueryType] = useState<'query' | 'view'>('query');
+  const [testQuery, setTestQuery] = useState("SELECT user_hp, pesan FROM v_notifikasi LIMIT 5");
+  const [testView, setTestView] = useState('');
+  const [testSchema, setTestSchema] = useState('');
+  const [testRecipientCol, setTestRecipientCol] = useState('user_hp');
+  const [testMessageCol, setTestMessageCol] = useState('pesan');
+  const [testTemplate, setTestTemplate] = useState('');
+  const [testMaxRows, setTestMaxRows] = useState(5);
+  const [isTestingApi, setIsTestingApi] = useState(false);
+  const [testResult, setTestResult] = useState<any>(null);
 
   // Tab 4 Logs Filters & Detail Modal
   const [logViewMode, setLogViewMode] = useState<'executions' | 'flat'>('executions');
@@ -412,7 +451,20 @@ export const TelegramBotView: React.FC = () => {
     fetchContacts();
     fetchSchedules();
     fetchLogs();
+    fetchTokens();
   }, []);
+
+  useEffect(() => {
+    if (connections && connections.length > 0 && !testDb) {
+      setTestDb(connections[0].name || connections[0].id);
+    }
+  }, [connections, testDb]);
+
+  useEffect(() => {
+    if (bots && bots.length > 0 && !testBot) {
+      setTestBot(bots[0].name || bots[0].id);
+    }
+  }, [bots, testBot]);
 
   // Auto refresh contacts in real-time when looking at contacts tab
   useEffect(() => {
@@ -524,6 +576,129 @@ export const TelegramBotView: React.FC = () => {
         }
       }
     });
+  };
+
+  const fetchTokens = async () => {
+    setIsLoadingTokens(true);
+    try {
+      const res = await axios.get('/api/telegram/external/tokens');
+      setTokens(res.data);
+    } catch (e) {
+      console.error('Failed to fetch API tokens', e);
+    } finally {
+      setIsLoadingTokens(false);
+    }
+  };
+
+  const handleGenerateToken = async () => {
+    showAlert({
+      title: 'Generate Token Baru',
+      message: 'Apakah Anda yakin ingin membuat Token API baru untuk integrasi eksternal?',
+      type: 'info',
+      confirmLabel: 'Ya, Generate Token',
+      cancelLabel: 'Batal',
+      onConfirm: async () => {
+        setIsGeneratingToken(true);
+        try {
+          const res = await axios.post('/api/telegram/external/tokens/generate', { name: 'External Client API Token' });
+          setTokens(prev => [res.data, ...prev]);
+          showAlert({ title: 'Token Berhasil Dibuat', message: 'Token API baru telah aktif dan siap digunakan untuk integrasi sistem luar.', type: 'info' });
+        } catch (e: any) {
+          showAlert({ title: 'Gagal Membuat Token', message: e.message || 'Terjadi kesalahan saat generate token.', type: 'error' });
+        } finally {
+          setIsGeneratingToken(false);
+        }
+      }
+    });
+  };
+
+  const handleToggleToken = async (id: string, currentActive: boolean) => {
+    try {
+      await axios.put(`/api/telegram/external/tokens/${id}/toggle`, { active: !currentActive });
+      setTokens(prev => prev.map(t => t.id === id ? { ...t, active: !currentActive } : t));
+    } catch (e: any) {
+      showAlert({ title: 'Gagal Mengubah Status', message: e.message, type: 'error' });
+    }
+  };
+
+  const handleDeleteToken = async (id: string) => {
+    showAlert({
+      title: 'Hapus Token API',
+      message: 'Apakah Anda yakin ingin menghapus token ini? Sistem luar yang menggunakan token ini tidak akan bisa mengirim pesan lagi.',
+      type: 'error',
+      confirmLabel: 'Hapus Token',
+      cancelLabel: 'Batal',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`/api/telegram/external/tokens/${id}`);
+          setTokens(prev => prev.filter(t => t.id !== id));
+          showAlert({ title: 'Token Dihapus', message: 'Token berhasil dihapus.', type: 'info' });
+        } catch (e: any) {
+          showAlert({ title: 'Gagal Menghapus Token', message: e.message, type: 'error' });
+        }
+      }
+    });
+  };
+
+  const handleRunTestApi = async () => {
+    if (!testDb) {
+      showAlert({ title: 'Pilih Database', message: 'Silakan pilih koneksi database terlebih dahulu.', type: 'warning' });
+      return;
+    }
+    if (!testBot) {
+      showAlert({ title: 'Pilih Bot', message: 'Silakan pilih Bot Telegram terlebih dahulu.', type: 'warning' });
+      return;
+    }
+
+    setIsTestingApi(true);
+    setTestResult(null);
+
+    const payload: any = {
+      database: testDb,
+      bot: testBot,
+      recipient_column: testRecipientCol || 'user_hp',
+      message_column: testMessageCol || 'pesan',
+      max_rows: testMaxRows || 5
+    };
+
+    if (testQueryType === 'query') {
+      payload.query = testQuery;
+    } else {
+      payload.view = testView;
+      if (testSchema) payload.schema = testSchema;
+    }
+
+    if (testTemplate.trim()) {
+      payload.template = testTemplate.trim();
+    }
+
+    try {
+      const res = await axios.post('/api/telegram/external/test', payload);
+      setTestResult(res.data);
+      if (res.data.success) {
+        showAlert({
+          title: 'Uji Coba Berhasil',
+          message: `Berhasil mengeksekusi query dan mengirim ${res.data.messages_sent} pesan ke Telegram!`,
+          type: 'info'
+        });
+      } else {
+        showAlert({
+          title: 'Uji Coba Selesai dengan Isu',
+          message: `Terkirim: ${res.data.messages_sent}, Gagal: ${res.data.messages_failed}. Silakan periksa detail di preview respon.`,
+          type: 'warning'
+        });
+      }
+    } catch (e: any) {
+      const errData = e.response?.data || { error: e.message };
+      setTestResult(errData);
+      showAlert({
+        title: 'Eksekusi Gagal',
+        message: errData.message || errData.error || 'Terjadi kesalahan saat memanggil API.',
+        type: 'error'
+      });
+    } finally {
+      setIsTestingApi(false);
+    }
   };
 
   const loadSchemas = async (connId: string) => {
@@ -1616,6 +1791,16 @@ export const TelegramBotView: React.FC = () => {
             <History className="w-3.5 h-3.5" />
             Riwayat Log ({logs.length})
           </button>
+          <button
+            onClick={() => setActiveTab('api_spec')}
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors",
+              activeTab === 'api_spec' ? "bg-sky-500 text-white shadow-sm font-semibold" : "text-text-muted hover:text-text-main"
+            )}
+          >
+            <Code2 className="w-3.5 h-3.5" />
+            API Gateway & Spec
+          </button>
         </div>
       </div>
 
@@ -2616,6 +2801,656 @@ export const TelegramBotView: React.FC = () => {
                       )}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            TAB 5: API INTEGRATION & SPEC
+        ========================================================================= */}
+        {activeTab === 'api_spec' && (
+          <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
+            {/* Header Card */}
+            <div className="bg-bg-panel border border-border-main p-5 rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                    <Code2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-text-main">Telegram Bot API Gateway & Spec</h2>
+                    <p className="text-xs text-text-muted">
+                      Integrasikan bot Telegram DarkoSync dengan sistem eksternal (ERP, CRM, Webhook, atau service luar).
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono bg-bg-editor px-3 py-1.5 rounded-lg border border-border-main text-sky-400 font-semibold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  POST /api/v1/telegram/external/send
+                </span>
+              </div>
+            </div>
+
+            {/* Section 1: API Token Management */}
+            <div className="bg-bg-panel border border-border-main rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-main pb-3">
+                <div className="flex items-center gap-2">
+                  <Key className="w-4 h-4 text-amber-400" />
+                  <h3 className="text-sm font-bold text-text-main">Autentikasi & Token API Klien Luar</h3>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGenerateToken}
+                    disabled={isGeneratingToken}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-semibold text-xs transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                  >
+                    {isGeneratingToken ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    <span>{tokens.length === 0 ? 'Buat Token Pertama' : 'Generate / Ganti Token'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {isLoadingTokens ? (
+                <div className="py-6 text-center text-xs text-text-muted flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-sky-400" />
+                  <span>Memuat token API...</span>
+                </div>
+              ) : tokens.length === 0 ? (
+                <div className="bg-bg-editor/50 border border-border-main rounded-xl p-6 text-center space-y-2">
+                  <ShieldCheck className="w-8 h-8 text-amber-400/50 mx-auto" />
+                  <p className="text-xs font-bold text-text-main">Belum Ada Token API yang Dibuat</p>
+                  <p className="text-[11px] text-text-muted max-w-md mx-auto">
+                    Klik tombol "Buat Token Pertama" di atas untuk men-generate token API otorisasi klien luar.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {tokens.map((tok) => {
+                    const isVisible = showToken;
+                    const maskedToken = tok.token.substring(0, 12) + '••••••••••••••••••••••••••••••••';
+
+                    return (
+                      <div
+                        key={tok.id}
+                        className={clsx(
+                          "bg-bg-editor p-4 rounded-xl border transition-all flex flex-wrap items-center justify-between gap-4",
+                          tok.active ? "border-sky-500/30" : "border-border-main opacity-70"
+                        )}
+                      >
+                        <div className="space-y-1.5 flex-1 min-w-[280px]">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-text-main">{tok.name || 'External API Token'}</span>
+                            <span
+                              className={clsx(
+                                "text-[10px] font-bold px-2 py-0.5 rounded-full border",
+                                tok.active
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                  : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                              )}
+                            >
+                              {tok.active ? '● Aktif' : '○ Dinonaktifkan'}
+                            </span>
+                            {tok.lastUsedAt && (
+                              <span className="text-[10px] text-text-muted">
+                                Terakhir digunakan: {tok.lastUsedAt.replace('T', ' ').substring(0, 16)}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <div className="bg-bg-main border border-border-main rounded-lg px-3 py-1.5 font-mono text-xs text-sky-300 flex-1 flex items-center justify-between">
+                              <span>{isVisible ? tok.token : maskedToken}</span>
+                              <button
+                                type="button"
+                                onClick={() => setShowToken(!showToken)}
+                                className="text-text-muted hover:text-text-main ml-2 cursor-pointer p-0.5"
+                                title={showToken ? "Sembunyikan token" : "Tampilkan token"}
+                              >
+                                {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(tok.token);
+                                setCopiedToken(true);
+                                setTimeout(() => setCopiedToken(false), 2000);
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                              title="Salin token ke clipboard"
+                            >
+                              {copiedToken ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              <span>{copiedToken ? 'Tersalin!' : 'Copy'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleToken(tok.id, tok.active)}
+                            className={clsx(
+                              "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer",
+                              tok.active
+                                ? "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
+                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                            )}
+                          >
+                            {tok.active ? 'Nonaktifkan' : 'Aktifkan'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteToken(tok.id)}
+                            className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 border border-border-main transition-colors cursor-pointer"
+                            title="Hapus token"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Security Hint */}
+              <div className="bg-sky-500/5 border border-sky-500/20 rounded-xl p-3 text-xs text-text-muted space-y-1">
+                <span className="font-semibold text-sky-400 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5" />
+                  Cara Memasang Token Otorisasi:
+                </span>
+                <p>
+                  Sertakan header HTTP berikut pada setiap request:
+                  <code className="ml-1 px-1.5 py-0.5 rounded bg-bg-main border border-border-main text-sky-300 font-mono text-[11px]">
+                    Authorization: Bearer &lt;TOKEN_ANDA&gt;
+                  </code>
+                  {' '}atau{' '}
+                  <code className="px-1.5 py-0.5 rounded bg-bg-main border border-border-main text-sky-300 font-mono text-[11px]">
+                    X-API-Key: &lt;TOKEN_ANDA&gt;
+                  </code>
+                </p>
+              </div>
+            </div>
+
+            {/* Section 2: Specification & Parameters */}
+            <div className="bg-bg-panel border border-border-main rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="border-b border-border-main pb-3">
+                <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-emerald-400" />
+                  Spesifikasi Parameter Payload (JSON Body)
+                </h3>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Request dikirim dengan method <b className="text-emerald-400">POST</b> ke endpoint{' '}
+                  <code className="text-sky-400">/api/v1/telegram/external/send</code>.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto border border-border-main rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-bg-editor border-b border-border-main text-[11px] text-text-muted uppercase">
+                    <tr>
+                      <th className="py-2.5 px-3 font-semibold">Parameter</th>
+                      <th className="py-2.5 px-3 font-semibold">Tipe</th>
+                      <th className="py-2.5 px-3 font-semibold">Wajib?</th>
+                      <th className="py-2.5 px-3 font-semibold">Default</th>
+                      <th className="py-2.5 px-3 font-semibold">Deskripsi & Contoh</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-main/60">
+                    <tr className="hover:bg-bg-hover/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">database</td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
+                      <td className="py-2.5 px-3"><span className="text-rose-400 font-bold">Wajib</span></td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
+                      <td className="py-2.5 px-3 text-text-muted">
+                        Nama database atau ID koneksi di DarkoSync (misal: <code className="text-sky-300">"ssi"</code>, <code className="text-sky-300">"mkn"</code>, <code className="text-sky-300">"bpi"</code>).
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-bg-hover/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">bot</td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
+                      <td className="py-2.5 px-3"><span className="text-rose-400 font-bold">Wajib</span></td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
+                      <td className="py-2.5 px-3 text-text-muted">
+                        Nama Bot Telegram yang terdaftar di DarkoSync (misal: <code className="text-sky-300">"DarkoBot_SSI"</code>).
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-bg-hover/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">query</td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
+                      <td className="py-2.5 px-3"><span className="text-amber-400 font-semibold">Kondisional*</span></td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
+                      <td className="py-2.5 px-3 text-text-muted">
+                        Query SQL SELECT. Wajib diisi jika parameter <code className="text-sky-300">view</code> tidak diisi. Hanya boleh perintah SELECT/read-only.
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-bg-hover/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">view</td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
+                      <td className="py-2.5 px-3"><span className="text-amber-400 font-semibold">Kondisional*</span></td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
+                      <td className="py-2.5 px-3 text-text-muted">
+                        Nama View/Tabel alternatif jika tidak mengirimkan SQL mentah (misal: <code className="text-sky-300">"v_faktur_harian"</code>).
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-bg-hover/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">recipient_column</td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
+                      <td className="py-2.5 px-3"><span className="text-text-muted font-normal">Opsional</span></td>
+                      <td className="py-2.5 px-3 font-mono text-emerald-400">"user_hp"</td>
+                      <td className="py-2.5 px-3 text-text-muted">
+                        Nama kolom pada baris data yang berisi Nomor HP atau Chat ID tujuan (contoh: <code className="text-sky-300">"telepon"</code>, <code className="text-sky-300">"user_hp"</code>, <code className="text-sky-300">"chat_id"</code>).
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-bg-hover/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">message_column</td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
+                      <td className="py-2.5 px-3"><span className="text-text-muted font-normal">Opsional</span></td>
+                      <td className="py-2.5 px-3 font-mono text-emerald-400">"pesan"</td>
+                      <td className="py-2.5 px-3 text-text-muted">
+                        Nama kolom pada baris data yang berisi teks pesan siap kirim dari View database.
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-bg-hover/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">template</td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
+                      <td className="py-2.5 px-3"><span className="text-text-muted font-normal">Opsional</span></td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
+                      <td className="py-2.5 px-3 text-text-muted">
+                        Format template pesan dinamis menggunakan variabel <code className="text-sky-300">{"{{nama_kolom}}"}</code> (misal: <code className="text-sky-300">"Halo {"{{customer}}"}, faktur {"{{no_faktur}}"} lunas"</code>).
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-bg-hover/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">params</td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">object</td>
+                      <td className="py-2.5 px-3"><span className="text-text-muted font-normal">Opsional</span></td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
+                      <td className="py-2.5 px-3 text-text-muted">
+                        Parameter query SQL bernama (misal: <code className="text-sky-300">{"{\"tgl\": \"2026-10-19\"}"}</code> untuk placeholder <code className="text-sky-300">:tgl</code>).
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-bg-hover/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">max_rows</td>
+                      <td className="py-2.5 px-3 text-text-muted font-mono">number</td>
+                      <td className="py-2.5 px-3"><span className="text-text-muted font-normal">Opsional</span></td>
+                      <td className="py-2.5 px-3 font-mono text-emerald-400">50</td>
+                      <td className="py-2.5 px-3 text-text-muted">
+                        Batas maksimum baris yang dieksekusi dan dikirim pesan (maksimal 1000).
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Section 3: Code Snippets */}
+            <div className="bg-bg-panel border border-border-main rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-main pb-3">
+                <div className="flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-sky-400" />
+                  <h3 className="text-sm font-bold text-text-main">Contoh Kode Integrasi (Code Snippets)</h3>
+                </div>
+
+                {/* Snippet Tabs */}
+                <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-lg border border-border-main text-xs">
+                  {(['curl', 'javascript', 'python', 'php'] as const).map(lang => (
+                    <button
+                      key={lang}
+                      type="button"
+                      onClick={() => setActiveCodeSnippet(lang)}
+                      className={clsx(
+                        "px-2.5 py-1 rounded-md font-semibold capitalize transition-colors cursor-pointer",
+                        activeCodeSnippet === lang
+                          ? "bg-sky-500 text-white shadow-sm"
+                          : "text-text-muted hover:text-text-main"
+                      )}
+                    >
+                      {lang === 'curl' ? 'cURL' : lang === 'javascript' ? 'JavaScript' : lang === 'python' ? 'Python' : 'PHP'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Code Box */}
+              {(() => {
+                const activeTok = tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN_HERE';
+                const endpointUrl = `${window.location.origin}/api/v1/telegram/external/send`;
+
+                let snippet = '';
+                if (activeCodeSnippet === 'curl') {
+                  snippet = `curl -X POST "${endpointUrl}" \\
+  -H "Authorization: Bearer ${activeTok}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "database": "ssi",
+    "bot": "${bots[0]?.name || 'NamaBotTelegram'}",
+    "query": "SELECT user_hp, pesan FROM v_notifikasi WHERE status = :status LIMIT 10",
+    "params": { "status": "PENDING" },
+    "recipient_column": "user_hp",
+    "message_column": "pesan"
+  }'`;
+                } else if (activeCodeSnippet === 'javascript') {
+                  snippet = `// Menggunakan Node.js / Fetch API
+const response = await fetch("${endpointUrl}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${activeTok}",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    database: "ssi",
+    bot: "${bots[0]?.name || 'NamaBotTelegram'}",
+    query: "SELECT user_hp, customer_name, no_faktur FROM v_penjualan WHERE status = 'SELESAI'",
+    recipient_column: "user_hp",
+    template: "Halo <b>{{customer_name}}</b>, faktur no <code>{{no_faktur}}</code> telah selesai diproses."
+  })
+});
+
+const data = await response.json();
+console.log(data);`;
+                } else if (activeCodeSnippet === 'python') {
+                  snippet = `import requests
+
+url = "${endpointUrl}"
+headers = {
+    "Authorization": "Bearer ${activeTok}",
+    "Content-Type": "application/json"
+}
+payload = {
+    "database": "ssi",
+    "bot": "${bots[0]?.name || 'NamaBotTelegram'}",
+    "query": "SELECT user_hp, pesan FROM v_notifikasi LIMIT 10",
+    "recipient_column": "user_hp",
+    "message_column": "pesan"
+}
+
+response = requests.post(url, json=payload, headers=headers)
+print(response.json())`;
+                } else if (activeCodeSnippet === 'php') {
+                  snippet = `<?php
+$curl = curl_init();
+
+$payload = [
+    "database" => "ssi",
+    "bot" => "${bots[0]?.name || 'NamaBotTelegram'}",
+    "query" => "SELECT user_hp, pesan FROM v_notifikasi LIMIT 10",
+    "recipient_column" => "user_hp",
+    "message_column" => "pesan"
+];
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => "${endpointUrl}",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => json_encode($payload),
+    CURLOPT_HTTPHEADER => [
+        "Authorization: Bearer ${activeTok}",
+        "Content-Type: application/json"
+    ],
+]);
+
+$response = curl_exec($curl);
+curl_close($curl);
+echo $response;`;
+                }
+
+                return (
+                  <div className="relative group">
+                    <pre className="bg-bg-editor p-4 rounded-xl border border-border-main font-mono text-xs text-sky-300 overflow-x-auto">
+                      <code>{snippet}</code>
+                    </pre>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(snippet);
+                        setCopiedCurl(true);
+                        setTimeout(() => setCopiedCurl(false), 2000);
+                      }}
+                      className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-bg-panel/90 hover:bg-bg-panel border border-border-main text-xs font-semibold text-text-main flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                    >
+                      {copiedCurl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedCurl ? 'Tersalin' : 'Copy Kode'}</span>
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Section 4: Live Interactive Playground / Tester */}
+            <div className="bg-bg-panel border border-border-main rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="border-b border-border-main pb-3">
+                <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
+                  <PlayCircle className="w-4 h-4 text-purple-400" />
+                  Live API Playground & Console Tester
+                </h3>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Uji coba panggil endpoint API integrasi bot Telegram secara langsung dari browser ini.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                {/* Database Selection */}
+                <div>
+                  <label className="block text-text-muted font-semibold mb-1">Database / Koneksi *</label>
+                  <select
+                    value={testDb}
+                    onChange={e => setTestDb(e.target.value)}
+                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-text-main focus:outline-none focus:border-sky-500 font-semibold"
+                  >
+                    <option value="">-- Pilih Database Koneksi --</option>
+                    {connections.map(c => (
+                      <option key={c.id} value={c.name || c.id}>
+                        {c.name} ({c.type}) {c.database ? ` - db: ${c.database}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Bot Selection */}
+                <div>
+                  <label className="block text-text-muted font-semibold mb-1">Bot Telegram Pengirim *</label>
+                  <select
+                    value={testBot}
+                    onChange={e => setTestBot(e.target.value)}
+                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-text-main focus:outline-none focus:border-sky-500 font-semibold"
+                  >
+                    <option value="">-- Pilih Bot Telegram --</option>
+                    {bots.map(b => (
+                      <option key={b.id} value={b.name || b.id}>
+                        {b.name} {b.botUsername ? `(@${b.botUsername})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Mode Query vs View */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 border-b border-border-main pb-2">
+                  <button
+                    type="button"
+                    onClick={() => setTestQueryType('query')}
+                    className={clsx(
+                      "px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer",
+                      testQueryType === 'query'
+                        ? "bg-sky-500 text-white shadow-sm"
+                        : "text-text-muted hover:text-text-main"
+                    )}
+                  >
+                    Custom SQL Query
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTestQueryType('view')}
+                    className={clsx(
+                      "px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer",
+                      testQueryType === 'view'
+                        ? "bg-sky-500 text-white shadow-sm"
+                        : "text-text-muted hover:text-text-main"
+                    )}
+                  >
+                    Nama View Database
+                  </button>
+                </div>
+
+                {testQueryType === 'query' ? (
+                  <div>
+                    <label className="block text-text-muted font-semibold mb-1 text-xs">Query SQL (SELECT only):</label>
+                    <textarea
+                      rows={3}
+                      value={testQuery}
+                      onChange={e => setTestQuery(e.target.value)}
+                      placeholder="SELECT user_hp, pesan FROM v_notifikasi LIMIT 5"
+                      className="w-full bg-bg-editor border border-border-main rounded-xl p-3 font-mono text-xs text-sky-300 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-text-muted font-semibold mb-1">Schema (opsional):</label>
+                      <input
+                        type="text"
+                        value={testSchema}
+                        onChange={e => setTestSchema(e.target.value)}
+                        placeholder="public atau sch_erp_system"
+                        className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-text-main focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-text-muted font-semibold mb-1">Nama View / Tabel *:</label>
+                      <input
+                        type="text"
+                        value={testView}
+                        onChange={e => setTestView(e.target.value)}
+                        placeholder="v_notifikasi_harian"
+                        className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-text-main focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Dynamic Columns Configuration */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <label className="block text-text-muted font-semibold mb-1">
+                    Kolom Penerima (HP / Chat ID):
+                  </label>
+                  <input
+                    type="text"
+                    value={testRecipientCol}
+                    onChange={e => setTestRecipientCol(e.target.value)}
+                    placeholder="user_hp"
+                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-text-main focus:outline-none focus:border-sky-500"
+                  />
+                  <span className="text-[10px] text-text-muted mt-0.5 block">Default: user_hp</span>
+                </div>
+
+                <div>
+                  <label className="block text-text-muted font-semibold mb-1">
+                    Kolom Pesan (dari View):
+                  </label>
+                  <input
+                    type="text"
+                    value={testMessageCol}
+                    onChange={e => setTestMessageCol(e.target.value)}
+                    placeholder="pesan"
+                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-text-main focus:outline-none focus:border-sky-500"
+                  />
+                  <span className="text-[10px] text-text-muted mt-0.5 block">Default: pesan</span>
+                </div>
+
+                <div>
+                  <label className="block text-text-muted font-semibold mb-1">
+                    Maksimum Baris:
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={testMaxRows}
+                    onChange={e => setTestMaxRows(parseInt(e.target.value) || 5)}
+                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-text-main focus:outline-none focus:border-sky-500"
+                  />
+                  <span className="text-[10px] text-text-muted mt-0.5 block">Limit uji coba: 1-100</span>
+                </div>
+              </div>
+
+              {/* Optional Custom Template */}
+              <div>
+                <label className="block text-text-muted font-semibold mb-1 text-xs">
+                  Template Pesan Kustom (Opsional - Jika diisi akan meng-override kolom pesan):
+                </label>
+                <input
+                  type="text"
+                  value={testTemplate}
+                  onChange={e => setTestTemplate(e.target.value)}
+                  placeholder="Halo <b>{{user_name}}</b>, faktur {{no_faktur}} siap diproses."
+                  className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-xs text-text-main focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              {/* Action Button */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleRunTestApi}
+                  disabled={isTestingApi || !testDb || !testBot}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  {isTestingApi ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                  <span>{isTestingApi ? 'Mengeksekusi API...' : 'Jalankan Uji Coba API'}</span>
+                </button>
+              </div>
+
+              {/* Result Preview Console */}
+              {testResult && (
+                <div className="space-y-3 pt-3 border-t border-border-main animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-text-main flex items-center gap-1.5">
+                      <Terminal className="w-3.5 h-3.5 text-sky-400" />
+                      Hasil Response API:
+                    </span>
+                    <span
+                      className={clsx(
+                        "text-[11px] font-bold px-2.5 py-0.5 rounded-full border",
+                        testResult.success
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                          : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                      )}
+                    >
+                      {testResult.success ? '● SUCCESS (200 OK)' : '○ FAILED / ERROR'}
+                    </span>
+                  </div>
+
+                  {testResult.total_rows !== undefined && (
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                      <div className="bg-bg-editor p-2.5 rounded-xl border border-border-main">
+                        <span className="text-[10px] text-text-muted block uppercase font-bold">Total Baris Query</span>
+                        <span className="text-base font-bold text-text-main font-mono">{testResult.total_rows}</span>
+                      </div>
+                      <div className="bg-bg-editor p-2.5 rounded-xl border border-border-main">
+                        <span className="text-[10px] text-text-muted block uppercase font-bold">Pesan Terkirim</span>
+                        <span className="text-base font-bold text-emerald-400 font-mono">{testResult.messages_sent}</span>
+                      </div>
+                      <div className="bg-bg-editor p-2.5 rounded-xl border border-border-main">
+                        <span className="text-[10px] text-text-muted block uppercase font-bold">Gagal</span>
+                        <span className="text-base font-bold text-rose-400 font-mono">{testResult.messages_failed}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <pre className="bg-bg-editor p-4 rounded-xl border border-border-main font-mono text-[11px] text-emerald-300 overflow-x-auto max-h-60 overflow-y-auto">
+                    <code>{JSON.stringify(testResult, null, 2)}</code>
+                  </pre>
                 </div>
               )}
             </div>

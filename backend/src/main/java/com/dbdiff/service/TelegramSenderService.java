@@ -10,6 +10,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -93,6 +94,38 @@ public class TelegramSenderService {
                     }
                 }
             }
+        }
+        return rows;
+    }
+
+    /**
+     * Executes SQL query with optional named parameters (:paramName).
+     */
+    public List<Map<String, Object>> executeQueryWithParams(String connectionId, String sql, Map<String, Object> params, int maxRows) throws Exception {
+        if (params == null || params.isEmpty()) {
+            return executeQuery(connectionId, sql, maxRows);
+        }
+
+        ConnectionDetails details = connectionRepository.findById(connectionId);
+        if (details == null) {
+            throw new IllegalArgumentException("Connection not found with id: " + connectionId);
+        }
+
+        DataSource ds = connectionManagerService.getDataSource(details);
+        NamedParameterJdbcTemplate namedJdbc = new NamedParameterJdbcTemplate(ds);
+
+        List<Map<String, Object>> rows = namedJdbc.query(sql, params, (rs, rowNum) -> {
+            ResultSetMetaData meta = rs.getMetaData();
+            int colCount = meta.getColumnCount();
+            Map<String, Object> row = new LinkedHashMap<>();
+            for (int i = 1; i <= colCount; i++) {
+                row.put(meta.getColumnLabel(i), rs.getObject(i));
+            }
+            return row;
+        });
+
+        if (maxRows > 0 && rows.size() > maxRows) {
+            return rows.subList(0, maxRows);
         }
         return rows;
     }
@@ -434,7 +467,384 @@ public class TelegramSenderService {
         return log;
     }
 
-    private boolean sendTelegramMessage(String botToken, String chatId, String message) {
+    public Map<String, Object> executeExternalApi(
+            String botIdentifier,
+            String dbIdentifier,
+            String sqlQuery,
+            String viewName,
+            String schemaName,
+            Map<String, Object> filters,
+            Map<String, Object> params,
+            String recipientColumn,
+            String messageColumn,
+            String template,
+            List<String> staticRecipients,
+            int maxRows) throws Exception {
+
+        String executionId = UUID.randomUUID().toString();
+
+        // 1. Resolve Connection
+        ConnectionDetails connection = null;
+        if (dbIdentifier != null && !dbIdentifier.trim().isEmpty()) {
+            connection = connectionRepository.findById(dbIdentifier.trim());
+            if (connection == null) {
+                for (ConnectionDetails c : connectionRepository.findAll()) {
+                    if (c.getName() != null && c.getName().equalsIgnoreCase(dbIdentifier.trim())) {
+                        connection = c;
+                        break;
+                    }
+                    if (c.getDatabase() != null && c.getDatabase().equalsIgnoreCase(dbIdentifier.trim())) {
+                        connection = c;
+                        break;
+                    }
+                }
+            }
+            if (connection == null) {
+                for (ConnectionDetails c : connectionRepository.findAll()) {
+                    if ((c.getName() != null && c.getName().toLowerCase().contains(dbIdentifier.trim().toLowerCase())) ||
+                        (c.getDatabase() != null && c.getDatabase().toLowerCase().contains(dbIdentifier.trim().toLowerCase()))) {
+                        connection = c;
+                        break;
+                    }
+                }
+            }
+        }
+        if (connection == null) {
+            throw new IllegalArgumentException("Koneksi database tidak ditemukan untuk identifier: '" + dbIdentifier + "'");
+        }
+
+        // 2. Resolve Bot
+        TelegramBotConfig bot = null;
+        if (botIdentifier != null && !botIdentifier.trim().isEmpty()) {
+            bot = botConfigRepository.findById(botIdentifier.trim());
+            if (bot == null) {
+                for (TelegramBotConfig b : botConfigRepository.findAll()) {
+                    if (b.getName() != null && b.getName().equalsIgnoreCase(botIdentifier.trim())) {
+                        bot = b;
+                        break;
+                    }
+                    if (b.getBotUsername() != null && b.getBotUsername().equalsIgnoreCase(botIdentifier.trim())) {
+                        bot = b;
+                        break;
+                    }
+                }
+            }
+            if (bot == null) {
+                for (TelegramBotConfig b : botConfigRepository.findAll()) {
+                    if ((b.getName() != null && b.getName().toLowerCase().contains(botIdentifier.trim().toLowerCase())) ||
+                        (b.getBotUsername() != null && b.getBotUsername().toLowerCase().contains(botIdentifier.trim().toLowerCase()))) {
+                        bot = b;
+                        break;
+                    }
+                }
+            }
+        }
+        if (bot == null) {
+            List<TelegramBotConfig> allBots = botConfigRepository.findAll();
+            if (allBots.size() == 1) {
+                bot = allBots.get(0);
+            } else {
+                throw new IllegalArgumentException("Bot Telegram tidak ditemukan untuk identifier: '" + botIdentifier + "'");
+            }
+        }
+
+        // 3. Resolve Query
+        String finalSql = sqlQuery;
+        if ((finalSql == null || finalSql.trim().isEmpty()) && viewName != null && !viewName.trim().isEmpty()) {
+            StringBuilder sb = new StringBuilder("SELECT * FROM ");
+            if (schemaName != null && !schemaName.trim().isEmpty()) {
+                sb.append(schemaName.trim()).append(".");
+            }
+            sb.append(viewName.trim());
+            if (filters != null && !filters.isEmpty()) {
+                sb.append(" WHERE ");
+                int i = 0;
+                for (String key : filters.keySet()) {
+                    if (i > 0) sb.append(" AND ");
+                    sb.append(key).append(" = :").append(key);
+                    i++;
+                }
+                if (params == null) params = new HashMap<>();
+                params.putAll(filters);
+            }
+            finalSql = sb.toString();
+        }
+
+        if (finalSql == null || finalSql.trim().isEmpty()) {
+            throw new IllegalArgumentException("Parameter 'query' atau 'view' harus diisi");
+        }
+
+        // Security check
+        String checkLower = finalSql.trim().toLowerCase();
+        if (!checkLower.startsWith("select") && !checkLower.startsWith("with")) {
+            throw new IllegalArgumentException("Hanya query SELECT/WITH yang diizinkan");
+        }
+        if (checkLower.matches("(?s).*\\b(drop|delete|update|insert|alter|truncate|grant|revoke|create)\\b.*")) {
+            throw new IllegalArgumentException("Query mengandung perintah modifikasi yang dilarang");
+        }
+
+        int limit = (maxRows > 0 && maxRows <= 1000) ? maxRows : 50;
+        List<Map<String, Object>> rows = executeQueryWithParams(connection.getId(), finalSql, params, limit);
+
+        TelegramLog masterLog = new TelegramLog();
+        masterLog.setExecutionId(executionId);
+        masterLog.setScheduleName("External API: " + (viewName != null ? viewName : "Custom Query"));
+        masterLog.setBotId(bot.getId());
+        masterLog.setBotName(bot.getName());
+        masterLog.setTriggerType("EXTERNAL_API");
+        masterLog.setTotalRows(rows.size());
+
+        List<Map<String, Object>> details = new ArrayList<>();
+        int sentCount = 0;
+        int failedCount = 0;
+
+        String recipientCol = (recipientColumn != null && !recipientColumn.trim().isEmpty()) ? recipientColumn.trim() : "user_hp";
+        String msgCol = (messageColumn != null && !messageColumn.trim().isEmpty()) ? messageColumn.trim() : "pesan";
+
+        // Mode A: Static recipients
+        if (staticRecipients != null && !staticRecipients.isEmpty()) {
+            for (String staticChatId : staticRecipients) {
+                if (staticChatId == null || staticChatId.trim().isEmpty()) continue;
+                String targetChatId = staticChatId.trim();
+
+                for (int rIdx = 0; rIdx < rows.size(); rIdx++) {
+                    Map<String, Object> row = rows.get(rIdx);
+                    String renderedMsg;
+                    if (template != null && !template.trim().isEmpty()) {
+                        renderedMsg = renderTemplate(template, row);
+                    } else {
+                        Object mVal = row.get(msgCol);
+                        if (mVal == null) {
+                            for (Map.Entry<String, Object> e : row.entrySet()) {
+                                if (e.getKey().equalsIgnoreCase(msgCol)) { mVal = e.getValue(); break; }
+                            }
+                        }
+                        renderedMsg = mVal != null ? String.valueOf(mVal) : renderTemplate(null, row);
+                    }
+
+                    List<String> chunks = splitMessageIfNeeded(renderedMsg);
+                    boolean allOk = true;
+                    String err = null;
+                    for (String chunk : chunks) {
+                        boolean ok = sendTelegramMessage(bot.getBotToken(), targetChatId, chunk);
+                        if (!ok) {
+                            allOk = false;
+                            err = "Gagal kirim via Telegram API (chat_id: " + targetChatId + ")";
+                        }
+                        try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+                    }
+
+                    TelegramLog rowLog = new TelegramLog();
+                    rowLog.setExecutionId(executionId);
+                    rowLog.setScheduleName("External API: " + (viewName != null ? viewName : "Custom Query"));
+                    rowLog.setBotId(bot.getId());
+                    rowLog.setBotName(bot.getName());
+                    rowLog.setTriggerType("EXTERNAL_API");
+                    rowLog.setRecipientName("Static: " + targetChatId);
+                    rowLog.setRecipientPhone("-");
+                    rowLog.setMessageText(renderedMsg);
+                    rowLog.setTotalRows(1);
+
+                    Map<String, Object> detail = new LinkedHashMap<>();
+                    detail.put("recipient", targetChatId);
+                    detail.put("chat_id", targetChatId);
+                    detail.put("row_index", rIdx + 1);
+
+                    if (allOk) {
+                        sentCount++;
+                        rowLog.setStatus("BERHASIL");
+                        rowLog.setDetails("Terkirim ke Telegram (chat_id: " + targetChatId + ")");
+                        rowLog.setMessagesSent(1);
+                        rowLog.setMessagesFailed(0);
+                        detail.put("status", "BERHASIL");
+                        detail.put("error", null);
+                    } else {
+                        failedCount++;
+                        rowLog.setStatus("GAGAL");
+                        rowLog.setDetails(err != null ? err : "Gagal kirim via Telegram API");
+                        rowLog.setMessagesSent(0);
+                        rowLog.setMessagesFailed(1);
+                        detail.put("status", "GAGAL");
+                        detail.put("error", err);
+                    }
+                    logRepository.save(rowLog);
+                    details.add(detail);
+                }
+            }
+        } else {
+            // Mode B: Dynamic Column per row
+            for (int rIdx = 0; rIdx < rows.size(); rIdx++) {
+                Map<String, Object> row = rows.get(rIdx);
+
+                // Find recipient in row
+                Object rawRecipient = row.get(recipientCol);
+                if (rawRecipient == null) {
+                    for (Map.Entry<String, Object> e : row.entrySet()) {
+                        if (e.getKey().equalsIgnoreCase(recipientCol) || e.getKey().equalsIgnoreCase("user_hp")) {
+                            rawRecipient = e.getValue();
+                            break;
+                        }
+                    }
+                }
+
+                Object rawUserName = row.get("user_name");
+                if (rawUserName == null) {
+                    for (Map.Entry<String, Object> e : row.entrySet()) {
+                        if (e.getKey().equalsIgnoreCase("user_name") || e.getKey().equalsIgnoreCase("customer") || e.getKey().equalsIgnoreCase("nama")) {
+                            rawUserName = e.getValue();
+                            break;
+                        }
+                    }
+                }
+                String userLabel = rawUserName != null ? String.valueOf(rawUserName) : ("Row " + (rIdx + 1));
+
+                String renderedMsg;
+                if (template != null && !template.trim().isEmpty()) {
+                    renderedMsg = renderTemplate(template, row);
+                } else {
+                    Object mVal = row.get(msgCol);
+                    if (mVal == null) {
+                        for (Map.Entry<String, Object> e : row.entrySet()) {
+                            if (e.getKey().equalsIgnoreCase(msgCol) || e.getKey().equalsIgnoreCase("pesan")) {
+                                mVal = e.getValue();
+                                break;
+                            }
+                        }
+                    }
+                    renderedMsg = mVal != null ? String.valueOf(mVal) : renderTemplate(null, row);
+                }
+
+                TelegramLog rowLog = new TelegramLog();
+                rowLog.setExecutionId(executionId);
+                rowLog.setScheduleName("External API: " + (viewName != null ? viewName : "Custom Query"));
+                rowLog.setBotId(bot.getId());
+                rowLog.setBotName(bot.getName());
+                rowLog.setTriggerType("EXTERNAL_API");
+                rowLog.setRecipientName(userLabel);
+                rowLog.setMessageText(renderedMsg);
+                rowLog.setTotalRows(1);
+
+                Map<String, Object> detail = new LinkedHashMap<>();
+                detail.put("row_index", rIdx + 1);
+                detail.put("recipient", rawRecipient != null ? String.valueOf(rawRecipient) : "-");
+
+                if (rawRecipient == null || String.valueOf(rawRecipient).trim().isEmpty()) {
+                    failedCount++;
+                    String err = "Kolom penerima ('" + recipientCol + "') kosong pada baris data";
+                    rowLog.setRecipientPhone("-");
+                    rowLog.setStatus("GAGAL");
+                    rowLog.setDetails(err);
+                    rowLog.setMessagesSent(0);
+                    rowLog.setMessagesFailed(1);
+                    detail.put("status", "GAGAL");
+                    detail.put("error", err);
+                    logRepository.save(rowLog);
+                    details.add(detail);
+                    continue;
+                }
+
+                String recipientStr = String.valueOf(rawRecipient).trim();
+                rowLog.setRecipientPhone(recipientStr);
+
+                String targetChatId = null;
+                // Direct chat_id / group / channel
+                if (recipientStr.startsWith("-") || recipientStr.startsWith("@")) {
+                    targetChatId = recipientStr;
+                } else if (recipientStr.matches("^\\d+$")) {
+                    String cleanPhone = recipientStr.replaceAll("[^0-9]", "");
+                    TelegramContact c = contactRepository.findByBotIdAndPhone(bot.getId(), cleanPhone);
+                    if (c == null) {
+                        c = contactRepository.findByBotIdAndChatId(bot.getId(), cleanPhone);
+                    }
+                    if (c != null && c.isActive() && c.getChatId() != null && !c.getChatId().trim().isEmpty()) {
+                        targetChatId = c.getChatId();
+                        if (c.getFirstName() != null && !c.getFirstName().isEmpty()) {
+                            rowLog.setRecipientName(c.getFirstName());
+                        }
+                    } else if (cleanPhone.length() <= 11) {
+                        targetChatId = cleanPhone;
+                    }
+                }
+
+                if (targetChatId == null) {
+                    failedCount++;
+                    String err = "Nomor HP belum terdaftar di kontak Bot (belum klik START)";
+                    rowLog.setStatus("GAGAL");
+                    rowLog.setDetails(err);
+                    rowLog.setMessagesSent(0);
+                    rowLog.setMessagesFailed(1);
+                    detail.put("status", "GAGAL");
+                    detail.put("error", err);
+                    logRepository.save(rowLog);
+                    details.add(detail);
+                    continue;
+                }
+
+                detail.put("chat_id", targetChatId);
+
+                List<String> chunks = splitMessageIfNeeded(renderedMsg);
+                boolean allOk = true;
+                String sendErr = null;
+                for (String chunk : chunks) {
+                    boolean ok = sendTelegramMessage(bot.getBotToken(), targetChatId, chunk);
+                    if (!ok) {
+                        allOk = false;
+                        sendErr = "Gagal kirim via Telegram API (chat_id: " + targetChatId + ")";
+                    }
+                    try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+                }
+
+                if (allOk) {
+                    sentCount++;
+                    rowLog.setStatus("BERHASIL");
+                    rowLog.setDetails("Terkirim ke Telegram (chat_id: " + targetChatId + ")");
+                    rowLog.setMessagesSent(1);
+                    rowLog.setMessagesFailed(0);
+                    detail.put("status", "BERHASIL");
+                    detail.put("error", null);
+                } else {
+                    failedCount++;
+                    rowLog.setStatus("GAGAL");
+                    rowLog.setDetails(sendErr != null ? sendErr : "Gagal kirim via Telegram API");
+                    rowLog.setMessagesSent(0);
+                    rowLog.setMessagesFailed(1);
+                    detail.put("status", "GAGAL");
+                    detail.put("error", sendErr);
+                }
+                logRepository.save(rowLog);
+                details.add(detail);
+            }
+        }
+
+        masterLog.setMessagesSent(sentCount);
+        masterLog.setMessagesFailed(failedCount);
+        if (failedCount == 0 && sentCount > 0) {
+            masterLog.setStatus("BERHASIL");
+            masterLog.setDetails(String.format("External API: Sukses kirim %d pesan ke %d baris data.", sentCount, rows.size()));
+        } else if (sentCount > 0 && failedCount > 0) {
+            masterLog.setStatus("PARTIAL");
+            masterLog.setDetails(String.format("External API: Terkirim %d pesan, %d gagal.", sentCount, failedCount));
+        } else {
+            masterLog.setStatus(sentCount == 0 && failedCount == 0 ? "BERHASIL" : "GAGAL");
+            masterLog.setDetails(rows.isEmpty() ? "Query menghasilkan 0 baris data" : "Gagal mengirim pesan ke semua penerima");
+        }
+        logRepository.save(masterLog);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", failedCount == 0);
+        response.put("execution_id", executionId);
+        response.put("database", connection.getName());
+        response.put("bot_name", bot.getName());
+        response.put("total_rows", rows.size());
+        response.put("messages_sent", sentCount);
+        response.put("messages_failed", failedCount);
+        response.put("status", masterLog.getStatus());
+        response.put("details", details);
+
+        return response;
+    }
+
+    public boolean sendTelegramMessage(String botToken, String chatId, String message) {
         if (botToken == null || botToken.isEmpty() || chatId == null || chatId.isEmpty()) {
             return false;
         }
