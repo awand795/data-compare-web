@@ -34,7 +34,8 @@ import {
   Terminal,
   EyeOff,
   PlayCircle,
-  ShieldCheck
+  ShieldCheck,
+  BookOpen
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -170,6 +171,7 @@ export const TelegramBotView: React.FC = () => {
   const [copiedEndpoint, setCopiedEndpoint] = useState(false);
   const [activeCodeSnippet, setActiveCodeSnippet] = useState<'curl' | 'javascript' | 'python' | 'php'>('curl');
   const [snippetMode, setSnippetMode] = useState<'direct_query' | 'db_view' | 'dynamic_template'>('direct_query');
+  const [lifecycleStep, setLifecycleStep] = useState<'step_bots' | 'step_send' | 'step_schedules' | 'step_create_schedule' | 'step_control'>('step_bots');
 
   // API Playground State
   const [testDb, setTestDb] = useState('');
@@ -3000,7 +3002,298 @@ export const TelegramBotView: React.FC = () => {
               </div>
             </div>
 
-            {/* Section 2: Specification & Parameters */}
+            {/* Section 2: Complete API Lifecycle Guide (Bot, Query, Schedules, Cron) */}
+            <div className="bg-bg-panel border border-border-main rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="border-b border-border-main pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                    <BookOpen className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-text-main">Panduan Alur Lengkap API: Dari Cek Bot sampai Buat &amp; Monitor Jadwal Cron</h3>
+                    <p className="text-xs text-text-muted">Ikuti langkah-langkah di bawah untuk mengintegrasikan bot telegram dan mengatur scheduler secara penuh via API.</p>
+                  </div>
+                </div>
+
+                {/* Step Tabs */}
+                <div className="flex flex-wrap items-center gap-2 mt-3.5">
+                  {[
+                    { id: 'step_bots', step: '1', title: 'Cek Bot Aktif', method: 'GET' },
+                    { id: 'step_send', step: '2', title: 'Kirim Pesan Instan', method: 'POST' },
+                    { id: 'step_schedules', step: '3', title: 'Lihat Jadwal Aktif', method: 'GET' },
+                    { id: 'step_create_schedule', step: '4', title: 'Buat Jadwal Cron', method: 'POST' },
+                    { id: 'step_control', step: '5', title: 'Kontrol (Jeda / Run Now)', method: 'PUT/POST' }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setLifecycleStep(tab.id as any)}
+                      className={clsx(
+                        "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-2",
+                        lifecycleStep === tab.id
+                          ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
+                          : "bg-bg-editor text-slate-700 dark:text-slate-300 border-border-main hover:bg-bg-hover"
+                      )}
+                    >
+                      <span className={clsx(
+                        "w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold",
+                        lifecycleStep === tab.id ? "bg-white text-emerald-700" : "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                      )}>
+                        {tab.step}
+                      </span>
+                      <span>{tab.title}</span>
+                      <span className={clsx(
+                        "text-[9px] px-1.5 py-0.2 rounded font-mono font-bold",
+                        tab.method === 'GET' ? "bg-sky-500/20 text-sky-400" : tab.method === 'POST' ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"
+                      )}>
+                        {tab.method}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 1: Cek Bot Aktif */}
+              {lifecycleStep === 'step_bots' && (
+                <div className="space-y-3 animate-in fade-in duration-200 text-xs">
+                  <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 rounded-xl p-3.5 space-y-1">
+                    <span className="font-bold text-sky-700 dark:text-sky-300 flex items-center gap-1.5">
+                      <Bot className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                      Langkah 1: Melihat Bot Telegram yang Tersedia dan Sedang Aktif
+                    </span>
+                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                      Gunakan endpoint ini untuk mengetahui nama bot (<code className="font-mono text-sky-700 dark:text-sky-300 font-bold">name</code>) atau <code className="font-mono text-sky-700 dark:text-sky-300 font-bold">id</code> bot yang valid sebelum mengirimkan pesan atau mendaftarkan jadwal cron.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-[11px]">GET</span>
+                      <span className="text-slate-800 dark:text-slate-200 font-semibold select-all">{`${window.location.origin}/api/v1/telegram/external/bots`}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`curl -X GET "${window.location.origin}/api/v1/telegram/external/bots" -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}"`);
+                        setCopiedCurl(true);
+                        setTimeout(() => setCopiedCurl(false), 2000);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      {copiedCurl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>Copy cURL</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Response JSON:</span>
+                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-emerald-400 overflow-x-auto leading-relaxed">
+                      <code>{`{
+  "success": true,
+  "total": 1,
+  "bots": [
+    {
+      "id": "${bots[0]?.id || 'e9365e13-xxxx-xxxx'}",
+      "name": "${bots[0]?.name || 'DarkoBot_SSI'}",
+      "botUsername": "${bots[0]?.botUsername || 'DarkoBot_SSI_bot'}",
+      "isPollingActive": true
+    }
+  ]
+}`}</code>
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Kirim Pesan Instan */}
+              {lifecycleStep === 'step_send' && (
+                <div className="space-y-3 animate-in fade-in duration-200 text-xs">
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl p-3.5 space-y-1">
+                    <span className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                      <Send className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      Langkah 2: Mengirim Pesan Instan Seketika (On-Demand)
+                    </span>
+                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                      Panggil endpoint ini kapan pun sistem luar ingin mengirim notifikasi. Bisa langsung dengan query SQL yang men-select kolom pesan, atau menggunakan nama view database.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">POST</span>
+                      <span className="text-slate-800 dark:text-slate-200 font-semibold select-all">{`${window.location.origin}/api/v1/telegram/external/send`}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Payload Body JSON (Mode Query Langsung &amp; Kolom Pesan Jadi):</span>
+                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-sky-200 overflow-x-auto leading-relaxed">
+                      <code>{`{
+  "database": "ssi",
+  "bot": "${bots[0]?.name || 'DarkoBot_SSI'}",
+  "query": "SELECT user_hp, pesan FROM v_notifikasi WHERE status = 'PENDING' LIMIT 10",
+  "recipient_column": "user_hp",
+  "message_column": "pesan"
+}`}</code>
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Lihat Jadwal Aktif */}
+              {lifecycleStep === 'step_schedules' && (
+                <div className="space-y-3 animate-in fade-in duration-200 text-xs">
+                  <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 rounded-xl p-3.5 space-y-1">
+                    <span className="font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                      Langkah 3: Memantau Jadwal Cron Bot Apa Saja yang Sedang Aktif
+                    </span>
+                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                      Endpoint ini mengembalikan daftar seluruh jadwal otomatis yang terdaftar di DarkoSync Scheduler, ekspresi cron-nya, status eksekusi terakhir (<code className="font-mono text-purple-700 dark:text-purple-300 font-bold">lastRunStatus</code>), dan waktu eksekusi terakhir. Tambahkan query parameter <code className="font-mono text-purple-700 dark:text-purple-300 font-bold">?activeOnly=true</code> untuk memfilter hanya jadwal yang sedang aktif.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-[11px]">GET</span>
+                      <span className="text-slate-800 dark:text-slate-200 font-semibold select-all">{`${window.location.origin}/api/v1/telegram/external/schedules?activeOnly=true`}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`curl -X GET "${window.location.origin}/api/v1/telegram/external/schedules?activeOnly=true" -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}"`);
+                        setCopiedCurl(true);
+                        setTimeout(() => setCopiedCurl(false), 2000);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      {copiedCurl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>Copy cURL</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Response JSON:</span>
+                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-emerald-400 overflow-x-auto leading-relaxed">
+                      <code>{`{
+  "success": true,
+  "total": 1,
+  "schedules": [
+    {
+      "id": "c138b472-8921-4d1a-82bc-90a1f28b12e1",
+      "name": "Kirim Notifikasi Faktur Penjualan",
+      "botId": "${bots[0]?.id || 'e9365e13-xxxx-xxxx'}",
+      "connectionId": "ssi",
+      "cronExpression": "0 0 8,12,18 * * *",
+      "active": true,
+      "lastRunAt": "2026-10-20T08:00:00",
+      "lastRunStatus": "SUCCESS",
+      "lastRunMessage": "Processed 24 messages successfully",
+      "viewName": "v_notifikasi_harian",
+      "phoneColumnName": "user_hp"
+    }
+  ]
+}`}</code>
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 4: Buat Jadwal Cron Baru */}
+              {lifecycleStep === 'step_create_schedule' && (
+                <div className="space-y-3 animate-in fade-in duration-200 text-xs">
+                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl p-3.5 space-y-1">
+                    <span className="font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                      <Plus className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      Langkah 4: Membuat &amp; Mendaftarkan Jadwal Cron Baru Menggunakan API
+                    </span>
+                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                      Sistem luar dapat membuat scheduler baru secara otomatis ke DarkoSync. Begitu request berhasil, cron trigger langsung terdaftar dan aktif di mesin penjadwal tanpa perlu restart aplikasi.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">POST</span>
+                      <span className="text-slate-800 dark:text-slate-200 font-semibold select-all">{`${window.location.origin}/api/v1/telegram/external/schedules`}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Payload Body JSON Pembuatan Jadwal:</span>
+                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-sky-200 overflow-x-auto leading-relaxed">
+                      <code>{`{
+  "name": "Auto Reminder Piutang Jatuh Tempo",
+  "bot": "${bots[0]?.name || 'DarkoBot_SSI'}",
+  "database": "ssi",
+  "cronExpression": "0 0 9 * * *",
+  "query": "SELECT user_hp, pesan FROM v_piutang_jatuh_tempo WHERE status = 'JATUH_TEMPO'",
+  "recipient_column": "user_hp",
+  "message_column": "pesan",
+  "max_rows": 50,
+  "active": true
+}`}</code>
+                    </pre>
+                  </div>
+
+                  <div className="p-3 bg-bg-editor rounded-xl border border-border-main space-y-1 text-[11px] text-slate-700 dark:text-slate-300">
+                    <span className="font-bold text-amber-600 dark:text-amber-400">⚡ Contoh Format Cron Expression Populer:</span>
+                    <ul className="list-disc list-inside space-y-0.5 font-mono text-[10px]">
+                      <li><code className="text-sky-600 dark:text-sky-400 font-bold">0 0 8 * * *</code> = Setiap hari jam 08:00 WIB</li>
+                      <li><code className="text-sky-600 dark:text-sky-400 font-bold">0 0 8,12,18 * * *</code> = 3x sehari (Jam 08:00, 12:00, dan 18:00)</li>
+                      <li><code className="text-sky-600 dark:text-sky-400 font-bold">0 0 * * * *</code> = Tiap 1 jam sekali</li>
+                      <li><code className="text-sky-600 dark:text-sky-400 font-bold">0 */15 * * * *</code> = Tiap 15 menit sekali</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 5: Kontrol (Toggle / Run Now) */}
+              {lifecycleStep === 'step_control' && (
+                <div className="space-y-3 animate-in fade-in duration-200 text-xs">
+                  <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 rounded-xl p-3.5 space-y-1">
+                    <span className="font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                      <PlayCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                      Langkah 5: Mengontrol Jadwal (Jeda / Aktifkan &amp; Run Now Seketika)
+                    </span>
+                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                      Sistem eksternal dapat menjeda sementara atau memicu eksekusi manual seketika tanpa harus menunggu jadwal cron-nya tiba.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Toggle Subcard */}
+                    <div className="bg-bg-editor p-3.5 rounded-xl border border-border-main space-y-2">
+                      <span className="font-bold text-text-main flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-mono text-[10px] font-bold">PUT</span>
+                        Aktifkan / Jeda Jadwal
+                      </span>
+                      <code className="block bg-bg-panel p-2 rounded-lg border font-mono text-[10px] text-sky-700 dark:text-sky-300 break-all select-all">
+                        {`${window.location.origin}/api/v1/telegram/external/schedules/{id}/toggle`}
+                      </code>
+                      <p className="text-[11px] text-text-muted">Kirimkan JSON Body:</p>
+                      <pre className="bg-[#0f172a] p-2.5 rounded-lg border border-slate-700 font-mono text-[10px] text-emerald-400">
+                        <code>{`{ "active": false } // atau true`}</code>
+                      </pre>
+                    </div>
+
+                    {/* Run Now Subcard */}
+                    <div className="bg-bg-editor p-3.5 rounded-xl border border-border-main space-y-2">
+                      <span className="font-bold text-text-main flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-bold">POST</span>
+                        Paksa Eksekusi Seketika (Run Now)
+                      </span>
+                      <code className="block bg-bg-panel p-2 rounded-lg border font-mono text-[10px] text-sky-700 dark:text-sky-300 break-all select-all">
+                        {`${window.location.origin}/api/v1/telegram/external/schedules/{id}/run-now`}
+                      </code>
+                      <p className="text-[11px] text-text-muted">Cukup POST dengan token autentikasi (tanpa body). Bot akan langsung mengeksekusi data detik ini juga.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Section 3: Specification & Parameters */}
             <div className="bg-bg-panel border border-border-main rounded-2xl p-5 shadow-sm space-y-4">
               <div className="border-b border-border-main pb-3">
                 <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
