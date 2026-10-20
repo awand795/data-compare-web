@@ -1209,7 +1209,7 @@ export const TelegramBotView: React.FC = () => {
                           <Bot className="w-4 h-4" />
                           Bot Telegram Resmi
                         </span>
-                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300">
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-700 dark:text-sky-300">
                           Anti-Banned
                         </span>
                       </div>
@@ -1607,7 +1607,7 @@ export const TelegramBotView: React.FC = () => {
                               copy[cIdx] = e.target.value;
                               setCronTriggers(copy);
                             }}
-                            className="w-full bg-transparent border-0 text-xs font-mono font-bold text-sky-300 focus:outline-none placeholder:text-text-muted"
+                            className="w-full bg-transparent border-0 text-xs font-mono font-bold text-slate-800 dark:text-sky-300 focus:outline-none placeholder:text-text-muted"
                           />
                         </div>
 
@@ -2829,8 +2829,8 @@ export const TelegramBotView: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono bg-bg-editor px-3 py-1.5 rounded-lg border border-border-main text-sky-400 font-semibold flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs font-mono bg-sky-50 dark:bg-sky-950/40 px-3 py-1.5 rounded-lg border border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300 font-bold flex items-center gap-1.5 shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   POST /api/v1/telegram/external/send
                 </span>
               </div>
@@ -2840,8 +2840,8 @@ export const TelegramBotView: React.FC = () => {
             <div className="bg-bg-panel border border-border-main rounded-2xl p-5 shadow-sm space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-main pb-3">
                 <div className="flex items-center gap-2">
-                  <Key className="w-4 h-4 text-amber-400" />
-                  <h3 className="text-sm font-bold text-text-main">Autentikasi & Token API Klien Luar</h3>
+                  <Key className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-sm font-bold text-text-main">Autentikasi &amp; Token API Klien Luar</h3>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -2859,12 +2859,12 @@ export const TelegramBotView: React.FC = () => {
 
               {isLoadingTokens ? (
                 <div className="py-6 text-center text-xs text-text-muted flex items-center justify-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-sky-400" />
+                  <RefreshCw className="w-4 h-4 animate-spin text-sky-500" />
                   <span>Memuat token API...</span>
                 </div>
               ) : tokens.length === 0 ? (
                 <div className="bg-bg-editor/50 border border-border-main rounded-xl p-6 text-center space-y-2">
-                  <ShieldCheck className="w-8 h-8 text-amber-400/50 mx-auto" />
+                  <ShieldCheck className="w-8 h-8 text-amber-500/50 mx-auto" />
                   <p className="text-xs font-bold text-text-main">Belum Ada Token API yang Dibuat</p>
                   <p className="text-[11px] text-text-muted max-w-md mx-auto">
                     Klik tombol "Buat Token Pertama" di atas untuk men-generate token API otorisasi klien luar.
@@ -2881,7 +2881,7 @@ export const TelegramBotView: React.FC = () => {
                         key={tok.id}
                         className={clsx(
                           "bg-bg-editor p-4 rounded-xl border transition-all flex flex-wrap items-center justify-between gap-4",
-                          tok.active ? "border-sky-500/30" : "border-border-main opacity-70"
+                          tok.active ? "border-sky-500/40" : "border-border-main opacity-70"
                         )}
                       >
                         <div className="space-y-1.5 flex-1 min-w-[280px]">
@@ -2891,8 +2891,8 @@ export const TelegramBotView: React.FC = () => {
                               className={clsx(
                                 "text-[10px] font-bold px-2 py-0.5 rounded-full border",
                                 tok.active
-                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                  : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                  : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30"
                               )}
                             >
                               {tok.active ? '● Aktif' : '○ Dinonaktifkan'}
@@ -2905,12 +2905,12 @@ export const TelegramBotView: React.FC = () => {
                           </div>
 
                           <div className="flex items-center gap-2">
-                            <div className="bg-bg-main border border-border-main rounded-lg px-3 py-1.5 font-mono text-xs text-sky-300 flex-1 flex items-center justify-between">
+                            <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg px-3 py-1.5 font-mono text-xs text-slate-800 dark:text-sky-300 font-semibold flex-1 flex items-center justify-between">
                               <span>{isVisible ? tok.token : maskedToken}</span>
                               <button
                                 type="button"
                                 onClick={() => setShowToken(!showToken)}
-                                className="text-text-muted hover:text-text-main ml-2 cursor-pointer p-0.5"
+                                className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white ml-2 cursor-pointer p-0.5 transition-colors"
                                 title={showToken ? "Sembunyikan token" : "Tampilkan token"}
                               >
                                 {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -2924,10 +2924,10 @@ export const TelegramBotView: React.FC = () => {
                                 setCopiedToken(true);
                                 setTimeout(() => setCopiedToken(false), 2000);
                               }}
-                              className="px-3 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                              className="px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                               title="Salin token ke clipboard"
                             >
-                              {copiedToken ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              {copiedToken ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                               <span>{copiedToken ? 'Tersalin!' : 'Copy'}</span>
                             </button>
                           </div>
@@ -2940,8 +2940,8 @@ export const TelegramBotView: React.FC = () => {
                             className={clsx(
                               "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer",
                               tok.active
-                                ? "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
-                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
+                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
                             )}
                           >
                             {tok.active ? 'Nonaktifkan' : 'Aktifkan'}
@@ -2949,7 +2949,7 @@ export const TelegramBotView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleDeleteToken(tok.id)}
-                            className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 border border-border-main transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg text-text-muted hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-border-main transition-colors cursor-pointer"
                             title="Hapus token"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -2962,18 +2962,18 @@ export const TelegramBotView: React.FC = () => {
               )}
 
               {/* Security Hint */}
-              <div className="bg-sky-500/5 border border-sky-500/20 rounded-xl p-3 text-xs text-text-muted space-y-1">
-                <span className="font-semibold text-sky-400 flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5" />
+              <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 rounded-xl p-3.5 text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
+                <span className="font-bold text-sky-700 dark:text-sky-300 flex items-center gap-1.5">
+                  <Info className="w-4 h-4 text-sky-600 dark:text-sky-400" />
                   Cara Memasang Token Otorisasi:
                 </span>
-                <p>
+                <p className="leading-relaxed">
                   Sertakan header HTTP berikut pada setiap request:
-                  <code className="ml-1 px-1.5 py-0.5 rounded bg-bg-main border border-border-main text-sky-300 font-mono text-[11px]">
+                  <code className="ml-1 px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono text-[11px] font-bold shadow-xs">
                     Authorization: Bearer &lt;TOKEN_ANDA&gt;
                   </code>
                   {' '}atau{' '}
-                  <code className="px-1.5 py-0.5 rounded bg-bg-main border border-border-main text-sky-300 font-mono text-[11px]">
+                  <code className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono text-[11px] font-bold shadow-xs">
                     X-API-Key: &lt;TOKEN_ANDA&gt;
                   </code>
                 </p>
@@ -2984,105 +2984,105 @@ export const TelegramBotView: React.FC = () => {
             <div className="bg-bg-panel border border-border-main rounded-2xl p-5 shadow-sm space-y-4">
               <div className="border-b border-border-main pb-3">
                 <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
-                  <Terminal className="w-4 h-4 text-emerald-400" />
+                  <Terminal className="w-4 h-4 text-emerald-500" />
                   Spesifikasi Parameter Payload (JSON Body)
                 </h3>
-                <p className="text-xs text-text-muted mt-0.5">
-                  Request dikirim dengan method <b className="text-emerald-400">POST</b> ke endpoint{' '}
-                  <code className="text-sky-400">/api/v1/telegram/external/send</code>.
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  Request dikirim dengan method <b className="text-emerald-600 dark:text-emerald-400 font-bold">POST</b> ke endpoint{' '}
+                  <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-bold">/api/v1/telegram/external/send</code>.
                 </p>
               </div>
 
-              <div className="overflow-x-auto border border-border-main rounded-xl">
+              <div className="overflow-x-auto border border-border-main rounded-xl shadow-xs">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-bg-editor border-b border-border-main text-[11px] text-text-muted uppercase">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-border-main text-[11px] text-slate-700 dark:text-slate-200 uppercase font-bold tracking-wider">
                     <tr>
-                      <th className="py-2.5 px-3 font-semibold">Parameter</th>
-                      <th className="py-2.5 px-3 font-semibold">Tipe</th>
-                      <th className="py-2.5 px-3 font-semibold">Wajib?</th>
-                      <th className="py-2.5 px-3 font-semibold">Default</th>
-                      <th className="py-2.5 px-3 font-semibold">Deskripsi & Contoh</th>
+                      <th className="py-3 px-3.5">Parameter</th>
+                      <th className="py-3 px-3.5">Tipe</th>
+                      <th className="py-3 px-3.5">Wajib?</th>
+                      <th className="py-3 px-3.5">Default</th>
+                      <th className="py-3 px-3.5">Deskripsi &amp; Contoh</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border-main/60">
+                  <tbody className="divide-y divide-border-main/60 bg-bg-panel">
                     <tr className="hover:bg-bg-hover/30">
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">database</td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
-                      <td className="py-2.5 px-3"><span className="text-rose-400 font-bold">Wajib</span></td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
-                      <td className="py-2.5 px-3 text-text-muted">
-                        Nama database atau ID koneksi di DarkoSync (misal: <code className="text-sky-300">"ssi"</code>, <code className="text-sky-300">"mkn"</code>, <code className="text-sky-300">"bpi"</code>).
+                      <td className="py-3 px-3.5 font-mono font-bold text-sky-600 dark:text-sky-400">database</td>
+                      <td className="py-3 px-3.5 text-slate-600 dark:text-slate-300 font-mono">string</td>
+                      <td className="py-3 px-3.5"><span className="text-rose-600 dark:text-rose-400 font-bold">Wajib</span></td>
+                      <td className="py-3 px-3.5 text-slate-500 dark:text-slate-400 font-mono">-</td>
+                      <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
+                        Nama database atau ID koneksi di DarkoSync (misal: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"ssi"</code>, <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"mkn"</code>, <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"bpi"</code>).
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">bot</td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
-                      <td className="py-2.5 px-3"><span className="text-rose-400 font-bold">Wajib</span></td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
-                      <td className="py-2.5 px-3 text-text-muted">
-                        Nama Bot Telegram yang terdaftar di DarkoSync (misal: <code className="text-sky-300">"DarkoBot_SSI"</code>).
+                      <td className="py-3 px-3.5 font-mono font-bold text-sky-600 dark:text-sky-400">bot</td>
+                      <td className="py-3 px-3.5 text-slate-600 dark:text-slate-300 font-mono">string</td>
+                      <td className="py-3 px-3.5"><span className="text-rose-600 dark:text-rose-400 font-bold">Wajib</span></td>
+                      <td className="py-3 px-3.5 text-slate-500 dark:text-slate-400 font-mono">-</td>
+                      <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
+                        Nama Bot Telegram yang terdaftar di DarkoSync (misal: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"DarkoBot_SSI"</code>).
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">query</td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
-                      <td className="py-2.5 px-3"><span className="text-amber-400 font-semibold">Kondisional*</span></td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
-                      <td className="py-2.5 px-3 text-text-muted">
-                        Query SQL SELECT. Wajib diisi jika parameter <code className="text-sky-300">view</code> tidak diisi. Hanya boleh perintah SELECT/read-only.
+                      <td className="py-3 px-3.5 font-mono font-bold text-sky-600 dark:text-sky-400">query</td>
+                      <td className="py-3 px-3.5 text-slate-600 dark:text-slate-300 font-mono">string</td>
+                      <td className="py-3 px-3.5"><span className="text-amber-600 dark:text-amber-400 font-bold">Kondisional*</span></td>
+                      <td className="py-3 px-3.5 text-slate-500 dark:text-slate-400 font-mono">-</td>
+                      <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
+                        Query SQL SELECT. Wajib diisi jika parameter <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">view</code> tidak diisi. Hanya boleh perintah SELECT/read-only.
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">view</td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
-                      <td className="py-2.5 px-3"><span className="text-amber-400 font-semibold">Kondisional*</span></td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
-                      <td className="py-2.5 px-3 text-text-muted">
-                        Nama View/Tabel alternatif jika tidak mengirimkan SQL mentah (misal: <code className="text-sky-300">"v_faktur_harian"</code>).
+                      <td className="py-3 px-3.5 font-mono font-bold text-sky-600 dark:text-sky-400">view</td>
+                      <td className="py-3 px-3.5 text-slate-600 dark:text-slate-300 font-mono">string</td>
+                      <td className="py-3 px-3.5"><span className="text-amber-600 dark:text-amber-400 font-bold">Kondisional*</span></td>
+                      <td className="py-3 px-3.5 text-slate-500 dark:text-slate-400 font-mono">-</td>
+                      <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
+                        Nama View/Tabel alternatif jika tidak mengirimkan SQL mentah (misal: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"v_faktur_harian"</code>).
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">recipient_column</td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
-                      <td className="py-2.5 px-3"><span className="text-text-muted font-normal">Opsional</span></td>
-                      <td className="py-2.5 px-3 font-mono text-emerald-400">"user_hp"</td>
-                      <td className="py-2.5 px-3 text-text-muted">
-                        Nama kolom pada baris data yang berisi Nomor HP atau Chat ID tujuan (contoh: <code className="text-sky-300">"telepon"</code>, <code className="text-sky-300">"user_hp"</code>, <code className="text-sky-300">"chat_id"</code>).
+                      <td className="py-3 px-3.5 font-mono font-bold text-sky-600 dark:text-sky-400">recipient_column</td>
+                      <td className="py-3 px-3.5 text-slate-600 dark:text-slate-300 font-mono">string</td>
+                      <td className="py-3 px-3.5"><span className="text-slate-500 dark:text-slate-400 font-medium">Opsional</span></td>
+                      <td className="py-3 px-3.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">"user_hp"</td>
+                      <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
+                        Nama kolom pada baris data yang berisi Nomor HP atau Chat ID tujuan (contoh: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"telepon"</code>, <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"user_hp"</code>, <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"chat_id"</code>).
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">message_column</td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
-                      <td className="py-2.5 px-3"><span className="text-text-muted font-normal">Opsional</span></td>
-                      <td className="py-2.5 px-3 font-mono text-emerald-400">"pesan"</td>
-                      <td className="py-2.5 px-3 text-text-muted">
+                      <td className="py-3 px-3.5 font-mono font-bold text-sky-600 dark:text-sky-400">message_column</td>
+                      <td className="py-3 px-3.5 text-slate-600 dark:text-slate-300 font-mono">string</td>
+                      <td className="py-3 px-3.5"><span className="text-slate-500 dark:text-slate-400 font-medium">Opsional</span></td>
+                      <td className="py-3 px-3.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">"pesan"</td>
+                      <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
                         Nama kolom pada baris data yang berisi teks pesan siap kirim dari View database.
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">template</td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">string</td>
-                      <td className="py-2.5 px-3"><span className="text-text-muted font-normal">Opsional</span></td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
-                      <td className="py-2.5 px-3 text-text-muted">
-                        Format template pesan dinamis menggunakan variabel <code className="text-sky-300">{"{{nama_kolom}}"}</code> (misal: <code className="text-sky-300">"Halo {"{{customer}}"}, faktur {"{{no_faktur}}"} lunas"</code>).
+                      <td className="py-3 px-3.5 font-mono font-bold text-sky-600 dark:text-sky-400">template</td>
+                      <td className="py-3 px-3.5 text-slate-600 dark:text-slate-300 font-mono">string</td>
+                      <td className="py-3 px-3.5"><span className="text-slate-500 dark:text-slate-400 font-medium">Opsional</span></td>
+                      <td className="py-3 px-3.5 text-slate-500 dark:text-slate-400 font-mono">-</td>
+                      <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
+                        Format template pesan dinamis menggunakan variabel <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">{"{{nama_kolom}}"}</code> (misal: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"Halo {"{{customer}}"}, faktur {"{{no_faktur}}"} lunas"</code>).
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">params</td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">object</td>
-                      <td className="py-2.5 px-3"><span className="text-text-muted font-normal">Opsional</span></td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">-</td>
-                      <td className="py-2.5 px-3 text-text-muted">
-                        Parameter query SQL bernama (misal: <code className="text-sky-300">{"{\"tgl\": \"2026-10-19\"}"}</code> untuk placeholder <code className="text-sky-300">:tgl</code>).
+                      <td className="py-3 px-3.5 font-mono font-bold text-sky-600 dark:text-sky-400">params</td>
+                      <td className="py-3 px-3.5 text-slate-600 dark:text-slate-300 font-mono">object</td>
+                      <td className="py-3 px-3.5"><span className="text-slate-500 dark:text-slate-400 font-medium">Opsional</span></td>
+                      <td className="py-3 px-3.5 text-slate-500 dark:text-slate-400 font-mono">-</td>
+                      <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
+                        Parameter query SQL bernama (misal: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">{"{\"tgl\": \"2026-10-19\"}"}</code> untuk placeholder <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">:tgl</code>).
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-400">max_rows</td>
-                      <td className="py-2.5 px-3 text-text-muted font-mono">number</td>
-                      <td className="py-2.5 px-3"><span className="text-text-muted font-normal">Opsional</span></td>
-                      <td className="py-2.5 px-3 font-mono text-emerald-400">50</td>
-                      <td className="py-2.5 px-3 text-text-muted">
+                      <td className="py-3 px-3.5 font-mono font-bold text-sky-600 dark:text-sky-400">max_rows</td>
+                      <td className="py-3 px-3.5 text-slate-600 dark:text-slate-300 font-mono">number</td>
+                      <td className="py-3 px-3.5"><span className="text-slate-500 dark:text-slate-400 font-medium">Opsional</span></td>
+                      <td className="py-3 px-3.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">50</td>
+                      <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
                         Batas maksimum baris yang dieksekusi dan dikirim pesan (maksimal 1000).
                       </td>
                     </tr>
@@ -3095,7 +3095,7 @@ export const TelegramBotView: React.FC = () => {
             <div className="bg-bg-panel border border-border-main rounded-2xl p-5 shadow-sm space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-main pb-3">
                 <div className="flex items-center gap-2">
-                  <Terminal className="w-4 h-4 text-sky-400" />
+                  <Terminal className="w-4 h-4 text-sky-500" />
                   <h3 className="text-sm font-bold text-text-main">Contoh Kode Integrasi (Code Snippets)</h3>
                 </div>
 
@@ -3204,7 +3204,7 @@ echo $response;`;
 
                 return (
                   <div className="relative group">
-                    <pre className="bg-bg-editor p-4 rounded-xl border border-border-main font-mono text-xs text-sky-300 overflow-x-auto">
+                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-4.5 rounded-xl border border-slate-700/80 font-mono text-xs text-sky-200 overflow-x-auto shadow-inner leading-relaxed">
                       <code>{snippet}</code>
                     </pre>
                     <button
@@ -3214,7 +3214,7 @@ echo $response;`;
                         setCopiedCurl(true);
                         setTimeout(() => setCopiedCurl(false), 2000);
                       }}
-                      className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-bg-panel/90 hover:bg-bg-panel border border-border-main text-xs font-semibold text-text-main flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                      className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
                     >
                       {copiedCurl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedCurl ? 'Tersalin' : 'Copy Kode'}</span>
@@ -3229,7 +3229,7 @@ echo $response;`;
               <div className="border-b border-border-main pb-3">
                 <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
                   <PlayCircle className="w-4 h-4 text-purple-400" />
-                  Live API Playground & Console Tester
+                  Live API Playground &amp; Console Tester
                 </h3>
                 <p className="text-xs text-text-muted mt-0.5">
                   Uji coba panggil endpoint API integrasi bot Telegram secara langsung dari browser ini.
@@ -3303,35 +3303,35 @@ echo $response;`;
 
                 {testQueryType === 'query' ? (
                   <div>
-                    <label className="block text-text-muted font-semibold mb-1 text-xs">Query SQL (SELECT only):</label>
+                    <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1 text-xs">Query SQL (SELECT only):</label>
                     <textarea
                       rows={3}
                       value={testQuery}
                       onChange={e => setTestQuery(e.target.value)}
                       placeholder="SELECT user_hp, pesan FROM v_notifikasi LIMIT 5"
-                      className="w-full bg-bg-editor border border-border-main rounded-xl p-3 font-mono text-xs text-sky-300 focus:outline-none focus:border-sky-500"
+                      className="w-full bg-bg-editor border border-border-main rounded-xl p-3 font-mono text-xs text-text-main font-semibold focus:outline-none focus:border-sky-500 shadow-inner"
                     />
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                     <div>
-                      <label className="block text-text-muted font-semibold mb-1">Schema (opsional):</label>
+                      <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">Schema (opsional):</label>
                       <input
                         type="text"
                         value={testSchema}
                         onChange={e => setTestSchema(e.target.value)}
                         placeholder="public atau sch_erp_system"
-                        className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-text-main focus:outline-none"
+                        className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-text-main font-semibold focus:outline-none focus:border-sky-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-text-muted font-semibold mb-1">Nama View / Tabel *:</label>
+                      <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">Nama View / Tabel *:</label>
                       <input
                         type="text"
                         value={testView}
                         onChange={e => setTestView(e.target.value)}
                         placeholder="v_notifikasi_harian"
-                        className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-text-main focus:outline-none"
+                        className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-text-main font-semibold focus:outline-none focus:border-sky-500"
                       />
                     </div>
                   </div>
@@ -3341,7 +3341,7 @@ echo $response;`;
               {/* Dynamic Columns Configuration */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                 <div>
-                  <label className="block text-text-muted font-semibold mb-1">
+                  <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
                     Kolom Penerima (HP / Chat ID):
                   </label>
                   <input
@@ -3349,13 +3349,13 @@ echo $response;`;
                     value={testRecipientCol}
                     onChange={e => setTestRecipientCol(e.target.value)}
                     placeholder="user_hp"
-                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-text-main focus:outline-none focus:border-sky-500"
+                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-text-main font-semibold focus:outline-none focus:border-sky-500"
                   />
                   <span className="text-[10px] text-text-muted mt-0.5 block">Default: user_hp</span>
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-semibold mb-1">
+                  <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
                     Kolom Pesan (dari View):
                   </label>
                   <input
@@ -3363,13 +3363,13 @@ echo $response;`;
                     value={testMessageCol}
                     onChange={e => setTestMessageCol(e.target.value)}
                     placeholder="pesan"
-                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-text-main focus:outline-none focus:border-sky-500"
+                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-text-main font-semibold focus:outline-none focus:border-sky-500"
                   />
                   <span className="text-[10px] text-text-muted mt-0.5 block">Default: pesan</span>
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-semibold mb-1">
+                  <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
                     Maksimum Baris:
                   </label>
                   <input
@@ -3378,7 +3378,7 @@ echo $response;`;
                     max={100}
                     value={testMaxRows}
                     onChange={e => setTestMaxRows(parseInt(e.target.value) || 5)}
-                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-text-main focus:outline-none focus:border-sky-500"
+                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-text-main font-semibold focus:outline-none focus:border-sky-500"
                   />
                   <span className="text-[10px] text-text-muted mt-0.5 block">Limit uji coba: 1-100</span>
                 </div>
@@ -3386,7 +3386,7 @@ echo $response;`;
 
               {/* Optional Custom Template */}
               <div>
-                <label className="block text-text-muted font-semibold mb-1 text-xs">
+                <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1 text-xs">
                   Template Pesan Kustom (Opsional - Jika diisi akan meng-override kolom pesan):
                 </label>
                 <input
@@ -3394,7 +3394,7 @@ echo $response;`;
                   value={testTemplate}
                   onChange={e => setTestTemplate(e.target.value)}
                   placeholder="Halo <b>{{user_name}}</b>, faktur {{no_faktur}} siap diproses."
-                  className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-xs text-text-main focus:outline-none focus:border-sky-500"
+                  className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono text-xs text-text-main font-semibold focus:outline-none focus:border-sky-500"
                 />
               </div>
 
@@ -3416,15 +3416,15 @@ echo $response;`;
                 <div className="space-y-3 pt-3 border-t border-border-main animate-in fade-in duration-200">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-text-main flex items-center gap-1.5">
-                      <Terminal className="w-3.5 h-3.5 text-sky-400" />
+                      <Terminal className="w-3.5 h-3.5 text-sky-500" />
                       Hasil Response API:
                     </span>
                     <span
                       className={clsx(
                         "text-[11px] font-bold px-2.5 py-0.5 rounded-full border",
                         testResult.success
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                          : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                          : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30"
                       )}
                     >
                       {testResult.success ? '● SUCCESS (200 OK)' : '○ FAILED / ERROR'}
@@ -3439,16 +3439,16 @@ echo $response;`;
                       </div>
                       <div className="bg-bg-editor p-2.5 rounded-xl border border-border-main">
                         <span className="text-[10px] text-text-muted block uppercase font-bold">Pesan Terkirim</span>
-                        <span className="text-base font-bold text-emerald-400 font-mono">{testResult.messages_sent}</span>
+                        <span className="text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono">{testResult.messages_sent}</span>
                       </div>
                       <div className="bg-bg-editor p-2.5 rounded-xl border border-border-main">
                         <span className="text-[10px] text-text-muted block uppercase font-bold">Gagal</span>
-                        <span className="text-base font-bold text-rose-400 font-mono">{testResult.messages_failed}</span>
+                        <span className="text-base font-bold text-rose-600 dark:text-rose-400 font-mono">{testResult.messages_failed}</span>
                       </div>
                     </div>
                   )}
 
-                  <pre className="bg-bg-editor p-4 rounded-xl border border-border-main font-mono text-[11px] text-emerald-300 overflow-x-auto max-h-60 overflow-y-auto">
+                  <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-4.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-emerald-400 overflow-x-auto max-h-60 overflow-y-auto shadow-inner leading-relaxed">
                     <code>{JSON.stringify(testResult, null, 2)}</code>
                   </pre>
                 </div>
