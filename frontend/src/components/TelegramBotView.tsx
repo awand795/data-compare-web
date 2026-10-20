@@ -167,6 +167,7 @@ export const TelegramBotView: React.FC = () => {
   const [showToken, setShowToken] = useState(false);
   const [copiedToken, setCopiedToken] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
+  const [copiedEndpoint, setCopiedEndpoint] = useState(false);
   const [activeCodeSnippet, setActiveCodeSnippet] = useState<'curl' | 'javascript' | 'python' | 'php'>('curl');
   const [snippetMode, setSnippetMode] = useState<'direct_query' | 'db_view' | 'dynamic_template'>('direct_query');
 
@@ -2829,11 +2830,29 @@ export const TelegramBotView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono bg-sky-50 dark:bg-sky-950/40 px-3 py-1.5 rounded-lg border border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300 font-bold flex items-center gap-1.5 shadow-sm">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  POST /api/v1/telegram/external/send
-                </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center bg-bg-editor border border-border-main rounded-xl p-1 shadow-xs">
+                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    POST
+                  </span>
+                  <span className="px-3 py-1 font-mono text-xs text-slate-800 dark:text-sky-300 font-semibold select-all">
+                    {`${window.location.origin}/api/v1/telegram/external/send`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/api/v1/telegram/external/send`);
+                      setCopiedEndpoint(true);
+                      setTimeout(() => setCopiedEndpoint(false), 2000);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-500/30 text-xs font-bold transition-colors cursor-pointer ml-1"
+                    title="Salin Link Lengkap Endpoint API"
+                  >
+                    {copiedEndpoint ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedEndpoint ? 'Link Tersalin!' : 'Copy Link Endpoint'}</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2988,10 +3007,29 @@ export const TelegramBotView: React.FC = () => {
                   <Terminal className="w-4 h-4 text-emerald-500" />
                   Spesifikasi Parameter Payload (JSON Body)
                 </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                  Request dikirim dengan method <b className="text-emerald-600 dark:text-emerald-400 font-bold">POST</b> ke endpoint{' '}
-                  <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-bold">/api/v1/telegram/external/send</code>.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-3 mt-1.5">
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Request dikirim dengan method <b className="text-emerald-600 dark:text-emerald-400 font-bold">POST</b> ke endpoint berikut:
+                  </p>
+
+                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg px-2.5 py-1">
+                    <code className="text-sky-700 dark:text-sky-300 font-mono text-xs font-bold select-all">
+                      {`${window.location.origin}/api/v1/telegram/external/send`}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/api/v1/telegram/external/send`);
+                        setCopiedEndpoint(true);
+                        setTimeout(() => setCopiedEndpoint(false), 2000);
+                      }}
+                      className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 hover:text-sky-600 dark:hover:text-sky-300 transition-colors cursor-pointer"
+                      title="Salin Link Lengkap Endpoint API"
+                    >
+                      {copiedEndpoint ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
 
                 {/* Integration Mode Highlights */}
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
