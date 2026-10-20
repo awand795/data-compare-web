@@ -168,6 +168,7 @@ export const TelegramBotView: React.FC = () => {
   const [copiedToken, setCopiedToken] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [activeCodeSnippet, setActiveCodeSnippet] = useState<'curl' | 'javascript' | 'python' | 'php'>('curl');
+  const [snippetMode, setSnippetMode] = useState<'direct_query' | 'db_view' | 'dynamic_template'>('direct_query');
 
   // API Playground State
   const [testDb, setTestDb] = useState('');
@@ -2991,6 +2992,29 @@ export const TelegramBotView: React.FC = () => {
                   Request dikirim dengan method <b className="text-emerald-600 dark:text-emerald-400 font-bold">POST</b> ke endpoint{' '}
                   <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-bold">/api/v1/telegram/external/send</code>.
                 </p>
+
+                {/* Integration Mode Highlights */}
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                  <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 rounded-xl p-3">
+                    <span className="font-bold text-sky-700 dark:text-sky-300 flex items-center gap-1.5 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-sky-500" />
+                      Cara 1: Direct SQL Query &amp; Kolom Pesan Jadi
+                    </span>
+                    <p className="text-slate-700 dark:text-slate-300 text-[11px] leading-relaxed">
+                      Kirim parameter <code className="font-mono text-sky-700 dark:text-sky-300 font-semibold">query</code> yang men-SELECT kolom nomor HP (<code className="font-mono">user_hp</code>) dan kolom isi pesan (<code className="font-mono">pesan</code>). Bot akan langsung mengirimkan teks tersebut tanpa perlu template tambahan.
+                    </p>
+                  </div>
+
+                  <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 rounded-xl p-3">
+                    <span className="font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-purple-500" />
+                      Cara 2: Nama View Database Langsung
+                    </span>
+                    <p className="text-slate-700 dark:text-slate-300 text-[11px] leading-relaxed">
+                      Cukup kirim parameter <code className="font-mono text-purple-700 dark:text-purple-300 font-semibold">view</code> (tanpa SQL mentah). Bisa langsung pakai kolom pesan yang ada di view atau gunakan <code className="font-mono text-purple-700 dark:text-purple-300 font-semibold">template</code> dinamis dengan variabel <code className="font-mono">{"{{kolom}}"}</code>.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="overflow-x-auto border border-border-main rounded-xl shadow-xs">
@@ -3001,7 +3025,7 @@ export const TelegramBotView: React.FC = () => {
                       <th className="py-3 px-3.5">Tipe</th>
                       <th className="py-3 px-3.5">Wajib?</th>
                       <th className="py-3 px-3.5">Default</th>
-                      <th className="py-3 px-3.5">Deskripsi &amp; Contoh</th>
+                      <th className="py-3 px-3.5">Deskripsi &amp; Contoh Penggunaan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-main/60 bg-bg-panel">
@@ -3029,7 +3053,7 @@ export const TelegramBotView: React.FC = () => {
                       <td className="py-3 px-3.5"><span className="text-amber-600 dark:text-amber-400 font-bold">Kondisional*</span></td>
                       <td className="py-3 px-3.5 text-slate-500 dark:text-slate-400 font-mono">-</td>
                       <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
-                        Query SQL SELECT. Wajib diisi jika parameter <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">view</code> tidak diisi. Hanya boleh perintah SELECT/read-only.
+                        Query SQL SELECT. Wajib diisi jika parameter <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">view</code> tidak diisi. Field yang di-SELECT bisa langsung berupa kolom nomor HP dan kolom isi pesan (contoh: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"SELECT user_hp, pesan FROM v_notifikasi"</code>).
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
@@ -3047,7 +3071,7 @@ export const TelegramBotView: React.FC = () => {
                       <td className="py-3 px-3.5"><span className="text-slate-500 dark:text-slate-400 font-medium">Opsional</span></td>
                       <td className="py-3 px-3.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">"user_hp"</td>
                       <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
-                        Nama kolom pada baris data yang berisi Nomor HP atau Chat ID tujuan (contoh: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"telepon"</code>, <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"user_hp"</code>, <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"chat_id"</code>).
+                        Nama kolom pada baris data hasil SELECT / View yang berisi Nomor HP atau Chat ID tujuan (contoh: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"telepon"</code>, <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"user_hp"</code>, <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"chat_id"</code>).
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
@@ -3056,7 +3080,7 @@ export const TelegramBotView: React.FC = () => {
                       <td className="py-3 px-3.5"><span className="text-slate-500 dark:text-slate-400 font-medium">Opsional</span></td>
                       <td className="py-3 px-3.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">"pesan"</td>
                       <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
-                        Nama kolom pada baris data yang berisi teks pesan siap kirim dari View database.
+                        Nama kolom pada baris data hasil SELECT / View yang memuat teks pesan siap kirim. Jika parameter ini terisi dan template tidak diisi, isi kolom ini langsung dikirim utuh ke penerima.
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
@@ -3065,7 +3089,7 @@ export const TelegramBotView: React.FC = () => {
                       <td className="py-3 px-3.5"><span className="text-slate-500 dark:text-slate-400 font-medium">Opsional</span></td>
                       <td className="py-3 px-3.5 text-slate-500 dark:text-slate-400 font-mono">-</td>
                       <td className="py-3 px-3.5 text-slate-700 dark:text-slate-200 leading-relaxed">
-                        Format template pesan dinamis menggunakan variabel <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">{"{{nama_kolom}}"}</code> (misal: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"Halo {"{{customer}}"}, faktur {"{{no_faktur}}"} lunas"</code>).
+                        Format template pesan kustom menggunakan variabel <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">{"{{nama_kolom}}"}</code> (misal: <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 font-mono font-semibold">"Halo {"{{customer}}"}, faktur {"{{no_faktur}}"} lunas"</code>). Jika diisi, akan meng-override kolom pesan.
                       </td>
                     </tr>
                     <tr className="hover:bg-bg-hover/30">
@@ -3096,10 +3120,13 @@ export const TelegramBotView: React.FC = () => {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-main pb-3">
                 <div className="flex items-center gap-2">
                   <Terminal className="w-4 h-4 text-sky-500" />
-                  <h3 className="text-sm font-bold text-text-main">Contoh Kode Integrasi (Code Snippets)</h3>
+                  <div>
+                    <h3 className="text-sm font-bold text-text-main">Contoh Kode Integrasi (Code Snippets)</h3>
+                    <p className="text-xs text-text-muted">Pilih mode integrasi dan bahasa pemrograman untuk melihat contoh kode siap pakai.</p>
+                  </div>
                 </div>
 
-                {/* Snippet Tabs */}
+                {/* Language Tabs */}
                 <div className="flex items-center gap-1 bg-bg-editor p-1 rounded-lg border border-border-main text-xs">
                   {(['curl', 'javascript', 'python', 'php'] as const).map(lang => (
                     <button
@@ -3119,26 +3146,75 @@ export const TelegramBotView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Scenario Mode Selector */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSnippetMode('direct_query')}
+                  className={clsx(
+                    "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5",
+                    snippetMode === 'direct_query'
+                      ? "bg-sky-500 text-white border-sky-600 shadow-sm"
+                      : "bg-bg-editor text-slate-700 dark:text-slate-300 border-border-main hover:bg-bg-hover"
+                  )}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  Mode 1: Query SQL Langsung (Pesan dari Field DB)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSnippetMode('db_view')}
+                  className={clsx(
+                    "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5",
+                    snippetMode === 'db_view'
+                      ? "bg-purple-600 text-white border-purple-700 shadow-sm"
+                      : "bg-bg-editor text-slate-700 dark:text-slate-300 border-border-main hover:bg-bg-hover"
+                  )}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                  Mode 2: Nama View Database Langsung
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSnippetMode('dynamic_template')}
+                  className={clsx(
+                    "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5",
+                    snippetMode === 'dynamic_template'
+                      ? "bg-amber-600 text-white border-amber-700 shadow-sm"
+                      : "bg-bg-editor text-slate-700 dark:text-slate-300 border-border-main hover:bg-bg-hover"
+                  )}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  Mode 3: Query / View + Template Dinamis {"{{field}}"}
+                </button>
+              </div>
+
               {/* Code Box */}
               {(() => {
                 const activeTok = tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN_HERE';
                 const endpointUrl = `${window.location.origin}/api/v1/telegram/external/send`;
+                const botName = bots[0]?.name || 'NamaBotTelegram';
 
                 let snippet = '';
-                if (activeCodeSnippet === 'curl') {
-                  snippet = `curl -X POST "${endpointUrl}" \\
+
+                // Skenario 1: Direct SQL Query & Pesan Langsung dari Field DB
+                if (snippetMode === 'direct_query') {
+                  if (activeCodeSnippet === 'curl') {
+                    snippet = `# Mode 1: Query SQL Langsung & pesan langsung diambil dari kolom DB
+curl -X POST "${endpointUrl}" \\
   -H "Authorization: Bearer ${activeTok}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "database": "ssi",
-    "bot": "${bots[0]?.name || 'NamaBotTelegram'}",
-    "query": "SELECT user_hp, pesan FROM v_notifikasi WHERE status = :status LIMIT 10",
-    "params": { "status": "PENDING" },
+    "bot": "${botName}",
+    "query": "SELECT user_hp, pesan FROM v_notifikasi_siap_kirim WHERE status = '\''PENDING'\'' LIMIT 10",
     "recipient_column": "user_hp",
     "message_column": "pesan"
   }'`;
-                } else if (activeCodeSnippet === 'javascript') {
-                  snippet = `// Menggunakan Node.js / Fetch API
+                  } else if (activeCodeSnippet === 'javascript') {
+                    snippet = `// Mode 1: Query SQL Langsung & pesan langsung diambil dari kolom DB
 const response = await fetch("${endpointUrl}", {
   method: "POST",
   headers: {
@@ -3147,18 +3223,19 @@ const response = await fetch("${endpointUrl}", {
   },
   body: JSON.stringify({
     database: "ssi",
-    bot: "${bots[0]?.name || 'NamaBotTelegram'}",
-    query: "SELECT user_hp, customer_name, no_faktur FROM v_penjualan WHERE status = 'SELESAI'",
+    bot: "${botName}",
+    query: "SELECT user_hp, pesan FROM v_notifikasi_siap_kirim WHERE status = 'PENDING' LIMIT 10",
     recipient_column: "user_hp",
-    template: "Halo <b>{{customer_name}}</b>, faktur no <code>{{no_faktur}}</code> telah selesai diproses."
+    message_column: "pesan"
   })
 });
 
-const data = await response.json();
-console.log(data);`;
-                } else if (activeCodeSnippet === 'python') {
-                  snippet = `import requests
+const result = await response.json();
+console.log(result);`;
+                  } else if (activeCodeSnippet === 'python') {
+                    snippet = `import requests
 
+# Mode 1: Query SQL Langsung & pesan langsung diambil dari kolom DB
 url = "${endpointUrl}"
 headers = {
     "Authorization": "Bearer ${activeTok}",
@@ -3166,22 +3243,23 @@ headers = {
 }
 payload = {
     "database": "ssi",
-    "bot": "${bots[0]?.name || 'NamaBotTelegram'}",
-    "query": "SELECT user_hp, pesan FROM v_notifikasi LIMIT 10",
+    "bot": "${botName}",
+    "query": "SELECT user_hp, pesan FROM v_notifikasi_siap_kirim WHERE status = 'PENDING' LIMIT 10",
     "recipient_column": "user_hp",
     "message_column": "pesan"
 }
 
 response = requests.post(url, json=payload, headers=headers)
 print(response.json())`;
-                } else if (activeCodeSnippet === 'php') {
-                  snippet = `<?php
+                  } else if (activeCodeSnippet === 'php') {
+                    snippet = `<?php
+// Mode 1: Query SQL Langsung & pesan langsung diambil dari kolom DB
 $curl = curl_init();
 
 $payload = [
     "database" => "ssi",
-    "bot" => "${bots[0]?.name || 'NamaBotTelegram'}",
-    "query" => "SELECT user_hp, pesan FROM v_notifikasi LIMIT 10",
+    "bot" => "${botName}",
+    "query" => "SELECT user_hp, pesan FROM v_notifikasi_siap_kirim WHERE status = 'PENDING' LIMIT 10",
     "recipient_column" => "user_hp",
     "message_column" => "pesan"
 ];
@@ -3200,6 +3278,175 @@ curl_setopt_array($curl, [
 $response = curl_exec($curl);
 curl_close($curl);
 echo $response;`;
+                  }
+                }
+
+                // Skenario 2: Memanggil Nama View Database Langsung
+                else if (snippetMode === 'db_view') {
+                  if (activeCodeSnippet === 'curl') {
+                    snippet = `# Mode 2: Memanggil Nama View Database (Tanpa Query SQL Mentah)
+curl -X POST "${endpointUrl}" \\
+  -H "Authorization: Bearer ${activeTok}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "database": "ssi",
+    "bot": "${botName}",
+    "view": "v_notifikasi_harian",
+    "recipient_column": "user_hp",
+    "message_column": "pesan",
+    "max_rows": 25
+  }'`;
+                  } else if (activeCodeSnippet === 'javascript') {
+                    snippet = `// Mode 2: Memanggil Nama View Database (Tanpa Query SQL Mentah)
+const response = await fetch("${endpointUrl}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${activeTok}",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    database: "ssi",
+    bot: "${botName}",
+    view: "v_notifikasi_harian",
+    recipient_column: "user_hp",
+    message_column: "pesan",
+    max_rows: 25
+  })
+});
+
+const result = await response.json();
+console.log(result);`;
+                  } else if (activeCodeSnippet === 'python') {
+                    snippet = `import requests
+
+# Mode 2: Memanggil Nama View Database (Tanpa Query SQL Mentah)
+url = "${endpointUrl}"
+headers = {
+    "Authorization": "Bearer ${activeTok}",
+    "Content-Type": "application/json"
+}
+payload = {
+    "database": "ssi",
+    "bot": "${botName}",
+    "view": "v_notifikasi_harian",
+    "recipient_column": "user_hp",
+    "message_column": "pesan",
+    "max_rows": 25
+}
+
+response = requests.post(url, json=payload, headers=headers)
+print(response.json())`;
+                  } else if (activeCodeSnippet === 'php') {
+                    snippet = `<?php
+// Mode 2: Memanggil Nama View Database (Tanpa Query SQL Mentah)
+$curl = curl_init();
+
+$payload = [
+    "database" => "ssi",
+    "bot" => "${botName}",
+    "view" => "v_notifikasi_harian",
+    "recipient_column" => "user_hp",
+    "message_column" => "pesan",
+    "max_rows" => 25
+];
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => "${endpointUrl}",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => json_encode($payload),
+    CURLOPT_HTTPHEADER => [
+        "Authorization: Bearer ${activeTok}",
+        "Content-Type: application/json"
+    ],
+]);
+
+$response = curl_exec($curl);
+curl_close($curl);
+echo $response;`;
+                  }
+                }
+
+                // Skenario 3: Query / View + Template Dinamis {{field}}
+                else if (snippetMode === 'dynamic_template') {
+                  if (activeCodeSnippet === 'curl') {
+                    snippet = `# Mode 3: Query SQL + Template Pesan Dinamis (Variabel {{nama_kolom}})
+curl -X POST "${endpointUrl}" \\
+  -H "Authorization: Bearer ${activeTok}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "database": "ssi",
+    "bot": "${botName}",
+    "query": "SELECT user_hp, customer_name, no_faktur, total_rp FROM v_penjualan WHERE status = '\''SELESAI'\'' LIMIT 10",
+    "recipient_column": "user_hp",
+    "template": "Halo <b>{{customer_name}}</b>, faktur no <code>{{no_faktur}}</code> sebesar Rp {{total_rp}} telah terbit."
+  }'`;
+                  } else if (activeCodeSnippet === 'javascript') {
+                    snippet = `// Mode 3: Query SQL + Template Pesan Dinamis (Variabel {{nama_kolom}})
+const response = await fetch("${endpointUrl}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${activeTok}",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    database: "ssi",
+    bot: "${botName}",
+    query: "SELECT user_hp, customer_name, no_faktur, total_rp FROM v_penjualan WHERE status = 'SELESAI' LIMIT 10",
+    recipient_column: "user_hp",
+    template: "Halo <b>{{customer_name}}</b>, faktur no <code>{{no_faktur}}</code> sebesar Rp {{total_rp}} telah terbit."
+  })
+});
+
+const result = await response.json();
+console.log(result);`;
+                  } else if (activeCodeSnippet === 'python') {
+                    snippet = `import requests
+
+# Mode 3: Query SQL + Template Pesan Dinamis (Variabel {{nama_kolom}})
+url = "${endpointUrl}"
+headers = {
+    "Authorization": "Bearer ${activeTok}",
+    "Content-Type": "application/json"
+}
+payload = {
+    "database": "ssi",
+    "bot": "${botName}",
+    "query": "SELECT user_hp, customer_name, no_faktur, total_rp FROM v_penjualan WHERE status = 'SELESAI' LIMIT 10",
+    "recipient_column": "user_hp",
+    "template": "Halo <b>{{customer_name}}</b>, faktur no <code>{{no_faktur}}</code> sebesar Rp {{total_rp}} telah terbit."
+}
+
+response = requests.post(url, json=payload, headers=headers)
+print(response.json())`;
+                  } else if (activeCodeSnippet === 'php') {
+                    snippet = `<?php
+// Mode 3: Query SQL + Template Pesan Dinamis (Variabel {{nama_kolom}})
+$curl = curl_init();
+
+$payload = [
+    "database" => "ssi",
+    "bot" => "${botName}",
+    "query" => "SELECT user_hp, customer_name, no_faktur, total_rp FROM v_penjualan WHERE status = 'SELESAI' LIMIT 10",
+    "recipient_column" => "user_hp",
+    "template" => "Halo <b>{{customer_name}}</b>, faktur no <code>{{no_faktur}}</code> sebesar Rp {{total_rp}} telah terbit."
+];
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => "${endpointUrl}",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => json_encode($payload),
+    CURLOPT_HTTPHEADER => [
+        "Authorization: Bearer ${activeTok}",
+        "Content-Type: application/json"
+    ],
+]);
+
+$response = curl_exec($curl);
+curl_close($curl);
+echo $response;`;
+                  }
                 }
 
                 return (
