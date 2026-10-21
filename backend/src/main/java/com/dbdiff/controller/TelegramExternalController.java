@@ -298,6 +298,43 @@ public class TelegramExternalController {
         ));
     }
 
+    /**
+     * 7. Delete a schedule via external API
+     */
+    @DeleteMapping({"/api/v1/telegram/external/schedules/{id}", "/api/telegram/external/schedules/{id}"})
+    public ResponseEntity<?> handleExternalDeleteSchedule(
+            HttpServletRequest request,
+            @PathVariable String id) {
+
+        Map<String, Object> authError = new LinkedHashMap<>();
+        if (!authenticateRequest(request, authError)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
+        }
+
+        TelegramSchedule existing = scheduleRepository.findById(id);
+        if (existing == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "success", false,
+                    "error", "Schedule not found with id: " + id
+            ));
+        }
+
+        try {
+            schedulerService.cancelSchedule(id);
+            scheduleRepository.delete(id);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Schedule '" + existing.getName() + "' (ID: " + id + ") has been deleted successfully"
+            ));
+        } catch (Exception ex) {
+            logger.error("Failed to delete schedule {}: {}", id, ex.getMessage(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Failed to delete schedule: " + ex.getMessage()
+            ));
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────
     // ADMIN UI ENDPOINTS (FOR DASHBOARD)
     // ─────────────────────────────────────────────────────────────────────────────

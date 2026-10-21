@@ -169,9 +169,51 @@ export const TelegramBotView: React.FC = () => {
   const [copiedToken, setCopiedToken] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [copiedEndpoint, setCopiedEndpoint] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Reliable Universal Copy Helper with HTTP Fallback (execCommand)
+  const copyText = (text: string, key?: string) => {
+    let success = false;
+    try {
+      if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text);
+        success = true;
+      }
+    } catch {
+      success = false;
+    }
+
+    if (!success) {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.top = '0';
+        textArea.style.left = '0';
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        textArea.style.pointerEvents = 'none';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        success = document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch {
+        success = false;
+      }
+    }
+
+    if (key) {
+      setCopiedKey(key);
+      setTimeout(() => {
+        setCopiedKey(prev => (prev === key ? null : prev));
+      }, 2000);
+    }
+    return success;
+  };
+
   const [activeCodeSnippet, setActiveCodeSnippet] = useState<'curl' | 'javascript' | 'python' | 'php'>('curl');
   const [snippetMode, setSnippetMode] = useState<'direct_query' | 'db_view' | 'dynamic_template'>('direct_query');
-  const [lifecycleStep, setLifecycleStep] = useState<'step_bots' | 'step_send' | 'step_schedules' | 'step_create_schedule' | 'step_control'>('step_bots');
+  const [lifecycleStep, setLifecycleStep] = useState<'step_bots' | 'step_send' | 'step_schedules' | 'step_create_schedule' | 'step_control' | 'step_delete_schedule'>('step_bots');
 
   // API Playground State
   const [testDb, setTestDb] = useState('');
@@ -2844,15 +2886,15 @@ export const TelegramBotView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/api/v1/telegram/external/send`);
+                      copyText(`${window.location.origin}/api/v1/telegram/external/send`, 'top_endpoint');
                       setCopiedEndpoint(true);
                       setTimeout(() => setCopiedEndpoint(false), 2000);
                     }}
                     className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-500/30 text-xs font-bold transition-colors cursor-pointer ml-1"
                     title="Salin Link Lengkap Endpoint API"
                   >
-                    {copiedEndpoint ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedEndpoint ? 'Link Tersalin!' : 'Copy Link Endpoint'}</span>
+                    {copiedEndpoint || copiedKey === 'top_endpoint' ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedEndpoint || copiedKey === 'top_endpoint' ? 'Link Tersalin!' : 'Copy Link Endpoint'}</span>
                   </button>
                 </div>
               </div>
@@ -2942,15 +2984,15 @@ export const TelegramBotView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => {
-                                navigator.clipboard.writeText(tok.token);
+                                copyText(tok.token, `tok_${tok.id}`);
                                 setCopiedToken(true);
                                 setTimeout(() => setCopiedToken(false), 2000);
                               }}
                               className="px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                               title="Salin token ke clipboard"
                             >
-                              {copiedToken ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                              <span>{copiedToken ? 'Tersalin!' : 'Copy'}</span>
+                              {copiedToken || copiedKey === `tok_${tok.id}` ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              <span>{copiedToken || copiedKey === `tok_${tok.id}` ? 'Tersalin!' : 'Copy'}</span>
                             </button>
                           </div>
                         </div>
@@ -3022,7 +3064,8 @@ export const TelegramBotView: React.FC = () => {
                     { id: 'step_send', step: '2', title: 'Kirim Pesan Instan', method: 'POST' },
                     { id: 'step_schedules', step: '3', title: 'Lihat Jadwal Aktif', method: 'GET' },
                     { id: 'step_create_schedule', step: '4', title: 'Buat Jadwal Cron', method: 'POST' },
-                    { id: 'step_control', step: '5', title: 'Kontrol (Jeda / Run Now)', method: 'PUT/POST' }
+                    { id: 'step_control', step: '5', title: 'Kontrol (Jeda / Run Now)', method: 'PUT/POST' },
+                    { id: 'step_delete_schedule', step: '6', title: 'Hapus Jadwal', method: 'DELETE' }
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -3044,7 +3087,7 @@ export const TelegramBotView: React.FC = () => {
                       <span>{tab.title}</span>
                       <span className={clsx(
                         "text-[9px] px-1.5 py-0.2 rounded font-mono font-bold",
-                        tab.method === 'GET' ? "bg-sky-500/20 text-sky-400" : tab.method === 'POST' ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"
+                        tab.method === 'GET' ? "bg-sky-500/20 text-sky-400" : tab.method === 'POST' ? "bg-emerald-500/20 text-emerald-400" : tab.method === 'DELETE' ? "bg-rose-500/20 text-rose-400" : "bg-amber-500/20 text-amber-400"
                       )}>
                         {tab.method}
                       </span>
@@ -3066,28 +3109,57 @@ export const TelegramBotView: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
+                    <div className="flex items-center gap-2 overflow-x-auto">
                       <span className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-[11px]">GET</span>
                       <span className="text-slate-800 dark:text-slate-200 font-semibold select-all">{`${window.location.origin}/api/v1/telegram/external/bots`}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(`curl -X GET "${window.location.origin}/api/v1/telegram/external/bots" -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}"`);
-                        setCopiedCurl(true);
-                        setTimeout(() => setCopiedCurl(false), 2000);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      {copiedCurl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>Copy cURL</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => copyText(`${window.location.origin}/api/v1/telegram/external/bots`, 'step1_url')}
+                        className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Salin URL Endpoint"
+                      >
+                        {copiedKey === 'step1_url' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'step1_url' ? 'URL Tersalin' : 'Copy URL'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyText(`curl -X GET "${window.location.origin}/api/v1/telegram/external/bots" -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}"`, 'step1_curl')}
+                        className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Salin Perintah cURL"
+                      >
+                        {copiedKey === 'step1_curl' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'step1_curl' ? 'cURL Tersalin' : 'Copy cURL'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Response JSON:</span>
-                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-emerald-400 overflow-x-auto leading-relaxed">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Response JSON:</span>
+                      <button
+                        type="button"
+                        onClick={() => copyText(`{
+  "success": true,
+  "total": 1,
+  "bots": [
+    {
+      "id": "${bots[0]?.id || 'e9365e13-xxxx-xxxx'}",
+      "name": "${bots[0]?.name || 'DarkoBot_SSI'}",
+      "botUsername": "${bots[0]?.botUsername || 'DarkoBot_SSI_bot'}",
+      "isPollingActive": true
+    }
+  ]
+}`, 'step1_json')}
+                        className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedKey === 'step1_json' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedKey === 'step1_json' ? 'JSON Tersalin' : 'Copy Response'}</span>
+                      </button>
+                    </div>
+                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-emerald-400 overflow-x-auto leading-relaxed select-all">
                       <code>{`{
   "success": true,
   "total": 1,
@@ -3118,16 +3190,55 @@ export const TelegramBotView: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
+                    <div className="flex items-center gap-2 overflow-x-auto">
                       <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">POST</span>
                       <span className="text-slate-800 dark:text-slate-200 font-semibold select-all">{`${window.location.origin}/api/v1/telegram/external/send`}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => copyText(`${window.location.origin}/api/v1/telegram/external/send`, 'step2_url')}
+                        className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Salin URL Endpoint"
+                      >
+                        {copiedKey === 'step2_url' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'step2_url' ? 'URL Tersalin' : 'Copy URL'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyText(`curl -X POST "${window.location.origin}/api/v1/telegram/external/send" \
+  -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}" \
+  -H "Content-Type: application/json" \
+  -d '{\n  "database": "ssi",\n  "bot": "${bots[0]?.name || 'DarkoBot_SSI'}",\n  "query": "SELECT user_hp, pesan FROM v_notifikasi WHERE status = \'PENDING\' LIMIT 10",\n  "recipient_column": "user_hp",\n  "message_column": "pesan"\n}'`, 'step2_curl')}
+                        className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Salin Perintah cURL"
+                      >
+                        {copiedKey === 'step2_curl' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'step2_curl' ? 'cURL Tersalin' : 'Copy cURL'}</span>
+                      </button>
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Payload Body JSON (Mode Query Langsung &amp; Kolom Pesan Jadi):</span>
-                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-sky-200 overflow-x-auto leading-relaxed">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Payload Body JSON (Mode Query Langsung &amp; Kolom Pesan Jadi):</span>
+                      <button
+                        type="button"
+                        onClick={() => copyText(`{
+  "database": "ssi",
+  "bot": "${bots[0]?.name || 'DarkoBot_SSI'}",
+  "query": "SELECT user_hp, pesan FROM v_notifikasi WHERE status = 'PENDING' LIMIT 10",
+  "recipient_column": "user_hp",
+  "message_column": "pesan"
+}`, 'step2_json')}
+                        className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedKey === 'step2_json' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedKey === 'step2_json' ? 'JSON Tersalin' : 'Copy Payload'}</span>
+                      </button>
+                    </div>
+                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-sky-200 overflow-x-auto leading-relaxed select-all">
                       <code>{`{
   "database": "ssi",
   "bot": "${bots[0]?.name || 'DarkoBot_SSI'}",
@@ -3153,28 +3264,64 @@ export const TelegramBotView: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
+                    <div className="flex items-center gap-2 overflow-x-auto">
                       <span className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-[11px]">GET</span>
                       <span className="text-slate-800 dark:text-slate-200 font-semibold select-all">{`${window.location.origin}/api/v1/telegram/external/schedules?activeOnly=true`}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(`curl -X GET "${window.location.origin}/api/v1/telegram/external/schedules?activeOnly=true" -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}"`);
-                        setCopiedCurl(true);
-                        setTimeout(() => setCopiedCurl(false), 2000);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      {copiedCurl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>Copy cURL</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => copyText(`${window.location.origin}/api/v1/telegram/external/schedules?activeOnly=true`, 'step3_url')}
+                        className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Salin URL Endpoint"
+                      >
+                        {copiedKey === 'step3_url' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'step3_url' ? 'URL Tersalin' : 'Copy URL'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyText(`curl -X GET "${window.location.origin}/api/v1/telegram/external/schedules?activeOnly=true" -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}"`, 'step3_curl')}
+                        className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Salin Perintah cURL"
+                      >
+                        {copiedKey === 'step3_curl' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'step3_curl' ? 'cURL Tersalin' : 'Copy cURL'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Response JSON:</span>
-                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-emerald-400 overflow-x-auto leading-relaxed">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Response JSON:</span>
+                      <button
+                        type="button"
+                        onClick={() => copyText(`{
+  "success": true,
+  "total": 1,
+  "schedules": [
+    {
+      "id": "c138b472-8921-4d1a-82bc-90a1f28b12e1",
+      "name": "Kirim Notifikasi Faktur Penjualan",
+      "botId": "${bots[0]?.id || 'e9365e13-xxxx-xxxx'}",
+      "connectionId": "ssi",
+      "cronExpression": "0 0 8,12,18 * * *",
+      "active": true,
+      "lastRunAt": "2026-10-20T08:00:00",
+      "lastRunStatus": "SUCCESS",
+      "lastRunMessage": "Processed 24 messages successfully",
+      "viewName": "v_notifikasi_harian",
+      "phoneColumnName": "user_hp"
+    }
+  ]
+}`, 'step3_json')}
+                        className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedKey === 'step3_json' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedKey === 'step3_json' ? 'JSON Tersalin' : 'Copy Response'}</span>
+                      </button>
+                    </div>
+                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-emerald-400 overflow-x-auto leading-relaxed select-all">
                       <code>{`{
   "success": true,
   "total": 1,
@@ -3212,16 +3359,59 @@ export const TelegramBotView: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
+                    <div className="flex items-center gap-2 overflow-x-auto">
                       <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">POST</span>
                       <span className="text-slate-800 dark:text-slate-200 font-semibold select-all">{`${window.location.origin}/api/v1/telegram/external/schedules`}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => copyText(`${window.location.origin}/api/v1/telegram/external/schedules`, 'step4_url')}
+                        className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Salin URL Endpoint"
+                      >
+                        {copiedKey === 'step4_url' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'step4_url' ? 'URL Tersalin' : 'Copy URL'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyText(`curl -X POST "${window.location.origin}/api/v1/telegram/external/schedules" \
+  -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}" \
+  -H "Content-Type: application/json" \
+  -d '{\n  "name": "Auto Reminder Piutang Jatuh Tempo",\n  "bot": "${bots[0]?.name || 'DarkoBot_SSI'}",\n  "database": "ssi",\n  "cronExpression": "0 0 9 * * *",\n  "query": "SELECT user_hp, pesan FROM v_piutang_jatuh_tempo WHERE status = \'JATUH_TEMPO\'",\n  "recipient_column": "user_hp",\n  "message_column": "pesan",\n  "max_rows": 50,\n  "active": true\n}'`, 'step4_curl')}
+                        className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Salin Perintah cURL"
+                      >
+                        {copiedKey === 'step4_curl' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'step4_curl' ? 'cURL Tersalin' : 'Copy cURL'}</span>
+                      </button>
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Payload Body JSON Pembuatan Jadwal:</span>
-                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-sky-200 overflow-x-auto leading-relaxed">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Payload Body JSON Pembuatan Jadwal:</span>
+                      <button
+                        type="button"
+                        onClick={() => copyText(`{
+  "name": "Auto Reminder Piutang Jatuh Tempo",
+  "bot": "${bots[0]?.name || 'DarkoBot_SSI'}",
+  "database": "ssi",
+  "cronExpression": "0 0 9 * * *",
+  "query": "SELECT user_hp, pesan FROM v_piutang_jatuh_tempo WHERE status = 'JATUH_TEMPO'",
+  "recipient_column": "user_hp",
+  "message_column": "pesan",
+  "max_rows": 50,
+  "active": true
+}`, 'step4_json')}
+                        className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedKey === 'step4_json' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedKey === 'step4_json' ? 'JSON Tersalin' : 'Copy Payload'}</span>
+                      </button>
+                    </div>
+                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-sky-200 overflow-x-auto leading-relaxed select-all">
                       <code>{`{
   "name": "Auto Reminder Piutang Jatuh Tempo",
   "bot": "${bots[0]?.name || 'DarkoBot_SSI'}",
@@ -3264,30 +3454,115 @@ export const TelegramBotView: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Toggle Subcard */}
                     <div className="bg-bg-editor p-3.5 rounded-xl border border-border-main space-y-2">
-                      <span className="font-bold text-text-main flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-mono text-[10px] font-bold">PUT</span>
-                        Aktifkan / Jeda Jadwal
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-text-main flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-mono text-[10px] font-bold">PUT</span>
+                          Aktifkan / Jeda Jadwal
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyText(`curl -X PUT "${window.location.origin}/api/v1/telegram/external/schedules/{id}/toggle" -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}" -H "Content-Type: application/json" -d '{"active": false}'`, 'step5_toggle_curl')}
+                          className="text-[10px] font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          {copiedKey === 'step5_toggle_curl' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedKey === 'step5_toggle_curl' ? 'cURL Tersalin' : 'Copy cURL'}</span>
+                        </button>
+                      </div>
                       <code className="block bg-bg-panel p-2 rounded-lg border font-mono text-[10px] text-sky-700 dark:text-sky-300 break-all select-all">
                         {`${window.location.origin}/api/v1/telegram/external/schedules/{id}/toggle`}
                       </code>
                       <p className="text-[11px] text-text-muted">Kirimkan JSON Body:</p>
-                      <pre className="bg-[#0f172a] p-2.5 rounded-lg border border-slate-700 font-mono text-[10px] text-emerald-400">
+                      <pre className="bg-[#0f172a] p-2.5 rounded-lg border border-slate-700 font-mono text-[10px] text-emerald-400 select-all">
                         <code>{`{ "active": false } // atau true`}</code>
                       </pre>
                     </div>
 
                     {/* Run Now Subcard */}
                     <div className="bg-bg-editor p-3.5 rounded-xl border border-border-main space-y-2">
-                      <span className="font-bold text-text-main flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-bold">POST</span>
-                        Paksa Eksekusi Seketika (Run Now)
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-text-main flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-bold">POST</span>
+                          Paksa Eksekusi Seketika (Run Now)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyText(`curl -X POST "${window.location.origin}/api/v1/telegram/external/schedules/{id}/run-now" -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}"`, 'step5_run_curl')}
+                          className="text-[10px] font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          {copiedKey === 'step5_run_curl' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedKey === 'step5_run_curl' ? 'cURL Tersalin' : 'Copy cURL'}</span>
+                        </button>
+                      </div>
                       <code className="block bg-bg-panel p-2 rounded-lg border font-mono text-[10px] text-sky-700 dark:text-sky-300 break-all select-all">
                         {`${window.location.origin}/api/v1/telegram/external/schedules/{id}/run-now`}
                       </code>
                       <p className="text-[11px] text-text-muted">Cukup POST dengan token autentikasi (tanpa body). Bot akan langsung mengeksekusi data detik ini juga.</p>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 6: Hapus Jadwal (DELETE) */}
+              {lifecycleStep === 'step_delete_schedule' && (
+                <div className="space-y-3 animate-in fade-in duration-200 text-xs">
+                  <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 rounded-xl p-3.5 space-y-1">
+                    <span className="font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                      <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                      Langkah 6: Menghapus Jadwal Cron via API (DELETE)
+                    </span>
+                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                      Gunakan endpoint ini untuk menghapus jadwal otomatis secara permanen berdasarkan ID jadwal. Scheduler mesin background akan seketika membatalkan trigger jadwal tersebut tanpa perlu restart server.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-bg-editor border border-border-main rounded-xl px-3 py-2 font-mono">
+                    <div className="flex items-center gap-2 overflow-x-auto">
+                      <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-[11px]">DELETE</span>
+                      <span className="text-slate-800 dark:text-slate-200 font-semibold select-all">{`${window.location.origin}/api/v1/telegram/external/schedules/{id}`}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => copyText(`${window.location.origin}/api/v1/telegram/external/schedules/{id}`, 'step6_url')}
+                        className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Salin URL Endpoint"
+                      >
+                        {copiedKey === 'step6_url' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'step6_url' ? 'URL Tersalin' : 'Copy URL'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyText(`curl -X DELETE "${window.location.origin}/api/v1/telegram/external/schedules/YOUR_SCHEDULE_ID" -H "Authorization: Bearer ${tokens.find(t => t.active)?.token || 'YOUR_API_TOKEN'}"`, 'step6_curl')}
+                        className="px-2.5 py-1 rounded-lg bg-bg-panel hover:bg-bg-hover border border-border-main text-xs font-semibold text-text-main flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Salin Perintah cURL"
+                      >
+                        {copiedKey === 'step6_curl' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'step6_curl' ? 'cURL Tersalin' : 'Copy cURL'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700 dark:text-slate-300">Contoh Response JSON Sukses:</span>
+                      <button
+                        type="button"
+                        onClick={() => copyText(`{
+  "success": true,
+  "message": "Schedule 'Auto Reminder Piutang' (ID: c138b472-xxxx-xxxx) has been deleted successfully"
+}`, 'step6_json')}
+                        className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedKey === 'step6_json' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedKey === 'step6_json' ? 'JSON Tersalin' : 'Copy Response'}</span>
+                      </button>
+                    </div>
+                    <pre className="bg-[#0f172a] dark:bg-[#080d1a] p-3.5 rounded-xl border border-slate-700/80 font-mono text-[11px] text-emerald-400 overflow-x-auto leading-relaxed select-all">
+                      <code>{`{
+  "success": true,
+  "message": "Schedule 'Auto Reminder Piutang' (ID: c138b472-xxxx-xxxx) has been deleted successfully"
+}`}</code>
+                    </pre>
                   </div>
                 </div>
               )}
@@ -3312,14 +3587,14 @@ export const TelegramBotView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/api/v1/telegram/external/send`);
+                        copyText(`${window.location.origin}/api/v1/telegram/external/send`, 'spec_send_url');
                         setCopiedEndpoint(true);
                         setTimeout(() => setCopiedEndpoint(false), 2000);
                       }}
                       className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 hover:text-sky-600 dark:hover:text-sky-300 transition-colors cursor-pointer"
                       title="Salin Link Lengkap Endpoint API"
                     >
-                      {copiedEndpoint ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedEndpoint || copiedKey === 'spec_send_url' ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
                   </div>
                 </div>
@@ -3788,14 +4063,14 @@ echo $response;`;
                     <button
                       type="button"
                       onClick={() => {
-                        navigator.clipboard.writeText(snippet);
+                        copyText(snippet, 'snippet');
                         setCopiedCurl(true);
                         setTimeout(() => setCopiedCurl(false), 2000);
                       }}
                       className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
                     >
-                      {copiedCurl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedCurl ? 'Tersalin' : 'Copy Kode'}</span>
+                      {copiedCurl || copiedKey === 'snippet' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedCurl || copiedKey === 'snippet' ? 'Tersalin!' : 'Copy Kode'}</span>
                     </button>
                   </div>
                 );
