@@ -1203,9 +1203,30 @@ public class WebhookService {
                     .POST(HttpRequest.BodyPublishers.ofString(reqBody, StandardCharsets.UTF_8))
                     .build();
 
-            HttpResponse<String> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() != 200) {
-                logger.error("Webhook [{}] Ginee order/v1/batch-get returned HTTP {}: {}", config.getName(), resp.statusCode(), resp.body());
+            HttpResponse<String> resp = null;
+            for (int attempt = 1; attempt <= 4; attempt++) {
+                resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                int status = resp.statusCode();
+                String body = resp.body() != null ? resp.body() : "";
+                boolean isRateLimited = (status == 429) || body.contains("\"code\":\"SERVICE_BUSY\"") || body.contains("request rate limitation");
+                boolean isServerError = (status == 502 || status == 503 || status == 504);
+
+                if ((!isRateLimited && !isServerError) || attempt == 4) {
+                    break;
+                }
+
+                long backoffMs = 1500L * (long) Math.pow(2, attempt - 1) + (long) (Math.random() * 400);
+                logger.warn("Webhook [{}] Ginee API rate limited (HTTP {}). Retrying attempt {}/4 in {} ms...",
+                        config.getName(), status, attempt, backoffMs);
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            if (resp == null || resp.statusCode() != 200) {
+                logger.error("Webhook [{}] Ginee order/v1/batch-get returned HTTP {}: {}", config.getName(), (resp != null ? resp.statusCode() : 500), (resp != null ? resp.body() : "No response"));
                 return;
             }
 

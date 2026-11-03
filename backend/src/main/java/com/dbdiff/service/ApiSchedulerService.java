@@ -292,7 +292,7 @@ public class ApiSchedulerService {
 
         logger.info("Executing API Ingestion Schedule [{}] - {} {}", config.getName(), config.getMethod(), config.getUrl());
         try {
-            Map<String, Object> testRes = testHttpEndpoint(config);
+            Map<String, Object> testRes = executeHttpWithRetry(config, 4);
             int statusCode = (int) testRes.get("statusCode");
             String responseBody = (String) testRes.get("body");
 
@@ -314,6 +314,12 @@ public class ApiSchedulerService {
             repository.updateLastRun(id, "SUCCESS", successMsg);
 
         } catch (Exception e) {
+            if (isDatabaseConnectionException(e)) {
+                logger.warn("API Ingestion Schedule [{}] target database is offline: {}. Skipping cleanly.",
+                        config.getName(), e.getMessage());
+                repository.updateLastRun(id, "DB_OFFLINE", "Target database offline: " + e.getMessage());
+                return;
+            }
             String errMsg = "Execution error: " + e.getMessage();
             logger.error("Error executing API Ingestion Schedule [{}]: {}", config.getName(), e.getMessage(), e);
             repository.updateLastRun(id, "FAILED", errMsg);
@@ -337,7 +343,7 @@ public class ApiSchedulerService {
                 config.getName(), config.getMethod(), config.getUrl(), dynamicParams);
 
         try {
-            Map<String, Object> testRes = testHttpEndpoint(config);
+            Map<String, Object> testRes = executeHttpWithRetry(config, 4);
             int statusCode = (int) testRes.get("statusCode");
             String responseBody = (String) testRes.get("body");
 
@@ -359,11 +365,88 @@ public class ApiSchedulerService {
             repository.updateLastRun(id, "SUCCESS", successMsg);
 
         } catch (Exception e) {
+            if (isDatabaseConnectionException(e)) {
+                logger.warn("Webhook Trigger [{}] target database is offline: {}. Skipping cleanly.",
+                        config.getName(), e.getMessage());
+                repository.updateLastRun(id, "DB_OFFLINE", "Target database offline: " + e.getMessage());
+                return;
+            }
             String errMsg = "Webhook Trigger error: " + e.getMessage();
             logger.error("Error executing Webhook Trigger for [{}] : {}", config.getName(), e.getMessage(), e);
             repository.updateLastRun(id, "FAILED", errMsg);
             sendNotificationIfConfigured(config, "FAILED", errMsg);
         }
+    }
+
+    public Map<String, Object> executeHttpWithRetry(ApiSchedulerConfig config, int maxRetries) {
+        Map<String, Object> res = null;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                res = testHttpEndpoint(config);
+            } catch (Exception e) {
+                logger.warn("HTTP request exception on attempt {}/{}: {}", attempt, maxRetries, e.getMessage());
+                if (attempt == maxRetries) {
+                    Map<String, Object> errRes = new HashMap<>();
+                    errRes.put("statusCode", 500);
+                    errRes.put("durationMs", 0L);
+                    errRes.put("body", "Failed to connect to endpoint: " + e.getMessage());
+                    return errRes;
+                }
+            }
+
+            int statusCode = (res != null && res.get("statusCode") != null) ? (int) res.get("statusCode") : 500;
+            String body = (res != null && res.get("body") != null) ? (String) res.get("body") : "";
+
+            boolean isRateLimited = (statusCode == 429)
+                    || (body.contains("\"code\":\"SERVICE_BUSY\"") || body.contains("request rate limitation"));
+            boolean isTransientServerError = (statusCode == 502 || statusCode == 503 || statusCode == 504);
+
+            boolean shouldRetry = isRateLimited || isTransientServerError;
+
+            if (!shouldRetry || attempt == maxRetries) {
+                return res;
+            }
+
+            long baseDelay = 1500L * (long) Math.pow(2, attempt - 1);
+            long jitter = (long) (Math.random() * 400);
+            long backoffMs = Math.min(baseDelay + jitter, 8000L);
+
+            logger.warn("Target API returned {} on attempt {}/{} (Rate limit / Service busy). Waiting {} ms before auto-retry...",
+                    (isRateLimited ? "Rate Limit (429/SERVICE_BUSY)" : "HTTP " + statusCode),
+                    attempt, maxRetries, backoffMs);
+
+            try {
+                Thread.sleep(backoffMs);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return res;
+            }
+        }
+        return res != null ? res : Map.of("statusCode", 500, "durationMs", 0L, "body", "No response received");
+    }
+
+    public static boolean isDatabaseConnectionException(Throwable t) {
+        if (t == null) return false;
+        Throwable curr = t;
+        while (curr != null) {
+            if (curr instanceof java.net.ConnectException
+                    || curr instanceof java.net.SocketTimeoutException
+                    || curr instanceof java.sql.SQLTransientConnectionException) {
+                return true;
+            }
+            String msg = curr.getMessage();
+            if (msg != null) {
+                String lower = msg.toLowerCase();
+                if (lower.contains("connection to") && (lower.contains("refused") || lower.contains("failed") || lower.contains("timeout"))) return true;
+                if (lower.contains("connection refused")) return true;
+                if (lower.contains("the connection attempt failed")) return true;
+                if (lower.contains("connection is not available")) return true;
+                if (lower.contains("communications link failure")) return true;
+            }
+            if (curr.getCause() == curr) break;
+            curr = curr.getCause();
+        }
+        return false;
     }
 
     private ApiSchedulerConfig cloneWithParams(ApiSchedulerConfig src, Map<String, String> dynamicParams) {
