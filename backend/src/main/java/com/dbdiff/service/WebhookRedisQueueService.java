@@ -8,9 +8,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class WebhookRedisQueueService {
@@ -18,6 +16,8 @@ public class WebhookRedisQueueService {
     private static final Logger logger = LoggerFactory.getLogger(WebhookRedisQueueService.class);
     public static final String WEBHOOK_QUEUE_KEY = "darkosync:webhooks:queue";
     public static final String WEBHOOK_DLQ_KEY = "darkosync:webhooks:dlq";
+    public static final String TRIGGER_RETRY_ZSET_KEY = "darkosync:triggers:retry_zset";
+    public static final String TRIGGER_DLQ_KEY = "darkosync:triggers:dlq";
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -78,6 +78,81 @@ public class WebhookRedisQueueService {
             String json = objectMapper.writeValueAsString(event);
             redisTemplate.opsForList().leftPush(WEBHOOK_DLQ_KEY, json);
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Schedule a failed trigger for delayed retry in Redis (ZSET by timestamp, 60s delay)
+     */
+    public boolean scheduleTriggerRetry(String schedulerId, Map<String, String> dynamicParams, String rawPayload, int round, String error) {
+        try {
+            long delayMs = 60000L; // 60 seconds delay
+            long retryAt = System.currentTimeMillis() + delayMs;
+
+            Map<String, Object> task = new LinkedHashMap<>();
+            task.put("id", UUID.randomUUID().toString());
+            task.put("schedulerId", schedulerId);
+            task.put("dynamicParams", dynamicParams != null ? dynamicParams : Collections.emptyMap());
+            task.put("rawPayload", rawPayload);
+            task.put("round", round);
+            task.put("maxRounds", 3);
+            task.put("scheduledAt", LocalDateTime.now().toString());
+            task.put("retryAt", retryAt);
+            task.put("lastError", error);
+
+            String json = objectMapper.writeValueAsString(task);
+            Boolean added = redisTemplate.opsForZSet().add(TRIGGER_RETRY_ZSET_KEY, json, (double) retryAt);
+            logger.warn("Enqueued trigger for scheduler [{}] into Redis Delayed Retry Queue (round {}/3, ready in 60s)",
+                    schedulerId, round);
+            return Boolean.TRUE.equals(added);
+        } catch (Exception e) {
+            logger.error("Failed to enqueue delayed trigger retry to Redis: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Pop items from Delayed Retry ZSET whose retryAt <= now
+     */
+    public List<Map<String, Object>> popDueTriggerRetries(int limit) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        try {
+            long now = System.currentTimeMillis();
+            Set<String> dueItems = redisTemplate.opsForZSet().rangeByScore(TRIGGER_RETRY_ZSET_KEY, 0, (double) now, 0, limit);
+            if (dueItems == null || dueItems.isEmpty()) {
+                return result;
+            }
+
+            for (String json : dueItems) {
+                Long removed = redisTemplate.opsForZSet().remove(TRIGGER_RETRY_ZSET_KEY, json);
+                if (removed != null && removed > 0) {
+                    try {
+                        Map<String, Object> map = objectMapper.readValue(json, Map.class);
+                        result.add(map);
+                    } catch (Exception parseEx) {
+                        logger.error("Failed to parse trigger retry item JSON: {}", parseEx.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Error polling due trigger retries from Redis: {}", e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Push permanently failed trigger task into Dead Letter Queue (DLQ)
+     */
+    public void pushTriggerToDlq(Map<String, Object> task, String finalError) {
+        try {
+            task.put("failedPermanentlyAt", LocalDateTime.now().toString());
+            task.put("finalError", finalError);
+            String json = objectMapper.writeValueAsString(task);
+            redisTemplate.opsForList().leftPush(TRIGGER_DLQ_KEY, json);
+            logger.error("Trigger task for scheduler [{}] pushed to DLQ [{}] after exhausting all delayed rounds",
+                    task.get("schedulerId"), TRIGGER_DLQ_KEY);
+        } catch (Exception e) {
+            logger.error("Failed to push trigger task to DLQ: {}", e.getMessage(), e);
+        }
     }
 
     /**

@@ -50,6 +50,10 @@ public class ApiSchedulerService {
     private final TaskScheduler taskScheduler;
     private final NotificationService notificationService;
 
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private WebhookRedisQueueService redisQueueService;
+
     private final Map<String, List<ScheduledFuture<?>>> scheduledTasks = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -331,6 +335,10 @@ public class ApiSchedulerService {
      * Execute an API Scheduler on demand with dynamic parameters (e.g. from Webhook Trigger)
      */
     public void executeTriggerWithParams(String id, Map<String, String> dynamicParams, String rawPayload) {
+        executeTriggerWithParamsInternal(id, dynamicParams, rawPayload, 0);
+    }
+
+    public void executeTriggerWithParamsInternal(String id, Map<String, String> dynamicParams, String rawPayload, int retryRound) {
         Optional<ApiSchedulerConfig> opt = repository.findById(id);
         if (opt.isEmpty()) {
             logger.error("Webhook Trigger failed: API Scheduler ID [{}] not found", id);
@@ -339,8 +347,13 @@ public class ApiSchedulerService {
         ApiSchedulerConfig original = opt.get();
         ApiSchedulerConfig config = cloneWithParams(original, dynamicParams);
 
-        logger.info("Executing Webhook Trigger for API Scheduler [{}] - {} {} with params: {}",
-                config.getName(), config.getMethod(), config.getUrl(), dynamicParams);
+        if (retryRound > 0) {
+            logger.info("Executing Webhook Trigger Delayed Retry (round {}/3) for API Scheduler [{}] with params: {}",
+                    retryRound, config.getName(), dynamicParams);
+        } else {
+            logger.info("Executing Webhook Trigger for API Scheduler [{}] - {} {} with params: {}",
+                    config.getName(), config.getMethod(), config.getUrl(), dynamicParams);
+        }
 
         try {
             Map<String, Object> testRes = executeHttpWithRetry(config, 4);
@@ -349,6 +362,35 @@ public class ApiSchedulerService {
 
             if (statusCode < 200 || statusCode >= 300) {
                 String errMsg = "HTTP Request failed with status code " + statusCode + ": " + (responseBody != null ? responseBody : "");
+                boolean isRateLimited = (statusCode == 429) || (responseBody != null && (responseBody.contains("\"code\":\"SERVICE_BUSY\"") || responseBody.contains("request rate limitation")));
+                boolean isTransientServerError = (statusCode == 502 || statusCode == 503 || statusCode == 504);
+                boolean canRetry = isRateLimited || isTransientServerError;
+
+                if (canRetry && redisQueueService != null && redisQueueService.isRedisAvailable() && retryRound < 3) {
+                    int nextRound = retryRound + 1;
+                    redisQueueService.scheduleTriggerRetry(id, dynamicParams, rawPayload, nextRound, errMsg);
+                    logger.warn("Webhook Trigger [{}] initial attempts exhausted due to rate-limit/transient error. Scheduled delayed retry round {}/3 into Redis in 60s (params: {})",
+                            config.getName(), nextRound, dynamicParams);
+                    repository.updateLastRun(id, "RETRYING", "Delayed retry scheduled (round " + nextRound + "/3): " + errMsg);
+                    return;
+                }
+
+                if (retryRound >= 3) {
+                    if (redisQueueService != null) {
+                        Map<String, Object> taskMap = new LinkedHashMap<>();
+                        taskMap.put("schedulerId", id);
+                        taskMap.put("dynamicParams", dynamicParams);
+                        taskMap.put("rawPayload", rawPayload);
+                        taskMap.put("round", retryRound);
+                        redisQueueService.pushTriggerToDlq(taskMap, errMsg);
+                    }
+                    String fatalMsg = "Webhook Trigger [" + config.getName() + "] permanently failed after 3 delayed retry rounds (DLQ): " + errMsg;
+                    logger.error(fatalMsg);
+                    repository.updateLastRun(id, "FAILED_DLQ", fatalMsg);
+                    sendNotificationIfConfigured(config, "FAILED", fatalMsg);
+                    return;
+                }
+
                 logger.error("Webhook Trigger [{}] failed: {}", config.getName(), errMsg);
                 repository.updateLastRun(id, "FAILED", errMsg);
                 sendNotificationIfConfigured(config, "FAILED", errMsg);
@@ -360,8 +402,13 @@ public class ApiSchedulerService {
                 saveResponseToTargetDatabase(config.getTargetConnectionId(), config.getTargetTable().trim(), config.getKodeData(), responseBody);
             }
 
-            String successMsg = "Webhook Trigger successfully ingested API response (HTTP " + statusCode + ", " + testRes.get("durationMs") + "ms)";
-            logger.info("Webhook Trigger [{}] completed successfully for params: {}", config.getName(), dynamicParams);
+            String successMsg = (retryRound > 0 ? "Delayed Retry (round " + retryRound + "/3) successfully " : "Webhook Trigger successfully ")
+                    + "ingested API response (HTTP " + statusCode + ", " + testRes.get("durationMs") + "ms)";
+            if (retryRound > 0) {
+                logger.info("Delayed Retry Task [{}] (round {}/3) completed successfully for params: {}", config.getName(), retryRound, dynamicParams);
+            } else {
+                logger.info("Webhook Trigger [{}] completed successfully for params: {}", config.getName(), dynamicParams);
+            }
             repository.updateLastRun(id, "SUCCESS", successMsg);
 
         } catch (Exception e) {
@@ -372,6 +419,22 @@ public class ApiSchedulerService {
                 return;
             }
             String errMsg = "Webhook Trigger error: " + e.getMessage();
+            if (redisQueueService != null && redisQueueService.isRedisAvailable() && retryRound < 3) {
+                int nextRound = retryRound + 1;
+                redisQueueService.scheduleTriggerRetry(id, dynamicParams, rawPayload, nextRound, errMsg);
+                logger.warn("Webhook Trigger [{}] exception occurred. Scheduled delayed retry round {}/3 into Redis in 60s (params: {})",
+                        config.getName(), nextRound, dynamicParams);
+                repository.updateLastRun(id, "RETRYING", "Delayed retry scheduled (round " + nextRound + "/3): " + errMsg);
+                return;
+            }
+            if (retryRound >= 3 && redisQueueService != null) {
+                Map<String, Object> taskMap = new LinkedHashMap<>();
+                taskMap.put("schedulerId", id);
+                taskMap.put("dynamicParams", dynamicParams);
+                taskMap.put("rawPayload", rawPayload);
+                taskMap.put("round", retryRound);
+                redisQueueService.pushTriggerToDlq(taskMap, errMsg);
+            }
             logger.error("Error executing Webhook Trigger for [{}] : {}", config.getName(), e.getMessage(), e);
             repository.updateLastRun(id, "FAILED", errMsg);
             sendNotificationIfConfigured(config, "FAILED", errMsg);
