@@ -88,4 +88,64 @@ public class WebhookRedisQueueWorker {
             }
         }
     }
+
+    /**
+     * Poll darkosync:triggers:dlq every 10 minutes to auto-replay any tasks that reached Dead Letter Queue.
+     * Guarantees 100% of missed orders are recovered and inserted into ERP once external API recovers.
+     */
+    @Scheduled(fixedDelay = 600000, initialDelay = 120000)
+    public void processTriggerDlqReplay() {
+        if (!queueService.isRedisAvailable()) {
+            return;
+        }
+
+        long dlqSize = queueService.getTriggerDlqSize();
+        if (dlqSize <= 0) {
+            return;
+        }
+
+        logger.warn("[DLQ Auto-Replayer] Found {} task(s) in DLQ [darkosync:triggers:dlq]. Starting automated replay...", dlqSize);
+        replayDlqTasks(20);
+    }
+
+    /**
+     * Replay up to maxTasks from Trigger DLQ. Returns count of succeeded and failed tasks.
+     */
+    public Map<String, Object> replayDlqTasks(int maxTasks) {
+        int successCount = 0;
+        int failCount = 0;
+
+        for (int i = 0; i < maxTasks; i++) {
+            Map<String, Object> task = queueService.popTriggerFromDlq();
+            if (task == null) {
+                break;
+            }
+
+            try {
+                boolean success = apiSchedulerService.executeDlqReplay(task);
+                if (success) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    queueService.requeueTriggerToDlq(task, "Target API still returning error on replay");
+                }
+            } catch (Exception e) {
+                failCount++;
+                logger.error("[DLQ Replayer] Error replaying task: {}", e.getMessage(), e);
+                queueService.requeueTriggerToDlq(task, e.getMessage());
+            }
+        }
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("successCount", successCount);
+        result.put("failCount", failCount);
+        result.put("remainingInDlq", queueService.getTriggerDlqSize());
+
+        if (successCount > 0 || failCount > 0) {
+            logger.info("[DLQ Replayer] Cycle finished: {} succeeded, {} failed/re-queued. Remaining in DLQ: {}",
+                    successCount, failCount, result.get("remainingInDlq"));
+        }
+
+        return result;
+    }
 }

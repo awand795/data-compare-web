@@ -25,6 +25,12 @@ public class WebhookController {
     private final WebhookService webhookService;
     private final AppGroupRepository appGroupRepository;
 
+    @Autowired(required = false)
+    private com.dbdiff.service.WebhookRedisQueueService redisQueueService;
+
+    @Autowired(required = false)
+    private com.dbdiff.service.WebhookRedisQueueWorker redisQueueWorker;
+
     @Autowired
     public WebhookController(WebhookRepository webhookRepository,
                              WebhookService webhookService,
@@ -236,6 +242,32 @@ public class WebhookController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Failed to send test alert"));
         }
+    }
+
+    @GetMapping("/api/webhooks/queue/stats")
+    public ResponseEntity<?> getQueueStats() {
+        Map<String, Object> stats = new LinkedHashMap<>();
+        if (redisQueueService != null && redisQueueService.isRedisAvailable()) {
+            stats.put("redisAvailable", true);
+            stats.put("webhookQueueSize", redisQueueService.getQueueSize());
+            stats.put("delayedRetryZSetSize", redisQueueService.getTriggerRetryZSetSize());
+            stats.put("triggerDlqSize", redisQueueService.getTriggerDlqSize());
+        } else {
+            stats.put("redisAvailable", false);
+            stats.put("webhookQueueSize", 0);
+            stats.put("delayedRetryZSetSize", 0);
+            stats.put("triggerDlqSize", 0);
+        }
+        return ResponseEntity.ok(stats);
+    }
+
+    @PostMapping("/api/webhooks/dlq/replay")
+    public ResponseEntity<?> replayDlq(@RequestParam(defaultValue = "50") int limit) {
+        if (redisQueueWorker == null || redisQueueService == null || !redisQueueService.isRedisAvailable()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Redis Queue Service is not available"));
+        }
+        Map<String, Object> res = redisQueueWorker.replayDlqTasks(limit);
+        return ResponseEntity.ok(res);
     }
 
     private String sanitizeSlug(String slug) {

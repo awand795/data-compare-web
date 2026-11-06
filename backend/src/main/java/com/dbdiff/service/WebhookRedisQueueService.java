@@ -156,6 +156,63 @@ public class WebhookRedisQueueService {
     }
 
     /**
+     * Pop next trigger task from DLQ (FIFO rightPop) for replay
+     */
+    public Map<String, Object> popTriggerFromDlq() {
+        try {
+            String json = redisTemplate.opsForList().rightPop(TRIGGER_DLQ_KEY);
+            if (json == null || json.isEmpty()) {
+                return null;
+            }
+            return objectMapper.readValue(json, Map.class);
+        } catch (Exception e) {
+            logger.warn("Error popping task from Trigger DLQ: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Re-enqueue a failed task back to DLQ with incremented attempt
+     */
+    public void requeueTriggerToDlq(Map<String, Object> task, String error) {
+        try {
+            int replayCount = task.get("dlqReplayCount") != null ? ((Number) task.get("dlqReplayCount")).intValue() + 1 : 1;
+            task.put("dlqReplayCount", replayCount);
+            task.put("lastDlqReplayAt", LocalDateTime.now().toString());
+            task.put("lastDlqError", error);
+            String json = objectMapper.writeValueAsString(task);
+            redisTemplate.opsForList().leftPush(TRIGGER_DLQ_KEY, json);
+            logger.warn("Re-enqueued task back to DLQ [{}]. Total DLQ replay attempts: {}", TRIGGER_DLQ_KEY, replayCount);
+        } catch (Exception e) {
+            logger.error("Failed to re-enqueue task to DLQ: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get number of trigger tasks currently in DLQ
+     */
+    public long getTriggerDlqSize() {
+        try {
+            Long size = redisTemplate.opsForList().size(TRIGGER_DLQ_KEY);
+            return size != null ? size : 0L;
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
+    /**
+     * Get number of trigger tasks currently in Delayed Retry ZSet
+     */
+    public long getTriggerRetryZSetSize() {
+        try {
+            Long size = redisTemplate.opsForZSet().zCard(TRIGGER_RETRY_ZSET_KEY);
+            return size != null ? size : 0L;
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
+    /**
      * Get number of webhooks currently waiting in Redis queue
      */
     public long getQueueSize() {

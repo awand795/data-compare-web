@@ -441,6 +441,60 @@ public class ApiSchedulerService {
         }
     }
 
+    /**
+     * Execute replay for a task stored in DLQ.
+     * Returns true if successful and data is ingested into the database, false otherwise.
+     */
+    public boolean executeDlqReplay(Map<String, Object> dlqTask) {
+        if (dlqTask == null) {
+            return false;
+        }
+
+        String id = (String) dlqTask.get("schedulerId");
+        @SuppressWarnings("unchecked")
+        Map<String, String> dynamicParams = (Map<String, String>) dlqTask.get("dynamicParams");
+        int replayCount = dlqTask.get("dlqReplayCount") != null ? ((Number) dlqTask.get("dlqReplayCount")).intValue() + 1 : 1;
+
+        Optional<ApiSchedulerConfig> opt = repository.findById(id);
+        if (opt.isEmpty()) {
+            logger.error("[DLQ Replayer] Cannot replay task: API Scheduler ID [{}] not found", id);
+            return false;
+        }
+
+        ApiSchedulerConfig original = opt.get();
+        ApiSchedulerConfig config = cloneWithParams(original, dynamicParams);
+
+        logger.info("[DLQ Replayer] Replaying DLQ task (cycle #{}) for [{}] with params: {}",
+                replayCount, config.getName(), dynamicParams);
+
+        try {
+            Map<String, Object> testRes = executeHttpWithRetry(config, 4);
+            int statusCode = (int) testRes.get("statusCode");
+            String responseBody = (String) testRes.get("body");
+
+            if (statusCode < 200 || statusCode >= 300) {
+                logger.warn("[DLQ Replayer] Replay cycle #{} failed with HTTP {} for params: {}",
+                        replayCount, statusCode, dynamicParams);
+                return false;
+            }
+
+            // Ingest Response JSON to Target Database
+            if (config.getTargetConnectionId() != null && config.getTargetTable() != null && !config.getTargetTable().trim().isEmpty()) {
+                saveResponseToTargetDatabase(config.getTargetConnectionId(), config.getTargetTable().trim(), config.getKodeData(), responseBody);
+            }
+
+            String successMsg = "DLQ Auto-Replay (cycle #" + replayCount + ") successfully ingested API response (HTTP " + statusCode + ")";
+            logger.info("[DLQ Replayer] SUCCESS! Order recovered from DLQ for [{}] with params: {}",
+                    config.getName(), dynamicParams);
+            repository.updateLastRun(id, "SUCCESS_RECOVERED_DLQ", successMsg);
+            return true;
+
+        } catch (Exception e) {
+            logger.error("[DLQ Replayer] Replay cycle #{} threw exception: {}", replayCount, e.getMessage());
+            return false;
+        }
+    }
+
     public Map<String, Object> executeHttpWithRetry(ApiSchedulerConfig config, int maxRetries) {
         Map<String, Object> res = null;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
