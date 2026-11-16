@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Database, Play, Loader2, Table as TableIcon, Server, Cpu, Sparkles, Activity, Key } from 'lucide-react';
+import { Database, Play, Loader2, Table as TableIcon, Server, Cpu, Sparkles, Activity, Key, Clock } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import { PipelineMonitor } from './PipelineMonitor';
+import { ClickHouseOptimizePanel } from './ClickHouseOptimizePanel';
 import clsx from 'clsx';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 
@@ -24,7 +25,7 @@ export const DataWarehouseView: React.FC = () => {
   const [targetDatabase, setTargetDatabase] = useState('');
   const [targetSchema, setTargetSchema] = useState('public');
   const [primaryKeys, setPrimaryKeys] = useState('');
-  const [activeTab, setActiveTab] = useState<'console' | 'monitor'>('monitor');
+  const [activeTab, setActiveTab] = useState<'console' | 'monitor' | 'optimize'>('monitor');
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -361,11 +362,22 @@ export const DataWarehouseView: React.FC = () => {
                 >
                   <span className="flex items-center gap-2"><Cpu className="w-3.5 h-3.5" /> Deploy Console</span>
                 </button>
+                <button 
+                  onClick={() => setActiveTab('optimize')}
+                  className={clsx(
+                    "px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-t-lg transition-colors border-b-2",
+                    activeTab === 'optimize' ? "bg-bg-panel text-indigo-400 border-indigo-500" : "text-text-muted hover:text-text-main border-transparent hover:bg-bg-panel/50"
+                  )}
+                >
+                  <span className="flex items-center gap-2"><Clock className="w-3.5 h-3.5" /> Version Cleanup</span>
+                </button>
               </div>
 
               <div className="flex-1 overflow-hidden relative z-10 bg-bg-panel">
                 {activeTab === 'monitor' ? (
                   <PipelineMonitor />
+                ) : activeTab === 'optimize' ? (
+                  <ClickHouseOptimizePanel />
                 ) : (
                   <div className="h-full flex flex-col">
                     <div className="flex justify-end px-4 py-2 border-b border-border-main/50">
