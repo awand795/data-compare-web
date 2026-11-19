@@ -103,10 +103,52 @@ public class EmailVerificationController {
         return proto + "://" + host;
     }
 
-    @GetMapping(value = {"/api/auth/verify-email", "/api/data/kim3/auth/verify-email"}, produces = MediaType.TEXT_HTML_VALUE)
+    private List<ApiEndpoint> resolveVerificationCandidates(ApiEndpoint primaryEndpoint, String explicitEndpointId) {
+        List<ApiEndpoint> candidateEndpoints = new ArrayList<>();
+        if (explicitEndpointId != null && !explicitEndpointId.isBlank()) {
+            apiEndpointRepository.findById(explicitEndpointId.trim()).ifPresent(candidateEndpoints::add);
+        }
+        if (primaryEndpoint != null) {
+            boolean primaryHasConfig = "REGISTER".equalsIgnoreCase(primaryEndpoint.getAuthAction())
+                    || primaryEndpoint.isEnableEmailVerification()
+                    || (primaryEndpoint.getVerificationUserTable() != null && !primaryEndpoint.getVerificationUserTable().isBlank());
+            if (primaryHasConfig && candidateEndpoints.stream().noneMatch(c -> Objects.equals(c.getId(), primaryEndpoint.getId()))) {
+                candidateEndpoints.add(primaryEndpoint);
+            }
+            if (primaryEndpoint.getConnectionId() != null && !primaryEndpoint.getConnectionId().isBlank()) {
+                for (ApiEndpoint ep : apiEndpointRepository.findAll()) {
+                    if (Objects.equals(primaryEndpoint.getConnectionId(), ep.getConnectionId())
+                            && ("REGISTER".equalsIgnoreCase(ep.getAuthAction()) || ep.isEnableEmailVerification())
+                            && candidateEndpoints.stream().noneMatch(c -> Objects.equals(c.getId(), ep.getId()))) {
+                        candidateEndpoints.add(ep);
+                    }
+                }
+            }
+            return candidateEndpoints;
+        }
+        if (candidateEndpoints.isEmpty()) {
+            for (ApiEndpoint ep : apiEndpointRepository.findAll()) {
+                if ("REGISTER".equalsIgnoreCase(ep.getAuthAction()) || ep.isEnableEmailVerification()) {
+                    candidateEndpoints.add(ep);
+                }
+            }
+        }
+        return candidateEndpoints;
+    }
+
+    @GetMapping(value = {"/api/auth/verify-email"}, produces = MediaType.TEXT_HTML_VALUE)
     public void verifyEmail(
             @RequestParam(value = "token", required = false) String token,
             @RequestParam(value = "endpoint_id", required = false) String endpointId,
+            HttpServletRequest request,
+            HttpServletResponse response) throws Exception {
+        executeVerifyEmail(null, token, endpointId, request, response);
+    }
+
+    public void executeVerifyEmail(
+            ApiEndpoint primaryEndpoint,
+            String token,
+            String endpointId,
             HttpServletRequest request,
             HttpServletResponse response) throws Exception {
 
@@ -114,6 +156,9 @@ public class EmailVerificationController {
 
         String baseUrl = getBaseUrl(request);
         String defaultLoginUrl = emailService.getFrontendUrl().replaceAll("/+$", "") + "/#login";
+        if (primaryEndpoint != null && primaryEndpoint.getVerificationSuccessUrl() != null && !primaryEndpoint.getVerificationSuccessUrl().isBlank()) {
+            defaultLoginUrl = primaryEndpoint.getVerificationSuccessUrl().trim();
+        }
 
         if (token == null || token.trim().isEmpty()) {
             response.setStatus(HttpStatus.BAD_REQUEST.value());
@@ -122,24 +167,8 @@ public class EmailVerificationController {
             return;
         }
 
-        // 1. Resolve ApiEndpoint
-        ApiEndpoint endpoint = null;
-        if (endpointId != null && !endpointId.isBlank()) {
-            endpoint = apiEndpointRepository.findById(endpointId.trim()).orElse(null);
-        }
-
-        // 2. Resolve target database connection & table dynamically
-        List<ApiEndpoint> candidateEndpoints = new ArrayList<>();
-        if (endpoint != null) {
-            candidateEndpoints.add(endpoint);
-        } else {
-            // Find all candidate endpoints with authAction = REGISTER or enableEmailVerification = true
-            for (ApiEndpoint ep : apiEndpointRepository.findAll()) {
-                if ("REGISTER".equalsIgnoreCase(ep.getAuthAction()) || ep.isEnableEmailVerification()) {
-                    candidateEndpoints.add(ep);
-                }
-            }
-        }
+        // 1 & 2. Resolve target database connection & table dynamically from API Builder config
+        List<ApiEndpoint> candidateEndpoints = resolveVerificationCandidates(primaryEndpoint, endpointId);
 
         if (candidateEndpoints.isEmpty()) {
             response.setStatus(HttpStatus.OK.value());
@@ -214,11 +243,20 @@ public class EmailVerificationController {
         }
     }
 
-    @PostMapping(value = {"/api/auth/resend-verification", "/api/data/kim3/auth/resend-verification"})
+    @PostMapping(value = {"/api/auth/resend-verification"})
     public ResponseEntity<Map<String, Object>> resendVerification(
             @RequestBody(required = false) Map<String, Object> body,
             @RequestParam(value = "endpoint_id", required = false) String endpointIdParam,
             @RequestHeader(value = "Authorization", required = false) String authHeader,
+            HttpServletRequest request) {
+        return executeResendVerification(null, body, endpointIdParam, authHeader, request);
+    }
+
+    public ResponseEntity<Map<String, Object>> executeResendVerification(
+            ApiEndpoint primaryEndpoint,
+            Map<String, Object> body,
+            String endpointIdParam,
+            String authHeader,
             HttpServletRequest request) {
 
         String email = null;
@@ -251,18 +289,8 @@ public class EmailVerificationController {
             ));
         }
 
-        // Resolve candidate endpoint
-        List<ApiEndpoint> candidateEndpoints = new ArrayList<>();
-        if (endpointId != null && !endpointId.isBlank()) {
-            apiEndpointRepository.findById(endpointId.trim()).ifPresent(candidateEndpoints::add);
-        }
-        if (candidateEndpoints.isEmpty()) {
-            for (ApiEndpoint ep : apiEndpointRepository.findAll()) {
-                if ("REGISTER".equalsIgnoreCase(ep.getAuthAction()) || ep.isEnableEmailVerification()) {
-                    candidateEndpoints.add(ep);
-                }
-            }
-        }
+        // Resolve candidate endpoint from API Builder config
+        List<ApiEndpoint> candidateEndpoints = resolveVerificationCandidates(primaryEndpoint, endpointId);
         if (candidateEndpoints.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,

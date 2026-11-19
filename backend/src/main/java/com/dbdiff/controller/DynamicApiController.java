@@ -62,6 +62,9 @@ public class DynamicApiController {
     @Autowired(required = false)
     private com.dbdiff.service.EmailService emailService;
 
+    @Autowired(required = false)
+    private EmailVerificationController emailVerificationController;
+
     @RequestMapping(value = "/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE})
     public void handleRequest(
             HttpServletRequest request,
@@ -108,6 +111,23 @@ public class DynamicApiController {
         String method = request.getMethod().toUpperCase();
 
         Optional<ApiEndpoint> optEndpoint = apiEndpointRepository.findByPathAndMethod(path, method);
+        if (optEndpoint.isEmpty() && "GET".equals(method) && emailVerificationController != null) {
+            String fullDataPath = ("/api/data" + path).replaceAll("/+$", "");
+            String normPath = path.replaceAll("/+$", "");
+            for (ApiEndpoint candidate : apiEndpointRepository.findAll()) {
+                if (!candidate.isEnableEmailVerification() && !"REGISTER".equalsIgnoreCase(candidate.getAuthAction())) continue;
+                String vep = candidate.getVerificationEndpointPath();
+                if (vep == null || vep.isBlank()) continue;
+                String normVep = vep.trim().replaceAll("/+$", "");
+                if (!normVep.startsWith("/")) normVep = "/" + normVep;
+                if (normVep.equalsIgnoreCase(fullDataPath) || normVep.equalsIgnoreCase(normPath)) {
+                    String token = queryParams != null && queryParams.get("token") != null ? queryParams.get("token").toString() : null;
+                    String endpointId = queryParams != null && queryParams.get("endpoint_id") != null ? queryParams.get("endpoint_id").toString() : null;
+                    emailVerificationController.executeVerifyEmail(candidate, token, endpointId, request, response);
+                    return;
+                }
+            }
+        }
         if (optEndpoint.isEmpty()) {
             sendJsonError(response, HttpStatus.NOT_FOUND.value(), Map.of("error", "Endpoint not found: " + method + " " + path));
             return;
@@ -151,7 +171,9 @@ public class DynamicApiController {
                 || "REFRESH_TOKEN".equalsIgnoreCase(endpoint.getAuthAction())
                 || "FORGOT_PASSWORD".equalsIgnoreCase(endpoint.getAuthAction())
                 || "VERIFY_OTP".equalsIgnoreCase(endpoint.getAuthAction())
-                || "RESET_PASSWORD".equalsIgnoreCase(endpoint.getAuthAction());
+                || "RESET_PASSWORD".equalsIgnoreCase(endpoint.getAuthAction())
+                || "VERIFY_EMAIL".equalsIgnoreCase(endpoint.getAuthAction())
+                || "RESEND_VERIFICATION".equalsIgnoreCase(endpoint.getAuthAction());
 
         String secMode = endpoint.getSecurityMode();
         if (secMode == null || secMode.trim().isEmpty()) {
@@ -214,6 +236,20 @@ public class DynamicApiController {
                 ));
                 return;
             }
+        }
+
+        // ── Auth Action: VERIFY_EMAIL & RESEND_VERIFICATION (DB-driven) ─────────
+        if ("VERIFY_EMAIL".equalsIgnoreCase(endpoint.getAuthAction()) && emailVerificationController != null) {
+            String token = queryParams != null && queryParams.get("token") != null ? queryParams.get("token").toString() : null;
+            String endpointId = queryParams != null && queryParams.get("endpoint_id") != null ? queryParams.get("endpoint_id").toString() : null;
+            emailVerificationController.executeVerifyEmail(endpoint, token, endpointId, request, response);
+            return;
+        }
+        if ("RESEND_VERIFICATION".equalsIgnoreCase(endpoint.getAuthAction()) && emailVerificationController != null) {
+            String endpointId = queryParams != null && queryParams.get("endpoint_id") != null ? queryParams.get("endpoint_id").toString() : null;
+            ResponseEntity<Map<String, Object>> res = emailVerificationController.executeResendVerification(endpoint, bodyParams, endpointId, authHeader, request);
+            sendJsonError(response, res.getStatusCode().value(), res.getBody() != null ? res.getBody() : Map.of());
+            return;
         }
 
         // ── Allowed Roles Check (RBAC) ──────────────────────────────────────────

@@ -76,7 +76,7 @@ interface ApiEndpoint {
   lastPushStatus?: string;
   lastPushMessage?: string;
   requiredAppId?: string;
-  authAction?: 'NONE' | 'LOGIN' | 'REGISTER' | 'REFRESH_TOKEN' | 'FORGOT_PASSWORD' | 'VERIFY_OTP' | 'RESET_PASSWORD';
+  authAction?: 'NONE' | 'LOGIN' | 'REGISTER' | 'REFRESH_TOKEN' | 'FORGOT_PASSWORD' | 'VERIFY_OTP' | 'RESET_PASSWORD' | 'VERIFY_EMAIL' | 'RESEND_VERIFICATION';
   passwordParam?: string;
   passwordHashColumn?: string;
   tokenTtlMinutes?: number;
@@ -1794,6 +1794,8 @@ export const ApiBuilderView: React.FC = () => {
                                         api.authAction === 'REFRESH_TOKEN' ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/30" :
                                         api.authAction === 'FORGOT_PASSWORD' ? "text-purple-300 bg-purple-500/15 border-purple-500/30" :
                                         api.authAction === 'VERIFY_OTP' ? "text-indigo-300 bg-indigo-500/15 border-indigo-500/30" :
+                                        api.authAction === 'VERIFY_EMAIL' ? "text-sky-300 bg-sky-500/15 border-sky-500/30" :
+                                        api.authAction === 'RESEND_VERIFICATION' ? "text-blue-300 bg-blue-500/15 border-blue-500/30" :
                                         "text-teal-300 bg-teal-500/15 border-teal-500/30"
                                       )}>
                                         <KeyRound className="w-2.5 h-2.5" />
@@ -1802,6 +1804,8 @@ export const ApiBuilderView: React.FC = () => {
                                          api.authAction === 'REFRESH_TOKEN' ? 'AUTH REFRESH' :
                                          api.authAction === 'FORGOT_PASSWORD' ? 'AUTH FORGOT' :
                                          api.authAction === 'VERIFY_OTP' ? 'AUTH OTP' :
+                                         api.authAction === 'VERIFY_EMAIL' ? 'AUTH VERIFY' :
+                                         api.authAction === 'RESEND_VERIFICATION' ? 'AUTH RESEND' :
                                          api.authAction === 'RESET_PASSWORD' ? 'AUTH RESET' : 'AUTH'}
                                       </span>
                                     )}
@@ -2139,6 +2143,8 @@ export const ApiBuilderView: React.FC = () => {
                                           api.authAction === 'REFRESH_TOKEN' ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" :
                                           api.authAction === 'FORGOT_PASSWORD' ? "bg-purple-500/15 text-purple-300 border-purple-500/30" :
                                           api.authAction === 'VERIFY_OTP' ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" :
+                                          api.authAction === 'VERIFY_EMAIL' ? "bg-sky-500/15 text-sky-300 border-sky-500/30" :
+                                          api.authAction === 'RESEND_VERIFICATION' ? "bg-blue-500/15 text-blue-300 border-blue-500/30" :
                                           "bg-teal-500/15 text-teal-300 border-teal-500/30"
                                         )}>
                                           {api.authAction === 'LOGIN' ? 'AUTH LOGIN' :
@@ -2146,6 +2152,8 @@ export const ApiBuilderView: React.FC = () => {
                                            api.authAction === 'REFRESH_TOKEN' ? 'AUTH REFRESH' :
                                            api.authAction === 'FORGOT_PASSWORD' ? 'AUTH FORGOT' :
                                            api.authAction === 'VERIFY_OTP' ? 'AUTH OTP' :
+                                           api.authAction === 'VERIFY_EMAIL' ? 'AUTH VERIFY' :
+                                           api.authAction === 'RESEND_VERIFICATION' ? 'AUTH RESEND' :
                                            api.authAction === 'RESET_PASSWORD' ? 'AUTH RESET' : 'AUTH'}
                                         </span>
                                       )}
@@ -4271,6 +4279,8 @@ export const ApiBuilderView: React.FC = () => {
                         { id: 'FORGOT_PASSWORD', label: 'Auth: Lupa Sandi (OTP)', badge: 'OTP', desc: 'Kirim kode OTP reset kata sandi ke email pengguna via SMTP' },
                         { id: 'VERIFY_OTP', label: 'Auth: Verifikasi OTP', badge: 'Verify', desc: 'Validasi kode OTP yang diinput pengguna sebelum reset password' },
                         { id: 'RESET_PASSWORD', label: 'Auth: Reset Sandi', badge: 'Reset', desc: 'Perbarui kata sandi dengan BCrypt hash setelah OTP terverifikasi' },
+                        { id: 'VERIFY_EMAIL', label: 'Auth: Verifikasi Email', badge: 'Email', desc: 'Validasi token tautan verifikasi email (GET) & aktifkan akun user' },
+                        { id: 'RESEND_VERIFICATION', label: 'Auth: Kirim Ulang Verifikasi', badge: 'Resend', desc: 'Kirim ulang tautan verifikasi email ke user yang belum terverifikasi' },
                       ].map(mode => {
                         const isSelected = (currentApi.authAction || 'NONE') === mode.id;
                         return (
@@ -4353,6 +4363,46 @@ export const ApiBuilderView: React.FC = () => {
                         {currentApi.authAction === 'RESET_PASSWORD' && (
                           <div className="text-[11px] text-teal-900 dark:text-teal-200 leading-relaxed bg-teal-50 dark:bg-teal-500/10 p-3 rounded-lg border border-teal-200 dark:border-teal-500/30">
                             💡 <strong>Cara Kerja Reset Sandi:</strong> Endpoint ini memverifikasi OTP, lalu meng-hash input kata sandi baru secara otomatis menggunakan <strong>BCrypt</strong> dan memperbarui kolom kata sandi pengguna di database.
+                          </div>
+                        )}
+
+                        {currentApi.authAction === 'VERIFY_EMAIL' && (
+                          <div className="space-y-2.5">
+                            <div className="text-[11px] text-sky-900 dark:text-sky-200 leading-relaxed bg-sky-50 dark:bg-sky-500/10 p-3 rounded-lg border border-sky-200 dark:border-sky-500/30">
+                              💡 <strong>Cara Kerja Verifikasi Email (GET):</strong> Endpoint ini menerima parameter query <code className="font-mono font-bold">?token=...</code>, mengecek tabel pengguna pada koneksi DB ini (otomatis mengikuti konfigurasi endpoint <strong>REGISTER</strong> di koneksi yang sama jika kolom di bawah dikosongkan), mengaktifkan status verifikasi, lalu menampilkan halaman HTML sukses dengan tombol kembali ke Login.
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                  URL Tombol Login Setelah Sukses (Opsional)
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-sky-500"
+                                  value={currentApi.verificationSuccessUrl || ''}
+                                  onChange={e => setCurrentApi({ ...currentApi, verificationSuccessUrl: e.target.value })}
+                                  placeholder="Contoh: http://52.77.133.95:3000/#login"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                  Tabel Pengguna di DB (Opsional)
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full bg-bg-editor border border-border-main rounded-lg p-2 text-xs font-mono text-text-main outline-none focus:border-sky-500"
+                                  value={currentApi.verificationUserTable || ''}
+                                  onChange={e => setCurrentApi({ ...currentApi, verificationUserTable: e.target.value })}
+                                  placeholder="Kosongkan untuk ikut config REGISTER"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {currentApi.authAction === 'RESEND_VERIFICATION' && (
+                          <div className="text-[11px] text-blue-900 dark:text-blue-200 leading-relaxed bg-blue-50 dark:bg-blue-500/10 p-3 rounded-lg border border-blue-200 dark:border-blue-500/30">
+                            💡 <strong>Cara Kerja Kirim Ulang Verifikasi (POST):</strong> Endpoint ini menerima <code className="font-mono font-bold">email</code> (atau membaca dari JWT), membuat token baru pada tabel pengguna sesuai konfigurasi endpoint <strong>REGISTER</strong> di koneksi DB ini, lalu mengirim ulang email verifikasi via SMTP.
                           </div>
                         )}
 
