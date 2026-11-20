@@ -420,21 +420,21 @@ EXECUTE FUNCTION fn_http_${cleanTbl}_tg();`;
                 </div>
               </div>
 
-              {editing.watcherType !== 'WEBHOOK_TRIGGER' && (
-                <div>
-                  <label className="block text-[11px] font-bold text-text-muted uppercase mb-1">Koneksi Database Sumber</label>
-                  <select
-                    value={editing.connectionId}
-                    onChange={e => setEditing({ ...editing, connectionId: e.target.value })}
-                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-xs text-emerald-300 font-bold outline-none"
-                  >
-                    <option value="">-- Pilih Database --</option>
-                    {connections.map(c => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              <div>
+                <label className="block text-[11px] font-bold text-text-muted uppercase mb-1">
+                  Koneksi Database Sumber {editing.watcherType === 'WEBHOOK_TRIGGER' ? '(Opsional, jika pakai Query Lookup VIEW)' : ''}
+                </label>
+                <select
+                  value={editing.connectionId}
+                  onChange={e => setEditing({ ...editing, connectionId: e.target.value })}
+                  className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-xs text-emerald-300 font-bold outline-none"
+                >
+                  <option value="">-- Pilih Database --</option>
+                  {connections.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                  ))}
+                </select>
+              </div>
 
               {editing.watcherType === 'POLLING_WATERMARK' && (
                 <div className="space-y-3 p-3.5 rounded-xl bg-sky-500/5 border border-sky-500/20">
@@ -497,19 +497,35 @@ EXECUTE FUNCTION fn_http_${cleanTbl}_tg();`;
                 </div>
               )}
 
-              {editing.watcherType === 'PG_LISTEN_NOTIFY' && (
-                <div className="p-3.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 space-y-2">
-                  <label className="block text-[11px] font-bold text-emerald-300 uppercase">Nama Channel PostgreSQL LISTEN / NOTIFY</label>
-                  <input
-                    type="text"
-                    value={editing.pgChannelName || ''}
-                    onChange={e => setEditing({ ...editing, pgChannelName: e.target.value })}
-                    placeholder="tg_new_data_channel"
-                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs font-mono text-emerald-300 outline-none"
-                  />
-                  <p className="text-[11px] text-text-muted">
-                    Setelah disimpan, klik tombol <strong>SQL Trigger Guide</strong> untuk menyalin script <code>CREATE TRIGGER</code> PostgreSQL siap pakai.
-                  </p>
+              {(editing.watcherType === 'PG_LISTEN_NOTIFY' || editing.watcherType === 'WEBHOOK_TRIGGER') && (
+                <div className="p-3.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 space-y-3">
+                  {editing.watcherType === 'PG_LISTEN_NOTIFY' && (
+                    <div>
+                      <label className="block text-[11px] font-bold text-emerald-300 uppercase mb-1">Nama Channel PostgreSQL LISTEN / NOTIFY</label>
+                      <input
+                        type="text"
+                        value={editing.pgChannelName || ''}
+                        onChange={e => setEditing({ ...editing, pgChannelName: e.target.value })}
+                        placeholder="tg_new_data_channel"
+                        className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs font-mono text-emerald-300 outline-none"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-[10px] font-bold text-cyan-300 uppercase mb-1">
+                      Opsional: Query Lookup ke VIEW (pakai parameter dari trigger, misal <code>:id</code>)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={editing.sqlQuery}
+                      onChange={e => setEditing({ ...editing, sqlQuery: e.target.value })}
+                      placeholder="SELECT user_hp, pesan FROM sch_erp_system.view_all_notifikasi WHERE id = :id"
+                      className="w-full bg-[#050810] border border-border-main rounded-lg p-2.5 text-xs font-mono text-blue-300 outline-none"
+                    />
+                    <p className="text-[11px] text-text-muted mt-1">
+                      Karena VIEW tidak bisa dipasang trigger langsung, pasang trigger di tabel sumber lalu isi query VIEW di sini untuk mengambil kolom <code>user_hp</code> &amp; <code>pesan</code>. Kosongkan jika payload trigger sudah berisi data lengkap.
+                    </p>
+                  </div>
                 </div>
               )}
 

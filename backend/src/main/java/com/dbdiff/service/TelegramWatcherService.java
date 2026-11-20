@@ -229,12 +229,17 @@ public class TelegramWatcherService {
             return Map.of("success", false, "error", "Empty row payload");
         }
 
-        Map<String, Object> res = processRows(w, rows, null);
+        List<Map<String, Object>> resolvedRows = enrichRowsFromViewQuery(w, rows);
+        if (resolvedRows.isEmpty()) {
+            return Map.of("success", true, "rowsProcessed", 0, "messagesSent", 0, "message", "VIEW lookup returned 0 matching rows");
+        }
+
+        Map<String, Object> res = processRows(w, resolvedRows, null);
         int sent = ((Number) res.getOrDefault("messagesSent", 0)).intValue();
         int failed = ((Number) res.getOrDefault("messagesFailed", 0)).intValue();
         String status = failed == 0 ? "SUCCESS" : (sent > 0 ? "PARTIAL" : "FAILED");
         watcherRepository.updateRuntimeState(w.getId(), null, sent, status,
-                String.format("API Trigger: %d row(s), %d sent, %d failed", rows.size(), sent, failed));
+                String.format("API Trigger: %d row(s), %d sent, %d failed", resolvedRows.size(), sent, failed));
         return res;
     }
 
@@ -288,12 +293,15 @@ public class TelegramWatcherService {
                             if (!batchRows.isEmpty()) {
                                 TelegramWatcher latest = watcherRepository.findById(watcherId);
                                 if (latest != null && latest.isActive()) {
-                                    Map<String, Object> res = processRows(latest, batchRows, null);
-                                    int sent = ((Number) res.getOrDefault("messagesSent", 0)).intValue();
-                                    int failed = ((Number) res.getOrDefault("messagesFailed", 0)).intValue();
-                                    watcherRepository.updateRuntimeState(watcherId, null, sent,
-                                            failed == 0 ? "SUCCESS" : "PARTIAL",
-                                            String.format("PG NOTIFY (%s): %d sent, %d failed", channel, sent, failed));
+                                    List<Map<String, Object>> resolvedRows = enrichRowsFromViewQuery(latest, batchRows);
+                                    if (!resolvedRows.isEmpty()) {
+                                        Map<String, Object> res = processRows(latest, resolvedRows, null);
+                                        int sent = ((Number) res.getOrDefault("messagesSent", 0)).intValue();
+                                        int failed = ((Number) res.getOrDefault("messagesFailed", 0)).intValue();
+                                        watcherRepository.updateRuntimeState(watcherId, null, sent,
+                                                failed == 0 ? "SUCCESS" : "PARTIAL",
+                                                String.format("PG NOTIFY (%s): %d sent, %d failed", channel, sent, failed));
+                                    }
                                 }
                             }
                         }
@@ -366,6 +374,30 @@ public class TelegramWatcherService {
         return out;
     }
 
+    private List<Map<String, Object>> enrichRowsFromViewQuery(TelegramWatcher w, List<Map<String, Object>> incomingRows) {
+        String sql = w.getSqlQuery() != null ? w.getSqlQuery().trim() : "";
+        String connId = w.getConnectionId() != null ? w.getConnectionId().trim() : "";
+        if (sql.isEmpty() || connId.isEmpty()) {
+            return incomingRows;
+        }
+        ConnectionDetails conn = connectionRepository.findById(connId);
+        if (conn == null) {
+            return incomingRows;
+        }
+        DataSource ds = connectionManagerService.getDataSource(conn);
+        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(ds);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> inRow : incomingRows) {
+            try {
+                List<Map<String, Object>> fetched = jdbc.queryForList(sql, inRow);
+                result.addAll(fetched);
+            } catch (Exception ex) {
+                logger.warn("VIEW lookup SQL failed for watcher '{}': {}", w.getName(), ex.getMessage());
+            }
+        }
+        return result;
+    }
+
     private List<String> resolveRecipients(TelegramWatcher w, Map<String, Object> row) {
         List<String> result = new ArrayList<>();
         if ("DYNAMIC_COLUMN".equalsIgnoreCase(w.getRecipientMode())) {
@@ -373,13 +405,17 @@ public class TelegramWatcherService {
             if (col != null && !col.trim().isEmpty()) {
                 Object val = getRowValueIgnoreCase(row, col.trim());
                 if (val != null) {
+                    List<TelegramContact> allContacts = contactRepository.findAll();
                     for (String part : val.toString().split("[,;\\s]+")) {
                         String trimmed = part.trim();
                         if (!trimmed.isEmpty()) {
-                            Optional<TelegramContact> byPhone = contactRepository.findAll().stream()
-                                    .filter(c -> trimmed.equals(c.getPhoneNumber()) || trimmed.equals(c.getChatId()))
+                            String normTarget = normalizePhone(trimmed);
+                            Optional<TelegramContact> matched = allContacts.stream()
+                                    .filter(c -> trimmed.equals(c.getChatId())
+                                            || trimmed.equals(c.getPhoneNumber())
+                                            || (!normTarget.isEmpty() && normTarget.equals(normalizePhone(c.getPhoneNumber()))))
                                     .findFirst();
-                            result.add(byPhone.map(TelegramContact::getChatId).orElse(trimmed));
+                            result.add(matched.map(TelegramContact::getChatId).orElse(trimmed));
                         }
                     }
                 }
@@ -424,6 +460,13 @@ public class TelegramWatcherService {
             }
         }
         return null;
+    }
+
+    private String normalizePhone(String raw) {
+        if (raw == null) return "";
+        String digits = raw.replaceAll("[^0-9]", "");
+        if (digits.startsWith("0")) return "62" + digits.substring(1);
+        return digits;
     }
 
     private Object parseWatermarkValue(String wm) {

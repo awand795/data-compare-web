@@ -34,6 +34,9 @@ public class TelegramExternalController {
     @Autowired(required = false)
     private com.dbdiff.service.TelegramWatcherService watcherService;
 
+    @Autowired(required = false)
+    private com.dbdiff.repository.TelegramWatcherRepository watcherRepository;
+
     @Autowired
     public TelegramExternalController(TelegramApiTokenRepository apiTokenRepository,
                                       TelegramSenderService senderService,
@@ -84,6 +87,34 @@ public class TelegramExternalController {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("success", false, "error", "Watcher service unavailable"));
         }
         return ResponseEntity.ok(watcherService.triggerByWebhook(watcherId, payload));
+    }
+
+    /**
+     * 1C. List & Create Real-Time Watchers via External API
+     */
+    @GetMapping({"/api/v1/telegram/external/watchers", "/api/telegram/external/watchers"})
+    public ResponseEntity<?> handleExternalListWatchers(HttpServletRequest request) {
+        Map<String, Object> authError = new LinkedHashMap<>();
+        if (!authenticateRequest(request, authError)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
+        }
+        return ResponseEntity.ok(watcherRepository != null ? watcherRepository.findAll() : Collections.emptyList());
+    }
+
+    @PostMapping({"/api/v1/telegram/external/watchers", "/api/telegram/external/watchers"})
+    public ResponseEntity<?> handleExternalCreateWatcher(
+            HttpServletRequest request,
+            @RequestBody com.dbdiff.model.TelegramWatcher watcher) {
+        Map<String, Object> authError = new LinkedHashMap<>();
+        if (!authenticateRequest(request, authError)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
+        }
+        if (watcherRepository == null || watcherService == null) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("success", false, "error", "Watcher service unavailable"));
+        }
+        com.dbdiff.model.TelegramWatcher saved = watcherRepository.save(watcher);
+        watcherService.registerWatcher(saved);
+        return ResponseEntity.ok(saved);
     }
 
     /**
