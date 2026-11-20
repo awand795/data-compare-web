@@ -74,6 +74,9 @@ public class ApiEndpoint {
     private String lastPushStatus; // SUCCESS or FAILED
     private String lastPushMessage;
 
+    private String endpointType = "DATABASE"; // "DATABASE" or "GATEWAY"
+    private String gatewayConfig; // JSON config for API Gateway / Routing mode
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -255,6 +258,12 @@ public class ApiEndpoint {
 
     public String getVerificationEndpointPath() { return verificationEndpointPath; }
     public void setVerificationEndpointPath(String verificationEndpointPath) { this.verificationEndpointPath = verificationEndpointPath; }
+
+    public String getEndpointType() { return (endpointType != null && !endpointType.trim().isEmpty()) ? endpointType.trim().toUpperCase() : "DATABASE"; }
+    public void setEndpointType(String endpointType) { this.endpointType = endpointType; }
+
+    public String getGatewayConfig() { return gatewayConfig; }
+    public void setGatewayConfig(String gatewayConfig) { this.gatewayConfig = gatewayConfig; }
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }

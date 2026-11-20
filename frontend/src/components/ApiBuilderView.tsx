@@ -12,13 +12,14 @@ import {
   CheckSquare, Square, Radio, Bell, Send, MessageCircle, Zap, Sparkles,
   Hash, KeyRound,
   ArrowUpDown, ArrowUp, ArrowDown,
-  Camera, UploadCloud
+  Camera, UploadCloud, GitBranch
 } from 'lucide-react';
 import { EndpointTargetsModal, type EndpointTarget } from './EndpointTargetsModal';
 import { ParameterRulesModal } from './ParameterRulesModal';
 import { NotificationChannelsModal } from './NotificationChannelsModal';
 import { SQLEditor } from './SQLEditor';
 import { SequenceView } from './SequenceView';
+import { ApiGatewayEditor, DEFAULT_GATEWAY_CONFIG, parseGatewayConfig } from './ApiGatewayEditor';
 import clsx from 'clsx';
 
 export interface ApiParameter {
@@ -105,6 +106,10 @@ interface ApiEndpoint {
   verificationEmailTemplate?: string;
   verificationSuccessUrl?: string;
   verificationEndpointPath?: string;
+
+  // API Gateway / Routing Mode
+  endpointType?: 'DATABASE' | 'GATEWAY';
+  gatewayConfig?: string;
 }
 
 type ValidationError = {
@@ -390,6 +395,9 @@ export const ApiBuilderView: React.FC = () => {
   
   // Testing States
   const [testResult, setTestResult] = useState<any>(null);
+  const [testInspectorTab, setTestInspectorTab] = useState<'response' | 'trace'>('response');
+  const [isCreateModeModalOpen, setIsCreateModeModalOpen] = useState(false);
+  const [createModePresetGroup, setCreateModePresetGroup] = useState<string | undefined>(undefined);
   const [testParams, setTestParams] = useState<Record<string, string>>({});
   const [testUploadedFile, setTestUploadedFile] = useState<{ name: string; size: number; previewUrl: string; dataUrl: string } | null>(null);
 
@@ -539,11 +547,18 @@ export const ApiBuilderView: React.FC = () => {
     if (!currentApi.name.trim()) {
       errors.push({ field: 'name', message: 'API Name is required' });
     }
-    if (!currentApi.connectionId) {
-      errors.push({ field: 'connectionId', message: 'Target Database Connection is required' });
-    }
-    if (!currentApi.sqlQuery.trim()) {
-      errors.push({ field: 'sqlQuery', message: 'SQL Query cannot be empty' });
+    if (currentApi.endpointType === 'GATEWAY') {
+      const gw = parseGatewayConfig(currentApi.gatewayConfig);
+      if (!gw.routes || gw.routes.filter(r => r.enabled).length === 0) {
+        errors.push({ field: 'gatewayConfig', message: 'API Gateway requires at least 1 active route' });
+      }
+    } else {
+      if (!currentApi.connectionId) {
+        errors.push({ field: 'connectionId', message: 'Target Database Connection is required' });
+      }
+      if (!currentApi.sqlQuery.trim()) {
+        errors.push({ field: 'sqlQuery', message: 'SQL Query cannot be empty' });
+      }
     }
     if (!currentApi.endpointPath.trim() || currentApi.endpointPath === '/') {
       errors.push({ field: 'endpointPath', message: 'Endpoint Path is required (e.g. /users)' });
@@ -566,7 +581,12 @@ export const ApiBuilderView: React.FC = () => {
     return errors;
   };
 
-  const handleCreateNew = (presetGroup?: string) => {
+  const openCreateModeModal = (presetGroup?: string) => {
+    setCreateModePresetGroup(presetGroup);
+    setIsCreateModeModalOpen(true);
+  };
+
+  const handleCreateNew = (presetGroup?: string, mode: 'DATABASE' | 'GATEWAY' = 'DATABASE') => {
     const defaultTg = channels.find(c => c.type === 'TELEGRAM')?.id || '';
     const defaultDc = channels.find(c => c.type === 'DISCORD')?.id || '';
     setIsTgEnabled(false);
@@ -574,13 +594,17 @@ export const ApiBuilderView: React.FC = () => {
     setIsDcEnabled(false);
     setSelectedDcChannelId(defaultDc);
     setCronTriggers(['0 */5 * * * *']);
+    setIsCreateModeModalOpen(false);
 
+    const isGateway = mode === 'GATEWAY';
     const newApi: ApiEndpoint = {
       name: '',
-      method: 'GET',
+      method: isGateway ? 'POST' : 'GET',
       endpointPath: '',
-      connectionId: connections[0]?.id || '',
-      sqlQuery: 'SELECT * FROM my_table LIMIT 100;',
+      connectionId: isGateway ? '' : (connections[0]?.id || ''),
+      sqlQuery: isGateway ? '' : 'SELECT * FROM my_table LIMIT 100;',
+      endpointType: mode,
+      gatewayConfig: isGateway ? JSON.stringify(DEFAULT_GATEWAY_CONFIG, null, 2) : '',
       parameters: '[]',
       enablePagination: false,
       isPublic: false,
@@ -1374,7 +1398,7 @@ export const ApiBuilderView: React.FC = () => {
             </button>
 
             <button 
-              onClick={() => handleCreateNew()}
+              onClick={() => openCreateModeModal()}
               className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all shadow-md shadow-blue-500/20 hover:shadow-blue-500/30 cursor-pointer"
               aria-label="Create new API endpoint"
             >
@@ -1606,7 +1630,7 @@ export const ApiBuilderView: React.FC = () => {
                 </button>
               ) : (
                 <button 
-                  onClick={() => handleCreateNew()}
+                  onClick={() => openCreateModeModal()}
                   className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 transition-all hover:scale-105"
                 >
                   <Plus className="w-4 h-4 inline mr-1.5" /> Create First API
@@ -1693,7 +1717,7 @@ export const ApiBuilderView: React.FC = () => {
                       </button>
 
                       <button
-                        onClick={() => handleCreateNew(group.groupName)}
+                        onClick={() => openCreateModeModal(group.groupName)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 text-xs font-bold transition-all cursor-pointer"
                         title={`Create new API endpoint in group "${group.groupName}"`}
                       >
@@ -1718,7 +1742,7 @@ export const ApiBuilderView: React.FC = () => {
                               <span>Add Existing APIs</span>
                             </button>
                             <button
-                              onClick={() => handleCreateNew(group.groupName)}
+                              onClick={() => openCreateModeModal(group.groupName)}
                               className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
                             >
                               <Plus className="w-3.5 h-3.5" />
@@ -3006,6 +3030,50 @@ export const ApiBuilderView: React.FC = () => {
             }}
           />
         )}
+        {isCreateModeModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-bg-panel border border-border-main rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-black text-text-main">Create New Endpoint</h3>
+                  <p className="text-xs text-text-muted mt-0.5">Choose how this endpoint processes incoming requests</p>
+                </div>
+                <button
+                  onClick={() => setIsCreateModeModalOpen(false)}
+                  className="p-1.5 text-text-muted hover:text-text-main rounded-lg hover:bg-white/5 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <button
+                  onClick={() => handleCreateNew(createModePresetGroup, 'DATABASE')}
+                  className="text-left p-4 rounded-xl border border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:border-blue-400 transition-all group cursor-pointer space-y-2"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <div className="text-sm font-black text-text-main group-hover:text-blue-300">Database SQL Endpoint</div>
+                  <p className="text-xs text-text-muted leading-relaxed">
+                    Query or mutate PostgreSQL, MySQL, SQL Server, or ClickHouse directly with SQL &amp; :params.
+                  </p>
+                </button>
+                <button
+                  onClick={() => handleCreateNew(createModePresetGroup, 'GATEWAY')}
+                  className="text-left p-4 rounded-xl border border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/15 hover:border-purple-400 transition-all group cursor-pointer space-y-2"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                    <GitBranch className="w-5 h-5" />
+                  </div>
+                  <div className="text-sm font-black text-text-main group-hover:text-purple-300">API Gateway / Routing</div>
+                  <p className="text-xs text-text-muted leading-relaxed">
+                    Route to 1 or many external HTTP APIs &amp; DBs, switch dynamically or aggregate, and reshape JSON/params with templates or JS.
+                  </p>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -3486,8 +3554,17 @@ export const ApiBuilderView: React.FC = () => {
         <div className="flex-1 overflow-hidden flex flex-col relative">
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
             
-            {/* LEFT PANE: SQL Studio & Target Database Connection */}
+            {/* LEFT PANE: SQL Studio OR API Gateway Studio */}
             <div className="flex-1 lg:w-3/5 flex flex-col border-r border-border-main min-w-0 bg-[#080e1a] relative z-30">
+              {currentApi.endpointType === 'GATEWAY' ? (
+                <ApiGatewayEditor
+                  gatewayConfigJson={currentApi.gatewayConfig}
+                  onChange={val => setCurrentApi({ ...currentApi, gatewayConfig: val })}
+                  connections={connections}
+                  targets={endpointTargets}
+                />
+              ) : (
+                <>
               
               {/* COMPACT INTEGRATED TOOLBAR (IDE-STYLE) */}
               <div className="bg-bg-panel/95 backdrop-blur border-b border-border-main px-3 sm:px-4 py-2 flex items-center justify-between gap-2 shrink-0 shadow-sm relative z-40 overflow-visible">
@@ -3603,6 +3680,8 @@ export const ApiBuilderView: React.FC = () => {
                   connectionId={currentApi.connectionId}
                 />
               </div>
+                </>
+              )}
             </div>
 
             {/* RIGHT PANE: Unified Single-Page Settings (Config, Parameters, Security) */}
@@ -5910,6 +5989,28 @@ export const ApiBuilderView: React.FC = () => {
                   <div className="h-9 border-b border-border-main/30 flex items-center justify-between px-4 bg-black/40 shrink-0">
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">HTTP Response Payload</span>
+                      {Array.isArray(testResult?.data?.debugTrace) && (
+                        <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-slate-700/60">
+                          <button
+                            onClick={() => setTestInspectorTab('response')}
+                            className={clsx(
+                              'px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer',
+                              testInspectorTab === 'response' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                            )}
+                          >
+                            Final Response
+                          </button>
+                          <button
+                            onClick={() => setTestInspectorTab('trace')}
+                            className={clsx(
+                              'px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer',
+                              testInspectorTab === 'trace' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
+                            )}
+                          >
+                            Route Debug Trace ({testResult.data.debugTrace.length})
+                          </button>
+                        </div>
+                      )}
                       {testResult && !testResult.error && (
                         <button
                           onClick={() => setIsPrettyPrint(!isPrettyPrint)}
@@ -5958,18 +6059,67 @@ export const ApiBuilderView: React.FC = () => {
                       </div>
                     )}
                     {testResult ? (
-                      <div>
-                        <pre className={clsx("font-mono text-xs leading-relaxed whitespace-pre-wrap break-all", 
-                          testResult.status >= 400 ? "text-rose-300" : "text-emerald-300"
-                        )}>
-                          {testResult.data 
-                            ? JSON.stringify(testResult.data, null, isPrettyPrint ? 2 : 0)
-                            : typeof testResult.error === 'string' 
-                              ? testResult.error 
-                              : JSON.stringify(testResult.error, null, 2)
-                          }
-                        </pre>
-                      </div>
+                      testInspectorTab === 'trace' && Array.isArray(testResult?.data?.debugTrace) ? (
+                        <div className="space-y-3">
+                          {testResult.data.debugTrace.map((tr: any, idx: number) => (
+                            <div key={idx} className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 space-y-2">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">#{idx + 1}</span>
+                                  <span className="text-xs font-bold text-white">{tr.routeName || tr.routeId}</span>
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300">{tr.targetType}</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-[10px] font-mono">
+                                  <span className={tr.success ? 'text-emerald-400' : 'text-rose-400'}>
+                                    HTTP {tr.httpStatus} {tr.success ? 'OK' : 'FAILED'}
+                                  </span>
+                                  <span className="text-slate-400">{tr.durationMs}ms</span>
+                                  <span className="text-slate-500">attempts: {tr.attempts}</span>
+                                </div>
+                              </div>
+                              {tr.requestUrl && (
+                                <div className="text-[11px] font-mono text-cyan-300 break-all">URL: {tr.requestUrl}</div>
+                              )}
+                              {tr.error && (
+                                <div className="text-[11px] font-mono text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg p-2">
+                                  Error: {tr.error}
+                                </div>
+                              )}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <div>
+                                  <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Raw Upstream Response</div>
+                                  <pre className="text-[11px] font-mono text-slate-300 bg-black/50 rounded-lg p-2 max-h-48 overflow-auto whitespace-pre-wrap break-all">
+                                    {JSON.stringify(tr.rawResponse, null, 2)}
+                                  </pre>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] font-bold text-emerald-400 uppercase mb-1">Transformed Route Output</div>
+                                  <pre className="text-[11px] font-mono text-emerald-300 bg-black/50 rounded-lg p-2 max-h-48 overflow-auto whitespace-pre-wrap break-all">
+                                    {JSON.stringify(tr.transformedResponse, null, 2)}
+                                  </pre>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div>
+                          <pre className={clsx("font-mono text-xs leading-relaxed whitespace-pre-wrap break-all", 
+                            testResult.status >= 400 ? "text-rose-300" : "text-emerald-300"
+                          )}>
+                            {testResult.data 
+                              ? JSON.stringify(
+                                  Array.isArray(testResult?.data?.debugTrace) ? testResult.data.data : testResult.data,
+                                  null,
+                                  isPrettyPrint ? 2 : 0
+                                )
+                              : typeof testResult.error === 'string' 
+                                ? testResult.error 
+                                : JSON.stringify(testResult.error, null, 2)
+                            }
+                          </pre>
+                        </div>
+                      )
                     ) : (
                       <div className="h-full flex items-center justify-center">
                         <div className="text-center">
@@ -6011,6 +6161,50 @@ export const ApiBuilderView: React.FC = () => {
               fetchChannels();
             }}
           />
+        )}
+        {isCreateModeModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-bg-panel border border-border-main rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-black text-text-main">Create New Endpoint</h3>
+                  <p className="text-xs text-text-muted mt-0.5">Choose how this endpoint processes incoming requests</p>
+                </div>
+                <button
+                  onClick={() => setIsCreateModeModalOpen(false)}
+                  className="p-1.5 text-text-muted hover:text-text-main rounded-lg hover:bg-white/5 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <button
+                  onClick={() => handleCreateNew(createModePresetGroup, 'DATABASE')}
+                  className="text-left p-4 rounded-xl border border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:border-blue-400 transition-all group cursor-pointer space-y-2"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <div className="text-sm font-black text-text-main group-hover:text-blue-300">Database SQL Endpoint</div>
+                  <p className="text-xs text-text-muted leading-relaxed">
+                    Query or mutate PostgreSQL, MySQL, SQL Server, or ClickHouse directly with SQL &amp; :params.
+                  </p>
+                </button>
+                <button
+                  onClick={() => handleCreateNew(createModePresetGroup, 'GATEWAY')}
+                  className="text-left p-4 rounded-xl border border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/15 hover:border-purple-400 transition-all group cursor-pointer space-y-2"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                    <GitBranch className="w-5 h-5" />
+                  </div>
+                  <div className="text-sm font-black text-text-main group-hover:text-purple-300">API Gateway / Routing</div>
+                  <p className="text-xs text-text-muted leading-relaxed">
+                    Route to 1 or many external HTTP APIs &amp; DBs, switch dynamically or aggregate, and reshape JSON/params with templates or JS.
+                  </p>
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );

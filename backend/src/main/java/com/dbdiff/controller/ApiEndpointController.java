@@ -47,6 +47,9 @@ public class ApiEndpointController {
     @Autowired
     private com.dbdiff.service.ApiCronPushService apiCronPushService;
 
+    @Autowired
+    private com.dbdiff.service.ApiGatewayService apiGatewayService;
+
     @Autowired(required = false)
     private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
@@ -200,6 +203,23 @@ public class ApiEndpointController {
                 sendJsonError(response, 401, Map.of("error", "Unauthorized", "message", ex.getMessage()));
                 return;
             }
+        }
+
+        if ("GATEWAY".equalsIgnoreCase(endpoint.getEndpointType())) {
+            com.dbdiff.service.ApiGatewayService.GatewayResult gwResult = apiGatewayService.executeGateway(endpoint, params, true);
+            response.setStatus(200);
+            response.setContentType("application/json;charset=UTF-8");
+            com.fasterxml.jackson.databind.ObjectMapper gwMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            Map<String, Object> respMap = new HashMap<>();
+            respMap.put("success", gwResult.getStatusCode() >= 200 && gwResult.getStatusCode() < 300);
+            respMap.put("statusCode", gwResult.getStatusCode());
+            respMap.put("durationMs", gwResult.getDurationMs());
+            respMap.put("data", gwResult.getBody());
+            respMap.put("debugTrace", gwResult.getDebugTrace());
+            if (gwResult.getError() != null) respMap.put("error", gwResult.getError());
+            response.getWriter().write(gwMapper.writeValueAsString(respMap));
+            response.getWriter().flush();
+            return;
         }
 
         ConnectionDetails conn = connectionRepository.findById(endpoint.getConnectionId());

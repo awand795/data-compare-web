@@ -65,6 +65,9 @@ public class DynamicApiController {
     @Autowired(required = false)
     private EmailVerificationController emailVerificationController;
 
+    @Autowired
+    private com.dbdiff.service.ApiGatewayService apiGatewayService;
+
     @RequestMapping(value = "/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE})
     public void handleRequest(
             HttpServletRequest request,
@@ -628,6 +631,17 @@ public class DynamicApiController {
                 ));
                 return;
             }
+        }
+
+        // ── API Gateway / Routing Execution ──────────────────────────────────────
+        if ("GATEWAY".equalsIgnoreCase(endpoint.getEndpointType())) {
+            com.dbdiff.service.ApiGatewayService.GatewayResult gwResult = apiGatewayService.executeGateway(endpoint, allParams, false);
+            response.setStatus(gwResult.getStatusCode());
+            response.setContentType("application/json;charset=UTF-8");
+            com.fasterxml.jackson.databind.ObjectMapper gwMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            response.getWriter().write(gwMapper.writeValueAsString(gwResult.getBody()));
+            response.getWriter().flush();
+            return;
         }
 
         // Fetch Connection
