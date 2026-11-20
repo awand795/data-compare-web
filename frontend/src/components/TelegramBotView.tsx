@@ -33,11 +33,13 @@ import {
   Copy,
   Terminal,
   EyeOff,
+  Zap,
   PlayCircle,
   ShieldCheck,
   BookOpen
 } from 'lucide-react';
 import clsx from 'clsx';
+import { TelegramWatcherTab } from './TelegramWatcherTab';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -153,7 +155,7 @@ export const TelegramBotView: React.FC = () => {
   // Top Level Navigation
   // 'messages' = List View | 'create_edit' = Form View
   const [viewMode, setViewMode] = useState<'list' | 'create_edit'>('list');
-  const [activeTab, setActiveTab] = useState<'messages' | 'contacts' | 'bots' | 'logs' | 'api_spec'>('messages');
+  const [activeTab, setActiveTab] = useState<'messages' | 'watchers' | 'contacts' | 'bots' | 'logs' | 'api_spec'>('messages');
 
   // Master Data
   const [bots, setBots] = useState<TelegramBot[]>([]);
@@ -1808,6 +1810,16 @@ export const TelegramBotView: React.FC = () => {
             Daftar Pesan ({schedules.length})
           </button>
           <button
+            onClick={() => setActiveTab('watchers')}
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors",
+              activeTab === 'watchers' ? "bg-amber-500 text-white shadow-sm font-semibold" : "text-text-muted hover:text-text-main"
+            )}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            Real-Time Watchers &amp; Triggers
+          </button>
+          <button
             onClick={() => setActiveTab('contacts')}
             className={clsx(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors",
@@ -2856,6 +2868,16 @@ export const TelegramBotView: React.FC = () => {
         {/* =========================================================================
             TAB 5: API INTEGRATION & SPEC
         ========================================================================= */}
+        {activeTab === 'watchers' && (
+          <TelegramWatcherTab
+            bots={bots}
+            contacts={contacts}
+            connections={connections}
+            tokens={tokens}
+            onCopyText={copyText}
+          />
+        )}
+
         {activeTab === 'api_spec' && (
           <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
             {/* Header Card */}

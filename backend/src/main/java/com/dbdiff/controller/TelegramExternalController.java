@@ -31,6 +31,9 @@ public class TelegramExternalController {
     private final TelegramScheduleRepository scheduleRepository;
     private final TelegramSchedulerService schedulerService;
 
+    @Autowired(required = false)
+    private com.dbdiff.service.TelegramWatcherService watcherService;
+
     @Autowired
     public TelegramExternalController(TelegramApiTokenRepository apiTokenRepository,
                                       TelegramSenderService senderService,
@@ -62,6 +65,25 @@ public class TelegramExternalController {
         }
 
         return executePayload(payload);
+    }
+
+    /**
+     * 1B. Instant Event Trigger for DB Triggers / External Webhooks
+     */
+    @PostMapping({"/api/v1/telegram/external/trigger/{watcherId}", "/api/telegram/external/trigger/{watcherId}"})
+    public ResponseEntity<?> handleExternalWatcherTrigger(
+            HttpServletRequest request,
+            @PathVariable String watcherId,
+            @RequestBody Object payload) {
+
+        Map<String, Object> authError = new LinkedHashMap<>();
+        if (!authenticateRequest(request, authError)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
+        }
+        if (watcherService == null) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("success", false, "error", "Watcher service unavailable"));
+        }
+        return ResponseEntity.ok(watcherService.triggerByWebhook(watcherId, payload));
     }
 
     /**
