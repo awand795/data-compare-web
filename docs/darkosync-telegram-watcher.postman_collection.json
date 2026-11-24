@@ -1,0 +1,215 @@
+{
+  "info": {
+    "_postman_id": "d8f2c1a0-7b3e-4e8a-9c41-92f01a8b5c01",
+    "name": "DarkoSync - Real-Time Telegram Watcher (PG_LISTEN_NOTIFY)",
+    "description": "Koleksi lengkap setup Bot Telegram, Kontak, Token API, dan Real-Time Watcher PG_LISTEN_NOTIFY (Contoh 1: Custom Message Tabel Biasa & Contoh 2: Lookup VIEW user_hp + pesan).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://94.237.69.119:5173"
+    },
+    {
+      "key": "API_TOKEN",
+      "value": "dks_live_c69e313835394d81b0e18cdbb5bb0603"
+    },
+    {
+      "key": "BOT_ID",
+      "value": "49659711-baef-4cb9-a5aa-3bb8edfd5d76"
+    },
+    {
+      "key": "CONNECTION_ID",
+      "value": "1783329332719"
+    },
+    {
+      "key": "CONTACT_ID",
+      "value": "6eeb8cb9-95ce-4b5a-9297-7b393edc4957"
+    },
+    {
+      "key": "WATCHER_ID",
+      "value": "tgw-aa7203d0"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Setup Bot & Kontak",
+      "item": [
+        {
+          "name": "1.1 Test Bot Token (BotFather)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"botToken\": \"PASTE_BOT_TOKEN_DARI_BOTFATHER\"\n}"
+            },
+            "url": "{{BASE_URL}}/api/telegram/bots/test"
+          }
+        },
+        {
+          "name": "1.2 Daftarkan Bot Baru",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Darko Report\",\n  \"botToken\": \"PASTE_BOT_TOKEN_DARI_BOTFATHER\",\n  \"pollingActive\": true\n}"
+            },
+            "url": "{{BASE_URL}}/api/telegram/bots"
+          }
+        },
+        {
+          "name": "1.3 Aktifkan Polling Bot",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true\n}"
+            },
+            "url": "{{BASE_URL}}/api/telegram/bots/{{BOT_ID}}/polling"
+          }
+        },
+        {
+          "name": "1.4 List Semua Bot",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/telegram/bots"
+          }
+        },
+        {
+          "name": "1.5 List Kontak Terdaftar",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/telegram/contacts"
+          }
+        },
+        {
+          "name": "1.6 Daftarkan Kontak Manual",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"botId\": \"{{BOT_ID}}\",\n  \"chatId\": \"5514717368\",\n  \"phoneNumber\": \"6282362851796\",\n  \"firstName\": \"Awanda\"\n}"
+            },
+            "url": "{{BASE_URL}}/api/telegram/contacts"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Setup Token & Koneksi DB",
+      "item": [
+        {
+          "name": "2.1 List External API Tokens",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/telegram/external/tokens"
+          }
+        },
+        {
+          "name": "2.2 Generate External API Token Baru",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Watcher Token\"\n}"
+            },
+            "url": "{{BASE_URL}}/api/telegram/external/tokens/generate"
+          }
+        },
+        {
+          "name": "2.3 List Koneksi Database (Cari Connection ID)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/connections"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Contoh 1 - Watcher Tabel Biasa (Custom Message)",
+      "item": [
+        {
+          "name": "3.1 Create Watcher PG_LISTEN_NOTIFY (mhs_cabang)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{API_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Notif Cabang Baru (mhs_cabang)\",\n  \"botId\": \"{{BOT_ID}}\",\n  \"connectionId\": \"{{CONNECTION_ID}}\",\n  \"watcherType\": \"PG_LISTEN_NOTIFY\",\n  \"pgChannelName\": \"tg_cabang_baru\",\n  \"sqlQuery\": \"\",\n  \"templateMessage\": \"halo ini nama cabang baru yang di tambah {{nama_cabang}} (Kode: {{kode_cabang}})\",\n  \"recipientMode\": \"MASTER\",\n  \"masterRecipientIds\": \"{{CONTACT_ID}}\",\n  \"active\": true\n}"
+            },
+            "url": "{{BASE_URL}}/api/v1/telegram/external/watchers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Contoh 2 - Watcher VIEW (user_hp & pesan)",
+      "item": [
+        {
+          "name": "4.1 Create Watcher PG_LISTEN_NOTIFY (Lookup VIEW)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{API_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Notif Dinamis View Notifikasi\",\n  \"botId\": \"{{BOT_ID}}\",\n  \"connectionId\": \"{{CONNECTION_ID}}\",\n  \"watcherType\": \"PG_LISTEN_NOTIFY\",\n  \"pgChannelName\": \"tg_view_notif\",\n  \"sqlQuery\": \"SELECT user_hp, pesan FROM sch_erp_system.view_all_notifikasi WHERE id = :id\",\n  \"templateMessage\": \"{{pesan}}\",\n  \"recipientMode\": \"DYNAMIC_COLUMN\",\n  \"phoneColumnName\": \"user_hp\",\n  \"active\": true\n}"
+            },
+            "url": "{{BASE_URL}}/api/v1/telegram/external/watchers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Manajemen & Monitoring Watcher",
+      "item": [
+        {
+          "name": "5.1 List Semua Watchers (External API)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{API_TOKEN}}" }
+            ],
+            "url": "{{BASE_URL}}/api/v1/telegram/external/watchers"
+          }
+        },
+        {
+          "name": "5.2 Update Watcher",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Notif Cabang Baru (Updated)\",\n  \"botId\": \"{{BOT_ID}}\",\n  \"connectionId\": \"{{CONNECTION_ID}}\",\n  \"watcherType\": \"PG_LISTEN_NOTIFY\",\n  \"pgChannelName\": \"tg_cabang_baru\",\n  \"sqlQuery\": \"\",\n  \"templateMessage\": \"halo ini nama cabang baru yang di tambah {{nama_cabang}} (Kode: {{kode_cabang}})\",\n  \"recipientMode\": \"MASTER\",\n  \"masterRecipientIds\": \"{{CONTACT_ID}}\",\n  \"active\": true\n}"
+            },
+            "url": "{{BASE_URL}}/api/telegram/watchers/{{WATCHER_ID}}"
+          }
+        },
+        {
+          "name": "5.3 Toggle Aktif / Nonaktif Watcher",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/api/telegram/watchers/{{WATCHER_ID}}/toggle"
+          }
+        },
+        {
+          "name": "5.4 Hapus Watcher",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/api/telegram/watchers/{{WATCHER_ID}}"
+          }
+        }
+      ]
+    }
+  ]
+}

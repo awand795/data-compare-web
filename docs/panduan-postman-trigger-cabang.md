@@ -1,70 +1,120 @@
-# Panduan Lengkap Integrasi Real-Time Telegram Bot (Postman, Watcher API & PostgreSQL `pg_notify` Trigger)
+# Panduan End-to-End Integrasi Real-Time Telegram Bot (DarkoSync + Postman + PostgreSQL Trigger)
 
-Dokumen ini disusun sebagai panduan teknis lengkap untuk **Tech Lead & Tim Engineering** dalam mengintegrasikan notifikasi Telegram real-time langsung dari database PostgreSQL (termasuk **Amazon RDS for PostgreSQL**) melalui **DarkoSync** menggunakan **`PG_LISTEN_NOTIFY`**, **tanpa mengubah kode aplikasi ERP** dan **tanpa install plugin/extension tambahan** di PostgreSQL.
+Dokumen ini disusun sebagai referensi lengkap untuk **Tech Lead & Tim Engineering** mulai dari **pembuatan Bot Telegram**, **pendaftaran di DarkoSync via Postman**, **setup Watcher `PG_LISTEN_NOTIFY`**, hingga **pemasangan Trigger PostgreSQL** (kompatibel penuh dengan **Amazon RDS for PostgreSQL** tanpa plugin/extension tambahan dan tanpa mengubah aplikasi ERP).
+
+> **File Pendamping:** Import [darkosync-telegram-watcher.postman_collection.json](./darkosync-telegram-watcher.postman_collection.json) ke Postman agar semua endpoint di panduan ini siap klik.
 
 ---
 
-## 1. Ringkasan Arsitektur & Keunggulan (`PG_LISTEN_NOTIFY`)
+## Ringkasan Arsitektur (`PG_LISTEN_NOTIFY`)
 
 * **Real-Time (< 1 detik)**: Begitu transaksi `INSERT` di PostgreSQL `COMMIT`, `pg_notify(...)` langsung mengirim sinyal ke DarkoSync.
-* **Aman untuk Amazon RDS PostgreSQL**: `pg_notify` dan `LISTEN/NOTIFY` adalah fitur bawaan native PostgreSQL, sehingga **tidak perlu install plugin/extension** apa pun.
-* **Nol Risiko ke Transaksi ERP**: Trigger tidak melakukan HTTP call ke luar dari dalam database, sehingga tidak pernah membuat query `INSERT` aplikasi ERP melambat atau timeout.
-* **Fleksibel**: Mendukung **tabel biasa + custom message**, **`VIEW` yang sudah berisi kolom `user_hp` & `pesan`**, maupun **custom message langsung di SQL Trigger**.
+* **Aman untuk Amazon RDS PostgreSQL**: `pg_notify` dan `LISTEN/NOTIFY` adalah fitur bawaan native PostgreSQL — **tidak butuh extension** (`pg_net`/`pgsql-http`).
+* **Nol Risiko ke Transaksi ERP**: Trigger tidak melakukan HTTP call dari dalam DB, sehingga tidak akan memperlambat atau membuat timeout transaksi ERP.
 
 ---
 
-## 2. Referensi API Postman (Setup & Manajemen Watcher)
+## Bagian A — Persiapan dari Nol (Buat Bot, Kontak & Token API)
 
-Gunakan `{{BASE_URL}}` sesuai alamat server DarkoSync (misal `http://94.237.69.119:5173` atau domain HTTPS Anda).
+Gunakan `{{BASE_URL}}` sesuai alamat DarkoSync (misal `http://94.237.69.119:5173` atau domain HTTPS Anda).
 
-### A. Persiapan Data Master via Postman
+### Langkah 1: Buat Bot di Telegram (`@BotFather`)
+1. Buka Telegram, cari **`@BotFather`**.
+2. Kirim perintah `/newbot`, lalu ikuti instruksi:
+   * Masukkan **Nama Bot** (contoh: `Darko Report`).
+   * Masukkan **Username Bot** berakhiran `bot` (contoh: `darkoreportbot`).
+3. Salin **Bot Token** yang diberikan oleh BotFather (format: `8830922721:AAH0qcQAO6DgKW8-ZR8-s4UV8ykDdDrzPhg`).
 
-1. **Cek Daftar Bot Telegram**:
-   * `GET {{BASE_URL}}/api/v1/telegram/external/bots`
-   * Header: `Authorization: Bearer <TELEGRAM_EXTERNAL_TOKEN>`
-   * Catat `id` bot (contoh `Darko Report`: `49659711-baef-4cb9-a5aa-3bb8edfd5d76`).
-2. **Cek Daftar Kontak Telegram** (untuk penerima `MASTER` atau memastikan nomor `user_hp` sudah punya `chatId`):
-   * `GET {{BASE_URL}}/api/telegram/contacts`
-   * Contoh kontak `Awanda` (`082362851796` / `6282362851796`): `id` = `6eeb8cb9-95ce-4b5a-9297-7b393edc4957`, `chatId` = `5514717368`.
-   * *Catatan*: Agar bot bisa mengirim ke `user_hp`, user terkait harus pernah mengirim `/start` ke bot atau terdaftar di tabel Kontak DarkoSync (format `08...`, `628...`, dan `+628...` otomatis dinormalisasi).
-3. **Cek Daftar Koneksi Database**:
+---
+
+### Langkah 2: Test & Daftarkan Bot ke DarkoSync (Postman)
+
+1. **Test Koneksi Bot Token**:
+   * `POST {{BASE_URL}}/api/telegram/bots/test`
+   * Body JSON:
+     ```json
+     {
+       "botToken": "8830922721:AAH0qcQAO6DgKW8-ZR8-s4UV8ykDdDrzPhg"
+     }
+     ```
+2. **Simpan / Daftarkan Bot**:
+   * `POST {{BASE_URL}}/api/telegram/bots`
+   * Body JSON:
+     ```json
+     {
+       "name": "Darko Report",
+       "botToken": "8830922721:AAH0qcQAO6DgKW8-ZR8-s4UV8ykDdDrzPhg",
+       "pollingActive": true
+     }
+     ```
+   * Catat **`id`** bot dari response (misal `49659711-baef-4cb9-a5aa-3bb8edfd5d76`).
+3. **Pastikan Polling Bot Aktif** (agar user yang `/start` otomatis tercatat sebagai Kontak):
+   * `PUT {{BASE_URL}}/api/telegram/bots/{botId}/polling`
+   * Body JSON: `{"active": true}`
+
+---
+
+### Langkah 3: Daftarkan Kontak Penerima (`chatId` & Nomor HP)
+
+Bot Telegram mengirim pesan ke **`chatId`**, bukan langsung ke nomor HP. Ada 2 cara mendaftarkan kontak:
+
+* **Cara Otomatis (Direkomendasikan)**:
+  1. Buka bot Anda di Telegram (misal `@darkoreportbot`), klik **Start** (`/start`) dan bagikan kontak / nomor HP.
+  2. Cek hasilnya di Postman: `GET {{BASE_URL}}/api/telegram/contacts`.
+* **Cara Manual via Postman**:
+  * `POST {{BASE_URL}}/api/telegram/contacts`
+  * Body JSON:
+    ```json
+    {
+      "botId": "49659711-baef-4cb9-a5aa-3bb8edfd5d76",
+      "chatId": "5514717368",
+      "phoneNumber": "6282362851796",
+      "firstName": "Awanda"
+    }
+    ```
+  * Catat **`id`** kontak dari response (misal `6eeb8cb9-95ce-4b5a-9297-7b393edc4957`).
+
+---
+
+### Langkah 4: Generate External API Token & Cek Connection ID Database
+
+1. **Generate / Cek External API Token**:
+   * Cek token aktif: `GET {{BASE_URL}}/api/telegram/external/tokens`
+   * Atau generate token baru: `POST {{BASE_URL}}/api/telegram/external/tokens/generate` dengan body `{"name": "Postman Token"}`.
+   * Simpan token-nya ke variable `{{API_TOKEN}}` di Postman (contoh: `dks_live_c69e313835394d81b0e18cdbb5bb0603`).
+2. **Cek Connection ID Database Sumber**:
    * `GET {{BASE_URL}}/api/connections`
-   * Contoh koneksi `DEMO-ERP` (`dba_erp_demo`): `id` = `1783329332719`.
-
-### B. Daftar Endpoint Manajemen Watcher
-
-* **List Watcher (External Token)**: `GET {{BASE_URL}}/api/v1/telegram/external/watchers`
-* **Buat Watcher (External Token)**: `POST {{BASE_URL}}/api/v1/telegram/external/watchers`
-* **Edit Watcher (Dashboard API)**: `PUT {{BASE_URL}}/api/telegram/watchers/{watcherId}`
-* **Aktif / Nonaktifkan Watcher**: `PUT {{BASE_URL}}/api/telegram/watchers/{watcherId}/toggle`
-* **Hapus Watcher**: `DELETE {{BASE_URL}}/api/telegram/watchers/{watcherId}`
+   * Cari koneksi database target (contoh `DEMO-ERP` / `dba_erp_demo` → `id`: `1783329332719`).
 
 ---
 
-## 3. Skenario 1 — Tabel Biasa + Custom Message di DarkoSync
+## Bagian B — Contoh 1: Tabel Biasa + Custom Message
 
-**Studi kasus nyata (`dba_erp_demo` → `sch_erp_hr.mhs_cabang`):**
-Setiap ada cabang baru di-`INSERT`, kirim pesan custom ke `082362851796`.
+**Kasus Nyata (`dba_erp_demo` → `sch_erp_hr.mhs_cabang`):**
+Setiap ada cabang baru di-`INSERT`, langsung kirim pesan custom `"halo ini nama cabang baru yang di tambah <nama_cabang> (Kode: <kode_cabang>)"` ke kontak `082362851796`.
 
-### Langkah 1 (Postman) — Buat Watcher
-`POST {{BASE_URL}}/api/v1/telegram/external/watchers`
-```json
-{
-  "name": "Notif Cabang Baru (mhs_cabang)",
-  "botId": "49659711-baef-4cb9-a5aa-3bb8edfd5d76",
-  "connectionId": "1783329332719",
-  "watcherType": "PG_LISTEN_NOTIFY",
-  "pgChannelName": "tg_cabang_baru",
-  "sqlQuery": "",
-  "templateMessage": "halo ini nama cabang baru yang di tambah {{nama_cabang}} (Kode: {{kode_cabang}})",
-  "recipientMode": "MASTER",
-  "masterRecipientIds": "6eeb8cb9-95ce-4b5a-9297-7b393edc4957",
-  "active": true
-}
-```
-> Karena `sqlQuery` dikosongkan, DarkoSync langsung memakai seluruh kolom dari `row_to_json(NEW)` untuk mengisi `{{nama_cabang}}`, `{{kode_cabang}}`, `{{kota}}`, dll.
+### 1. Buat Watcher via Postman
+* `POST {{BASE_URL}}/api/v1/telegram/external/watchers`
+* Headers:
+  * `Authorization: Bearer {{API_TOKEN}}`
+  * `Content-Type: application/json`
+* Body JSON:
+  ```json
+  {
+    "name": "Notif Cabang Baru (mhs_cabang)",
+    "botId": "49659711-baef-4cb9-a5aa-3bb8edfd5d76",
+    "connectionId": "1783329332719",
+    "watcherType": "PG_LISTEN_NOTIFY",
+    "pgChannelName": "tg_cabang_baru",
+    "sqlQuery": "",
+    "templateMessage": "halo ini nama cabang baru yang di tambah {{nama_cabang}} (Kode: {{kode_cabang}})",
+    "recipientMode": "MASTER",
+    "masterRecipientIds": "6eeb8cb9-95ce-4b5a-9297-7b393edc4957",
+    "active": true
+  }
+  ```
 
-### Langkah 2 (PostgreSQL) — Pasang Trigger `pg_notify`
+### 2. Pasang Trigger `pg_notify` di PostgreSQL (`dba_erp_demo`)
 ```sql
 CREATE OR REPLACE FUNCTION sch_erp_hr.fn_notify_mhs_cabang_tg()
 RETURNS trigger AS $$
@@ -82,60 +132,8 @@ FOR EACH ROW
 EXECUTE FUNCTION sch_erp_hr.fn_notify_mhs_cabang_tg();
 ```
 
----
-
-## 4. Skenario 2 — Data dari `VIEW` yang Sudah Berisi Kolom `user_hp` & `pesan`
-
-Jika Anda sudah memiliki `VIEW` (misalnya `sch_erp_system.view_all_notifikasi`) yang kolomnya sudah menghasilkan **`user_hp`** (penerima dinamis) dan **`pesan`** (isi pesan siap kirim):
-
-Karena `VIEW` tidak bisa dipasangi trigger secara langsung, trigger `pg_notify` dipasang di **tabel dasar**, cukup mengirim key baris baru (`id` / `no_bukti`), lalu DarkoSync otomatis melakukan query lookup ke `VIEW` Anda!
-
-### Langkah 1 (Postman) — Buat Watcher dengan Lookup `VIEW` & Penerima Dinamis (`user_hp`)
-`POST {{BASE_URL}}/api/v1/telegram/external/watchers`
-```json
-{
-  "name": "Notif Dinamis View Notifikasi",
-  "botId": "49659711-baef-4cb9-a5aa-3bb8edfd5d76",
-  "connectionId": "1783329332719",
-  "watcherType": "PG_LISTEN_NOTIFY",
-  "pgChannelName": "tg_view_notif",
-  "sqlQuery": "SELECT user_hp, pesan FROM sch_erp_system.view_all_notifikasi WHERE id = :id",
-  "templateMessage": "{{pesan}}",
-  "recipientMode": "DYNAMIC_COLUMN",
-  "phoneColumnName": "user_hp",
-  "active": true
-}
-```
-* `templateMessage` diisi `{{pesan}}` agar isi pesan persis mengikuti kolom `pesan` dari `VIEW`.
-* Anda tetap bisa memodifikasi/membungkusnya jika mau, misalnya: `<b>Info ERP:</b>\n{{pesan}}`.
-
-### Langkah 2 (PostgreSQL) — Pasang Trigger di Tabel Dasar
-```sql
-CREATE OR REPLACE FUNCTION sch_erp_system.fn_notify_view_tg()
-RETURNS trigger AS $$
-BEGIN
-  PERFORM pg_notify(
-    'tg_view_notif',
-    json_build_object('id', NEW.id)::text
-  );
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_notify_view_tg ON sch_erp_system.tabel_sumber_notifikasi;
-
-CREATE TRIGGER trg_notify_view_tg
-AFTER INSERT ON sch_erp_system.tabel_sumber_notifikasi
-FOR EACH ROW
-EXECUTE FUNCTION sch_erp_system.fn_notify_view_tg();
-```
-
----
-
-## 5. Skenario 3 — Custom Message Langsung di Dalam SQL Trigger PostgreSQL
-
-Jika format pesan membutuhkan logika SQL (`IF/ELSE`, `CASE`, format rupiah `to_char`), rakit pesannya langsung di function trigger:
-
+#### Variasi: Custom Message Langsung di SQL Trigger (`PL/pgSQL`)
+Jika format pesan butuh logika SQL (`IF/ELSE`, `CASE`, format angka `to_char`), rakit pesannya di function trigger lalu di Watcher set `templateMessage: "{{pesan}}"`:
 ```sql
 CREATE OR REPLACE FUNCTION sch_erp_hr.fn_notify_cabang_custom_sql()
 RETURNS trigger AS $$
@@ -156,23 +154,78 @@ BEGIN
       'pesan', v_pesan
     )::text
   );
-
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 ```
-Lalu di Watcher DarkoSync, cukup set `templateMessage` = `{{pesan}}`, `sqlQuery` = `""`, dan `recipientMode` = `DYNAMIC_COLUMN` (`phoneColumnName` = `user_hp`) atau `MASTER`.
 
 ---
 
-## 6. Testing, Monitoring Log & Rollback
+## Bagian C — Contoh 2: Data dari `VIEW` yang Sudah Berisi `user_hp` & `pesan`
 
-### Simulasi Cepat dari SQL Editor (Tanpa Insert Data Asli)
+**Kasus Nyata (`sch_erp_system.view_all_notifikasi`):**
+`VIEW` sudah menghitung kolom **`user_hp`** (penerima dinamis per baris) dan **`pesan`** (isi notifikasi siap kirim).
+
+Karena PostgreSQL tidak mengizinkan trigger `AFTER INSERT` dipasang langsung di atas `VIEW`, trigger `pg_notify` dipasang pada **tabel dasar** sumber data `VIEW` tersebut, lalu DarkoSync otomatis menjalankan `sqlQuery` lookup ke `VIEW` memakai key (`:id` / `:no_bukti`) dari trigger.
+
+### 1. Buat Watcher via Postman (Dynamic Recipient + Lookup `VIEW`)
+* `POST {{BASE_URL}}/api/v1/telegram/external/watchers`
+* Headers:
+  * `Authorization: Bearer {{API_TOKEN}}`
+  * `Content-Type: application/json`
+* Body JSON:
+  ```json
+  {
+    "name": "Notif Dinamis View Notifikasi",
+    "botId": "49659711-baef-4cb9-a5aa-3bb8edfd5d76",
+    "connectionId": "1783329332719",
+    "watcherType": "PG_LISTEN_NOTIFY",
+    "pgChannelName": "tg_view_notif",
+    "sqlQuery": "SELECT user_hp, pesan FROM sch_erp_system.view_all_notifikasi WHERE id = :id",
+    "templateMessage": "{{pesan}}",
+    "recipientMode": "DYNAMIC_COLUMN",
+    "phoneColumnName": "user_hp",
+    "active": true
+  }
+  ```
+  * **`recipientMode: "DYNAMIC_COLUMN"`** + **`phoneColumnName: "user_hp"`**: DarkoSync membaca kolom `user_hp` tiap baris hasil `VIEW`, menormalisasi format `08...`/`628...`/`+628...`, mencocokkannya dengan tabel Kontak Telegram (`chatId`), lalu mengirim isi `{{pesan}}` ke user tersebut.
+
+### 2. Pasang Trigger `pg_notify` di Tabel Dasar Sumber `VIEW`
 ```sql
+CREATE OR REPLACE FUNCTION sch_erp_system.fn_notify_view_tg()
+RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify(
+    'tg_view_notif',
+    json_build_object('id', NEW.id)::text
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_notify_view_tg ON sch_erp_system.tabel_sumber_notifikasi;
+
+CREATE TRIGGER trg_notify_view_tg
+AFTER INSERT ON sch_erp_system.tabel_sumber_notifikasi
+FOR EACH ROW
+EXECUTE FUNCTION sch_erp_system.fn_notify_view_tg();
+```
+*(Jika key lookup di `VIEW` Anda memakai `no_bukti`, ganti `json_build_object('no_bukti', NEW.no_bukti)` dan `WHERE no_bukti = :no_bukti`.)*
+
+---
+
+## Bagian D — Testing, Monitoring & Rollback
+
+### 1. Simulasi Cepat dari SQL Editor (Tanpa Insert Data Asli)
+```sql
+-- Test Contoh 1 (Tabel Biasa)
 SELECT pg_notify('tg_cabang_baru', '{"kode_cabang":"C999","nama_cabang":"CABANG TEST"}');
+
+-- Test Contoh 2 (VIEW Lookup dengan ID asli di tabel)
+SELECT pg_notify('tg_view_notif', '{"id": 123}');
 ```
 
-### Cek Trigger yang Terpasang di PostgreSQL
+### 2. Cek Trigger Terpasang di PostgreSQL
 ```sql
 SELECT tgname, tgenabled
 FROM pg_trigger t
@@ -181,13 +234,13 @@ JOIN pg_namespace n ON c.relnamespace = n.oid
 WHERE n.nspname = 'sch_erp_hr' AND c.relname = 'mhs_cabang' AND NOT t.tgisinternal;
 ```
 
-### Cek Status & Log Pengiriman
-* **UI**: Buka menu **Telegram Bot → Real-Time Watchers & Triggers** dan **Riwayat Log**.
-* **API**: `GET {{BASE_URL}}/api/v1/telegram/external/watchers` (cek `totalSentCount`, `lastStatus`, `lastMessage`).
+### 3. Cek Status & Log via Postman / UI
+* **Postman**: `GET {{BASE_URL}}/api/v1/telegram/external/watchers` (cek `totalSentCount`, `lastStatus`, `lastMessage`).
+* **UI DarkoSync**: Menu **Telegram Bot → Real-Time Watchers & Triggers** dan **Riwayat Log**.
 
-### Rollback / Nonaktifkan
-* **Dari Postman**: `PUT {{BASE_URL}}/api/telegram/watchers/<WATCHER_ID>/toggle`
-* **Dari Database**:
+### 4. Nonaktifkan / Hapus Trigger (Rollback)
+* **Toggle Off via Postman**: `PUT {{BASE_URL}}/api/telegram/watchers/{watcherId}/toggle`
+* **Hapus Trigger di PostgreSQL**:
   ```sql
   DROP TRIGGER IF EXISTS trg_notify_mhs_cabang_tg ON sch_erp_hr.mhs_cabang;
   ```
