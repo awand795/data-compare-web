@@ -56,7 +56,8 @@ public class TelegramScheduleRepository {
                 "ALTER TABLE telegram_schedules ADD COLUMN IF NOT EXISTS view_name VARCHAR(255)",
                 "ALTER TABLE telegram_schedules ADD COLUMN IF NOT EXISTS filter_schedule VARCHAR(50)",
                 "ALTER TABLE telegram_schedules ADD COLUMN IF NOT EXISTS filter_kode_notifikasi VARCHAR(255)",
-                "ALTER TABLE telegram_schedules ADD COLUMN IF NOT EXISTS filter_kode_cabang VARCHAR(255)"
+                "ALTER TABLE telegram_schedules ADD COLUMN IF NOT EXISTS filter_kode_cabang VARCHAR(255)",
+                "ALTER TABLE telegram_schedules ADD COLUMN IF NOT EXISTS group_name VARCHAR(255) DEFAULT 'General'"
             };
             for (String alter : alterCols) {
                 try { jdbcTemplate.execute(alter); } catch (Exception ignored) {}
@@ -86,6 +87,12 @@ public class TelegramScheduleRepository {
         s.setCronExpression(rs.getString("cron_expression"));
         s.setMaxRows(rs.getInt("max_rows"));
         s.setActive(rs.getBoolean("is_active"));
+        try {
+            String grp = rs.getString("group_name");
+            s.setGroupName(grp != null && !grp.trim().isEmpty() ? grp : "General");
+        } catch (Exception ignored) {
+            s.setGroupName("General");
+        }
 
         Timestamp created = rs.getTimestamp("created_at");
         if (created != null) s.setCreatedAt(created.toLocalDateTime());
@@ -125,13 +132,13 @@ public class TelegramScheduleRepository {
 
         String sql = "INSERT INTO telegram_schedules (id, name, bot_id, connection_id, sql_query, template_message, " +
                 "recipient_mode, master_recipient_ids, phone_column_name, schema_name, view_name, filter_schedule, " +
-                "filter_kode_notifikasi, filter_kode_cabang, cron_expression, max_rows, is_active, created_at, updated_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "filter_kode_notifikasi, filter_kode_cabang, cron_expression, max_rows, is_active, group_name, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         jdbcTemplate.update(sql, schedule.getId(), schedule.getName(), schedule.getBotId(), schedule.getConnectionId(),
                 schedule.getSqlQuery(), schedule.getTemplateMessage(), schedule.getRecipientMode(), schedule.getMasterRecipientIds(),
                 schedule.getPhoneColumnName(), schedule.getSchemaName(), schedule.getViewName(), schedule.getFilterSchedule(),
                 schedule.getFilterKodeNotifikasi(), schedule.getFilterKodeCabang(), schedule.getCronExpression(),
-                schedule.getMaxRows() > 0 ? schedule.getMaxRows() : 50, schedule.isActive(), Timestamp.valueOf(now), Timestamp.valueOf(now));
+                schedule.getMaxRows() > 0 ? schedule.getMaxRows() : 50, schedule.isActive(), schedule.getGroupName(), Timestamp.valueOf(now), Timestamp.valueOf(now));
         return schedule;
     }
 
@@ -140,12 +147,12 @@ public class TelegramScheduleRepository {
         String sql = "UPDATE telegram_schedules SET name = ?, bot_id = ?, connection_id = ?, sql_query = ?, " +
                 "template_message = ?, recipient_mode = ?, master_recipient_ids = ?, phone_column_name = ?, " +
                 "schema_name = ?, view_name = ?, filter_schedule = ?, filter_kode_notifikasi = ?, filter_kode_cabang = ?, " +
-                "cron_expression = ?, max_rows = ?, is_active = ?, updated_at = ? WHERE id = ?";
+                "cron_expression = ?, max_rows = ?, is_active = ?, group_name = ?, updated_at = ? WHERE id = ?";
         jdbcTemplate.update(sql, schedule.getName(), schedule.getBotId(), schedule.getConnectionId(), schedule.getSqlQuery(),
                 schedule.getTemplateMessage(), schedule.getRecipientMode(), schedule.getMasterRecipientIds(),
                 schedule.getPhoneColumnName(), schedule.getSchemaName(), schedule.getViewName(), schedule.getFilterSchedule(),
                 schedule.getFilterKodeNotifikasi(), schedule.getFilterKodeCabang(), schedule.getCronExpression(),
-                schedule.getMaxRows() > 0 ? schedule.getMaxRows() : 50, schedule.isActive(), Timestamp.valueOf(now), id);
+                schedule.getMaxRows() > 0 ? schedule.getMaxRows() : 50, schedule.isActive(), schedule.getGroupName(), Timestamp.valueOf(now), id);
     }
 
     public void updateLastRun(String id, LocalDateTime lastRunAt, String status, String message) {

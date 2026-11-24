@@ -45,6 +45,7 @@ public class TelegramWatcherRepository {
                     "master_recipient_ids TEXT, " +
                     "phone_column_name VARCHAR(255), " +
                     "is_active BOOLEAN DEFAULT TRUE, " +
+                    "group_name VARCHAR(255) DEFAULT 'General', " +
                     "total_sent_count BIGINT DEFAULT 0, " +
                     "last_triggered_at TIMESTAMP, " +
                     "last_status VARCHAR(50), " +
@@ -53,6 +54,9 @@ public class TelegramWatcherRepository {
                     "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
                     ")";
             jdbcTemplate.execute(sql);
+            try {
+                jdbcTemplate.execute("ALTER TABLE telegram_watchers ADD COLUMN IF NOT EXISTS group_name VARCHAR(255) DEFAULT 'General'");
+            } catch (Exception ignored) {}
         } catch (Exception e) {
             logger.warn("Initialization of table telegram_watchers failed: {}", e.getMessage());
         }
@@ -76,6 +80,12 @@ public class TelegramWatcherRepository {
         w.setMasterRecipientIds(rs.getString("master_recipient_ids"));
         w.setPhoneColumnName(rs.getString("phone_column_name"));
         w.setActive(rs.getBoolean("is_active"));
+        try {
+            String grp = rs.getString("group_name");
+            w.setGroupName(grp != null && !grp.trim().isEmpty() ? grp : "General");
+        } catch (Exception ignored) {
+            w.setGroupName("General");
+        }
         w.setTotalSentCount(rs.getLong("total_sent_count"));
 
         Timestamp lastTrig = rs.getTimestamp("last_triggered_at");
@@ -108,23 +118,23 @@ public class TelegramWatcherRepository {
             w.setId("tgw-" + UUID.randomUUID().toString().substring(0, 8));
         }
         jdbcTemplate.update(
-            "INSERT INTO telegram_watchers (id, name, bot_id, connection_id, watcher_type, sql_query, watermark_column, last_watermark, poll_interval_seconds, flag_update_sql, pg_channel_name, template_message, recipient_mode, master_recipient_ids, phone_column_name, is_active, total_sent_count, created_at, updated_at) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            "INSERT INTO telegram_watchers (id, name, bot_id, connection_id, watcher_type, sql_query, watermark_column, last_watermark, poll_interval_seconds, flag_update_sql, pg_channel_name, template_message, recipient_mode, master_recipient_ids, phone_column_name, is_active, group_name, total_sent_count, created_at, updated_at) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             w.getId(), w.getName(), w.getBotId(), w.getConnectionId(), w.getWatcherType(),
             w.getSqlQuery(), w.getWatermarkColumn(), w.getLastWatermark(), w.getPollIntervalSeconds(),
             w.getFlagUpdateSql(), w.getPgChannelName(), w.getTemplateMessage(),
-            w.getRecipientMode(), w.getMasterRecipientIds(), w.getPhoneColumnName(), w.isActive()
+            w.getRecipientMode(), w.getMasterRecipientIds(), w.getPhoneColumnName(), w.isActive(), w.getGroupName()
         );
         return findById(w.getId());
     }
 
     public TelegramWatcher update(String id, TelegramWatcher w) {
         jdbcTemplate.update(
-            "UPDATE telegram_watchers SET name = ?, bot_id = ?, connection_id = ?, watcher_type = ?, sql_query = ?, watermark_column = ?, last_watermark = ?, poll_interval_seconds = ?, flag_update_sql = ?, pg_channel_name = ?, template_message = ?, recipient_mode = ?, master_recipient_ids = ?, phone_column_name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "UPDATE telegram_watchers SET name = ?, bot_id = ?, connection_id = ?, watcher_type = ?, sql_query = ?, watermark_column = ?, last_watermark = ?, poll_interval_seconds = ?, flag_update_sql = ?, pg_channel_name = ?, template_message = ?, recipient_mode = ?, master_recipient_ids = ?, phone_column_name = ?, is_active = ?, group_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             w.getName(), w.getBotId(), w.getConnectionId(), w.getWatcherType(),
             w.getSqlQuery(), w.getWatermarkColumn(), w.getLastWatermark(), w.getPollIntervalSeconds(),
             w.getFlagUpdateSql(), w.getPgChannelName(), w.getTemplateMessage(),
-            w.getRecipientMode(), w.getMasterRecipientIds(), w.getPhoneColumnName(), w.isActive(),
+            w.getRecipientMode(), w.getMasterRecipientIds(), w.getPhoneColumnName(), w.isActive(), w.getGroupName(),
             id
         );
         return findById(id);

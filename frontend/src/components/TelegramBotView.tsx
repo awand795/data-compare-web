@@ -36,10 +36,16 @@ import {
   Zap,
   PlayCircle,
   ShieldCheck,
-  BookOpen
+  BookOpen,
+  Folder,
+  FolderOpen,
+  ChevronDown,
+  ChevronRight,
+  Power,
+  Radio
 } from 'lucide-react';
 import clsx from 'clsx';
-import { TelegramWatcherTab } from './TelegramWatcherTab';
+import { TelegramWatcherTab, type TelegramWatcherItem } from './TelegramWatcherTab';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -107,6 +113,7 @@ interface TelegramSchedule {
   cronExpression?: string;
   maxRows: number;
   active: boolean;
+  groupName?: string;
   createdAt?: string;
   lastRunAt?: string;
   lastRunStatus?: string;
@@ -155,13 +162,21 @@ export const TelegramBotView: React.FC = () => {
   // Top Level Navigation
   // 'messages' = List View | 'create_edit' = Form View
   const [viewMode, setViewMode] = useState<'list' | 'create_edit'>('list');
-  const [activeTab, setActiveTab] = useState<'messages' | 'watchers' | 'contacts' | 'bots' | 'logs' | 'api_spec'>('messages');
+  const [activeTab, setActiveTab] = useState<'messages' | 'contacts' | 'bots' | 'logs' | 'api_spec'>('messages');
 
   // Master Data
   const [bots, setBots] = useState<TelegramBot[]>([]);
   const [contacts, setContacts] = useState<TelegramContact[]>([]);
   const [schedules, setSchedules] = useState<TelegramSchedule[]>([]);
+  const [watchers, setWatchers] = useState<TelegramWatcherItem[]>([]);
   const [logs, setLogs] = useState<TelegramLog[]>([]);
+  const [filterGroup, setFilterGroup] = useState<string>('ALL');
+  const [filterTriggerType, setFilterTriggerType] = useState<'ALL' | 'CRON' | 'REALTIME'>('ALL');
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({ General: true });
+  const [watcherCreateSignal, setWatcherCreateSignal] = useState(0);
+  const [watcherCreateGroup, setWatcherCreateGroup] = useState('General');
+  const [editingWatcherItem, setEditingWatcherItem] = useState<TelegramWatcherItem | null>(null);
+  const [sqlGuideWatcherItem, setSqlGuideWatcherItem] = useState<TelegramWatcherItem | null>(null);
 
   // Tab 5 API Integration & Tokens
   const [tokens, setTokens] = useState<TelegramApiToken[]>([]);
@@ -421,6 +436,7 @@ export const TelegramBotView: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────────
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formName, setFormName] = useState('');
+  const [formGroupName, setFormGroupName] = useState('General');
   const [formSenderMethod, setFormSenderMethod] = useState<'BOT_API' | 'MTPROTO_USER'>('BOT_API');
   const [formBotId, setFormBotId] = useState('');
   const [formMtprotoPhone, setFormMtprotoPhone] = useState('');
@@ -498,9 +514,36 @@ export const TelegramBotView: React.FC = () => {
     fetchBots();
     fetchContacts();
     fetchSchedules();
+    fetchWatchers();
     fetchLogs();
     fetchTokens();
   }, []);
+
+  const fetchWatchers = async () => {
+    try {
+      const res = await axios.get('/api/telegram/watchers');
+      setWatchers(res.data || []);
+    } catch (e) {
+      console.error('Failed to fetch watchers:', e);
+    }
+  };
+
+  const handleToggleWatcher = async (id: string) => {
+    await axios.put(`/api/telegram/watchers/${id}/toggle`);
+    fetchWatchers();
+  };
+
+  const handleRunWatcherNow = async (id: string) => {
+    await axios.post(`/api/telegram/watchers/${id}/run-now`);
+    fetchWatchers();
+    fetchLogs();
+  };
+
+  const handleDeleteWatcher = async (id: string, name: string) => {
+    if (!window.confirm(`Hapus Real-Time Watcher "${name}"?`)) return;
+    await axios.delete(`/api/telegram/watchers/${id}`);
+    fetchWatchers();
+  };
 
   useEffect(() => {
     if (connections && connections.length > 0 && !testDb) {
@@ -870,9 +913,10 @@ export const TelegramBotView: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────────
   // HANDLERS FOR CREATE / EDIT FORM
   // ─────────────────────────────────────────────────────────────────────────────
-  const handleOpenCreate = () => {
+  const handleOpenCreate = (presetGroup?: string) => {
     setEditingId(null);
     setFormName('');
+    setFormGroupName(presetGroup || (filterGroup !== 'ALL' ? filterGroup : 'General'));
     setFormSenderMethod('BOT_API');
     setFormBotId('');
     setFormMtprotoPhone('');
@@ -896,6 +940,7 @@ export const TelegramBotView: React.FC = () => {
   const handleOpenEdit = (s: TelegramSchedule) => {
     setEditingId(s.id);
     setFormName(s.name);
+    setFormGroupName(s.groupName || 'General');
     if (s.botId && s.botId.startsWith('mtproto:')) {
       setFormSenderMethod('MTPROTO_USER');
       setFormMtprotoPhone(s.botId.replace('mtproto:', ''));
@@ -1017,6 +1062,7 @@ export const TelegramBotView: React.FC = () => {
     try {
       const payload: Partial<TelegramSchedule> = {
         name: formName.trim(),
+        groupName: formGroupName.trim() || 'General',
         botId: resolvedBotId,
         connectionId: formConnectionId,
         sqlQuery: formSqlQuery,
@@ -1223,17 +1269,31 @@ export const TelegramBotView: React.FC = () => {
               </h2>
 
               <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1.5">
-                    Nama / Judul Notifikasi *
-                  </label>
-                  <input
-                    type="text"
-                    value={formName}
-                    onChange={e => setFormName(e.target.value)}
-                    placeholder="misal: Laporan Harian Tutup Periode ERP"
-                    className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-medium text-text-muted mb-1.5">
+                      Nama / Judul Notifikasi *
+                    </label>
+                    <input
+                      type="text"
+                      value={formName}
+                      onChange={e => setFormName(e.target.value)}
+                      placeholder="misal: Laporan Harian Tutup Periode ERP"
+                      className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-text-muted mb-1.5">
+                      Group / Folder
+                    </label>
+                    <input
+                      type="text"
+                      value={formGroupName}
+                      onChange={e => setFormGroupName(e.target.value)}
+                      placeholder="General"
+                      className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-amber-300 font-semibold focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
                 </div>
 
                 {/* Selector Metode Pengirim: Bot API vs MTProto */}
@@ -1807,17 +1867,7 @@ export const TelegramBotView: React.FC = () => {
             )}
           >
             <Send className="w-3.5 h-3.5" />
-            Daftar Pesan ({schedules.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('watchers')}
-            className={clsx(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors",
-              activeTab === 'watchers' ? "bg-amber-500 text-white shadow-sm font-semibold" : "text-text-muted hover:text-text-main"
-            )}
-          >
-            <Zap className="w-3.5 h-3.5" />
-            Real-Time Watchers &amp; Triggers
+            Pesan, Jadwal &amp; Real-Time ({schedules.length + watchers.length})
           </button>
           <button
             onClick={() => setActiveTab('contacts')}
@@ -1867,189 +1917,341 @@ export const TelegramBotView: React.FC = () => {
         {/* =========================================================================
             TAB 1: DAFTAR PESAN & JADWAL (LIST VIEW UTAMA)
         ========================================================================= */}
-        {activeTab === 'messages' && (
-          <div className="max-w-7xl mx-auto space-y-4">
-            {/* Filter & Action Toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-bg-panel border border-border-main p-3.5 rounded-xl">
-              <div className="flex items-center gap-3 flex-1 min-w-[280px]">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Cari nama notifikasi atau view..."
-                    className="w-full bg-bg-editor border border-border-main rounded-lg pl-9 pr-3 py-1.5 text-xs text-text-main focus:outline-none focus:border-sky-500"
-                  />
+        {activeTab === 'messages' && (() => {
+          const filteredWatchers = watchers.filter(w => {
+            const matchesSearch = w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              (w.pgChannelName && w.pgChannelName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+              (w.sqlQuery && w.sqlQuery.toLowerCase().includes(searchQuery.toLowerCase()));
+            const matchesBot = filterBotId === 'ALL' || w.botId === filterBotId;
+            return matchesSearch && matchesBot;
+          });
+
+          const allGroupNames = Array.from(new Set([
+            'General',
+            ...schedules.map(s => (s.groupName || 'General').trim()),
+            ...watchers.map(w => (w.groupName || 'General').trim())
+          ])).sort();
+
+          const groupedData = allGroupNames
+            .filter(g => filterGroup === 'ALL' || g === filterGroup)
+            .map(groupName => {
+              const groupSchedules = filterTriggerType === 'REALTIME'
+                ? []
+                : filteredSchedules.filter(s => (s.groupName || 'General').trim() === groupName);
+              const groupWatchers = filterTriggerType === 'CRON'
+                ? []
+                : filteredWatchers.filter(w => (w.groupName || 'General').trim() === groupName);
+              return { groupName, groupSchedules, groupWatchers };
+            })
+            .filter(g => g.groupSchedules.length > 0 || g.groupWatchers.length > 0);
+
+          return (
+            <div className="max-w-7xl mx-auto space-y-4">
+              {/* Filter & Action Toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-bg-panel border border-border-main p-3.5 rounded-xl">
+                <div className="flex items-center gap-2.5 flex-wrap flex-1 min-w-[280px]">
+                  <div className="relative flex-1 min-w-[200px] max-w-xs">
+                    <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="Cari nama, view, atau channel..."
+                      className="w-full bg-bg-editor border border-border-main rounded-lg pl-9 pr-3 py-1.5 text-xs text-text-main focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <select
+                    value={filterGroup}
+                    onChange={e => setFilterGroup(e.target.value)}
+                    className="bg-bg-editor border border-border-main rounded-lg px-3 py-1.5 text-xs text-amber-300 font-semibold focus:outline-none"
+                  >
+                    <option value="ALL">Semua Group ({allGroupNames.length})</option>
+                    {allGroupNames.map(g => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={filterTriggerType}
+                    onChange={e => setFilterTriggerType(e.target.value as any)}
+                    className="bg-bg-editor border border-border-main rounded-lg px-3 py-1.5 text-xs text-text-main focus:outline-none"
+                  >
+                    <option value="ALL">Semua Tipe</option>
+                    <option value="CRON">Cron Schedule</option>
+                    <option value="REALTIME">Real-Time Trigger</option>
+                  </select>
+
+                  <select
+                    value={filterBotId}
+                    onChange={e => setFilterBotId(e.target.value)}
+                    className="bg-bg-editor border border-border-main rounded-lg px-3 py-1.5 text-xs text-text-main focus:outline-none"
+                  >
+                    <option value="ALL">Semua Bot</option>
+                    {bots.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
                 </div>
 
-                <select
-                  value={filterBotId}
-                  onChange={e => setFilterBotId(e.target.value)}
-                  className="bg-bg-editor border border-border-main rounded-lg px-3 py-1.5 text-xs text-text-main focus:outline-none"
-                >
-                  <option value="ALL">Semua Bot</option>
-                  {bots.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenCreate()}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-lg text-xs font-bold shadow-md shadow-sky-500/20 transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Create Cron
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setWatcherCreateGroup(filterGroup !== 'ALL' ? filterGroup : 'General'); setWatcherCreateSignal(n => n + 1); }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-lg text-xs font-bold shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+                  >
+                    <Zap className="w-4 h-4" />
+                    Real-Time Trigger
+                  </button>
+                </div>
               </div>
 
-              {/* Tombol Utama: CREATE MESSAGE */}
-              <button
-                type="button"
-                onClick={handleOpenCreate}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-lg text-xs font-bold shadow-md shadow-sky-500/20 transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                Create Message
-              </button>
-            </div>
-
-            {/* List Table */}
-            <div className="bg-bg-panel border border-border-main rounded-xl overflow-hidden shadow-sm">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-border-main bg-bg-editor/50 text-text-muted uppercase text-[10px] tracking-wider">
-                    <th className="py-3 px-4 font-semibold">Nama Notifikasi</th>
-                    <th className="py-3 px-4 font-semibold">Sumber View / DB</th>
-                    <th className="py-3 px-4 font-semibold">Bot Pengirim</th>
-                    <th className="py-3 px-4 font-semibold">Jadwal (Cron)</th>
-                    <th className="py-3 px-4 font-semibold">Status Terakhir</th>
-                    <th className="py-3 px-4 font-semibold text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-main/50">
-                  {filteredSchedules.map(s => {
-                    const bot = bots.find(b => b.id === s.botId);
-                    const isRunning = runningAction === s.id;
-
+              {/* Grouped Folder Cards */}
+              {groupedData.length === 0 ? (
+                <div className="bg-bg-panel border border-border-main rounded-xl py-12 text-center text-text-muted">
+                  <Bot className="w-8 h-8 text-text-muted/30 mx-auto mb-2" />
+                  <div className="font-semibold text-xs">Belum ada Pesan / Real-Time Trigger</div>
+                  <p className="text-[11px] mt-0.5">
+                    Klik <b>"+ Create Cron"</b> atau <b>"+ Real-Time Trigger"</b> di atas untuk mulai.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {groupedData.map(({ groupName, groupSchedules, groupWatchers }) => {
+                    const isExpanded = searchQuery.trim() ? true : (expandedGroups[groupName] ?? true);
                     return (
-                      <tr key={s.id} className="hover:bg-bg-hover/50 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <div className="font-semibold text-text-main text-xs">{s.name}</div>
-                          <div className="text-[11px] text-text-muted mt-0.5 flex items-center gap-1.5">
-                            <span className="px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 font-mono text-[10px]">
-                              {s.viewName ? 'VIEW' : 'CUSTOM SQL'}
+                      <div key={groupName} className="bg-bg-panel border border-border-main rounded-xl overflow-hidden shadow-sm">
+                        <div
+                          onClick={() => setExpandedGroups(prev => ({ ...prev, [groupName]: !isExpanded }))}
+                          className="px-4 py-3 bg-bg-editor/60 border-b border-border-main flex items-center justify-between gap-2 cursor-pointer hover:bg-bg-hover/40"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            {isExpanded ? <FolderOpen className="w-4 h-4 text-amber-400" /> : <Folder className="w-4 h-4 text-amber-400" />}
+                            <span className="text-xs font-black text-text-main uppercase tracking-wider">{groupName}</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/15 text-sky-300 border border-sky-500/20">
+                              {groupSchedules.length} Cron
                             </span>
-                            {s.filterKodeNotifikasi && (
-                              <span className="text-text-muted">
-                                • {s.filterKodeNotifikasi}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="py-3.5 px-4 text-text-muted">
-                          <div className="font-mono text-xs text-text-main">
-                            {s.viewName ? `${s.schemaName || 'public'}.${s.viewName}` : 'Custom SQL'}
-                          </div>
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          {s.botId && s.botId.startsWith('mtproto:') ? (
-                            <div>
-                              <div className="flex items-center gap-1.5 text-amber-400 font-medium">
-                                <Send className="w-3.5 h-3.5" />
-                                MTProto (Telethon)
-                              </div>
-                              <div className="text-[10px] text-text-muted font-mono">
-                                📱 {s.botId.replace('mtproto:', '')}
-                              </div>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="flex items-center gap-1.5 text-text-main font-medium">
-                                <Bot className="w-3.5 h-3.5 text-sky-400" />
-                                {bot?.name || 'Bot'}
-                              </div>
-                              {bot?.botUsername && (
-                                <div className="text-[10px] text-text-muted font-mono">
-                                  @{bot.botUsername}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          {s.cronExpression && s.cronExpression.trim() ? (
-                            <div className="flex flex-wrap gap-1 max-w-[200px]">
-                              {s.cronExpression.split(/[\n,]+/).map((cr, idx) => (
-                                <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  {cr.trim()}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-[11px] text-text-muted">Manual</span>
-                          )}
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          {s.lastRunStatus ? (
-                            <span className={clsx(
-                              "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold",
-                              s.lastRunStatus === 'SUCCESS' ? "bg-emerald-500/10 text-emerald-400" :
-                              s.lastRunStatus === 'PARTIAL' ? "bg-amber-500/10 text-amber-400" : "bg-rose-500/10 text-rose-400"
-                            )}>
-                              {s.lastRunStatus}
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                              {groupWatchers.length} Real-Time
                             </span>
-                          ) : (
-                            <span className="text-[10px] text-text-muted">Belum pernah dijalankan</span>
-                          )}
-                        </td>
-
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
+                          </div>
+                          <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                             <button
                               type="button"
-                              onClick={() => handleRunNow(s.id)}
-                              disabled={isRunning}
-                              title="Kirim Sekarang"
-                              className="p-1.5 hover:bg-sky-500/10 text-sky-400 hover:text-sky-300 rounded border border-border-main transition-colors disabled:opacity-50"
+                              onClick={() => handleOpenCreate(groupName)}
+                              className="px-2 py-1 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-[10px] font-bold cursor-pointer"
                             >
-                              {isRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                              + Cron
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleOpenEdit(s)}
-                              title="Edit Pesan"
-                              className="p-1.5 hover:bg-bg-hover text-text-muted hover:text-text-main rounded border border-border-main transition-colors"
+                              onClick={() => { setWatcherCreateGroup(groupName); setWatcherCreateSignal(n => n + 1); }}
+                              className="px-2 py-1 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-[10px] font-bold cursor-pointer"
                             >
-                              <Pencil className="w-3.5 h-3.5" />
+                              + Trigger
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteSchedule(s.id, s.name)}
-                              title="Hapus"
-                              className="p-1.5 hover:bg-rose-500/10 text-text-muted hover:text-rose-400 rounded border border-border-main transition-colors"
+                              onClick={() => setExpandedGroups(prev => ({ ...prev, [groupName]: !isExpanded }))}
+                              className="p-1 text-text-muted"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                             </button>
                           </div>
-                        </td>
-                      </tr>
+                        </div>
+
+                        {isExpanded && (
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b border-border-main bg-bg-editor/30 text-text-muted uppercase text-[10px] tracking-wider">
+                                <th className="py-2.5 px-4 font-semibold">Nama / Tipe</th>
+                                <th className="py-2.5 px-4 font-semibold">Sumber DB / Channel</th>
+                                <th className="py-2.5 px-4 font-semibold">Bot Pengirim</th>
+                                <th className="py-2.5 px-4 font-semibold">Trigger / Jadwal</th>
+                                <th className="py-2.5 px-4 font-semibold">Status Terakhir</th>
+                                <th className="py-2.5 px-4 font-semibold text-right">Aksi</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border-main/50">
+                              {groupWatchers.map(w => {
+                                const bot = bots.find(b => b.id === w.botId);
+                                const conn = connections.find(c => c.id === w.connectionId);
+                                return (
+                                  <tr key={`w-${w.id}`} className={clsx("hover:bg-bg-hover/50 transition-colors", !w.active && "opacity-60")}>
+                                    <td className="py-3 px-4">
+                                      <div className="font-semibold text-text-main text-xs">{w.name}</div>
+                                      <div className="text-[11px] text-text-muted mt-0.5 flex items-center gap-1.5">
+                                        <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 font-mono text-[10px] font-bold flex items-center gap-1">
+                                          <Radio className="w-2.5 h-2.5" /> {w.watcherType}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <div className="font-mono text-[11px] text-emerald-300">
+                                        {w.watcherType === 'PG_LISTEN_NOTIFY' ? `channel: ${w.pgChannelName}` : (conn?.name || '-')}
+                                      </div>
+                                      <div className="text-[10px] text-text-muted truncate max-w-[200px]">
+                                        {conn?.name || '-'} {w.sqlQuery ? '• VIEW Lookup' : ''}
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-4 text-xs text-text-main">{bot?.name || w.botId}</td>
+                                    <td className="py-3 px-4">
+                                      <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px] font-mono font-bold">
+                                        {w.watcherType === 'PG_LISTEN_NOTIFY' ? 'INSTANT pg_notify' : w.watcherType === 'POLLING_WATERMARK' ? `POLLING ${w.pollIntervalSeconds}s` : 'WEBHOOK API'}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={clsx("px-2 py-0.5 rounded-full text-[10px] font-bold", w.lastStatus === 'FAILED' ? "bg-rose-500/15 text-rose-400" : "bg-emerald-500/15 text-emerald-400")}>
+                                          {w.lastStatus || 'STANDBY'}
+                                        </span>
+                                        <span className="text-[10px] font-mono text-text-muted">({w.totalSentCount || 0} sent)</span>
+                                      </div>
+                                      {w.lastMessage && <div className="text-[10px] text-text-muted truncate max-w-[180px] mt-0.5">{w.lastMessage}</div>}
+                                    </td>
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => setSqlGuideWatcherItem(w)}
+                                          title="SQL Trigger Guide"
+                                          className="p-1.5 hover:bg-amber-500/10 text-amber-400 rounded border border-border-main cursor-pointer"
+                                        >
+                                          <Code2 className="w-3.5 h-3.5" />
+                                        </button>
+                                        {w.watcherType === 'POLLING_WATERMARK' && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRunWatcherNow(w.id!)}
+                                            title="Check Now"
+                                            className="p-1.5 hover:bg-sky-500/10 text-sky-400 rounded border border-border-main cursor-pointer"
+                                          >
+                                            <Play className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleWatcher(w.id!)}
+                                          title={w.active ? 'Nonaktifkan' : 'Aktifkan'}
+                                          className={clsx("p-1.5 rounded border border-border-main cursor-pointer", w.active ? "text-emerald-400 hover:bg-emerald-500/10" : "text-slate-500 hover:bg-white/5")}
+                                        >
+                                          <Power className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingWatcherItem(w)}
+                                          title="Edit Watcher"
+                                          className="p-1.5 hover:bg-bg-hover text-text-muted hover:text-text-main rounded border border-border-main cursor-pointer"
+                                        >
+                                          <Pencil className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteWatcher(w.id!, w.name)}
+                                          title="Hapus"
+                                          className="p-1.5 hover:bg-rose-500/10 text-text-muted hover:text-rose-400 rounded border border-border-main cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+
+                              {groupSchedules.map(s => {
+                                const bot = bots.find(b => b.id === s.botId);
+                                const isRunning = runningAction === s.id;
+                                return (
+                                  <tr key={`s-${s.id}`} className="hover:bg-bg-hover/50 transition-colors">
+                                    <td className="py-3 px-4">
+                                      <div className="font-semibold text-text-main text-xs">{s.name}</div>
+                                      <div className="text-[11px] text-text-muted mt-0.5 flex items-center gap-1.5">
+                                        <span className="px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 font-mono text-[10px]">
+                                          {s.viewName ? 'VIEW' : 'CUSTOM SQL'}
+                                        </span>
+                                        {s.filterKodeNotifikasi && (
+                                          <span className="text-[10px] text-amber-400 font-mono">{s.filterKodeNotifikasi}</span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <div className="font-mono text-[11px] text-text-main">{s.viewName ? `${s.schemaName || 'public'}.${s.viewName}` : 'Custom SQL'}</div>
+                                      <div className="text-[10px] text-text-muted">{connections.find(c => c.id === s.connectionId)?.name || '-'}</div>
+                                    </td>
+                                    <td className="py-3 px-4 text-xs text-text-main">{bot?.name || s.botId}</td>
+                                    <td className="py-3 px-4">
+                                      {s.cronExpression ? (
+                                        <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 font-mono text-[10px]">
+                                          {s.cronExpression}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] text-text-muted">Manual</span>
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      {s.lastRunStatus ? (
+                                        <span className={clsx("px-2 py-0.5 rounded-full text-[10px] font-bold",
+                                          s.lastRunStatus === 'SUCCESS' ? "bg-emerald-500/10 text-emerald-400" :
+                                          s.lastRunStatus === 'PARTIAL' ? "bg-amber-500/10 text-amber-400" : "bg-rose-500/10 text-rose-400"
+                                        )}>
+                                          {s.lastRunStatus}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] text-text-muted">Belum pernah</span>
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRunNow(s.id)}
+                                          disabled={isRunning}
+                                          title="Kirim Sekarang"
+                                          className="p-1.5 hover:bg-sky-500/10 text-sky-400 hover:text-sky-300 rounded border border-border-main transition-colors disabled:opacity-50"
+                                        >
+                                          {isRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenEdit(s)}
+                                          title="Edit Pesan"
+                                          className="p-1.5 hover:bg-bg-hover text-text-muted hover:text-text-main rounded border border-border-main transition-colors"
+                                        >
+                                          <Pencil className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteSchedule(s.id, s.name)}
+                                          title="Hapus"
+                                          className="p-1.5 hover:bg-rose-500/10 text-text-muted hover:text-rose-400 rounded border border-border-main transition-colors"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
                     );
                   })}
-
-                  {filteredSchedules.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-text-muted">
-                        <Bot className="w-8 h-8 text-text-muted/30 mx-auto mb-2" />
-                        <div className="font-semibold text-xs">Belum ada Pesan Notifikasi</div>
-                        <p className="text-[11px] mt-0.5">
-                          Klik tombol <b>"+ Create Message"</b> di atas untuk membuat notifikasi baru dari view database.
-                        </p>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* =========================================================================
             TAB 2: MASTER KONTAK
@@ -2868,15 +3070,21 @@ export const TelegramBotView: React.FC = () => {
         {/* =========================================================================
             TAB 5: API INTEGRATION & SPEC
         ========================================================================= */}
-        {activeTab === 'watchers' && (
-          <TelegramWatcherTab
-            bots={bots}
-            contacts={contacts}
-            connections={connections}
-            tokens={tokens}
-            onCopyText={copyText}
-          />
-        )}
+        <TelegramWatcherTab
+          modalOnly
+          bots={bots}
+          contacts={contacts}
+          connections={connections}
+          tokens={tokens}
+          onCopyText={copyText}
+          externalCreateSignal={watcherCreateSignal}
+          externalCreateGroup={watcherCreateGroup}
+          externalEditWatcher={editingWatcherItem}
+          externalSqlGuideWatcher={sqlGuideWatcherItem}
+          onExternalEditClear={() => setEditingWatcherItem(null)}
+          onExternalSqlGuideClear={() => setSqlGuideWatcherItem(null)}
+          onWatchersChanged={fetchWatchers}
+        />
 
         {activeTab === 'api_spec' && (
           <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">

@@ -9,6 +9,7 @@ import clsx from 'clsx';
 export interface TelegramWatcherItem {
   id?: string;
   name: string;
+  groupName?: string;
   botId: string;
   connectionId: string;
   watcherType: 'POLLING_WATERMARK' | 'PG_LISTEN_NOTIFY' | 'WEBHOOK_TRIGGER';
@@ -35,6 +36,14 @@ interface TelegramWatcherTabProps {
   connections: Array<{ id: string; name: string; type: string }>;
   tokens: Array<{ id: string; token: string; isActive?: boolean; active?: boolean }>;
   onCopyText: (text: string, key?: string) => void;
+  modalOnly?: boolean;
+  externalCreateSignal?: number;
+  externalCreateGroup?: string;
+  externalEditWatcher?: TelegramWatcherItem | null;
+  externalSqlGuideWatcher?: TelegramWatcherItem | null;
+  onExternalEditClear?: () => void;
+  onExternalSqlGuideClear?: () => void;
+  onWatchersChanged?: () => void;
 }
 
 export const TelegramWatcherTab: React.FC<TelegramWatcherTabProps> = ({
@@ -42,7 +51,15 @@ export const TelegramWatcherTab: React.FC<TelegramWatcherTabProps> = ({
   contacts,
   connections,
   tokens,
-  onCopyText
+  onCopyText,
+  modalOnly = false,
+  externalCreateSignal,
+  externalCreateGroup,
+  externalEditWatcher,
+  externalSqlGuideWatcher,
+  onExternalEditClear,
+  onExternalSqlGuideClear,
+  onWatchersChanged
 }) => {
   const [watchers, setWatchers] = useState<TelegramWatcherItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -66,12 +83,52 @@ export const TelegramWatcherTab: React.FC<TelegramWatcherTabProps> = ({
   };
 
   useEffect(() => {
-    fetchWatchers();
-  }, []);
+    if (!modalOnly) {
+      fetchWatchers();
+    }
+  }, [modalOnly]);
+
+  useEffect(() => {
+    if (externalCreateSignal && externalCreateSignal > 0) {
+      setEditing({
+        name: '',
+        groupName: externalCreateGroup || 'General',
+        botId: bots[0]?.id || '',
+        connectionId: connections[0]?.id || '',
+        watcherType: 'PG_LISTEN_NOTIFY',
+        sqlQuery: '',
+        watermarkColumn: 'id',
+        lastWatermark: '',
+        pollIntervalSeconds: 5,
+        flagUpdateSql: '',
+        pgChannelName: 'tg_new_data_channel',
+        templateMessage: '<b>Data Baru Masuk!</b>\n{{pesan}}',
+        recipientMode: 'MASTER',
+        masterRecipientIds: contacts[0]?.id || '',
+        phoneColumnName: 'user_hp',
+        active: true
+      });
+      setIsModalOpen(true);
+    }
+  }, [externalCreateSignal]);
+
+  useEffect(() => {
+    if (externalEditWatcher) {
+      setEditing(externalEditWatcher);
+      setIsModalOpen(true);
+    }
+  }, [externalEditWatcher]);
+
+  useEffect(() => {
+    if (externalSqlGuideWatcher) {
+      setSqlGuideWatcher(externalSqlGuideWatcher);
+    }
+  }, [externalSqlGuideWatcher]);
 
   const openCreate = () => {
     setEditing({
       name: '',
+      groupName: 'General',
       botId: bots[0]?.id || '',
       connectionId: connections[0]?.id || '',
       watcherType: 'POLLING_WATERMARK',
@@ -100,7 +157,9 @@ export const TelegramWatcherTab: React.FC<TelegramWatcherTabProps> = ({
       }
       setIsModalOpen(false);
       setEditing(null);
-      fetchWatchers();
+      onExternalEditClear?.();
+      if (!modalOnly) fetchWatchers();
+      onWatchersChanged?.();
     } catch (e) {
       console.error('Failed to save watcher', e);
     }
@@ -209,7 +268,9 @@ EXECUTE FUNCTION fn_http_${cleanTbl}_tg();`;
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 animate-in fade-in duration-200">
+    <div className={modalOnly ? '' : 'max-w-7xl mx-auto space-y-4 animate-in fade-in duration-200'}>
+      {!modalOnly && (
+        <>
       {/* Header Toolbar */}
       <div className="bg-bg-panel border border-border-main p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -367,6 +428,8 @@ EXECUTE FUNCTION fn_http_${cleanTbl}_tg();`;
           })}
         </div>
       )}
+        </>
+      )}
 
       {/* CREATE / EDIT MODAL */}
       {isModalOpen && editing && (
@@ -382,7 +445,7 @@ EXECUTE FUNCTION fn_http_${cleanTbl}_tg();`;
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-text-muted uppercase mb-1">Nama Watcher</label>
                   <input
@@ -391,6 +454,16 @@ EXECUTE FUNCTION fn_http_${cleanTbl}_tg();`;
                     onChange={e => setEditing({ ...editing, name: e.target.value })}
                     placeholder="e.g. Notif SPB Baru"
                     className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-xs text-text-main outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-text-muted uppercase mb-1">Group / Folder</label>
+                  <input
+                    type="text"
+                    value={editing.groupName || 'General'}
+                    onChange={e => setEditing({ ...editing, groupName: e.target.value })}
+                    placeholder="General"
+                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-xs text-amber-300 font-semibold outline-none focus:border-sky-500"
                   />
                 </div>
                 <div>
@@ -625,7 +698,7 @@ EXECUTE FUNCTION fn_http_${cleanTbl}_tg();`;
                 </h3>
                 <p className="text-xs text-text-muted">Copy &amp; jalankan SQL ini di database ERP tanpa mengubah kode aplikasi ERP.</p>
               </div>
-              <button onClick={() => setSqlGuideWatcher(null)} className="text-text-muted hover:text-text-main cursor-pointer">
+              <button onClick={() => { setSqlGuideWatcher(null); onExternalSqlGuideClear?.(); }} className="text-text-muted hover:text-text-main cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>

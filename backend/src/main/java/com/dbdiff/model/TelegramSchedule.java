@@ -20,6 +20,7 @@ public class TelegramSchedule {
     private String cronExpression; // Single or comma-separated multi-cron expressions
     private int maxRows = 0; // 0 = Unlimited
     private boolean active = true;
+    private String groupName = "General";
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime lastRunAt;
@@ -28,6 +29,14 @@ public class TelegramSchedule {
 
     public String getSchemaName() {
         return schemaName;
+    }
+
+    public String getGroupName() {
+        return (groupName != null && !groupName.trim().isEmpty()) ? groupName.trim() : "General";
+    }
+
+    public void setGroupName(String groupName) {
+        this.groupName = groupName;
     }
 
     public void setSchemaName(String schemaName) {

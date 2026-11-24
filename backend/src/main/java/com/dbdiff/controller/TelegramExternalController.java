@@ -37,6 +37,12 @@ public class TelegramExternalController {
     @Autowired(required = false)
     private com.dbdiff.repository.TelegramWatcherRepository watcherRepository;
 
+    @Autowired(required = false)
+    private com.dbdiff.repository.TelegramContactRepository contactRepository;
+
+    @Autowired(required = false)
+    private com.dbdiff.repository.ConnectionRepository connectionRepository;
+
     @Autowired
     public TelegramExternalController(TelegramApiTokenRepository apiTokenRepository,
                                       TelegramSenderService senderService,
@@ -90,15 +96,28 @@ public class TelegramExternalController {
     }
 
     /**
-     * 1C. List & Create Real-Time Watchers via External API
+     * 1C. List, Create, Update, Toggle & Delete Real-Time Watchers via External API
      */
     @GetMapping({"/api/v1/telegram/external/watchers", "/api/telegram/external/watchers"})
-    public ResponseEntity<?> handleExternalListWatchers(HttpServletRequest request) {
+    public ResponseEntity<?> handleExternalListWatchers(
+            HttpServletRequest request,
+            @RequestParam(required = false) Boolean activeOnly,
+            @RequestParam(required = false) String groupName) {
         Map<String, Object> authError = new LinkedHashMap<>();
         if (!authenticateRequest(request, authError)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
         }
-        return ResponseEntity.ok(watcherRepository != null ? watcherRepository.findAll() : Collections.emptyList());
+        if (watcherRepository == null) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+        List<com.dbdiff.model.TelegramWatcher> list = (activeOnly != null && activeOnly)
+                ? watcherRepository.findAllActive()
+                : watcherRepository.findAll();
+        if (groupName != null && !groupName.trim().isEmpty()) {
+            String targetGrp = groupName.trim();
+            list = list.stream().filter(w -> targetGrp.equalsIgnoreCase(w.getGroupName())).toList();
+        }
+        return ResponseEntity.ok(list);
     }
 
     @PostMapping({"/api/v1/telegram/external/watchers", "/api/telegram/external/watchers"})
@@ -117,11 +136,156 @@ public class TelegramExternalController {
         return ResponseEntity.ok(saved);
     }
 
+    @PutMapping({"/api/v1/telegram/external/watchers/{id}", "/api/telegram/external/watchers/{id}"})
+    public ResponseEntity<?> handleExternalUpdateWatcher(
+            HttpServletRequest request,
+            @PathVariable String id,
+            @RequestBody com.dbdiff.model.TelegramWatcher watcher) {
+        Map<String, Object> authError = new LinkedHashMap<>();
+        if (!authenticateRequest(request, authError)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
+        }
+        if (watcherRepository == null || watcherService == null) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("success", false, "error", "Watcher service unavailable"));
+        }
+        if (watcherRepository.findById(id) == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("success", false, "error", "Watcher not found"));
+        }
+        com.dbdiff.model.TelegramWatcher updated = watcherRepository.update(id, watcher);
+        watcherService.registerWatcher(updated);
+        return ResponseEntity.ok(updated);
+    }
+
+    @PutMapping({"/api/v1/telegram/external/watchers/{id}/toggle", "/api/telegram/external/watchers/{id}/toggle"})
+    public ResponseEntity<?> handleExternalToggleWatcher(
+            HttpServletRequest request,
+            @PathVariable String id) {
+        Map<String, Object> authError = new LinkedHashMap<>();
+        if (!authenticateRequest(request, authError)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
+        }
+        if (watcherRepository == null || watcherService == null) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("success", false, "error", "Watcher service unavailable"));
+        }
+        com.dbdiff.model.TelegramWatcher existing = watcherRepository.findById(id);
+        if (existing == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("success", false, "error", "Watcher not found"));
+        }
+        watcherRepository.toggleActive(id, !existing.isActive());
+        com.dbdiff.model.TelegramWatcher updated = watcherRepository.findById(id);
+        watcherService.registerWatcher(updated);
+        return ResponseEntity.ok(updated);
+    }
+
+    @DeleteMapping({"/api/v1/telegram/external/watchers/{id}", "/api/telegram/external/watchers/{id}"})
+    public ResponseEntity<?> handleExternalDeleteWatcher(
+            HttpServletRequest request,
+            @PathVariable String id) {
+        Map<String, Object> authError = new LinkedHashMap<>();
+        if (!authenticateRequest(request, authError)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
+        }
+        if (watcherRepository == null || watcherService == null) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("success", false, "error", "Watcher service unavailable"));
+        }
+        watcherService.unregisterWatcher(id);
+        watcherRepository.delete(id);
+        return ResponseEntity.ok(Map.of("success", true));
+    }
+
+    /**
+     * 1D. External Overview: active bots, active watchers, active schedules, contacts & groups
+     */
+    @GetMapping({"/api/v1/telegram/external/overview", "/api/telegram/external/overview"})
+    public ResponseEntity<?> handleExternalOverview(HttpServletRequest request) {
+        Map<String, Object> authError = new LinkedHashMap<>();
+        if (!authenticateRequest(request, authError)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
+        }
+        List<TelegramBotConfig> activeBots = botConfigRepository.findAll().stream()
+                .filter(TelegramBotConfig::isPollingActive).toList();
+        List<com.dbdiff.model.TelegramWatcher> activeWatchers = watcherRepository != null
+                ? watcherRepository.findAllActive() : Collections.emptyList();
+        List<TelegramSchedule> activeSchedules = scheduleRepository.findAllActive();
+        long activeContactsCount = contactRepository != null
+                ? contactRepository.findAll().stream().filter(com.dbdiff.model.TelegramContact::isActive).count() : 0;
+
+        Set<String> groups = new TreeSet<>();
+        activeWatchers.forEach(w -> groups.add(w.getGroupName()));
+        activeSchedules.forEach(s -> groups.add(s.getGroupName()));
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("success", true);
+        out.put("activeBotsCount", activeBots.size());
+        out.put("activeWatchersCount", activeWatchers.size());
+        out.put("activeSchedulesCount", activeSchedules.size());
+        out.put("activeContactsCount", activeContactsCount);
+        out.put("groups", groups);
+        out.put("activeBots", activeBots.stream().map(b -> Map.of(
+                "id", b.getId(),
+                "name", b.getName(),
+                "botUsername", b.getBotUsername() != null ? b.getBotUsername() : "",
+                "isPollingActive", b.isPollingActive()
+        )).toList());
+        out.put("activeWatchers", activeWatchers);
+        out.put("activeSchedules", activeSchedules);
+        return ResponseEntity.ok(out);
+    }
+
+    /**
+     * 1E. List Contacts & Database Connections via External API
+     */
+    @GetMapping({"/api/v1/telegram/external/contacts", "/api/telegram/external/contacts"})
+    public ResponseEntity<?> handleExternalListContacts(
+            HttpServletRequest request,
+            @RequestParam(required = false) String botId,
+            @RequestParam(required = false) Boolean activeOnly) {
+        Map<String, Object> authError = new LinkedHashMap<>();
+        if (!authenticateRequest(request, authError)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
+        }
+        if (contactRepository == null) {
+            return ResponseEntity.ok(Map.of("success", true, "total", 0, "contacts", Collections.emptyList()));
+        }
+        List<com.dbdiff.model.TelegramContact> contacts = (botId != null && !botId.trim().isEmpty())
+                ? contactRepository.findByBotId(botId.trim())
+                : contactRepository.findAll();
+        if (activeOnly != null && activeOnly) {
+            contacts = contacts.stream().filter(com.dbdiff.model.TelegramContact::isActive).toList();
+        }
+        return ResponseEntity.ok(Map.of("success", true, "total", contacts.size(), "contacts", contacts));
+    }
+
+    @GetMapping({"/api/v1/telegram/external/connections", "/api/telegram/external/connections"})
+    public ResponseEntity<?> handleExternalListConnections(HttpServletRequest request) {
+        Map<String, Object> authError = new LinkedHashMap<>();
+        if (!authenticateRequest(request, authError)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
+        }
+        if (connectionRepository == null) {
+            return ResponseEntity.ok(Map.of("success", true, "total", 0, "connections", Collections.emptyList()));
+        }
+        List<Map<String, Object>> safeList = new ArrayList<>();
+        for (com.dbdiff.model.ConnectionDetails c : connectionRepository.findAll()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", c.getId());
+            m.put("name", c.getName());
+            m.put("type", c.getType());
+            m.put("host", c.getHost());
+            m.put("port", c.getPort());
+            m.put("database", c.getDatabase() != null ? c.getDatabase().trim() : "");
+            safeList.add(m);
+        }
+        return ResponseEntity.ok(Map.of("success", true, "total", safeList.size(), "connections", safeList));
+    }
+
     /**
      * 2. List all available active Telegram bots for external clients
      */
     @GetMapping({"/api/v1/telegram/external/bots", "/api/telegram/external/bots"})
-    public ResponseEntity<?> handleExternalListBots(HttpServletRequest request) {
+    public ResponseEntity<?> handleExternalListBots(
+            HttpServletRequest request,
+            @RequestParam(required = false) Boolean activeOnly) {
         Map<String, Object> authError = new LinkedHashMap<>();
         if (!authenticateRequest(request, authError)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError);
@@ -130,6 +294,9 @@ public class TelegramExternalController {
         List<TelegramBotConfig> allBots = botConfigRepository.findAll();
         List<Map<String, Object>> botSummaries = new ArrayList<>();
         for (TelegramBotConfig b : allBots) {
+            if (activeOnly != null && activeOnly && !b.isPollingActive()) {
+                continue;
+            }
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", b.getId());
             item.put("name", b.getName());

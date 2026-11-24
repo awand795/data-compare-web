@@ -26,6 +26,7 @@ public class TelegramWatcher {
     private String phoneColumnName;
 
     private boolean active = true;
+    private String groupName = "General";
     private long totalSentCount = 0;
     private LocalDateTime lastTriggeredAt;
     private String lastStatus;
@@ -80,6 +81,9 @@ public class TelegramWatcher {
 
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
+
+    public String getGroupName() { return (groupName != null && !groupName.trim().isEmpty()) ? groupName.trim() : "General"; }
+    public void setGroupName(String groupName) { this.groupName = groupName; }
 
     public long getTotalSentCount() { return totalSentCount; }
     public void setTotalSentCount(long totalSentCount) { this.totalSentCount = totalSentCount; }

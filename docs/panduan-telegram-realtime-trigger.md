@@ -83,8 +83,29 @@ Bot Telegram mengirim pesan ke **`chatId`**, bukan langsung ke nomor HP. Ada 2 c
    * Atau generate token baru: `POST {{BASE_URL}}/api/telegram/external/tokens/generate` dengan body `{"name": "Integration Token"}`.
    * Simpan token ke variable `{{API_TOKEN}}` di Postman.
 2. **Cek Connection ID Database Sumber**:
-   * `GET {{BASE_URL}}/api/connections`
+   * `GET {{BASE_URL}}/api/v1/telegram/external/connections` (Header `Authorization: Bearer {{API_TOKEN}}`)
    * Cari koneksi database target dan catat nilai **`id`**-nya (`<CONNECTION_ID>`).
+
+### Langkah 5: Referensi API Cek Status Aktif & Grouping (`External API`)
+
+Semua endpoint berikut memakai Header `Authorization: Bearer {{API_TOKEN}}`:
+
+* **Overview Lengkap (Semua Bot Aktif, Watcher Aktif, Schedule Aktif, Kontak Aktif & List Group)**:
+  `GET {{BASE_URL}}/api/v1/telegram/external/overview`
+* **Lihat Semua Bot / Hanya Bot Aktif**:
+  `GET {{BASE_URL}}/api/v1/telegram/external/bots?activeOnly=true`
+* **Lihat Semua Kontak / Hanya Kontak Aktif**:
+  `GET {{BASE_URL}}/api/v1/telegram/external/contacts?activeOnly=true`
+* **Lihat Watcher (Filter Aktif & Group)**:
+  `GET {{BASE_URL}}/api/v1/telegram/external/watchers?activeOnly=true&groupName=General`
+* **Lihat Schedule Cron Aktif**:
+  `GET {{BASE_URL}}/api/v1/telegram/external/schedules?activeOnly=true`
+* **Update Watcher (termasuk pindah `groupName`)**:
+  `PUT {{BASE_URL}}/api/v1/telegram/external/watchers/{watcherId}`
+* **Toggle Aktif / Nonaktif Watcher**:
+  `PUT {{BASE_URL}}/api/v1/telegram/external/watchers/{watcherId}/toggle`
+* **Hapus Watcher**:
+  `DELETE {{BASE_URL}}/api/v1/telegram/external/watchers/{watcherId}`
 
 ---
 
@@ -101,6 +122,7 @@ Digunakan ketika Anda memantau langsung sebuah **tabel transaksi/master** dan in
   ```json
   {
     "name": "Notif Transaksi Baru",
+    "groupName": "Sales",
     "botId": "<BOT_ID>",
     "connectionId": "<CONNECTION_ID>",
     "watcherType": "PG_LISTEN_NOTIFY",
@@ -176,6 +198,7 @@ Karena PostgreSQL tidak mengizinkan trigger `AFTER INSERT` dipasang langsung di 
   ```json
   {
     "name": "Notif Dinamis dari VIEW",
+    "groupName": "Notifikasi ERP",
     "botId": "<BOT_ID>",
     "connectionId": "<CONNECTION_ID>",
     "watcherType": "PG_LISTEN_NOTIFY",
