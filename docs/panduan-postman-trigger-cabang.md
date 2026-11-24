@@ -1,16 +1,15 @@
-# Panduan Lengkap Integrasi Real-Time Telegram Bot (Postman, Watcher API & PostgreSQL Trigger)
+# Panduan Lengkap Integrasi Real-Time Telegram Bot (Postman, Watcher API & PostgreSQL `pg_notify` Trigger)
 
-Dokumen ini disusun sebagai panduan teknis lengkap untuk **Tech Lead & Tim Engineering** dalam mengintegrasikan notifikasi Telegram real-time langsung dari database PostgreSQL (termasuk **Amazon RDS for PostgreSQL**) melalui **DarkoSync**, **tanpa mengubah kode aplikasi ERP**.
+Dokumen ini disusun sebagai panduan teknis lengkap untuk **Tech Lead & Tim Engineering** dalam mengintegrasikan notifikasi Telegram real-time langsung dari database PostgreSQL (termasuk **Amazon RDS for PostgreSQL**) melalui **DarkoSync** menggunakan **`PG_LISTEN_NOTIFY`**, **tanpa mengubah kode aplikasi ERP** dan **tanpa install plugin/extension tambahan** di PostgreSQL.
 
 ---
 
-## 1. Ringkasan Arsitektur & Kompatibilitas Amazon RDS
+## 1. Ringkasan Arsitektur & Keunggulan (`PG_LISTEN_NOTIFY`)
 
-| Mekanisme di DarkoSync | Cara Kerja | Butuh Plugin RDS? | Risiko ke Transaksi ERP | Cocok Untuk |
-| :--- | :--- | :--- | :--- | :--- |
-| **`PG_LISTEN_NOTIFY`** *(Direkomendasikan)* | Trigger PostgreSQL menjalankan `pg_notify(...)` setelah `COMMIT`; DarkoSync mendengar sinyal secara real-time (< 1 detik). | **Tidak** (fitur native PostgreSQL) | **Nol** (non-blocking, tidak ada HTTP call dari dalam DB) | Tabel biasa maupun `VIEW` (via lookup key) |
-| **`POLLING_WATERMARK`** | DarkoSync mengecek baris baru tiap `N` detik memakai index (`WHERE id > :last_watermark`). | **Tidak** (semua engine DB) | **Sangat rendah** (Index Range Scan) | Tabel/`VIEW` tanpa izin buat trigger |
-| **`WEBHOOK_TRIGGER`** | Aplikasi luar / AWS Lambda / `pg_net` menembak HTTP `POST` ke API DarkoSync. | `aws_lambda` (di RDS) / `pg_net` (non-RDS) | Tergantung caller async | Trigger dari service luar / API / Lambda |
+* **Real-Time (< 1 detik)**: Begitu transaksi `INSERT` di PostgreSQL `COMMIT`, `pg_notify(...)` langsung mengirim sinyal ke DarkoSync.
+* **Aman untuk Amazon RDS PostgreSQL**: `pg_notify` dan `LISTEN/NOTIFY` adalah fitur bawaan native PostgreSQL, sehingga **tidak perlu install plugin/extension** apa pun.
+* **Nol Risiko ke Transaksi ERP**: Trigger tidak melakukan HTTP call ke luar dari dalam database, sehingga tidak pernah membuat query `INSERT` aplikasi ERP melambat atau timeout.
+* **Fleksibel**: Mendukung **tabel biasa + custom message**, **`VIEW` yang sudah berisi kolom `user_hp` & `pesan`**, maupun **custom message langsung di SQL Trigger**.
 
 ---
 
@@ -36,11 +35,8 @@ Gunakan `{{BASE_URL}}` sesuai alamat server DarkoSync (misal `http://94.237.69.1
 
 * **List Watcher (External Token)**: `GET {{BASE_URL}}/api/v1/telegram/external/watchers`
 * **Buat Watcher (External Token)**: `POST {{BASE_URL}}/api/v1/telegram/external/watchers`
-* **Trigger Webhook Manual (External Token)**: `POST {{BASE_URL}}/api/v1/telegram/external/trigger/{watcherId}`
 * **Edit Watcher (Dashboard API)**: `PUT {{BASE_URL}}/api/telegram/watchers/{watcherId}`
 * **Aktif / Nonaktifkan Watcher**: `PUT {{BASE_URL}}/api/telegram/watchers/{watcherId}/toggle`
-* **Jalankan Polling Manual**: `POST {{BASE_URL}}/api/telegram/watchers/{watcherId}/run-now`
-* **Reset Watermark**: `POST {{BASE_URL}}/api/telegram/watchers/{watcherId}/reset-watermark`
 * **Hapus Watcher**: `DELETE {{BASE_URL}}/api/telegram/watchers/{watcherId}`
 
 ---
@@ -92,74 +88,53 @@ EXECUTE FUNCTION sch_erp_hr.fn_notify_mhs_cabang_tg();
 
 Jika Anda sudah memiliki `VIEW` (misalnya `sch_erp_system.view_all_notifikasi`) yang kolomnya sudah menghasilkan **`user_hp`** (penerima dinamis) dan **`pesan`** (isi pesan siap kirim):
 
-### Cara 2A: Real-Time via `PG_LISTEN_NOTIFY` + Lookup `VIEW` (Instan < 1 Detik)
-Karena `VIEW` tidak bisa dipasangi trigger secara langsung, trigger dipasang di **tabel dasar**, cukup mengirim key baris baru (`id` / `no_bukti`), lalu DarkoSync otomatis query ke `VIEW` Anda!
+Karena `VIEW` tidak bisa dipasangi trigger secara langsung, trigger `pg_notify` dipasang di **tabel dasar**, cukup mengirim key baris baru (`id` / `no_bukti`), lalu DarkoSync otomatis melakukan query lookup ke `VIEW` Anda!
 
-1. **Postman — Buat Watcher dengan Lookup `VIEW` & Penerima Dinamis (`user_hp`)**:
-   `POST {{BASE_URL}}/api/v1/telegram/external/watchers`
-   ```json
-   {
-     "name": "Notif Dinamis View Notifikasi",
-     "botId": "49659711-baef-4cb9-a5aa-3bb8edfd5d76",
-     "connectionId": "1783329332719",
-     "watcherType": "PG_LISTEN_NOTIFY",
-     "pgChannelName": "tg_view_notif",
-     "sqlQuery": "SELECT user_hp, pesan FROM sch_erp_system.view_all_notifikasi WHERE id = :id",
-     "templateMessage": "{{pesan}}",
-     "recipientMode": "DYNAMIC_COLUMN",
-     "phoneColumnName": "user_hp",
-     "active": true
-   }
-   ```
-   * `templateMessage` diisi `{{pesan}}` agar isi pesan persis mengikuti kolom `pesan` dari `VIEW`.
-   * Anda tetap bisa memodifikasi/membungkusnya jika mau, misalnya: `<b>Info ERP:</b>\n{{pesan}}`.
-
-2. **PostgreSQL — Pasang Trigger di Tabel Dasar**:
-   ```sql
-   CREATE OR REPLACE FUNCTION sch_erp_system.fn_notify_view_tg()
-   RETURNS trigger AS $$
-   BEGIN
-     PERFORM pg_notify(
-       'tg_view_notif',
-       json_build_object('id', NEW.id)::text
-     );
-     RETURN NEW;
-   END;
-   $$ LANGUAGE plpgsql;
-
-   DROP TRIGGER IF EXISTS trg_notify_view_tg ON sch_erp_system.tabel_sumber_notifikasi;
-
-   CREATE TRIGGER trg_notify_view_tg
-   AFTER INSERT ON sch_erp_system.tabel_sumber_notifikasi
-   FOR EACH ROW
-   EXECUTE FUNCTION sch_erp_system.fn_notify_view_tg();
-   ```
-
-### Cara 2B: Tanpa Trigger Sama Sekali via `POLLING_WATERMARK` langsung ke `VIEW`
-Cocok jika tidak ingin membuat trigger di database sumber dan `VIEW` memiliki kolom pengurut yang ter-index (`id` atau `created_at`):
-
+### Langkah 1 (Postman) — Buat Watcher dengan Lookup `VIEW` & Penerima Dinamis (`user_hp`)
+`POST {{BASE_URL}}/api/v1/telegram/external/watchers`
 ```json
 {
-  "name": "Polling View Notifikasi (5s)",
+  "name": "Notif Dinamis View Notifikasi",
   "botId": "49659711-baef-4cb9-a5aa-3bb8edfd5d76",
   "connectionId": "1783329332719",
-  "watcherType": "POLLING_WATERMARK",
-  "sqlQuery": "SELECT id, user_hp, pesan FROM sch_erp_system.view_all_notifikasi",
-  "watermarkColumn": "id",
-  "pollIntervalSeconds": 5,
+  "watcherType": "PG_LISTEN_NOTIFY",
+  "pgChannelName": "tg_view_notif",
+  "sqlQuery": "SELECT user_hp, pesan FROM sch_erp_system.view_all_notifikasi WHERE id = :id",
   "templateMessage": "{{pesan}}",
   "recipientMode": "DYNAMIC_COLUMN",
   "phoneColumnName": "user_hp",
   "active": true
 }
 ```
-> Pada start pertama kali jika `lastWatermark` kosong, DarkoSync otomatis mengambil `MAX(id)` sebagai baseline agar data historis lama tidak ikut terkirim ulang.
+* `templateMessage` diisi `{{pesan}}` agar isi pesan persis mengikuti kolom `pesan` dari `VIEW`.
+* Anda tetap bisa memodifikasi/membungkusnya jika mau, misalnya: `<b>Info ERP:</b>\n{{pesan}}`.
+
+### Langkah 2 (PostgreSQL) — Pasang Trigger di Tabel Dasar
+```sql
+CREATE OR REPLACE FUNCTION sch_erp_system.fn_notify_view_tg()
+RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify(
+    'tg_view_notif',
+    json_build_object('id', NEW.id)::text
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_notify_view_tg ON sch_erp_system.tabel_sumber_notifikasi;
+
+CREATE TRIGGER trg_notify_view_tg
+AFTER INSERT ON sch_erp_system.tabel_sumber_notifikasi
+FOR EACH ROW
+EXECUTE FUNCTION sch_erp_system.fn_notify_view_tg();
+```
 
 ---
 
 ## 5. Skenario 3 — Custom Message Langsung di Dalam SQL Trigger PostgreSQL
 
-Jika format pesan membutuhkan logika SQL (`IF/ELSE`, `CASE`, format rupiah `to_char`), rakit pesannya di function trigger:
+Jika format pesan membutuhkan logika SQL (`IF/ELSE`, `CASE`, format rupiah `to_char`), rakit pesannya langsung di function trigger:
 
 ```sql
 CREATE OR REPLACE FUNCTION sch_erp_hr.fn_notify_cabang_custom_sql()
@@ -186,30 +161,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 ```
-Lalu di Watcher DarkoSync, cukup set `templateMessage` = `{{pesan}}` dan `sqlQuery` = `""`.
+Lalu di Watcher DarkoSync, cukup set `templateMessage` = `{{pesan}}`, `sqlQuery` = `""`, dan `recipientMode` = `DYNAMIC_COLUMN` (`phoneColumnName` = `user_hp`) atau `MASTER`.
 
 ---
 
-## 6. Skenario 4 — Trigger HTTP API (`WEBHOOK_TRIGGER`)
-
-Cocok bila pemicu berasal dari microservice luar, AWS Lambda (untuk Amazon RDS via extension `aws_lambda`), atau PostgreSQL non-RDS dengan `pg_net`.
-
-1. **Buat Watcher** dengan `"watcherType": "WEBHOOK_TRIGGER"`.
-2. **Panggil Endpoint Trigger** dari Postman / Lambda / `pg_net`:
-   * `POST {{BASE_URL}}/api/v1/telegram/external/trigger/<WATCHER_ID>`
-   * Header: `Authorization: Bearer <TELEGRAM_EXTERNAL_TOKEN>`
-   * Body JSON:
-     ```json
-     {
-       "kode_cabang": "C009",
-       "nama_cabang": "MEDAN"
-     }
-     ```
-   *(Jika Watcher memiliki `sqlQuery` lookup ke `VIEW`, cukup kirim `{"id": 123}` saja.)*
-
----
-
-## 7. Testing, Monitoring Log & Rollback
+## 6. Testing, Monitoring Log & Rollback
 
 ### Simulasi Cepat dari SQL Editor (Tanpa Insert Data Asli)
 ```sql
