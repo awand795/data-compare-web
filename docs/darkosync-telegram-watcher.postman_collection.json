@@ -8,27 +8,27 @@
   "variable": [
     {
       "key": "BASE_URL",
-      "value": "http://94.237.69.119:5173"
+      "value": "https://darkosync.domain-anda.com"
     },
     {
       "key": "API_TOKEN",
-      "value": "dks_live_c69e313835394d81b0e18cdbb5bb0603"
+      "value": "PASTE_EXTERNAL_API_TOKEN"
     },
     {
       "key": "BOT_ID",
-      "value": "49659711-baef-4cb9-a5aa-3bb8edfd5d76"
+      "value": "PASTE_BOT_ID"
     },
     {
       "key": "CONNECTION_ID",
-      "value": "1783329332719"
+      "value": "PASTE_CONNECTION_ID"
     },
     {
       "key": "CONTACT_ID",
-      "value": "6eeb8cb9-95ce-4b5a-9297-7b393edc4957"
+      "value": "PASTE_CONTACT_ID"
     },
     {
       "key": "WATCHER_ID",
-      "value": "tgw-aa7203d0"
+      "value": "PASTE_WATCHER_ID"
     }
   ],
   "item": [
@@ -54,7 +54,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Darko Report\",\n  \"botToken\": \"PASTE_BOT_TOKEN_DARI_BOTFATHER\",\n  \"pollingActive\": true\n}"
+              "raw": "{\n  \"name\": \"ERP Notification Bot\",\n  \"botToken\": \"PASTE_BOT_TOKEN_DARI_BOTFATHER\",\n  \"pollingActive\": true\n}"
             },
             "url": "{{BASE_URL}}/api/telegram/bots"
           }
@@ -92,7 +92,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"botId\": \"{{BOT_ID}}\",\n  \"chatId\": \"5514717368\",\n  \"phoneNumber\": \"6282362851796\",\n  \"firstName\": \"Awanda\"\n}"
+              "raw": "{\n  \"botId\": \"{{BOT_ID}}\",\n  \"chatId\": \"123456789\",\n  \"phoneNumber\": \"6281234567890\",\n  \"firstName\": \"Nama Penerima\"\n}"
             },
             "url": "{{BASE_URL}}/api/telegram/contacts"
           }
@@ -134,7 +134,7 @@
       "name": "3. Contoh 1 - Watcher Tabel Biasa (Custom Message)",
       "item": [
         {
-          "name": "3.1 Create Watcher PG_LISTEN_NOTIFY (mhs_cabang)",
+          "name": "3.1 Create Watcher PG_LISTEN_NOTIFY (Tabel Biasa)",
           "request": {
             "method": "POST",
             "header": [
@@ -143,7 +143,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Notif Cabang Baru (mhs_cabang)\",\n  \"botId\": \"{{BOT_ID}}\",\n  \"connectionId\": \"{{CONNECTION_ID}}\",\n  \"watcherType\": \"PG_LISTEN_NOTIFY\",\n  \"pgChannelName\": \"tg_cabang_baru\",\n  \"sqlQuery\": \"\",\n  \"templateMessage\": \"halo ini nama cabang baru yang di tambah {{nama_cabang}} (Kode: {{kode_cabang}})\",\n  \"recipientMode\": \"MASTER\",\n  \"masterRecipientIds\": \"{{CONTACT_ID}}\",\n  \"active\": true\n}"
+              "raw": "{\n  \"name\": \"Notif Transaksi Baru\",\n  \"botId\": \"{{BOT_ID}}\",\n  \"connectionId\": \"{{CONNECTION_ID}}\",\n  \"watcherType\": \"PG_LISTEN_NOTIFY\",\n  \"pgChannelName\": \"tg_transaksi_baru\",\n  \"sqlQuery\": \"\",\n  \"templateMessage\": \"Data baru masuk!\\nNo: {{no_bukti}}\\nNama: {{nama}}\\nTotal: {{total}}\",\n  \"recipientMode\": \"MASTER\",\n  \"masterRecipientIds\": \"{{CONTACT_ID}}\",\n  \"active\": true\n}"
             },
             "url": "{{BASE_URL}}/api/v1/telegram/external/watchers"
           }
@@ -163,7 +163,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Notif Dinamis View Notifikasi\",\n  \"botId\": \"{{BOT_ID}}\",\n  \"connectionId\": \"{{CONNECTION_ID}}\",\n  \"watcherType\": \"PG_LISTEN_NOTIFY\",\n  \"pgChannelName\": \"tg_view_notif\",\n  \"sqlQuery\": \"SELECT user_hp, pesan FROM sch_erp_system.view_all_notifikasi WHERE id = :id\",\n  \"templateMessage\": \"{{pesan}}\",\n  \"recipientMode\": \"DYNAMIC_COLUMN\",\n  \"phoneColumnName\": \"user_hp\",\n  \"active\": true\n}"
+              "raw": "{\n  \"name\": \"Notif Dinamis dari VIEW\",\n  \"botId\": \"{{BOT_ID}}\",\n  \"connectionId\": \"{{CONNECTION_ID}}\",\n  \"watcherType\": \"PG_LISTEN_NOTIFY\",\n  \"pgChannelName\": \"tg_view_notif\",\n  \"sqlQuery\": \"SELECT user_hp, pesan FROM public.view_all_notifikasi WHERE id = :id\",\n  \"templateMessage\": \"{{pesan}}\",\n  \"recipientMode\": \"DYNAMIC_COLUMN\",\n  \"phoneColumnName\": \"user_hp\",\n  \"active\": true\n}"
             },
             "url": "{{BASE_URL}}/api/v1/telegram/external/watchers"
           }
@@ -190,7 +190,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Notif Cabang Baru (Updated)\",\n  \"botId\": \"{{BOT_ID}}\",\n  \"connectionId\": \"{{CONNECTION_ID}}\",\n  \"watcherType\": \"PG_LISTEN_NOTIFY\",\n  \"pgChannelName\": \"tg_cabang_baru\",\n  \"sqlQuery\": \"\",\n  \"templateMessage\": \"halo ini nama cabang baru yang di tambah {{nama_cabang}} (Kode: {{kode_cabang}})\",\n  \"recipientMode\": \"MASTER\",\n  \"masterRecipientIds\": \"{{CONTACT_ID}}\",\n  \"active\": true\n}"
+              "raw": "{\n  \"name\": \"Notif Transaksi Baru (Updated)\",\n  \"botId\": \"{{BOT_ID}}\",\n  \"connectionId\": \"{{CONNECTION_ID}}\",\n  \"watcherType\": \"PG_LISTEN_NOTIFY\",\n  \"pgChannelName\": \"tg_transaksi_baru\",\n  \"sqlQuery\": \"\",\n  \"templateMessage\": \"Data baru masuk!\\nNo: {{no_bukti}}\\nNama: {{nama}}\",\n  \"recipientMode\": \"MASTER\",\n  \"masterRecipientIds\": \"{{CONTACT_ID}}\",\n  \"active\": true\n}"
             },
             "url": "{{BASE_URL}}/api/telegram/watchers/{{WATCHER_ID}}"
           }
