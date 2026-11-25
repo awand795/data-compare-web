@@ -42,7 +42,9 @@ import {
   ChevronDown,
   ChevronRight,
   Power,
-  Radio
+  Radio,
+  FolderTree,
+  FolderPlus
 } from 'lucide-react';
 import clsx from 'clsx';
 import { TelegramWatcherTab, type TelegramWatcherItem } from './TelegramWatcherTab';
@@ -177,6 +179,15 @@ export const TelegramBotView: React.FC = () => {
   const [watcherCreateGroup, setWatcherCreateGroup] = useState('General');
   const [editingWatcherItem, setEditingWatcherItem] = useState<TelegramWatcherItem | null>(null);
   const [sqlGuideWatcherItem, setSqlGuideWatcherItem] = useState<TelegramWatcherItem | null>(null);
+  const [customGroups, setCustomGroups] = useState<string[]>([]);
+  const [isManageGroupsModalOpen, setIsManageGroupsModalOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
+  const [renameGroupValue, setRenameGroupValue] = useState('');
+  const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
+  const [assignTargetGroup, setAssignTargetGroup] = useState('General');
+  const [assignScheduleIds, setAssignScheduleIds] = useState<string[]>([]);
+  const [assignWatcherIds, setAssignWatcherIds] = useState<string[]>([]);
 
   // Tab 5 API Integration & Tokens
   const [tokens, setTokens] = useState<TelegramApiToken[]>([]);
@@ -515,9 +526,66 @@ export const TelegramBotView: React.FC = () => {
     fetchContacts();
     fetchSchedules();
     fetchWatchers();
+    fetchTelegramGroups();
     fetchLogs();
     fetchTokens();
   }, []);
+
+  const fetchTelegramGroups = async () => {
+    try {
+      const res = await axios.get('/api/groups?module=TELEGRAM');
+      setCustomGroups(res.data || []);
+    } catch (e) {
+      console.error('Failed to fetch telegram groups:', e);
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    const trimmed = newGroupName.trim();
+    if (!trimmed) return;
+    await axios.post('/api/groups', { module: 'TELEGRAM', name: trimmed });
+    setNewGroupName('');
+    setExpandedGroups(prev => ({ ...prev, [trimmed]: true }));
+    fetchTelegramGroups();
+  };
+
+  const handleRenameGroup = async (oldName: string) => {
+    const trimmed = renameGroupValue.trim();
+    if (!trimmed || trimmed === oldName) { setRenamingGroup(null); return; }
+    await axios.put('/api/groups/rename', { module: 'TELEGRAM', oldName, newName: trimmed });
+    setRenamingGroup(null);
+    setRenameGroupValue('');
+    fetchTelegramGroups();
+    fetchSchedules();
+    fetchWatchers();
+  };
+
+  const handleDeleteGroup = async (name: string) => {
+    if (!window.confirm(`Hapus group "${name}"? Semua item di dalamnya akan dipindahkan ke General.`)) return;
+    await axios.delete(`/api/groups?module=TELEGRAM&name=${encodeURIComponent(name)}`);
+    fetchTelegramGroups();
+    fetchSchedules();
+    fetchWatchers();
+  };
+
+  const handleOpenAssignGroup = (groupName: string) => {
+    setAssignTargetGroup(groupName);
+    setAssignScheduleIds(schedules.filter(s => (s.groupName || 'General').trim() === groupName).map(s => s.id));
+    setAssignWatcherIds(watchers.filter(w => (w.groupName || 'General').trim() === groupName && w.id).map(w => w.id!));
+    setIsAssignGroupModalOpen(true);
+  };
+
+  const handleSaveAssignGroup = async () => {
+    await axios.post('/api/groups/telegram/assign', {
+      groupName: assignTargetGroup,
+      scheduleIds: assignScheduleIds,
+      watcherIds: assignWatcherIds
+    });
+    setIsAssignGroupModalOpen(false);
+    fetchTelegramGroups();
+    fetchSchedules();
+    fetchWatchers();
+  };
 
   const fetchWatchers = async () => {
     try {
@@ -1928,10 +1996,12 @@ export const TelegramBotView: React.FC = () => {
 
           const allGroupNames = Array.from(new Set([
             'General',
+            ...customGroups,
             ...schedules.map(s => (s.groupName || 'General').trim()),
             ...watchers.map(w => (w.groupName || 'General').trim())
           ])).sort();
 
+          const hasActiveFilter = Boolean(searchQuery.trim()) || filterTriggerType !== 'ALL' || filterBotId !== 'ALL';
           const groupedData = allGroupNames
             .filter(g => filterGroup === 'ALL' || g === filterGroup)
             .map(groupName => {
@@ -1943,7 +2013,7 @@ export const TelegramBotView: React.FC = () => {
                 : filteredWatchers.filter(w => (w.groupName || 'General').trim() === groupName);
               return { groupName, groupSchedules, groupWatchers };
             })
-            .filter(g => g.groupSchedules.length > 0 || g.groupWatchers.length > 0);
+            .filter(g => !hasActiveFilter || g.groupSchedules.length > 0 || g.groupWatchers.length > 0);
 
           return (
             <div className="max-w-7xl mx-auto space-y-4">
@@ -1994,7 +2064,15 @@ export const TelegramBotView: React.FC = () => {
                   </select>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setIsManageGroupsModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                  >
+                    <FolderTree className="w-3.5 h-3.5" />
+                    Manage Groups ({allGroupNames.length})
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleOpenCreate()}
@@ -2044,6 +2122,13 @@ export const TelegramBotView: React.FC = () => {
                             </span>
                           </div>
                           <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAssignGroup(groupName)}
+                              className="px-2 py-1 rounded-md bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <FolderPlus className="w-3 h-3" /> Add Items
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleOpenCreate(groupName)}
@@ -3083,8 +3168,147 @@ export const TelegramBotView: React.FC = () => {
           externalSqlGuideWatcher={sqlGuideWatcherItem}
           onExternalEditClear={() => setEditingWatcherItem(null)}
           onExternalSqlGuideClear={() => setSqlGuideWatcherItem(null)}
-          onWatchersChanged={fetchWatchers}
+          onWatchersChanged={() => { fetchWatchers(); fetchTelegramGroups(); }}
         />
+
+        {/* MANAGE GROUPS MODAL */}
+        {isManageGroupsModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-bg-panel border border-border-main rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-border-main pb-3">
+                <h3 className="text-sm font-black text-text-main flex items-center gap-2">
+                  <FolderTree className="w-4 h-4 text-indigo-400" /> Manage Telegram Groups
+                </h3>
+                <button onClick={() => setIsManageGroupsModalOpen(false)} className="text-text-muted hover:text-text-main cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newGroupName}
+                  onChange={e => setNewGroupName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleCreateGroup()}
+                  placeholder="Nama group baru (misal: HR, Sales, Alert)..."
+                  className="flex-1 bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-xs text-text-main outline-none focus:border-indigo-500"
+                />
+                <button
+                  onClick={handleCreateGroup}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer"
+                >
+                  + Tambah
+                </button>
+              </div>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {Array.from(new Set(['General', ...customGroups, ...schedules.map(s => s.groupName || 'General'), ...watchers.map(w => w.groupName || 'General')])).sort().map(g => (
+                  <div key={g} className="flex items-center justify-between gap-2 bg-bg-editor/70 border border-border-main rounded-xl px-3 py-2">
+                    {renamingGroup === g ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          type="text"
+                          value={renameGroupValue}
+                          onChange={e => setRenameGroupValue(e.target.value)}
+                          className="flex-1 bg-bg-panel border border-indigo-500 rounded-lg px-2 py-1 text-xs text-text-main outline-none"
+                        />
+                        <button onClick={() => handleRenameGroup(g)} className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[11px] font-bold cursor-pointer">Simpan</button>
+                        <button onClick={() => setRenamingGroup(null)} className="px-2 py-1 text-text-muted text-[11px] cursor-pointer">Batal</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Folder className="w-4 h-4 text-amber-400" />
+                          <span className="text-xs font-bold text-text-main">{g}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => { setIsManageGroupsModalOpen(false); handleOpenAssignGroup(g); }}
+                            className="px-2 py-1 rounded-lg bg-purple-500/10 text-purple-300 text-[11px] font-bold cursor-pointer"
+                          >
+                            Assign Items
+                          </button>
+                          {g !== 'General' && (
+                            <>
+                              <button
+                                onClick={() => { setRenamingGroup(g); setRenameGroupValue(g); }}
+                                className="p-1 text-text-muted hover:text-text-main cursor-pointer"
+                                title="Rename"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteGroup(g)}
+                                className="p-1 text-rose-400 hover:bg-rose-500/10 rounded cursor-pointer"
+                                title="Delete Group"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ASSIGN ITEMS TO GROUP MODAL */}
+        {isAssignGroupModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-bg-panel border border-border-main rounded-2xl max-w-xl w-full p-5 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-border-main pb-3">
+                <h3 className="text-sm font-black text-text-main flex items-center gap-2">
+                  <FolderPlus className="w-4 h-4 text-purple-400" /> Assign Cron &amp; Trigger ke Group &quot;{assignTargetGroup}&quot;
+                </h3>
+                <button onClick={() => setIsAssignGroupModalOpen(false)} className="text-text-muted hover:text-text-main cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="max-h-80 overflow-y-auto space-y-2">
+                {watchers.map(w => {
+                  const checked = w.id ? assignWatcherIds.includes(w.id) : false;
+                  return (
+                    <label key={`aw-${w.id}`} className="flex items-center justify-between p-2.5 rounded-xl bg-bg-editor/60 border border-border-main cursor-pointer hover:border-amber-500/40">
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => w.id && setAssignWatcherIds(prev => checked ? prev.filter(x => x !== w.id) : [...prev, w.id!])}
+                        />
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 text-[10px] font-bold">REAL-TIME</span>
+                        <span className="text-xs font-semibold text-text-main">{w.name}</span>
+                      </div>
+                      <span className="text-[10px] text-text-muted">({w.groupName || 'General'})</span>
+                    </label>
+                  );
+                })}
+                {schedules.map(s => {
+                  const checked = assignScheduleIds.includes(s.id);
+                  return (
+                    <label key={`as-${s.id}`} className="flex items-center justify-between p-2.5 rounded-xl bg-bg-editor/60 border border-border-main cursor-pointer hover:border-sky-500/40">
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setAssignScheduleIds(prev => checked ? prev.filter(x => x !== s.id) : [...prev, s.id])}
+                        />
+                        <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 text-[10px] font-bold">CRON</span>
+                        <span className="text-xs font-semibold text-text-main">{s.name}</span>
+                      </div>
+                      <span className="text-[10px] text-text-muted">({s.groupName || 'General'})</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-border-main">
+                <button onClick={() => setIsAssignGroupModalOpen(false)} className="px-4 py-2 rounded-xl bg-bg-editor text-xs font-bold text-text-muted cursor-pointer">Batal</button>
+                <button onClick={handleSaveAssignGroup} className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer">Simpan ke Group</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {activeTab === 'api_spec' && (
           <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">

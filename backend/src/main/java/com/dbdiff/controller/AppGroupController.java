@@ -44,6 +44,16 @@ public class AppGroupController {
         return ResponseEntity.ok(Map.of("success", true, "oldName", oldName, "newName", newName.trim()));
     }
 
+    @PostMapping("/telegram/assign")
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<?> assignTelegramGroup(@RequestBody Map<String, Object> body) {
+        String groupName = body.get("groupName") != null ? body.get("groupName").toString() : "General";
+        List<String> scheduleIds = body.get("scheduleIds") instanceof List ? (List<String>) body.get("scheduleIds") : List.of();
+        List<String> watcherIds = body.get("watcherIds") instanceof List ? (List<String>) body.get("watcherIds") : List.of();
+        appGroupRepository.assignTelegramGroup(groupName, scheduleIds, watcherIds);
+        return ResponseEntity.ok(Map.of("success", true, "groupName", groupName));
+    }
+
     @DeleteMapping
     public ResponseEntity<?> deleteGroup(@RequestParam String module, @RequestParam String name) {
         if (module == null || name == null || name.trim().isEmpty()) {

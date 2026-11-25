@@ -36,6 +36,8 @@ public class AppGroupRepository {
                 jdbcTemplate.execute("INSERT INTO app_groups (module, name) SELECT DISTINCT 'API_SCHEDULER', TRIM(group_name) FROM api_schedulers WHERE group_name IS NOT NULL AND TRIM(group_name) != '' AND LOWER(TRIM(group_name)) != 'general' ON CONFLICT DO NOTHING");
                 jdbcTemplate.execute("INSERT INTO app_groups (module, name) SELECT DISTINCT 'SCHEDULE_JOB', TRIM(group_name) FROM schedules WHERE group_name IS NOT NULL AND TRIM(group_name) != '' AND LOWER(TRIM(group_name)) != 'general' ON CONFLICT DO NOTHING");
                 jdbcTemplate.execute("INSERT INTO app_groups (module, name) SELECT DISTINCT 'WEBHOOK', TRIM(group_name) FROM webhooks WHERE group_name IS NOT NULL AND TRIM(group_name) != '' AND LOWER(TRIM(group_name)) != 'general' ON CONFLICT DO NOTHING");
+                jdbcTemplate.execute("INSERT INTO app_groups (module, name) SELECT DISTINCT 'TELEGRAM', TRIM(group_name) FROM telegram_schedules WHERE group_name IS NOT NULL AND TRIM(group_name) != '' AND LOWER(TRIM(group_name)) != 'general' ON CONFLICT DO NOTHING");
+                jdbcTemplate.execute("INSERT INTO app_groups (module, name) SELECT DISTINCT 'TELEGRAM', TRIM(group_name) FROM telegram_watchers WHERE group_name IS NOT NULL AND TRIM(group_name) != '' AND LOWER(TRIM(group_name)) != 'general' ON CONFLICT DO NOTHING");
             } catch (Exception ignored) {}
         } catch (Exception e) {
             logger.warn("Could not create app_groups table: {}", e.getMessage());
@@ -69,6 +71,10 @@ public class AppGroupRepository {
         }
         String sql = "UPDATE app_groups SET name = ? WHERE module = ? AND name = ?";
         jdbcTemplate.update(sql, newName.trim(), module, oldName.trim());
+        if ("TELEGRAM".equalsIgnoreCase(module)) {
+            jdbcTemplate.update("UPDATE telegram_schedules SET group_name = ? WHERE group_name = ?", newName.trim(), oldName.trim());
+            jdbcTemplate.update("UPDATE telegram_watchers SET group_name = ? WHERE group_name = ?", newName.trim(), oldName.trim());
+        }
     }
 
     public void deleteGroup(String module, String name) {
@@ -77,5 +83,28 @@ public class AppGroupRepository {
         }
         String sql = "DELETE FROM app_groups WHERE module = ? AND name = ?";
         jdbcTemplate.update(sql, module, name.trim());
+        if ("TELEGRAM".equalsIgnoreCase(module)) {
+            jdbcTemplate.update("UPDATE telegram_schedules SET group_name = 'General' WHERE group_name = ?", name.trim());
+            jdbcTemplate.update("UPDATE telegram_watchers SET group_name = 'General' WHERE group_name = ?", name.trim());
+        }
+    }
+
+    public void assignTelegramGroup(String groupName, List<String> scheduleIds, List<String> watcherIds) {
+        String target = (groupName != null && !groupName.trim().isEmpty()) ? groupName.trim() : "General";
+        addGroup("TELEGRAM", target);
+        if (scheduleIds != null) {
+            for (String sid : scheduleIds) {
+                if (sid != null && !sid.trim().isEmpty()) {
+                    jdbcTemplate.update("UPDATE telegram_schedules SET group_name = ? WHERE id = ?", target, sid.trim());
+                }
+            }
+        }
+        if (watcherIds != null) {
+            for (String wid : watcherIds) {
+                if (wid != null && !wid.trim().isEmpty()) {
+                    jdbcTemplate.update("UPDATE telegram_watchers SET group_name = ? WHERE id = ?", target, wid.trim());
+                }
+            }
+        }
     }
 }
