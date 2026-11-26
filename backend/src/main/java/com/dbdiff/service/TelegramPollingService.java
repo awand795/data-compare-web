@@ -165,12 +165,13 @@ public class TelegramPollingService {
                 // Check if user is already registered with a phone number
                 TelegramContact existing = contactRepository.findByBotIdAndChatId(bot.getId(), chatId);
                 if (existing != null && existing.getPhoneNumber() != null && !existing.getPhoneNumber().trim().isEmpty()) {
+                    String botDisplayName = getBotDisplayName(bot);
                     String alreadyMsg = String.format(
                             "✅ <b>Anda Sudah Terdaftar!</b>\n\n" +
-                            "Halo <b>%s</b>, akun Telegram Anda sudah terdaftar dengan nomor <code>%s</code> di Darko Report.\n\n" +
+                            "Halo <b>%s</b>, akun Telegram Anda sudah terdaftar dengan nomor <code>%s</code> di <b>%s</b>.\n\n" +
                             "Status: 🟢 <b>Aktif</b>\n\n" +
                             "<i>Jika ingin memperbarui nomor telepon yang terhubung, silakan klik tombol di bawah:</i>",
-                            escapeHtml(firstName), existing.getPhoneNumber()
+                            escapeHtml(firstName), existing.getPhoneNumber(), botDisplayName
                     );
                     sendGreetingWithContactButton(bot, chatId, firstName, alreadyMsg);
                     return;
@@ -215,26 +216,35 @@ public class TelegramPollingService {
         c.setActive(true);
         contactRepository.upsertContact(c);
 
+        String botDisplayName = getBotDisplayName(bot);
         String replyMsg = String.format(
                 "✅ <b>Pendaftaran Berhasil!</b>\n\n" +
-                "Halo <b>%s</b>, nomor Anda <code>%s</code> telah berhasil terdaftar di Darko Report.\n\n" +
+                "Halo <b>%s</b>, nomor Anda <code>%s</code> telah berhasil terdaftar di <b>%s</b>.\n\n" +
                 "Anda akan otomatis menerima notifikasi dan laporan di sini.",
-                escapeHtml(firstName), phone
+                escapeHtml(firstName), phone, botDisplayName
         );
 
         sendSimpleMessageWithRemoveKeyboard(bot.getBotToken(), chatId, replyMsg);
     }
 
+    private String getBotDisplayName(TelegramBotConfig bot) {
+        if (bot != null && bot.getName() != null && !bot.getName().trim().isEmpty()) {
+            return escapeHtml(bot.getName().trim());
+        }
+        return "Darko Report";
+    }
+
     private void sendGreetingWithContactButton(TelegramBotConfig bot, String chatId, String firstName, String customText) {
         try {
             String url = String.format("https://api.telegram.org/bot%s/sendMessage", bot.getBotToken());
+            String botDisplayName = getBotDisplayName(bot);
 
             String greetingText = (customText != null && !customText.isEmpty()) ? customText : String.format(
-                    "👋 Halo <b>%s</b>! Selamat datang di <b>Darko Report</b>.\n\n" +
+                    "👋 Halo <b>%s</b>! Selamat datang di <b>%s</b>.\n\n" +
                     "Agar sistem kami dapat mengirimkan notifikasi dan laporan ke akun Anda, " +
                     "silakan klik tombol <b>📱 Bagikan Nomor Telepon Saya</b> di bawah ini:\n\n" +
                     "<i>(Atau langsung ketik nomor HP Anda di chat ini jika tombol tidak muncul)</i>",
-                    escapeHtml(firstName)
+                    escapeHtml(firstName), botDisplayName
             );
 
             Map<String, Object> contactBtn = new HashMap<>();

@@ -324,21 +324,33 @@ public class TelegramWatcherService {
 
         int sentCount = 0;
         int failedCount = 0;
+        String executionId = "tgw-" + UUID.randomUUID().toString().substring(0, 8);
         String flagSql = w.getFlagUpdateSql() != null ? w.getFlagUpdateSql().trim() : "";
 
         for (Map<String, Object> row : rows) {
             String message = renderTemplate(w.getTemplateMessage(), row);
-            List<String> chatIds = resolveRecipients(w, row);
+            List<RecipientTarget> targets = resolveRecipientTargets(w, row, bot.getId());
             boolean rowSentAny = false;
 
-            for (String chatId : chatIds) {
-                boolean ok = senderService.sendTelegramMessage(bot.getBotToken(), chatId, message);
+            if (targets.isEmpty()) {
+                failedCount++;
+                saveRecipientLog(executionId, w, bot, "-", "-", message, false,
+                        "Penerima tidak ditemukan atau kolom target kosong");
+                continue;
+            }
+
+            for (RecipientTarget target : targets) {
+                boolean ok = senderService.sendTelegramMessage(bot.getBotToken(), target.chatId, message);
                 if (ok) {
                     sentCount++;
                     rowSentAny = true;
                 } else {
                     failedCount++;
                 }
+                String detail = ok
+                        ? "Terkirim ke Telegram (chat_id: " + target.chatId + ")"
+                        : "Gagal kirim ke Telegram API (chat_id: " + target.chatId + ")";
+                saveRecipientLog(executionId, w, bot, target.recipientName, target.recipientPhone, message, ok, detail);
             }
 
             if (rowSentAny && !flagSql.isEmpty() && jdbc != null) {
@@ -350,28 +362,37 @@ public class TelegramWatcherService {
             }
         }
 
-        // Save to Telegram Logs
-        try {
-            TelegramLog logEntry = new TelegramLog();
-            logEntry.setExecutionId("tgw-" + UUID.randomUUID().toString().substring(0, 8));
-            logEntry.setScheduleId(w.getId());
-            logEntry.setScheduleName("[Watcher] " + w.getName());
-            logEntry.setBotName(bot.getName());
-            logEntry.setTriggerType(w.getWatcherType());
-            logEntry.setMessagesSent(sentCount);
-            logEntry.setMessagesFailed(failedCount);
-            logEntry.setStatus(failedCount == 0 && sentCount > 0 ? "BERHASIL" : (sentCount > 0 ? "PARTIAL" : "GAGAL"));
-            logEntry.setDetails(String.format("%s: %d baris data baru -> %d terkirim, %d gagal",
-                    w.getWatcherType(), rows.size(), sentCount, failedCount));
-            logRepository.save(logEntry);
-        } catch (Exception ignored) {}
-
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("success", failedCount == 0);
         out.put("rowsProcessed", rows.size());
         out.put("messagesSent", sentCount);
         out.put("messagesFailed", failedCount);
         return out;
+    }
+
+    private void saveRecipientLog(String executionId, TelegramWatcher w, TelegramBotConfig bot,
+                                  String recipientName, String recipientPhone, String messageText,
+                                  boolean success, String details) {
+        try {
+            TelegramLog logEntry = new TelegramLog();
+            logEntry.setExecutionId(executionId);
+            logEntry.setScheduleId(w.getId());
+            logEntry.setScheduleName("[Watcher] " + w.getName());
+            logEntry.setBotId(bot.getId());
+            logEntry.setBotName(bot.getName());
+            logEntry.setTriggerType(w.getWatcherType());
+            logEntry.setRecipientName(recipientName != null && !recipientName.isEmpty() ? recipientName : "-");
+            logEntry.setRecipientPhone(recipientPhone != null && !recipientPhone.isEmpty() ? recipientPhone : "-");
+            logEntry.setMessageText(messageText);
+            logEntry.setMessagesSent(success ? 1 : 0);
+            logEntry.setMessagesFailed(success ? 0 : 1);
+            logEntry.setTotalRows(1);
+            logEntry.setStatus(success ? "BERHASIL" : "GAGAL");
+            logEntry.setDetails(details);
+            logRepository.save(logEntry);
+        } catch (Exception ex) {
+            logger.warn("Failed to save watcher recipient log: {}", ex.getMessage());
+        }
     }
 
     private List<Map<String, Object>> enrichRowsFromViewQuery(TelegramWatcher w, List<Map<String, Object>> incomingRows) {
@@ -398,24 +419,56 @@ public class TelegramWatcherService {
         return result;
     }
 
-    private List<String> resolveRecipients(TelegramWatcher w, Map<String, Object> row) {
-        List<String> result = new ArrayList<>();
+    private static class RecipientTarget {
+        final String chatId;
+        final String recipientName;
+        final String recipientPhone;
+
+        RecipientTarget(String chatId, String recipientName, String recipientPhone) {
+            this.chatId = chatId;
+            this.recipientName = recipientName;
+            this.recipientPhone = recipientPhone;
+        }
+    }
+
+    private String formatContactDisplayName(TelegramContact c) {
+        if (c == null) return "-";
+        String fullName = ((c.getFirstName() != null ? c.getFirstName() : "") + " " +
+                (c.getLastName() != null ? c.getLastName() : "")).trim();
+        if (!fullName.isEmpty()) return fullName;
+        if (c.getUsername() != null && !c.getUsername().isEmpty()) return "@" + c.getUsername();
+        return c.getChatId() != null ? c.getChatId() : "-";
+    }
+
+    private List<RecipientTarget> resolveRecipientTargets(TelegramWatcher w, Map<String, Object> row, String botId) {
+        List<RecipientTarget> result = new ArrayList<>();
         if ("DYNAMIC_COLUMN".equalsIgnoreCase(w.getRecipientMode())) {
             String col = w.getPhoneColumnName();
             if (col != null && !col.trim().isEmpty()) {
                 Object val = getRowValueIgnoreCase(row, col.trim());
                 if (val != null) {
                     List<TelegramContact> allContacts = contactRepository.findAll();
+                    List<TelegramContact> botContacts = allContacts.stream()
+                            .filter(c -> botId != null && botId.equals(c.getBotId()))
+                            .toList();
                     for (String part : val.toString().split("[,;\\s]+")) {
                         String trimmed = part.trim();
                         if (!trimmed.isEmpty()) {
                             String normTarget = normalizePhone(trimmed);
-                            Optional<TelegramContact> matched = allContacts.stream()
+                            Optional<TelegramContact> matched = botContacts.stream()
                                     .filter(c -> trimmed.equals(c.getChatId())
                                             || trimmed.equals(c.getPhoneNumber())
                                             || (!normTarget.isEmpty() && normTarget.equals(normalizePhone(c.getPhoneNumber()))))
                                     .findFirst();
-                            result.add(matched.map(TelegramContact::getChatId).orElse(trimmed));
+                            if (matched.isPresent()) {
+                                TelegramContact c = matched.get();
+                                result.add(new RecipientTarget(
+                                        c.getChatId(),
+                                        formatContactDisplayName(c),
+                                        c.getPhoneNumber() != null && !c.getPhoneNumber().isEmpty() ? c.getPhoneNumber() : trimmed));
+                            } else {
+                                result.add(new RecipientTarget(trimmed, trimmed, trimmed));
+                            }
                         }
                     }
                 }
@@ -428,9 +481,13 @@ public class TelegramWatcherService {
                     if (trimmed.isEmpty()) continue;
                     TelegramContact contact = contactRepository.findById(trimmed);
                     if (contact != null && contact.getChatId() != null) {
-                        result.add(contact.getChatId());
+                        result.add(new RecipientTarget(
+                                contact.getChatId(),
+                                formatContactDisplayName(contact),
+                                contact.getPhoneNumber() != null && !contact.getPhoneNumber().isEmpty()
+                                        ? contact.getPhoneNumber() : "-"));
                     } else {
-                        result.add(trimmed);
+                        result.add(new RecipientTarget(trimmed, "Direct: " + trimmed, "-"));
                     }
                 }
             }

@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import {
   Zap, Plus, Play, Trash2, Edit2, Power, Radio, Webhook,
-  Code2, Copy, Check, RotateCcw, X, Clock
+  Code2, Copy, Check, RotateCcw, X, Clock, Search, ChevronDown, Users
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -32,7 +32,7 @@ export interface TelegramWatcherItem {
 
 interface TelegramWatcherTabProps {
   bots: Array<{ id: string; name: string; botUsername?: string }>;
-  contacts: Array<{ id: string; name?: string; firstName?: string; username?: string; chatId: string; phoneNumber?: string }>;
+  contacts: Array<{ id: string; botId?: string; name?: string; firstName?: string; username?: string; chatId: string; phoneNumber?: string }>;
   connections: Array<{ id: string; name: string; type: string }>;
   tokens: Array<{ id: string; token: string; isActive?: boolean; active?: boolean }>;
   onCopyText: (text: string, key?: string) => void;
@@ -69,6 +69,22 @@ export const TelegramWatcherTab: React.FC<TelegramWatcherTabProps> = ({
   const [sqlGuideTable, setSqlGuideTable] = useState('public.tr_spb');
   const [sqlGuideMode, setSqlGuideMode] = useState<'pg_notify' | 'pg_net' | 'mssql'>('pg_notify');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [recipientPopoverOpen, setRecipientPopoverOpen] = useState(false);
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [manualChatIdInput, setManualChatIdInput] = useState('');
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setRecipientPopoverOpen(false);
+      }
+    };
+    if (recipientPopoverOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [recipientPopoverOpen]);
 
   const fetchWatchers = async () => {
     setLoading(true);
@@ -627,37 +643,217 @@ EXECUTE FUNCTION fn_http_${cleanTbl}_tg();`;
                   </select>
                 </div>
 
-                {editing.recipientMode === 'MASTER' ? (
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      {contacts.map(c => {
-                        const checked = selectedMasterList.includes(c.id);
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => toggleMasterContact(c.id)}
-                            className={clsx(
-                              'px-2.5 py-1 rounded-lg text-xs font-semibold border cursor-pointer',
-                              checked
-                                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                                : 'bg-bg-editor text-text-muted border-border-main'
+                {editing.recipientMode === 'MASTER' ? (() => {
+                  const botContacts = contacts.filter(
+                    c => !editing.botId || !c.botId || c.botId === editing.botId
+                  );
+                  const q = recipientSearch.trim().toLowerCase();
+                  const filteredBotContacts = q
+                    ? botContacts.filter(c =>
+                        [c.name, c.firstName, c.username, c.phoneNumber, c.chatId]
+                          .filter(Boolean)
+                          .some(v => String(v).toLowerCase().includes(q))
+                      )
+                    : botContacts;
+
+                  const addManualChatId = () => {
+                    const val = manualChatIdInput.trim();
+                    if (!val) return;
+                    if (!selectedMasterList.includes(val)) {
+                      setEditing({
+                        ...editing,
+                        masterRecipientIds: [...selectedMasterList, val].join(',')
+                      });
+                    }
+                    setManualChatIdInput('');
+                  };
+
+                  return (
+                    <div className="space-y-2 relative" ref={popoverRef}>
+                      {/* Dropdown Trigger */}
+                      <button
+                        type="button"
+                        onClick={() => setRecipientPopoverOpen(prev => !prev)}
+                        className="w-full flex items-center justify-between gap-2 bg-bg-editor border border-border-main hover:border-sky-500/50 rounded-lg px-3 py-2 text-xs text-text-main transition-colors"
+                      >
+                        <span className="flex items-center gap-2 truncate">
+                          <Users className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                          {selectedMasterList.length === 0 ? (
+                            <span className="text-text-muted">Pilih kontak / group master...</span>
+                          ) : (
+                            <span className="font-medium">
+                              {selectedMasterList.length} penerima dipilih
+                            </span>
+                          )}
+                        </span>
+                        <ChevronDown
+                          className={clsx(
+                            'w-4 h-4 text-text-muted shrink-0 transition-transform',
+                            recipientPopoverOpen && 'rotate-180'
+                          )}
+                        />
+                      </button>
+
+                      {/* Selected Recipient Chips */}
+                      {selectedMasterList.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedMasterList.map(idOrChat => {
+                            const contact = contacts.find(c => c.id === idOrChat || c.chatId === idOrChat);
+                            const label = contact
+                              ? `${contact.name || contact.firstName || contact.username || contact.chatId} (${contact.phoneNumber || contact.chatId})`
+                              : `Chat ID: ${idOrChat}`;
+                            return (
+                              <span
+                                key={idOrChat}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/30"
+                              >
+                                {label}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleMasterContact(idOrChat)}
+                                  className="hover:text-rose-400 transition-colors"
+                                  title="Hapus penerima"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Popover Multi-Select with Search */}
+                      {recipientPopoverOpen && (
+                        <div className="absolute left-0 right-0 bottom-full mb-1.5 z-50 bg-bg-panel border border-border-main rounded-xl shadow-2xl overflow-hidden flex flex-col">
+                          {/* Search Bar */}
+                          <div className="p-2.5 border-b border-border-main bg-bg-editor/60 space-y-2">
+                            <div className="relative">
+                              <Search className="w-3.5 h-3.5 text-text-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                autoFocus
+                                value={recipientSearch}
+                                onChange={e => setRecipientSearch(e.target.value)}
+                                placeholder="Cari nama, no HP, @username, atau Chat ID..."
+                                className="w-full bg-bg-main border border-border-main rounded-lg pl-8 pr-7 py-1.5 text-xs text-text-main outline-none focus:border-sky-500"
+                              />
+                              {recipientSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRecipientSearch('')}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-text-muted px-0.5">
+                              <span>
+                                Menampilkan {filteredBotContacts.length} dari {botContacts.length} kontak bot
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const allIds = Array.from(
+                                      new Set([...selectedMasterList, ...filteredBotContacts.map(c => c.id)])
+                                    );
+                                    setEditing({ ...editing, masterRecipientIds: allIds.join(',') });
+                                  }}
+                                  className="text-sky-400 hover:underline font-semibold"
+                                >
+                                  Pilih Semua
+                                </button>
+                                <span>•</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditing({ ...editing, masterRecipientIds: '' })}
+                                  className="text-rose-400 hover:underline font-semibold"
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Scrollable Checkbox List */}
+                          <div className="max-h-48 overflow-y-auto divide-y divide-border-main/40">
+                            {filteredBotContacts.length === 0 ? (
+                              <div className="py-6 text-center text-xs text-text-muted">
+                                {botContacts.length === 0
+                                  ? 'Belum ada kontak terdaftar untuk bot ini.'
+                                  : 'Kontak tidak ditemukan.'}
+                              </div>
+                            ) : (
+                              filteredBotContacts.map(c => {
+                                const checked = selectedMasterList.includes(c.id);
+                                const displayName = c.name || c.firstName || c.username || c.chatId;
+                                return (
+                                  <label
+                                    key={c.id}
+                                    className={clsx(
+                                      'flex items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs transition-colors',
+                                      checked ? 'bg-sky-500/10' : 'hover:bg-bg-editor/70'
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleMasterContact(c.id)}
+                                        className="rounded border-border-main accent-sky-500"
+                                      />
+                                      <div className="min-w-0">
+                                        <div className="font-semibold text-text-main truncate">
+                                          {displayName}
+                                          {c.username && (
+                                            <span className="ml-1.5 text-[11px] font-normal text-text-muted">
+                                              @{c.username}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="text-[11px] text-text-muted font-mono truncate">
+                                          {c.phoneNumber ? `HP: ${c.phoneNumber} • ` : ''}
+                                          Chat ID: {c.chatId}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    {checked && <Check className="w-3.5 h-3.5 text-sky-400 shrink-0" />}
+                                  </label>
+                                );
+                              })
                             )}
-                          >
-                            {c.name || c.firstName || c.username || c.chatId} ({c.chatId})
-                          </button>
-                        );
-                      })}
+                          </div>
+
+                          {/* Optional Manual Chat ID / Group ID */}
+                          <div className="p-2 border-t border-border-main bg-bg-editor/50 flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={manualChatIdInput}
+                              onChange={e => setManualChatIdInput(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  addManualChatId();
+                                }
+                              }}
+                              placeholder="Tambah Chat ID / Group ID manual (mis. -100987654)"
+                              className="flex-1 bg-bg-main border border-border-main rounded-lg px-2.5 py-1 text-[11px] font-mono text-text-main outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={addManualChatId}
+                              className="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-semibold shrink-0"
+                            >
+                              + Tambah
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <input
-                      type="text"
-                      value={editing.masterRecipientIds}
-                      onChange={e => setEditing({ ...editing, masterRecipientIds: e.target.value })}
-                      placeholder="Atau ketik Chat ID langsung dipisah koma, misal: 123456789,-100987654"
-                      className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-1.5 text-xs font-mono text-text-main outline-none"
-                    />
-                  </div>
-                ) : (
+                  );
+                })() : (
                   <input
                     type="text"
                     value={editing.phoneColumnName || ''}
