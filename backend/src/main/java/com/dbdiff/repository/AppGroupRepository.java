@@ -69,11 +69,13 @@ public class AppGroupRepository {
         if (oldName == null || newName == null || newName.trim().isEmpty()) {
             return;
         }
-        String sql = "UPDATE app_groups SET name = ? WHERE module = ? AND name = ?";
-        jdbcTemplate.update(sql, newName.trim(), module, oldName.trim());
+        String trimmedOld = oldName.trim();
+        String trimmedNew = newName.trim();
+        jdbcTemplate.update("DELETE FROM app_groups WHERE module = ? AND name = ?", module, trimmedOld);
+        addGroup(module, trimmedNew);
         if ("TELEGRAM".equalsIgnoreCase(module)) {
-            jdbcTemplate.update("UPDATE telegram_schedules SET group_name = ? WHERE group_name = ?", newName.trim(), oldName.trim());
-            jdbcTemplate.update("UPDATE telegram_watchers SET group_name = ? WHERE group_name = ?", newName.trim(), oldName.trim());
+            jdbcTemplate.update("UPDATE telegram_schedules SET group_name = ? WHERE group_name = ?", trimmedNew, trimmedOld);
+            jdbcTemplate.update("UPDATE telegram_watchers SET group_name = ? WHERE group_name = ?", trimmedNew, trimmedOld);
         }
     }
 

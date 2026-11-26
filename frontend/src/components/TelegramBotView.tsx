@@ -448,6 +448,18 @@ export const TelegramBotView: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formName, setFormName] = useState('');
   const [formGroupName, setFormGroupName] = useState('General');
+  const [isCustomScheduleGroupInput, setIsCustomScheduleGroupInput] = useState(false);
+
+  const allGroupNames = useMemo(() => {
+    return Array.from(
+      new Set([
+        'General',
+        ...customGroups.map(g => g.trim()).filter(Boolean),
+        ...schedules.map(s => (s.groupName || 'General').trim()).filter(Boolean),
+        ...watchers.map(w => (w.groupName || 'General').trim()).filter(Boolean),
+      ])
+    ).sort((a, b) => (a === 'General' ? -1 : b === 'General' ? 1 : a.localeCompare(b)));
+  }, [customGroups, schedules, watchers]);
   const [formSenderMethod, setFormSenderMethod] = useState<'BOT_API' | 'MTPROTO_USER'>('BOT_API');
   const [formBotId, setFormBotId] = useState('');
   const [formMtprotoPhone, setFormMtprotoPhone] = useState('');
@@ -543,29 +555,49 @@ export const TelegramBotView: React.FC = () => {
   const handleCreateGroup = async () => {
     const trimmed = newGroupName.trim();
     if (!trimmed) return;
-    await axios.post('/api/groups', { module: 'TELEGRAM', name: trimmed });
-    setNewGroupName('');
-    setExpandedGroups(prev => ({ ...prev, [trimmed]: true }));
-    fetchTelegramGroups();
+    try {
+      await axios.post('/api/groups', { module: 'TELEGRAM', name: trimmed });
+      setCustomGroups(prev => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+      setNewGroupName('');
+      setExpandedGroups(prev => ({ ...prev, [trimmed]: true }));
+      showAlert({ title: 'Group Ditambahkan', message: `Group "${trimmed}" berhasil ditambahkan.`, type: 'success' });
+      fetchTelegramGroups();
+    } catch (e: any) {
+      showAlert({ title: 'Gagal Tambah Group', message: e?.response?.data?.error || e.message || 'Gagal menambah group.', type: 'error' });
+    }
   };
 
   const handleRenameGroup = async (oldName: string) => {
     const trimmed = renameGroupValue.trim();
     if (!trimmed || trimmed === oldName) { setRenamingGroup(null); return; }
-    await axios.put('/api/groups/rename', { module: 'TELEGRAM', oldName, newName: trimmed });
-    setRenamingGroup(null);
-    setRenameGroupValue('');
-    fetchTelegramGroups();
-    fetchSchedules();
-    fetchWatchers();
+    try {
+      await axios.put('/api/groups/rename', { module: 'TELEGRAM', oldName, newName: trimmed });
+      setCustomGroups(prev => Array.from(new Set(prev.map(g => (g === oldName ? trimmed : g)))));
+      setRenamingGroup(null);
+      setRenameGroupValue('');
+      if (filterGroup === oldName) setFilterGroup(trimmed);
+      showAlert({ title: 'Group Diubah', message: `Group "${oldName}" diubah menjadi "${trimmed}".`, type: 'success' });
+      fetchTelegramGroups();
+      fetchSchedules();
+      fetchWatchers();
+    } catch (e: any) {
+      showAlert({ title: 'Gagal Rename Group', message: e?.response?.data?.error || e.message || 'Gagal mengubah nama group.', type: 'error' });
+    }
   };
 
   const handleDeleteGroup = async (name: string) => {
     if (!window.confirm(`Hapus group "${name}"? Semua item di dalamnya akan dipindahkan ke General.`)) return;
-    await axios.delete(`/api/groups?module=TELEGRAM&name=${encodeURIComponent(name)}`);
-    fetchTelegramGroups();
-    fetchSchedules();
-    fetchWatchers();
+    try {
+      await axios.delete(`/api/groups?module=TELEGRAM&name=${encodeURIComponent(name)}`);
+      setCustomGroups(prev => prev.filter(g => g !== name));
+      if (filterGroup === name) setFilterGroup('ALL');
+      showAlert({ title: 'Group Dihapus', message: `Group "${name}" dihapus. Item dipindahkan ke General.`, type: 'success' });
+      fetchTelegramGroups();
+      fetchSchedules();
+      fetchWatchers();
+    } catch (e: any) {
+      showAlert({ title: 'Gagal Hapus Group', message: e?.response?.data?.error || e.message || 'Gagal menghapus group.', type: 'error' });
+    }
   };
 
   const handleOpenAssignGroup = (groupName: string) => {
@@ -984,7 +1016,9 @@ export const TelegramBotView: React.FC = () => {
   const handleOpenCreate = (presetGroup?: string) => {
     setEditingId(null);
     setFormName('');
-    setFormGroupName(presetGroup || (filterGroup !== 'ALL' ? filterGroup : 'General'));
+    const initGrp = presetGroup || (filterGroup !== 'ALL' ? filterGroup : 'General');
+    setFormGroupName(initGrp);
+    setIsCustomScheduleGroupInput(false);
     setFormSenderMethod('BOT_API');
     setFormBotId('');
     setFormMtprotoPhone('');
@@ -1008,7 +1042,9 @@ export const TelegramBotView: React.FC = () => {
   const handleOpenEdit = (s: TelegramSchedule) => {
     setEditingId(s.id);
     setFormName(s.name);
-    setFormGroupName(s.groupName || 'General');
+    const grp = s.groupName || 'General';
+    setFormGroupName(grp);
+    setIsCustomScheduleGroupInput(Boolean(grp && !allGroupNames.includes(grp)));
     if (s.botId && s.botId.startsWith('mtproto:')) {
       setFormSenderMethod('MTPROTO_USER');
       setFormMtprotoPhone(s.botId.replace('mtproto:', ''));
@@ -1146,6 +1182,10 @@ export const TelegramBotView: React.FC = () => {
         active: formActive
       };
 
+      if (payload.groupName && payload.groupName !== 'General') {
+        await axios.post('/api/groups', { module: 'TELEGRAM', name: payload.groupName }).catch(() => {});
+        fetchTelegramGroups();
+      }
       if (editingId) {
         await axios.put(`/api/telegram/schedules/${editingId}`, payload);
         showAlert({ title: 'Berhasil Diperbarui', message: 'Pesan notifikasi berhasil diperbarui.', type: 'success' });
@@ -1354,13 +1394,79 @@ export const TelegramBotView: React.FC = () => {
                     <label className="block text-xs font-medium text-text-muted mb-1.5">
                       Group / Folder
                     </label>
-                    <input
-                      type="text"
-                      value={formGroupName}
-                      onChange={e => setFormGroupName(e.target.value)}
-                      placeholder="General"
-                      className="w-full bg-bg-editor border border-border-main rounded-lg px-3 py-2 text-xs text-amber-300 font-semibold focus:outline-none focus:border-sky-500"
-                    />
+                    {!isCustomScheduleGroupInput ? (
+                      <div className="relative">
+                        <select
+                          value={allGroupNames.includes(formGroupName || 'General') ? (formGroupName || 'General') : '__NEW__'}
+                          onChange={(e) => {
+                            if (e.target.value === '__NEW__') {
+                              setIsCustomScheduleGroupInput(true);
+                              setFormGroupName('');
+                            } else {
+                              setFormGroupName(e.target.value);
+                            }
+                          }}
+                          className="w-full bg-bg-editor border border-border-main hover:border-sky-500/50 focus:border-sky-500 rounded-lg px-3 py-2 text-xs font-semibold text-text-main outline-none cursor-pointer appearance-none pr-8"
+                        >
+                          {allGroupNames.map(g => (
+                            <option key={g} value={g} className="bg-bg-panel text-text-main">
+                              📁 {g}
+                            </option>
+                          ))}
+                          <option value="__NEW__" className="bg-bg-panel text-sky-400 font-bold">
+                            ➕ Add New Group...
+                          </option>
+                        </select>
+                        <ChevronDown className="w-3.5 h-3.5 text-text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={formGroupName}
+                          onChange={e => setFormGroupName(e.target.value)}
+                          placeholder="Nama group baru (misal: HR, Sales)..."
+                          className="flex-1 bg-bg-editor border border-sky-500 rounded-lg px-3 py-2 text-xs text-amber-300 font-semibold focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomScheduleGroupInput(false);
+                            setFormGroupName('General');
+                          }}
+                          className="px-2.5 py-2 rounded-lg bg-bg-editor border border-border-main text-[11px] font-semibold text-text-muted hover:text-text-main"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    )}
+                    {allGroupNames.length > 1 && (
+                      <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                        <span className="text-[10px] text-text-muted font-bold mr-0.5">Quick:</span>
+                        {allGroupNames.slice(0, 6).map(g => {
+                          const isSelected = (formGroupName || 'General') === g && !isCustomScheduleGroupInput;
+                          return (
+                            <button
+                              key={g}
+                              type="button"
+                              onClick={() => {
+                                setIsCustomScheduleGroupInput(false);
+                                setFormGroupName(g);
+                              }}
+                              className={clsx(
+                                'px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors cursor-pointer',
+                                isSelected
+                                  ? 'bg-sky-600 text-white'
+                                  : 'bg-bg-editor text-text-muted hover:text-text-main border border-border-main/60'
+                              )}
+                            >
+                              {g}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1993,13 +2099,6 @@ export const TelegramBotView: React.FC = () => {
             const matchesBot = filterBotId === 'ALL' || w.botId === filterBotId;
             return matchesSearch && matchesBot;
           });
-
-          const allGroupNames = Array.from(new Set([
-            'General',
-            ...customGroups,
-            ...schedules.map(s => (s.groupName || 'General').trim()),
-            ...watchers.map(w => (w.groupName || 'General').trim())
-          ])).sort();
 
           const hasActiveFilter = Boolean(searchQuery.trim()) || filterTriggerType !== 'ALL' || filterBotId !== 'ALL';
           const groupedData = allGroupNames
@@ -3161,6 +3260,7 @@ export const TelegramBotView: React.FC = () => {
           contacts={contacts}
           connections={connections}
           tokens={tokens}
+          groups={allGroupNames}
           onCopyText={copyText}
           externalCreateSignal={watcherCreateSignal}
           externalCreateGroup={watcherCreateGroup}

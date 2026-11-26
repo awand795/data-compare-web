@@ -35,6 +35,7 @@ interface TelegramWatcherTabProps {
   contacts: Array<{ id: string; botId?: string; name?: string; firstName?: string; username?: string; chatId: string; phoneNumber?: string }>;
   connections: Array<{ id: string; name: string; type: string }>;
   tokens: Array<{ id: string; token: string; isActive?: boolean; active?: boolean }>;
+  groups?: string[];
   onCopyText: (text: string, key?: string) => void;
   modalOnly?: boolean;
   externalCreateSignal?: number;
@@ -51,6 +52,7 @@ export const TelegramWatcherTab: React.FC<TelegramWatcherTabProps> = ({
   contacts,
   connections,
   tokens,
+  groups = [],
   onCopyText,
   modalOnly = false,
   externalCreateSignal,
@@ -72,7 +74,16 @@ export const TelegramWatcherTab: React.FC<TelegramWatcherTabProps> = ({
   const [recipientPopoverOpen, setRecipientPopoverOpen] = useState(false);
   const [recipientSearch, setRecipientSearch] = useState('');
   const [manualChatIdInput, setManualChatIdInput] = useState('');
+  const [isCustomGroupInput, setIsCustomGroupInput] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+
+  const availableGroups = Array.from(
+    new Set([
+      'General',
+      ...groups.map(g => g.trim()).filter(Boolean),
+      ...watchers.map(w => (w.groupName || 'General').trim()).filter(Boolean),
+    ])
+  ).sort((a, b) => (a === 'General' ? -1 : b === 'General' ? 1 : a.localeCompare(b)));
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -165,14 +176,20 @@ export const TelegramWatcherTab: React.FC<TelegramWatcherTabProps> = ({
 
   const saveWatcher = async () => {
     if (!editing || !editing.name.trim() || !editing.botId || !editing.templateMessage.trim()) return;
+    const normalizedGroup = (editing.groupName || '').trim() || 'General';
+    const payload = { ...editing, groupName: normalizedGroup };
     try {
+      if (normalizedGroup !== 'General') {
+        await axios.post('/api/groups', { module: 'TELEGRAM', name: normalizedGroup }).catch(() => {});
+      }
       if (editing.id) {
-        await axios.put(`/api/telegram/watchers/${editing.id}`, editing);
+        await axios.put(`/api/telegram/watchers/${editing.id}`, payload);
       } else {
-        await axios.post('/api/telegram/watchers', editing);
+        await axios.post('/api/telegram/watchers', payload);
       }
       setIsModalOpen(false);
       setEditing(null);
+      setIsCustomGroupInput(false);
       onExternalEditClear?.();
       if (!modalOnly) fetchWatchers();
       onWatchersChanged?.();
@@ -474,13 +491,79 @@ EXECUTE FUNCTION fn_http_${cleanTbl}_tg();`;
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-text-muted uppercase mb-1">Group / Folder</label>
-                  <input
-                    type="text"
-                    value={editing.groupName || 'General'}
-                    onChange={e => setEditing({ ...editing, groupName: e.target.value })}
-                    placeholder="General"
-                    className="w-full bg-bg-editor border border-border-main rounded-xl px-3 py-2 text-xs text-amber-300 font-semibold outline-none focus:border-sky-500"
-                  />
+                  {!isCustomGroupInput ? (
+                    <div className="relative">
+                      <select
+                        value={availableGroups.includes(editing.groupName || 'General') ? (editing.groupName || 'General') : '__NEW__'}
+                        onChange={e => {
+                          if (e.target.value === '__NEW__') {
+                            setIsCustomGroupInput(true);
+                            setEditing({ ...editing, groupName: '' });
+                          } else {
+                            setEditing({ ...editing, groupName: e.target.value });
+                          }
+                        }}
+                        className="w-full bg-bg-editor border border-border-main hover:border-sky-500/50 focus:border-sky-500 rounded-xl px-3 py-2 text-xs font-semibold text-text-main outline-none cursor-pointer appearance-none pr-8"
+                      >
+                        {availableGroups.map(g => (
+                          <option key={g} value={g} className="bg-bg-panel text-text-main">
+                            📁 {g}
+                          </option>
+                        ))}
+                        <option value="__NEW__" className="bg-bg-panel text-sky-400 font-bold">
+                          ➕ Add New Group...
+                        </option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editing.groupName || ''}
+                        onChange={e => setEditing({ ...editing, groupName: e.target.value })}
+                        placeholder="Nama group baru..."
+                        className="flex-1 bg-bg-editor border border-sky-500 rounded-xl px-3 py-2 text-xs text-amber-300 font-semibold outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomGroupInput(false);
+                          setEditing({ ...editing, groupName: 'General' });
+                        }}
+                        className="px-2.5 py-2 rounded-xl bg-bg-editor border border-border-main text-[11px] font-semibold text-text-muted hover:text-text-main"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  )}
+                  {availableGroups.length > 1 && (
+                    <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                      <span className="text-[10px] text-text-muted font-bold mr-0.5">Quick:</span>
+                      {availableGroups.slice(0, 6).map(g => {
+                        const isSelected = (editing.groupName || 'General') === g && !isCustomGroupInput;
+                        return (
+                          <button
+                            key={g}
+                            type="button"
+                            onClick={() => {
+                              setIsCustomGroupInput(false);
+                              setEditing({ ...editing, groupName: g });
+                            }}
+                            className={clsx(
+                              'px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors cursor-pointer',
+                              isSelected
+                                ? 'bg-sky-600 text-white'
+                                : 'bg-bg-editor text-text-muted hover:text-text-main border border-border-main/60'
+                            )}
+                          >
+                            {g}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-text-muted uppercase mb-1">Bot Pengirim</label>
