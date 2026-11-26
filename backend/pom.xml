@@ -162,6 +162,11 @@
 			<artifactId>rhino</artifactId>
 			<version>1.7.15</version>
 		</dependency>
+		<dependency>
+			<groupId>org.json</groupId>
+			<artifactId>json</artifactId>
+			<version>20240303</version>
+		</dependency>
 	</dependencies>
 
 	<build>

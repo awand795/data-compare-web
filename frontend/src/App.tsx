@@ -15,8 +15,9 @@ import { ApiShareDocView } from './components/ApiShareDocView';
 import { SystemMonitoringView } from './components/SystemMonitoringView';
 import { WebhooksView } from './components/WebhooksView';
 import { TelegramBotView } from './components/TelegramBotView';
+import { DarkoConsolidationView } from './components/DarkoConsolidationView';
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2, Database, Webhook, Globe, Activity, Code, Send } from 'lucide-react';
+import { DatabaseZap, GitCompareArrows, Table2, Settings, HelpCircle, Sun, Moon, FileSpreadsheet, CalendarClock, Code2, Database, Webhook, Globe, Activity, Code, Send, Layers } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
 import { AlertModal } from './components/AlertModal';
@@ -117,6 +118,7 @@ function App() {
     { id: 'api_scheduler' as const, label: 'API Scheduler', icon: Globe, desc: 'Automate HTTP API requests & ingest JSON into ClickHouse/PostgreSQL' },
     { id: 'webhooks' as const, label: 'Webhooks', icon: Webhook, desc: 'Inbound Webhook receiver & JSON ingestion for Ginee, e-commerce, and external events' },
     { id: 'telegram_bot' as const, label: 'Bot Telegram', icon: Send, desc: 'Broadcast & jadwalkan pesan Telegram dinamis dari SQL' },
+    { id: 'darko_consolidation' as const, label: 'Darko Consolidation', icon: Layers, desc: 'Konsolidasi & monitoring master data pelanggan antar ERP' },
   ];
 
   if (!isAuthenticated) {
@@ -270,6 +272,9 @@ function App() {
             <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'webhooks' && "hidden")}>
               <WebhooksView />
             </div>
+            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'darko_consolidation' && "hidden")}>
+              <DarkoConsolidationView />
+            </div>
           </div>
         ) : (
           <Group orientation="horizontal">
@@ -320,6 +325,9 @@ function App() {
                 </div>
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'telegram_bot' && "hidden")}>
                   <TelegramBotView />
+                </div>
+                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'darko_consolidation' && "hidden")}>
+                  <DarkoConsolidationView />
                 </div>
               </div>
             </Panel>
