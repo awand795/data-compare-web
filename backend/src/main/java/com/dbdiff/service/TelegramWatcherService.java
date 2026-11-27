@@ -4,6 +4,7 @@ import com.dbdiff.model.*;
 import com.dbdiff.repository.*;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zaxxer.hikari.HikariDataSource;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,8 @@ public class TelegramWatcherService {
     private final Map<String, ScheduledFuture<?>> pollingTasks = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> pgListenerFlags = new ConcurrentHashMap<>();
     private final Map<String, Thread> pgListenerThreads = new ConcurrentHashMap<>();
+    private final Map<String, Connection> pgListenerConnections = new ConcurrentHashMap<>();
+    private final Map<String, DataSource> pgListenerDataSources = new ConcurrentHashMap<>();
 
     @Autowired
     public TelegramWatcherService(TaskScheduler taskScheduler,
@@ -120,6 +123,18 @@ public class TelegramWatcherService {
         Thread t = pgListenerThreads.remove(watcherId);
         if (t != null) {
             try { t.interrupt(); } catch (Exception ignored) {}
+        }
+        Connection activeConn = pgListenerConnections.remove(watcherId);
+        DataSource activeDs = pgListenerDataSources.remove(watcherId);
+        if (activeConn != null) {
+            try {
+                if (activeDs instanceof HikariDataSource hikariDs) {
+                    hikariDs.evictConnection(activeConn);
+                }
+            } catch (Exception ignored) {}
+            try {
+                activeConn.abort(Runnable::run);
+            } catch (Exception ignored) {}
         }
     }
 
@@ -260,8 +275,10 @@ public class TelegramWatcherService {
 
             try {
                 DataSource ds = connectionManagerService.getDataSource(details);
-                try (Connection conn = ds.getConnection();
-                     Statement stmt = conn.createStatement()) {
+                Connection conn = ds.getConnection();
+                pgListenerDataSources.put(watcherId, ds);
+                pgListenerConnections.put(watcherId, conn);
+                try (Statement stmt = conn.createStatement()) {
                     stmt.execute("LISTEN " + channel);
                     Class<?> pgConnClass = Class.forName("org.postgresql.PGConnection");
                     Object pgConn = conn.unwrap(pgConnClass);
@@ -306,6 +323,24 @@ public class TelegramWatcherService {
                             }
                         }
                     }
+                } finally {
+                    pgListenerConnections.remove(watcherId, conn);
+                    pgListenerDataSources.remove(watcherId, ds);
+                    try {
+                        if (!conn.isClosed()) {
+                            try (Statement unlistenStmt = conn.createStatement()) {
+                                unlistenStmt.execute("UNLISTEN *");
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                    try {
+                        if (ds instanceof HikariDataSource hikariDs) {
+                            hikariDs.evictConnection(conn);
+                        }
+                    } catch (Exception ignored) {}
+                    try {
+                        conn.close();
+                    } catch (Exception ignored) {}
                 }
             } catch (Exception ex) {
                 if (!running.get()) return;
