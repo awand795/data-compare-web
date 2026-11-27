@@ -131,10 +131,14 @@ export const TelegramWatcherTab: React.FC<TelegramWatcherTabProps> = ({
         pgChannelName: 'tg_new_data_channel',
         templateMessage: '<b>Data Baru Masuk!</b>\n{{pesan}}',
         recipientMode: 'MASTER',
-        masterRecipientIds: contacts[0]?.id || '',
+        masterRecipientIds: '',
         phoneColumnName: 'user_hp',
         active: true
       });
+      setRecipientPopoverOpen(false);
+      setRecipientSearch('');
+      setManualChatIdInput('');
+      setIsCustomGroupInput(false);
       setIsModalOpen(true);
     }
   }, [externalCreateSignal]);
@@ -167,10 +171,14 @@ export const TelegramWatcherTab: React.FC<TelegramWatcherTabProps> = ({
       pgChannelName: 'tg_new_data_channel',
       templateMessage: '<b>Data Baru Masuk!</b>\nNo: {{no_bukti}}\nCustomer: {{nama_customer}}\nTotal: {{total}}',
       recipientMode: 'MASTER',
-      masterRecipientIds: contacts[0]?.id || '',
+      masterRecipientIds: '',
       phoneColumnName: 'chat_id',
       active: true
     });
+    setRecipientPopoverOpen(false);
+    setRecipientSearch('');
+    setManualChatIdInput('');
+    setIsCustomGroupInput(false);
     setIsModalOpen(true);
   };
 
