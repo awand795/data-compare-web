@@ -251,30 +251,44 @@ function App() {
             <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'query' && "hidden")}>
               <QueryWorkspace />
             </div>
-            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'file_upload' && "hidden")}>
-              <FileUploadView />
-            </div>
-            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'schedule' && "hidden")}>
-              <ScheduleManagerView />
-            </div>
+            {appMode === 'file_upload' && (
+              <div className="h-full flex flex-col overflow-hidden">
+                <FileUploadView />
+              </div>
+            )}
+            {appMode === 'schedule' && (
+              <div className="h-full flex flex-col overflow-hidden">
+                <ScheduleManagerView />
+              </div>
+            )}
             <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'explorer' && "hidden")}>
               <TableDetailPanel />
             </div>
-            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'dwh' && "hidden")}>
-              <DataWarehouseView />
-            </div>
-            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'api_builder' && "hidden")}>
-              <ApiBuilderView />
-            </div>
-            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'api_scheduler' && "hidden")}>
-              <ApiSchedulerView />
-            </div>
-            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'webhooks' && "hidden")}>
-              <WebhooksView />
-            </div>
-            <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'darko_consolidation' && "hidden")}>
-              <DarkoConsolidationView />
-            </div>
+            {appMode === 'dwh' && (
+              <div className="h-full flex flex-col overflow-hidden">
+                <DataWarehouseView />
+              </div>
+            )}
+            {appMode === 'api_builder' && (
+              <div className="h-full flex flex-col overflow-hidden">
+                <ApiBuilderView />
+              </div>
+            )}
+            {appMode === 'api_scheduler' && (
+              <div className="h-full flex flex-col overflow-hidden">
+                <ApiSchedulerView />
+              </div>
+            )}
+            {appMode === 'webhooks' && (
+              <div className="h-full flex flex-col overflow-hidden">
+                <WebhooksView />
+              </div>
+            )}
+            {appMode === 'darko_consolidation' && (
+              <div className="h-full flex flex-col overflow-hidden">
+                <DarkoConsolidationView />
+              </div>
+            )}
           </div>
         ) : (
           <Group orientation="horizontal">
@@ -299,36 +313,54 @@ function App() {
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'query' && "hidden")}>
                   <QueryWorkspace />
                 </div>
-                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'file_upload' && "hidden")}>
-                  <FileUploadView />
-                </div>
-                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'schedule' && "hidden")}>
-                  <ScheduleManagerView />
-                </div>
+                {appMode === 'file_upload' && (
+                  <div className="h-full flex flex-col overflow-hidden">
+                    <FileUploadView />
+                  </div>
+                )}
+                {appMode === 'schedule' && (
+                  <div className="h-full flex flex-col overflow-hidden">
+                    <ScheduleManagerView />
+                  </div>
+                )}
                 <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'explorer' && "hidden")}>
                   <TableDetailPanel />
                 </div>
-                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'dwh' && "hidden")}>
-                  <DataWarehouseView />
-                </div>
-                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'system_monitor' && "hidden")}>
-                  <SystemMonitoringView />
-                </div>
-                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'api_builder' && "hidden")}>
-                  <ApiBuilderView />
-                </div>
-                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'api_scheduler' && "hidden")}>
-                  <ApiSchedulerView />
-                </div>
-                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'webhooks' && "hidden")}>
-                  <WebhooksView />
-                </div>
-                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'telegram_bot' && "hidden")}>
-                  <TelegramBotView />
-                </div>
-                <div className={clsx("h-full flex flex-col overflow-hidden", appMode !== 'darko_consolidation' && "hidden")}>
-                  <DarkoConsolidationView />
-                </div>
+                {appMode === 'dwh' && (
+                  <div className="h-full flex flex-col overflow-hidden">
+                    <DataWarehouseView />
+                  </div>
+                )}
+                {appMode === 'system_monitor' && (
+                  <div className="h-full flex flex-col overflow-hidden">
+                    <SystemMonitoringView />
+                  </div>
+                )}
+                {appMode === 'api_builder' && (
+                  <div className="h-full flex flex-col overflow-hidden">
+                    <ApiBuilderView />
+                  </div>
+                )}
+                {appMode === 'api_scheduler' && (
+                  <div className="h-full flex flex-col overflow-hidden">
+                    <ApiSchedulerView />
+                  </div>
+                )}
+                {appMode === 'webhooks' && (
+                  <div className="h-full flex flex-col overflow-hidden">
+                    <WebhooksView />
+                  </div>
+                )}
+                {appMode === 'telegram_bot' && (
+                  <div className="h-full flex flex-col overflow-hidden">
+                    <TelegramBotView />
+                  </div>
+                )}
+                {appMode === 'darko_consolidation' && (
+                  <div className="h-full flex flex-col overflow-hidden">
+                    <DarkoConsolidationView />
+                  </div>
+                )}
               </div>
             </Panel>
           </Group>
