@@ -3554,15 +3554,124 @@ export const ApiBuilderView: React.FC = () => {
         <div className="flex-1 overflow-hidden flex flex-col relative">
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
             
-            {/* LEFT PANE: SQL Studio OR API Gateway Studio */}
-            <div className="flex-1 lg:w-3/5 flex flex-col border-r border-border-main min-w-0 bg-[#080e1a] relative z-30">
+            {/* LEFT PANE: SQL Studio OR Unified API Gateway Studio */}
+            <div className={clsx(
+              "flex-1 flex flex-col min-w-0 bg-bg-main relative z-30",
+              currentApi.endpointType === 'GATEWAY' ? "w-full" : "lg:w-3/5 border-r border-border-main"
+            )}>
               {currentApi.endpointType === 'GATEWAY' ? (
-                <ApiGatewayEditor
-                  gatewayConfigJson={currentApi.gatewayConfig}
-                  onChange={val => setCurrentApi({ ...currentApi, gatewayConfig: val })}
-                  connections={connections}
-                  targets={endpointTargets}
-                />
+                <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                  {/* Unified Endpoint Identity & Security Bar for Gateway */}
+                  <div className="bg-bg-panel border-b border-border-main px-4 py-3 space-y-2.5 shrink-0">
+                    {validationErrors.length > 0 && (
+                      <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2 flex flex-wrap items-center gap-3 text-xs text-rose-500">
+                        <span className="font-bold flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5" /> Fix {validationErrors.length} error(s):
+                        </span>
+                        {validationErrors.map((err, i) => (
+                          <span key={i}>• {err.message}</span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
+                      <div className="md:col-span-3">
+                        <label className="block text-[10px] font-extrabold text-text-muted uppercase tracking-wider mb-1">
+                          API Endpoint Name <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          className={clsx(
+                            "w-full bg-bg-editor border rounded-lg px-2.5 py-1.5 text-xs outline-none text-text-main font-medium",
+                            getError('name') ? "border-rose-500" : "border-border-main focus:border-blue-500"
+                          )}
+                          value={currentApi.name}
+                          onChange={e => setCurrentApi({ ...currentApi, name: e.target.value })}
+                          placeholder="e.g. Unified Customer Gateway"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-[10px] font-extrabold text-text-muted uppercase tracking-wider mb-1">
+                          HTTP Method
+                        </label>
+                        <select
+                          value={currentApi.method}
+                          onChange={e => setCurrentApi({ ...currentApi, method: e.target.value })}
+                          className="w-full bg-bg-editor border border-border-main rounded-lg px-2.5 py-1.5 text-xs font-bold text-text-main outline-none focus:border-blue-500"
+                        >
+                          {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <label className="block text-[10px] font-extrabold text-text-muted uppercase tracking-wider mb-1">
+                          Route Path <span className="text-rose-500">*</span>
+                        </label>
+                        <div className={clsx(
+                          "flex items-center rounded-lg border overflow-hidden",
+                          getError('endpointPath') ? "border-rose-500" : "border-border-main focus-within:border-blue-500"
+                        )}>
+                          <span className="bg-bg-main px-2 py-1.5 text-[11px] text-text-muted font-mono border-r border-border-main shrink-0">
+                            /api/data/
+                          </span>
+                          <input
+                            className="w-full bg-bg-editor px-2 py-1.5 text-xs outline-none font-mono text-blue-500 font-bold"
+                            value={currentApi.endpointPath.startsWith('/') ? currentApi.endpointPath.slice(1) : currentApi.endpointPath}
+                            onChange={e => {
+                              let val = e.target.value.trim();
+                              if (val.startsWith('/')) val = val.slice(1);
+                              setCurrentApi({ ...currentApi, endpointPath: val ? '/' + val : '' });
+                            }}
+                            placeholder="gateway-route"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-[10px] font-extrabold text-text-muted uppercase tracking-wider mb-1">
+                          Group
+                        </label>
+                        <select
+                          value={allGroups.includes(currentApi.groupName || 'General') ? (currentApi.groupName || 'General') : 'General'}
+                          onChange={e => setCurrentApi({ ...currentApi, groupName: e.target.value })}
+                          className="w-full bg-bg-editor border border-border-main rounded-lg px-2.5 py-1.5 text-xs font-semibold text-text-main outline-none focus:border-blue-500"
+                        >
+                          {allGroups.map(g => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-[10px] font-extrabold text-text-muted uppercase tracking-wider mb-1">
+                          Security
+                        </label>
+                        <select
+                          value={currentApi.securityMode || (currentApi.isPublic ? 'PUBLIC' : 'API_KEY')}
+                          onChange={e => {
+                            const mode = e.target.value as any;
+                            setCurrentApi({ ...currentApi, securityMode: mode, isPublic: mode === 'PUBLIC' });
+                          }}
+                          className="w-full bg-bg-editor border border-border-main rounded-lg px-2.5 py-1.5 text-xs font-semibold text-text-main outline-none focus:border-blue-500"
+                        >
+                          <option value="API_KEY">API Key (Bearer)</option>
+                          <option value="PUBLIC">Public (No Auth)</option>
+                          <option value="BASIC">Basic Auth</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <ApiGatewayEditor
+                      gatewayConfigJson={currentApi.gatewayConfig}
+                      onChange={val => setCurrentApi({ ...currentApi, gatewayConfig: val })}
+                      connections={connections}
+                      targets={endpointTargets}
+                    />
+                  </div>
+                </div>
               ) : (
                 <>
               
@@ -3684,7 +3793,8 @@ export const ApiBuilderView: React.FC = () => {
               )}
             </div>
 
-            {/* RIGHT PANE: Unified Single-Page Settings (Config, Parameters, Security) */}
+            {/* RIGHT PANE: Unified Single-Page Settings (SQL Studio Only) */}
+            {currentApi.endpointType !== 'GATEWAY' && (
             <div className="flex-1 lg:w-2/5 flex flex-col bg-bg-panel overflow-y-auto min-w-0">
               
               {/* STICKY HEADER & SEGMENT CONTROL */}
@@ -5815,20 +5925,21 @@ export const ApiBuilderView: React.FC = () => {
 
               </div>
             </div>
+            )}
           </div>
           {/* FLOATING TEST CONSOLE DRAWER */}
           <div className={clsx(
-            "border-t border-border-main bg-[#0b0f19] shadow-2xl transition-all duration-300 ease-in-out flex flex-col shrink-0 z-20",
+            "border-t border-border-main bg-bg-panel shadow-2xl transition-all duration-300 ease-in-out flex flex-col shrink-0 z-20",
             isTestConsoleOpen ? "h-72" : "h-12"
           )}>
             {/* Drawer Toggle Header */}
             <div 
-              className="h-12 border-b border-border-main/50 flex items-center justify-between px-5 cursor-pointer hover:bg-white/[0.04] transition-colors shrink-0"
+              className="h-12 border-b border-border-main/50 flex items-center justify-between px-5 cursor-pointer hover:bg-bg-hover/60 transition-colors shrink-0"
               onClick={() => setIsTestConsoleOpen(!isTestConsoleOpen)}
             >
               <div className="flex items-center gap-3">
-                <SquareTerminal className="w-4 h-4 text-emerald-400" />
-                <span className="text-sm font-bold text-white">Interactive Test Console</span>
+                <SquareTerminal className="w-4 h-4 text-emerald-500" />
+                <span className="text-sm font-bold text-text-main">Interactive Test Console</span>
                 {paramCount > 0 && (
                   <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20 font-mono">
                     {paramCount} Var{paramCount > 1 ? 's' : ''}

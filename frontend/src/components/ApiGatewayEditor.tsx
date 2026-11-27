@@ -262,9 +262,9 @@ export const ApiGatewayEditor: React.FC<ApiGatewayEditorProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#080e1a] overflow-hidden">
+    <div className="flex flex-col h-full bg-bg-main overflow-hidden">
       {/* TOP TOOLBAR */}
-      <div className="bg-bg-panel/95 border-b border-border-main px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
+      <div className="bg-bg-panel border-b border-border-main px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400">
             <GitBranch className="w-4 h-4" />
@@ -316,15 +316,15 @@ export const ApiGatewayEditor: React.FC<ApiGatewayEditorProps> = ({
       {/* BODY SCROLLABLE */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* MODE BANNER */}
-        <div className="px-3 py-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-200 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+        <div className="px-3 py-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-700 dark:text-purple-200 flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-purple-500 dark:text-purple-400 shrink-0" />
           {config.executionMode === 'SWITCH' ? (
             <span>
-              <strong>Dynamic Switch Mode:</strong> Evaluates route conditions (SpEL like <code className="text-purple-300">#action == 'get_user'</code>) top-to-bottom and executes the first match (or empty condition as Default).
+              <strong>Dynamic Switch Mode:</strong> Evaluates route conditions (SpEL like <code className="text-purple-700 dark:text-purple-300 font-semibold">#action == 'get_user'</code>) top-to-bottom and executes the first match (or empty condition as Default).
             </span>
           ) : (
             <span>
-              <strong>Merge / Aggregate Mode:</strong> Executes all enabled matching routes in parallel and combines results under each route&apos;s <code className="text-cyan-300">Response Key</code>.
+              <strong>Merge / Aggregate Mode:</strong> Executes all enabled matching routes in parallel and combines results under each route&apos;s <code className="text-cyan-700 dark:text-cyan-300 font-semibold">Response Key</code>.
             </span>
           )}
         </div>
@@ -347,11 +347,11 @@ export const ApiGatewayEditor: React.FC<ApiGatewayEditorProps> = ({
               >
                 {/* Route Header */}
                 <div
-                  className="px-3.5 py-2.5 flex items-center justify-between gap-2 cursor-pointer hover:bg-white/5"
+                  className="px-3.5 py-2.5 flex items-center justify-between gap-2 cursor-pointer hover:bg-bg-hover/60"
                   onClick={() => setExpandedRouteId(isExpanded ? '' : route.id)}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
+                    <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-md bg-bg-editor text-text-main border border-border-main">
                       #{idx + 1}
                     </span>
                     <span
@@ -582,7 +582,7 @@ export const ApiGatewayEditor: React.FC<ApiGatewayEditorProps> = ({
                               value={route.bodyTemplate}
                               onChange={e => updateRoute(idx, { bodyTemplate: e.target.value })}
                               placeholder={'{\n  "user_id": "{{user_id}}",\n  "amount": {{amount}}\n}'}
-                              className="w-full bg-[#050810] border border-border-main rounded-lg p-2.5 text-xs font-mono text-emerald-300 outline-none focus:border-blue-500"
+                              className="w-full bg-bg-editor border border-border-main rounded-lg p-2.5 text-xs font-mono text-text-main outline-none focus:border-blue-500"
                             />
                           </div>
                         )}
@@ -611,7 +611,7 @@ export const ApiGatewayEditor: React.FC<ApiGatewayEditorProps> = ({
                             value={route.sqlQuery}
                             onChange={e => updateRoute(idx, { sqlQuery: e.target.value })}
                             placeholder="SELECT * FROM users WHERE id = :id;"
-                            className="w-full bg-[#050810] border border-border-main rounded-lg p-2.5 text-xs font-mono text-blue-300 outline-none focus:border-blue-500"
+                            className="w-full bg-bg-editor border border-border-main rounded-lg p-2.5 text-xs font-mono text-text-main outline-none focus:border-blue-500"
                           />
                         </div>
                       </div>
@@ -622,7 +622,7 @@ export const ApiGatewayEditor: React.FC<ApiGatewayEditorProps> = ({
                       <div className="space-y-3">
                         {route.targetType === 'HTTP' && (
                           <div>
-                            <label className="block text-[10px] font-bold text-purple-300 uppercase mb-1">
+                            <label className="block text-[10px] font-bold text-purple-600 dark:text-purple-300 uppercase mb-1">
                               Request Transform Script (Optional JS)
                             </label>
                             <textarea
@@ -630,26 +630,26 @@ export const ApiGatewayEditor: React.FC<ApiGatewayEditorProps> = ({
                               value={route.requestScript}
                               onChange={e => updateRoute(idx, { requestScript: e.target.value })}
                               placeholder={'function transformRequest(params, req) {\n  // modify req.url, req.headers, req.queryParams, req.body\n  return req;\n}'}
-                              className="w-full bg-[#050810] border border-border-main rounded-lg p-2.5 text-xs font-mono text-purple-200 outline-none focus:border-purple-500"
+                              className="w-full bg-bg-editor border border-border-main rounded-lg p-2.5 text-xs font-mono text-text-main outline-none focus:border-purple-500"
                             />
                           </div>
                         )}
 
                         <div>
-                          <label className="block text-[10px] font-bold text-cyan-300 uppercase mb-1">
-                            Response JSON Template Mapping (Optional — supports <code className="text-cyan-400">{'{{data.field}}'}</code>)
+                          <label className="block text-[10px] font-bold text-cyan-700 dark:text-cyan-300 uppercase mb-1">
+                            Response JSON Template Mapping (Optional — supports <code className="text-cyan-600 dark:text-cyan-400">{'{{data.field}}'}</code>)
                           </label>
                           <textarea
                             rows={3}
                             value={route.responseMapping}
                             onChange={e => updateRoute(idx, { responseMapping: e.target.value })}
                             placeholder={'{\n  "id": "{{data.user.id}}",\n  "fullName": "{{data.user.nama}}"\n}'}
-                            className="w-full bg-[#050810] border border-border-main rounded-lg p-2.5 text-xs font-mono text-cyan-200 outline-none focus:border-cyan-500"
+                            className="w-full bg-bg-editor border border-border-main rounded-lg p-2.5 text-xs font-mono text-text-main outline-none focus:border-cyan-500"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-[10px] font-bold text-emerald-300 uppercase mb-1">
+                          <label className="block text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase mb-1">
                             Response Transform Script (Optional JS — overrides Template above if filled)
                           </label>
                           <textarea
@@ -657,7 +657,7 @@ export const ApiGatewayEditor: React.FC<ApiGatewayEditorProps> = ({
                             value={route.responseScript}
                             onChange={e => updateRoute(idx, { responseScript: e.target.value })}
                             placeholder={'function transformResponse(data, params) {\n  return {\n    ok: true,\n    items: (data.rows || []).map(function(x) { return { id: x.id, label: x.name }; })\n  };\n}'}
-                            className="w-full bg-[#050810] border border-border-main rounded-lg p-2.5 text-xs font-mono text-emerald-200 outline-none focus:border-emerald-500"
+                            className="w-full bg-bg-editor border border-border-main rounded-lg p-2.5 text-xs font-mono text-text-main outline-none focus:border-emerald-500"
                           />
                         </div>
                       </div>
@@ -714,20 +714,20 @@ export const ApiGatewayEditor: React.FC<ApiGatewayEditorProps> = ({
 
         {/* GLOBAL FINAL RESPONSE TRANSFORM */}
         <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-3.5 space-y-3">
-          <div className="flex items-center gap-2 text-xs font-black text-indigo-300 uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-xs font-black text-indigo-600 dark:text-indigo-300 uppercase tracking-wider">
             <ArrowRight className="w-4 h-4" /> Global Final Response Combiner (Optional)
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">
-                Final JSON Template (use <code className="text-cyan-300">{'{{routes.<key>.<field>}}'}</code>)
+                Final JSON Template (use <code className="text-cyan-600 dark:text-cyan-300">{'{{routes.<key>.<field>}}'}</code>)
               </label>
               <textarea
                 rows={4}
                 value={config.responseTemplate}
                 onChange={e => updateConfig({ ...config, responseTemplate: e.target.value })}
                 placeholder={'{\n  "status": "ok",\n  "user": "{{routes.user.name}}",\n  "orders": "{{routes.orders.total}}"\n}'}
-                className="w-full bg-[#050810] border border-border-main rounded-lg p-2.5 text-xs font-mono text-cyan-200 outline-none focus:border-indigo-500"
+                className="w-full bg-bg-editor border border-border-main rounded-lg p-2.5 text-xs font-mono text-text-main outline-none focus:border-indigo-500"
               />
             </div>
             <div>
@@ -739,7 +739,7 @@ export const ApiGatewayEditor: React.FC<ApiGatewayEditorProps> = ({
                 value={config.responseScript}
                 onChange={e => updateConfig({ ...config, responseScript: e.target.value })}
                 placeholder={'function transformResponse(data, params, routes) {\n  return { success: true, data: data, combined: routes };\n}'}
-                className="w-full bg-[#050810] border border-border-main rounded-lg p-2.5 text-xs font-mono text-emerald-200 outline-none focus:border-indigo-500"
+                className="w-full bg-bg-editor border border-border-main rounded-lg p-2.5 text-xs font-mono text-text-main outline-none focus:border-indigo-500"
               />
             </div>
           </div>
