@@ -40,21 +40,6 @@ public class TelegramBotConfigRepository {
                     ")";
             jdbcTemplate.execute(sql);
             logger.info("Successfully initialized table telegram_bot_configs");
-
-            // Auto-import existing Telegram channels from notification_channels if table is empty
-            Integer count = jdbcTemplate.queryForObject("SELECT count(*) FROM telegram_bot_configs", Integer.class);
-            if (count != null && count == 0) {
-                try {
-                    String importSql = "INSERT INTO telegram_bot_configs (id, name, bot_token, is_polling_active, created_at, updated_at) " +
-                            "SELECT id, name, bot_token, true, created_at, created_at " +
-                            "FROM notification_channels WHERE type = 'TELEGRAM' AND bot_token IS NOT NULL AND bot_token != ''";
-                    int imported = jdbcTemplate.update(importSql);
-                    if (imported > 0) {
-                        logger.info("Imported {} existing Telegram bots from notification_channels", imported);
-                    }
-                } catch (Exception ignored) {
-                }
-            }
         } catch (Exception e) {
             logger.warn("Initialization of table telegram_bot_configs failed: {}", e.getMessage());
         }
